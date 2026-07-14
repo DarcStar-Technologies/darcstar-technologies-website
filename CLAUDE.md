@@ -1,77 +1,36 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) in this repository.
+
+**This file is an index, not a manual.** Keep it lean: each subsystem and durable lesson lives in a short doc under `docs/`, linked below. When you add a subsystem or learn something that isn't obvious from the code, write/update its doc and add a line here — don't inline the detail.
 
 ## Project
 
-DarcStar Technologies marketing website. SvelteKit (Svelte 5) deployed to **Cloudflare Pages**. The repo is currently close to a fresh `sv create` scaffold — most of `src/routes` and `src/stories` is still template/demo content.
+DarcStar Technologies marketing website — SvelteKit (Svelte 5) on **Cloudflare Pages**. Still close to a fresh `sv create` scaffold; most of `src/routes` and `src/stories` is template/demo content.
 
-Package manager is **pnpm** (`packageManager` is pinned; `.npmrc` sets `engine-strict=true`). Use `pnpm`, not `npm`.
+Non-negotiables:
 
-## Commands
+- Package manager is **pnpm** (pinned in `packageManager`; `.npmrc` sets `engine-strict=true`). Use `pnpm`, never `npm`.
+- **Svelte 5 runes only** — runes mode is forced project-wide. No legacy `export let`. See [docs/svelte.md](docs/svelte.md).
 
-- `pnpm dev` — Vite dev server.
-- `pnpm build` — runs `wrangler types --check` then `vite build`. Output goes to `.svelte-kit/cloudflare`.
-- `pnpm preview` — serve the built output through Wrangler Pages (`wrangler pages dev`, port 4173), i.e. a real Workers runtime, not `vite preview`.
-- `pnpm check` — `wrangler types --check` + `svelte-kit sync` + `svelte-check` (type/diagnostic check).
-- `pnpm lint` — `prettier --check .` then `eslint .`. `pnpm format` writes Prettier fixes.
-- `pnpm gen` — `wrangler types`; regenerates `worker-configuration.d.ts` (the `Env` type consumed by `src/app.d.ts` and referenced in `tsconfig.json`). Run this after changing `wrangler.jsonc` bindings.
-- `pnpm storybook` — Storybook dev server on 6006. `pnpm build-storybook` for static build.
+## Map
 
-### Tests
+| Area                                           | Doc                                                            |
+| ---------------------------------------------- | -------------------------------------------------------------- |
+| Commands & tests                               | [docs/commands.md](docs/commands.md)                           |
+| Svelte conventions (runes, mdsvex, Svelte MCP) | [docs/svelte.md](docs/svelte.md)                               |
+| i18n — Paraglide / inlang                      | [docs/i18n.md](docs/i18n.md)                                   |
+| Styling & UI — Tailwind v4, Skeleton v4        | [docs/styling.md](docs/styling.md)                             |
+| Deployment — Cloudflare                        | [docs/deployment.md](docs/deployment.md)                       |
+| Skeleton LLM reference (large)                 | [docs/llms/skeleton-svelte.txt](docs/llms/skeleton-svelte.txt) |
 
-- `pnpm test:unit` — Vitest (watch). `pnpm test:unit -- --run` for a single pass. Filter with a path/name, e.g. `pnpm test:unit -- --run src/lib/vitest-examples/greet.spec.ts`.
-- `pnpm test:e2e` — installs browsers, then Playwright. Playwright's `webServer` runs `pnpm build && pnpm preview`, so e2e exercises the Cloudflare preview build. Test files match `**/*.e2e.{ts,js}`.
-- `pnpm test` — unit (`--run`) then e2e.
+## Lessons
 
-Vitest is configured with **three projects** (see `vite.config.ts`), so pick the right filename convention:
-- `client` — browser (Playwright/chromium), matches `src/**/*.svelte.{test,spec}.{js,ts}`. Use for component tests.
-- `server` — node env, matches `src/**/*.{test,spec}.{js,ts}` excluding the `.svelte.` ones.
-- `storybook` — runs stories as tests via `@storybook/addon-vitest`.
+Durable gotchas — keep to one line; link to the doc that carries the detail.
 
-Note: `test.expect.requireAssertions` is on — every test must make at least one assertion.
-
-## Architecture
-
-**Runes mode is forced** project-wide via `vite.config.ts` compilerOptions (except `node_modules`), and Svelte `experimental.async` + SvelteKit `experimental.remoteFunctions` / `handleRenderingErrors` are enabled. Write Svelte 5 runes syntax (`$state`, `$props`, `$derived`, etc.), not legacy `export let`.
-
-**i18n via Paraglide (inlang).** This is the main non-obvious system:
-- Messages live in `messages/{locale}.json` (`en`, `es`; base `en`), configured in `project.inlang/settings.json`.
-- The Paraglide Vite plugin compiles them into `src/lib/paraglide/` (generated — do not edit). Import messages as `import { m } from '$lib/paraglide/messages.js'` and call `m.key({ ... })`; runtime helpers come from `$lib/paraglide/runtime`.
-- Locale strategy is **`url`**. The pieces that wire this together:
-  - `src/hooks.ts` (`reroute`) de-localizes the incoming URL so routing sees a single canonical path.
-  - `src/hooks.server.ts` runs `paraglideMiddleware` and injects `%paraglide.lang%` / `%paraglide.dir%` into `src/app.html`.
-  - `src/hooks.client.ts` instantiates `Locale` from `src/lib/paraglide.svelte.ts`, a runes class that overrides Paraglide's get/set-locale so setting a locale `goto`s the localized URL.
-- To add a language: add the locale to `project.inlang/settings.json` and a `messages/<locale>.json`.
-
-**Cloudflare specifics.** `@sveltejs/adapter-cloudflare`. Bindings/env are typed through `Env` (generated by `wrangler types`) and surfaced on `App.Platform` in `src/app.d.ts`. `compatibility_flags: ["nodejs_als"]` is set in `wrangler.jsonc`.
-
-**Styling.** Tailwind CSS v4 via the Vite plugin; the stylesheet entry is `src/routes/layout.css` (Prettier's `tailwindStylesheet` points here for class sorting). `@tailwindcss/forms` and `@tailwindcss/typography` are available.
-
-**Content.** `mdsvex` is configured, so `.md` and `.svx` files are valid Svelte components/routes (`extensions` includes both).
-
----
-
-You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
-
-## Available Svelte MCP Tools:
-
-### 1. list-sections
-
-Use this FIRST to discover all available documentation sections. Returns a structured list with titles, use_cases, and paths.
-When asked about Svelte or SvelteKit topics, ALWAYS use this tool at the start of the chat to find relevant sections.
-
-### 2. get-documentation
-
-Retrieves full documentation content for specific sections. Accepts single or multiple sections.
-After calling the list-sections tool, you MUST analyze the returned documentation sections (especially the use_cases field) and then use the get-documentation tool to fetch ALL documentation sections that are relevant for the user's task.
-
-### 3. svelte-autofixer
-
-Analyzes Svelte code and returns issues and suggestions.
-You MUST use this tool whenever writing Svelte code before sending it to the user. Keep calling it until no issues or suggestions are returned.
-
-### 4. playground-link
-
-Generates a Svelte Playground link with the provided code.
-After completing the code, ask the user if they want a playground link. Only call this tool after user confirmation and NEVER if code was written to files in their project.
+- Keep `@tailwindcss/forms`; Skeleton's form components depend on it. → [styling](docs/styling.md)
+- Dark mode uses `data-mode` on `<html>` (localStorage key `mode`) + a no-flash script in `app.html`; toggle is `ThemeToggle.svelte`. Distinct from `data-theme` (palette). → [styling](docs/styling.md)
+- `pnpm preview` runs the built worker on the real Workers runtime (Wrangler), not `vite preview`. → [commands](docs/commands.md)
+- Run `pnpm gen` after changing `wrangler.jsonc` bindings to refresh the `Env` type. → [deployment](docs/deployment.md)
+- e2e builds + previews the Cloudflare bundle; match the vitest project to your filename (`client` / `server` / `storybook`). → [commands](docs/commands.md)
+- Use the Svelte MCP (list-sections → get-documentation) for Svelte/SvelteKit questions; run svelte-autofixer on any Svelte you write. → [svelte](docs/svelte.md)
