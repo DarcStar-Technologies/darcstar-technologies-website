@@ -24,6 +24,8 @@
 		"@eslint/js": "^10.0.1",
 		"@inlang/paraglide-js": "^2.18.2",
 		"@playwright/test": "^1.60.0",
+		"@skeletonlabs/skeleton": "^4.15.2",
+		"@skeletonlabs/skeleton-svelte": "^4.15.2",
 		"@storybook/addon-a11y": "^10.5.0",
 		"@storybook/addon-docs": "^10.5.0",
 		"@storybook/addon-svelte-csf": "^5.1.2",
