@@ -20,3 +20,17 @@ repos:
         stages: [commit-msg]
         additional_dependencies:
           - '@commitlint/config-conventional'
+
+  # Keep the generated Cloudflare env types in sync (runs `wrangler types`).
+  # Regenerates worker-configuration.d.ts on every commit; pre-commit fails if
+  # it drifted from what's staged, so stale types can't be committed. Guards the
+  # `wrangler types --check` gate in `pnpm build`. Wrangler is pinned to an exact
+  # version (package.json) so local and CI generate byte-identical output.
+  - repo: local
+    hooks:
+      - id: wrangler-types
+        name: wrangler types (worker-configuration.d.ts)
+        entry: pnpm run gen
+        language: system
+        pass_filenames: false
+        always_run: true
