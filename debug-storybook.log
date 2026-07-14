@@ -1,0 +1,89 @@
+[16:54:23.506] [INFO] [36mInitializing Storybook[39m
+[16:54:24.249] [DEBUG] Getting package.json info for /home/mharris/Projects/DarcStar-Technologies/darcstar-technologies-website/package.json...
+[16:54:24.249] [INFO] Package manager: pnpm
+[16:54:24.251] [DEBUG] Getting CLI versions from NPM for storybook...
+[16:54:24.251] [DEBUG] Executing command: pnpm info storybook version
+[16:54:25.200] [INFO] Adding Storybook version 10.5.0 to your project
+[16:54:25.200] [DEBUG] Executing command: pnpm config get minimumReleaseAge
+[16:54:25.678] [DEBUG] Using cached package.json for /home/mharris/Projects/DarcStar-Technologies/darcstar-technologies-website/package.json...
+[16:54:25.679] [DEBUG] Project type detected: sveltekit
+[16:54:25.679] [DEBUG] Using cached package.json for /home/mharris/Projects/DarcStar-Technologies/darcstar-technologies-website/package.json...
+[16:54:25.679] [INFO] Framework detected: sveltekit
+[16:54:25.680] [DEBUG] Getting installed version for vitest...
+[16:54:25.681] [DEBUG] Executing command: pnpm list "vitest" --json --depth=99
+[16:54:26.171] [DEBUG] No installations found for vitest
+[16:54:26.171] [DEBUG] Getting installed version for msw...
+[16:54:26.171] [DEBUG] Executing command: pnpm list "msw" --json --depth=99
+[16:54:26.643] [DEBUG] No installations found for msw
+[16:54:37.566] [PROMPT] New to Storybook? {"choice":false}
+[16:54:37.566] [INFO] Storybook collects completely anonymous usage telemetry. We use it to shape Storybook's roadmap and prioritize features. You can learn more, including how to opt out, at https://storybook.js.org/telemetry
+[16:54:49.675] [PROMPT] What configuration should we install? {"choice":"recommended"}
+[16:54:50.148] [INFO] base-generator-task-start: Generating Storybook configuration
+[16:54:50.150] [DEBUG] Using cached package.json for /home/mharris/Projects/DarcStar-Technologies/darcstar-technologies-website/package.json...
+[16:54:50.150] [DEBUG] Using cached package.json for /home/mharris/Projects/DarcStar-Technologies/darcstar-technologies-website/package.json...
+[16:54:50.150] [DEBUG] Using cached package.json for /home/mharris/Projects/DarcStar-Technologies/darcstar-technologies-website/package.json...
+[16:54:50.152] [INFO] base-generator-task: - Configuring ESLint plugin
+[16:54:50.154] [DEBUG] Detected flat config at /home/mharris/Projects/DarcStar-Technologies/darcstar-technologies-website/eslint.config.js
+[16:54:50.204] [DEBUG] Using cached version for storybook...
+[16:54:50.204] [DEBUG] Getting CLI versions from NPM for @storybook/sveltekit...
+[16:54:50.204] [DEBUG] Executing command: pnpm info @storybook/sveltekit version
+[16:54:50.208] [DEBUG] Getting CLI versions from NPM for @storybook/addon-svelte-csf...
+[16:54:50.208] [DEBUG] Executing command: pnpm info @storybook/addon-svelte-csf version
+[16:54:50.212] [DEBUG] Getting CLI versions from NPM for @chromatic-com/storybook...
+[16:54:50.212] [DEBUG] Executing command: pnpm info @chromatic-com/storybook version
+[16:54:50.215] [DEBUG] Getting CLI versions from NPM for @storybook/addon-vitest...
+[16:54:50.215] [DEBUG] Executing command: pnpm info @storybook/addon-vitest version
+[16:54:50.219] [DEBUG] Getting CLI versions from NPM for @storybook/addon-a11y...
+[16:54:50.219] [DEBUG] Executing command: pnpm info @storybook/addon-a11y version
+[16:54:50.223] [DEBUG] Getting CLI versions from NPM for @storybook/addon-docs...
+[16:54:50.223] [DEBUG] Executing command: pnpm info @storybook/addon-docs version
+[16:54:50.226] [DEBUG] Getting CLI versions from NPM for eslint-plugin-storybook...
+[16:54:50.226] [DEBUG] Executing command: pnpm info eslint-plugin-storybook version
+[16:54:51.323] [INFO] base-generator-task: - Configuring main.ts
+[16:54:51.324] [INFO] base-generator-task: - Configuring preview.ts
+[16:54:51.325] [INFO] base-generator-task: - Adding Storybook command to package.json
+[16:54:51.326] [DEBUG] Getting package.json info for /home/mharris/Projects/DarcStar-Technologies/darcstar-technologies-website/package.json...
+[16:54:51.326] [DEBUG] Using cached package.json for /home/mharris/Projects/DarcStar-Technologies/darcstar-technologies-website/package.json...
+[16:54:51.326] [DEBUG] Using cached package.json for /home/mharris/Projects/DarcStar-Technologies/darcstar-technologies-website/package.json...
+[16:54:51.326] [INFO] base-generator-task: - Copying framework templates
+[16:54:51.337] [DEBUG] Executing command: npm config get registry -ws=false -iwr
+[16:54:51.412] [ERROR] [38;2;241;97;97mError: Cannot find @storybook/sveltekit/package.json, Error: Cannot find module '@storybook/sveltekit/package.json'
+Require stack:
+- .
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1568:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1122:27)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1173:12)
+    at require.resolve (node:internal/modules/helpers:209:31)
+    at resolvePackageDir (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-2XRAUFH3.js:728:26)
+    at getRendererDir (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-6BBCMK2E.js:5401:12)
+    at templatePath (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-6BBCMK2E.js:5484:25)
+    at copyTemplateFiles (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-6BBCMK2E.js:5499:23)
+    at async baseGenerator (file:///home/mharris/.local/share/pnpm/store/v11/links/@/create-storybook/10.5.0/3ae24f7cbdd971b2f128416f860411b26937caae71ffc071103550d6d63125e6/node_modules/create-storybook/dist/_node-chunks/chunk-VJJQPIQC.js:1461:152)
+    at async GeneratorExecutionCommand.executeProjectGenerator (file:///home/mharris/.local/share/pnpm/store/v11/links/@/create-storybook/10.5.0/3ae24f7cbdd971b2f128416f860411b26937caae71ffc071103550d6d63125e6/node_modules/create-storybook/dist/_node-chunks/chunk-VJJQPIQC.js:1534:101)
+
+ExecaError: Command failed with exit code 1: npm config get registry '-ws=false' -iwr
+
+Exit prior to config file resolving
+cause
+-iwr is not a valid single-hyphen cli flag. Did you mean --iwr?
+    at getFinalError (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-VFV5MDK3.js:16042:10)
+    at makeError (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-VFV5MDK3.js:17578:15)
+    at getAsyncResult (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-VFV5MDK3.js:20224:158)
+    at handlePromise (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-VFV5MDK3.js:20210:162)
+    at async PNPMProxy.getRegistryURL (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-VFV5MDK3.js:21173:24)
+    at async resolveUsingBranchInstall (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-6BBCMK2E.js:5383:15)
+    at async getRendererDir (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-6BBCMK2E.js:5406:12)
+    at async templatePath (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-6BBCMK2E.js:5484:19)
+    at async copyTemplateFiles (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-6BBCMK2E.js:5499:17)
+    at async baseGenerator (file:///home/mharris/.local/share/pnpm/store/v11/links/@/create-storybook/10.5.0/3ae24f7cbdd971b2f128416f860411b26937caae71ffc071103550d6d63125e6/node_modules/create-storybook/dist/_node-chunks/chunk-VJJQPIQC.js:1461:152)[39m
+    at getRendererDir (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-6BBCMK2E.js:5410:9)
+    at async templatePath (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-6BBCMK2E.js:5484:19)
+    at async copyTemplateFiles (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-6BBCMK2E.js:5499:17)
+    at async baseGenerator (file:///home/mharris/.local/share/pnpm/store/v11/links/@/create-storybook/10.5.0/3ae24f7cbdd971b2f128416f860411b26937caae71ffc071103550d6d63125e6/node_modules/create-storybook/dist/_node-chunks/chunk-VJJQPIQC.js:1461:152)
+    at async GeneratorExecutionCommand.executeProjectGenerator (file:///home/mharris/.local/share/pnpm/store/v11/links/@/create-storybook/10.5.0/3ae24f7cbdd971b2f128416f860411b26937caae71ffc071103550d6d63125e6/node_modules/create-storybook/dist/_node-chunks/chunk-VJJQPIQC.js:1534:101)
+    at async GeneratorExecutionCommand.execute (file:///home/mharris/.local/share/pnpm/store/v11/links/@/create-storybook/10.5.0/3ae24f7cbdd971b2f128416f860411b26937caae71ffc071103550d6d63125e6/node_modules/create-storybook/dist/_node-chunks/chunk-VJJQPIQC.js:1557:61)
+    at async doInitiate (file:///home/mharris/.local/share/pnpm/store/v11/links/@/create-storybook/10.5.0/3ae24f7cbdd971b2f128416f860411b26937caae71ffc071103550d6d63125e6/node_modules/create-storybook/dist/_node-chunks/chunk-VJJQPIQC.js:3711:95)
+    at async file:///home/mharris/.local/share/pnpm/store/v11/links/@/create-storybook/10.5.0/3ae24f7cbdd971b2f128416f860411b26937caae71ffc071103550d6d63125e6/node_modules/create-storybook/dist/_node-chunks/chunk-VJJQPIQC.js:3775:20
+    at async withTelemetry (file:///home/mharris/.local/share/pnpm/store/v11/links/@/storybook/10.5.0/d9268e7f083337f05b35360247a65938f65b075c2a66c07816a5947a20e672a3/node_modules/storybook/dist/_node-chunks/chunk-YXP5YOPH.js:1785:12)
+    at async initiate (file:///home/mharris/.local/share/pnpm/store/v11/links/@/create-storybook/10.5.0/3ae24f7cbdd971b2f128416f860411b26937caae71ffc071103550d6d63125e6/node_modules/create-storybook/dist/_node-chunks/chunk-VJJQPIQC.js:3766:24)
+[16:55:13.940] [PROMPT] Would you like to send anonymous crash reports to improve Storybook and fix bugs faster? {"choice":false}
