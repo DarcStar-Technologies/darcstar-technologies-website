@@ -4,6 +4,12 @@
 	"compatibility_date": "2026-07-14",
 	"compatibility_flags": ["nodejs_als", "nodejs_compat"],
 	"main": ".svelte-kit/cloudflare/_worker.js",
+	// Public (non-secret) vars. ORIGIN is Better Auth's baseURL — the served
+	// origin. Secrets (DATABASE_URL, DATABASE_AUTH_TOKEN, BETTER_AUTH_SECRET,
+	// GITHUB_*) are set via `wrangler secret`, not here.
+	"vars": {
+		"ORIGIN": "https://darcstar.tech"
+	},
 	"assets": {
 		"binding": "ASSETS",
 		"directory": ".svelte-kit/cloudflare"
