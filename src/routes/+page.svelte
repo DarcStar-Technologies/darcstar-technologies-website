@@ -4,7 +4,7 @@
 	const readouts = [
 		{ v: '0.767 µs', l: 'CfC inference' },
 		{ v: '13,000×', l: 'real-time' },
-		{ v: '∞', l: 'shipped domains' },
+		{ v: '∞', l: 'domains possible' },
 		{ v: 'proven', l: 'machine-checked' }
 	];
 	const pillars = [
@@ -62,36 +62,44 @@
 <CosmicBackdrop />
 
 <div class="space-y-24">
-	<section class="flex min-h-[78vh] flex-col items-center justify-center py-20 text-center">
+	<section
+		class="flex min-h-[calc(100svh-4rem)] flex-col items-center px-6 pt-16 pb-20 text-center sm:pt-24"
+	>
 		<p class="font-mono text-xs tracking-[0.3em] text-white/40 uppercase">
 			GIDE · Guaranteed Intelligent Dynamics Engine
 		</p>
-		<h1
-			class="mt-6 max-w-3xl text-4xl font-medium tracking-tight text-balance text-white sm:text-6xl"
-		>
-			Autonomous control you can
-			<span
-				class="bg-clip-text text-transparent"
-				style="background-image: linear-gradient(90deg, var(--charge-r), var(--charge-g), var(--charge-b));"
-				>prove</span
+
+		<!-- The twisting triple helix (CosmicBackdrop) fills this gap on first load. -->
+		<div class="flex-1"></div>
+
+		<div class="w-full">
+			<h1
+				class="mx-auto max-w-3xl text-4xl font-medium tracking-tight text-balance text-white sm:text-6xl"
 			>
-			is safe.
-		</h1>
-		<p class="mx-auto mt-6 max-w-xl text-base text-white/55 sm:text-lg">
-			GIDE is a real-time intelligent control engine with formal safety guarantees — one system,
-			proven across robotics, markets, and software that improves itself.
-		</p>
-		<div class="mt-9 flex flex-wrap justify-center gap-3">
-			<a
-				href="#gide"
-				class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
-				>Explore GIDE</a
-			>
-			<a
-				href="mailto:mharris@darcstar.tech"
-				class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
-				>Get in touch →</a
-			>
+				Autonomous control you can
+				<span
+					class="bg-clip-text text-transparent"
+					style="background-image: linear-gradient(90deg, var(--charge-r), var(--charge-g), var(--charge-b));"
+					>prove</span
+				>
+				is safe.
+			</h1>
+			<p class="mx-auto mt-6 max-w-xl text-base text-white/55 sm:text-lg">
+				GIDE is a real-time intelligent control engine with formal safety guarantees — one system,
+				proven across robotics, markets, and software that improves itself.
+			</p>
+			<div class="mt-9 flex flex-wrap justify-center gap-3">
+				<a
+					href="#gide"
+					class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
+					>Explore GIDE</a
+				>
+				<a
+					href="mailto:mharris@darcstar.tech"
+					class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
+					>Get in touch →</a
+				>
+			</div>
 		</div>
 	</section>
 
