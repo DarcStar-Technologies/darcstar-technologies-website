@@ -1,4 +1,3 @@
-import { ORIGIN, BETTER_AUTH_SECRET } from '$app/env/private';
 import { betterAuth } from 'better-auth/minimal';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
@@ -6,9 +5,11 @@ import { getRequestEvent } from '$app/server';
 import { getDb } from '$lib/server/db';
 
 function createAuth() {
+	// Per-request Cloudflare env (secrets/vars); process.env fallback for dev.
+	const cfEnv = getRequestEvent().platform?.env;
 	return betterAuth({
-		baseURL: ORIGIN,
-		secret: BETTER_AUTH_SECRET,
+		baseURL: cfEnv?.ORIGIN ?? process.env.ORIGIN,
+		secret: cfEnv?.BETTER_AUTH_SECRET ?? process.env.BETTER_AUTH_SECRET,
 		// Trust the Cloudflare workers.dev origins for auth (CSRF / cookie origin
 		// checks). Production (ORIGIN) is trusted automatically.
 		// - bare production alias (exact match needs the scheme)
@@ -29,9 +30,10 @@ function createAuth() {
 let instance: ReturnType<typeof createAuth> | undefined;
 
 /**
- * Lazily-created Better Auth instance (singleton). Deferred so module load
- * doesn't touch the database or env; created on first request, when the
- * Worker's secrets are available.
+ * Lazily-created Better Auth instance (singleton). Env is read per-request from
+ * getRequestEvent().platform.env; created on first request when the Worker's
+ * secrets are available (see db/index.ts for why module-load env reads fail on
+ * workerd).
  */
 export function getAuth() {
 	return (instance ??= createAuth());
