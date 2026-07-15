@@ -11,8 +11,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 
-const dirname =
-	typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
+const dirname = typeof __dirname !== 'undefined'
+	? __dirname
+	: path.dirname(fileURLToPath(import.meta.url));
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 export default defineConfig({
@@ -21,14 +22,18 @@ export default defineConfig({
 		sveltekit({
 			compilerOptions: {
 				// Force runes mode for the project, except for libraries. Can be removed in svelte 6.
-				runes: ({ filename }) =>
-					filename.split(/[/\\]/).includes('node_modules') ? undefined : true,
+				runes: ({ filename }) => filename.split(/[/\\]/).includes('node_modules') ? undefined : true,
 				experimental: { async: true }
 			},
 			adapter: adapter(),
 			preprocess: [mdsvex({ extensions: ['.svx', '.md'] })],
 			extensions: ['.svelte', '.svx', '.md'],
-			experimental: { remoteFunctions: true, handleRenderingErrors: true }
+			experimental: { remoteFunctions: true },
+			typescript: {
+				config: (config) => {
+					config.include.push('../drizzle.config.ts');
+				}
+			}
 		}),
 
 		paraglideVitePlugin({
@@ -67,8 +72,6 @@ export default defineConfig({
 			{
 				extends: true,
 				plugins: [
-					// The plugin will run tests for the stories defined in your Storybook config
-					// See options at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon#storybooktest
 					storybookTest({ configDir: path.join(dirname, '.storybook') })
 				],
 				test: {

@@ -26,3 +26,5 @@ test-results
 
 *storybook.log
 storybook-static
+# SQLite
+*.db

@@ -3,3 +3,5 @@ allowBuilds:
   workerd: true
   sharp: true
   esbuild: true
+  '@prisma/client': false
+  better-sqlite3: false
