@@ -1,18 +1,8 @@
 <!doctype html>
 
-<html lang="%paraglide.lang%" dir="%paraglide.dir%" data-theme="cerberus">
+<html lang="%paraglide.lang%" dir="%paraglide.dir%" data-theme="cerberus" data-mode="dark">
 	<head>
 		<meta charset="utf-8" />
-
-		<script>
-			// Apply the persisted or system color mode before first paint (no flash).
-			(() => {
-				const stored = localStorage.getItem('mode');
-				const mode =
-					stored || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-				document.documentElement.setAttribute('data-mode', mode);
-			})();
-		</script>
 
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 

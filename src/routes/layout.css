@@ -7,6 +7,14 @@
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
 
-/* Dark mode: data-attribute strategy. Toggled via `data-mode` on <html> by the
-   no-flash script in app.html and the ThemeToggle component. */
+/* Dark-only site: `data-mode="dark"` is hardcoded on <html> in app.html.
+   The custom variant is kept so Skeleton/cerberus dark tokens resolve. */
 @custom-variant dark (&:where([data-mode='dark'], [data-mode='dark'] *));
+
+/* Three "color-charge" accents (red/green/blue) used by the homepage hero and
+   its CosmicBackdrop helix. Keep in sync with the palette in CosmicBackdrop.svelte. */
+:root {
+	--charge-r: #fb5a6f;
+	--charge-g: #3ddc84;
+	--charge-b: #48c6ef;
+}
