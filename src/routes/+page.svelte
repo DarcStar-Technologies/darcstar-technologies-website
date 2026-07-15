@@ -61,7 +61,7 @@
 
 <CosmicBackdrop />
 
-<div class="space-y-28">
+<div class="space-y-24">
 	<section class="flex min-h-[78vh] flex-col items-center justify-center py-20 text-center">
 		<p class="font-mono text-xs tracking-[0.3em] text-white/40 uppercase">
 			GIDE · Guaranteed Intelligent Dynamics Engine
@@ -84,20 +84,20 @@
 		<div class="mt-9 flex flex-wrap justify-center gap-3">
 			<a
 				href="#gide"
-				class="rounded-full border border-white/15 bg-white/5 px-6 py-2.5 text-sm font-medium text-white backdrop-blur-sm transition hover:border-white/30 hover:bg-white/10"
+				class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
 				>Explore GIDE</a
 			>
 			<a
 				href="mailto:mharris@darcstar.tech"
-				class="rounded-full px-6 py-2.5 text-sm font-medium text-white/60 transition hover:text-white"
+				class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
 				>Get in touch →</a
 			>
 		</div>
 	</section>
 
-	<div class="mx-auto max-w-5xl space-y-28">
+	<div class="mx-auto max-w-5xl space-y-16">
 		<div
-			class="flex flex-wrap items-center justify-center gap-x-12 gap-y-4 border-y border-white/10 py-6 text-center"
+			class="glass-panel flex flex-wrap items-center justify-center gap-x-12 gap-y-4 rounded-2xl px-8 py-7 text-center"
 		>
 			{#each readouts as ro (ro.l)}
 				<div>
@@ -109,18 +109,20 @@
 			{/each}
 		</div>
 
-		<section id="gide" class="scroll-mt-24">
-			<p class="text-center font-mono text-xs tracking-[0.25em] text-white/35 uppercase">
-				// intelligence with guarantees
-			</p>
-			<h2 class="mt-3 text-center text-3xl font-medium tracking-tight text-white">
-				A ~715K-line hybrid Zig / C++ runtime
-			</h2>
+		<section id="gide" class="glass-panel scroll-mt-24 overflow-hidden rounded-2xl">
+			<div class="p-8 text-center sm:p-10">
+				<p class="font-mono text-xs tracking-[0.25em] text-white/35 uppercase">
+					// intelligence with guarantees
+				</p>
+				<h2 class="mt-3 text-3xl font-medium tracking-tight text-white">
+					A ~715K-line hybrid Zig / C++ runtime
+				</h2>
+			</div>
 			<div
-				class="mt-12 grid gap-px overflow-hidden rounded-xl border border-white/10 bg-white/10 sm:grid-cols-3"
+				class="grid divide-y divide-white/10 border-t border-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0"
 			>
 				{#each pillars as p (p.title)}
-					<div class="bg-white/[0.02] p-7 backdrop-blur-sm">
+					<div class="p-7">
 						<div
 							class="flex size-10 items-center justify-center rounded-lg"
 							style="color: {p.cvar}; background: color-mix(in oklab, {p.cvar} 12%, transparent);"
@@ -134,16 +136,18 @@
 			</div>
 		</section>
 
-		<section>
-			<p class="text-center font-mono text-xs tracking-[0.25em] text-white/35 uppercase">
-				// one engine, infinite domains
-			</p>
-			<h2 class="mt-3 text-center text-3xl font-medium tracking-tight text-white">
-				Specialized at compile time
-			</h2>
-			<div class="mt-10 divide-y divide-white/10 border-y border-white/10">
+		<section class="glass-panel overflow-hidden rounded-2xl">
+			<div class="p-8 text-center sm:p-10">
+				<p class="font-mono text-xs tracking-[0.25em] text-white/35 uppercase">
+					// one engine, infinite domains
+				</p>
+				<h2 class="mt-3 text-3xl font-medium tracking-tight text-white">
+					Specialized at compile time
+				</h2>
+			</div>
+			<div class="divide-y divide-white/10 border-t border-white/10">
 				{#each domains as d (d.n)}
-					<div class="flex flex-col gap-1 py-5 sm:flex-row sm:items-baseline sm:gap-6">
+					<div class="flex flex-col gap-1 px-8 py-5 sm:flex-row sm:items-baseline sm:gap-6">
 						<div class="w-52 shrink-0 text-sm font-medium text-white">{d.n}</div>
 						<div class="text-sm text-white/50">{d.d}</div>
 					</div>
@@ -152,7 +156,7 @@
 		</section>
 
 		<section
-			class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center backdrop-blur-sm sm:p-16"
+			class="glass-panel rounded-2xl p-10 text-center sm:p-16"
 			style="background-image: radial-gradient(80% 120% at 50% 0%, color-mix(in oklab, var(--charge-b) 12%, transparent), transparent 70%);"
 		>
 			<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
@@ -164,7 +168,7 @@
 			</p>
 		</section>
 
-		<section class="pb-8 text-center">
+		<section class="glass-panel rounded-2xl px-8 py-14 text-center">
 			<h2 class="text-3xl font-medium tracking-tight text-white sm:text-4xl">
 				Let's build something guaranteed.
 			</h2>
@@ -173,7 +177,7 @@
 			</p>
 			<a
 				href="mailto:mharris@darcstar.tech"
-				class="mt-8 inline-block rounded-full border border-white/15 bg-white/5 px-7 py-3 text-sm font-medium text-white backdrop-blur-sm transition hover:border-white/30 hover:bg-white/10"
+				class="glass-btn mt-8 inline-block rounded-full px-7 py-3 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
 				>Contact DarcStar</a
 			>
 		</section>
