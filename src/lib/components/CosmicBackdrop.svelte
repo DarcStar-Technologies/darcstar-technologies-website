@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Fixed, full-viewport decorative canvas: the cosmic void (dark-only site).
-	// Black + nebula glows + a persistent starfield + a twisting triple helix in
-	// the hero region (fades out on scroll). Respects prefers-reduced-motion.
+	// Black + nebula glows + a persistent starfield + a twisting triple helix that
+	// stays fixed in the background as the page scrolls. Respects prefers-reduced-motion.
 
 	function backdrop(canvas: HTMLCanvasElement) {
 		const c = canvas.getContext('2d');
@@ -45,7 +45,7 @@
 
 		const heroCenter = () => Math.min(h * 0.42, 360);
 
-		function drawHelix(t: number, fade: number) {
+		function drawHelix(t: number) {
 			const cx = w / 2;
 			const cy = heroCenter();
 			const span = Math.min(w * 0.94, 1180);
@@ -53,7 +53,7 @@
 			const amp = Math.min(h * 0.15, 130);
 			const turns = 2.3;
 			const N = 66;
-			const phase = t * 0.00016;
+			const phase = t * 0.0002;
 			const colors = ['#fb5a6f', '#3ddc84', '#48c6ef'];
 
 			const segs: { x0: number; y0: number; x1: number; y1: number; z: number; col: string }[] = [];
@@ -83,7 +83,7 @@
 			for (const sg of segs) {
 				const zz = (sg.z + 1) / 2; // 0 back .. 1 front
 				c.strokeStyle = sg.col;
-				c.globalAlpha = fade * (0.14 + 0.86 * zz);
+				c.globalAlpha = 0.14 + 0.86 * zz;
 				c.lineWidth = 0.6 + 2.1 * zz;
 				if (zz > 0.5) {
 					c.shadowBlur = 9 * zz;
@@ -132,18 +132,16 @@
 			}
 			c.globalAlpha = 1;
 
-			const heroH = Math.min(h, 760);
-			const fade = Math.max(0, Math.min(1, 1 - window.scrollY / (heroH * 0.75)));
-			if (fade > 0.01) drawHelix(t, fade);
+			// The helix stays put in the background across the whole scroll (the
+			// canvas is fixed), rather than fading out past the hero.
+			drawHelix(t);
 
-			if (fade > 0.01) {
-				const cy = heroCenter();
-				const vg = c.createRadialGradient(w / 2, cy, 0, w / 2, cy, Math.max(w, h) * 0.62);
-				vg.addColorStop(0, 'rgba(0,0,0,0)');
-				vg.addColorStop(1, `rgba(0,0,0,${0.5 * fade})`);
-				c.fillStyle = vg;
-				c.fillRect(0, 0, w, h);
-			}
+			const cy = heroCenter();
+			const vg = c.createRadialGradient(w / 2, cy, 0, w / 2, cy, Math.max(w, h) * 0.62);
+			vg.addColorStop(0, 'rgba(0,0,0,0)');
+			vg.addColorStop(1, 'rgba(0,0,0,0.5)');
+			c.fillStyle = vg;
+			c.fillRect(0, 0, w, h);
 		}
 
 		let raf = 0;
@@ -152,14 +150,11 @@
 			raf = requestAnimationFrame(loop);
 		}
 
-		const redraw = () => draw(lastT);
-
 		resize();
 		window.addEventListener('resize', resize);
 
 		if (reduce) {
 			draw(0);
-			window.addEventListener('scroll', redraw, { passive: true });
 		} else {
 			raf = requestAnimationFrame(loop);
 		}
@@ -167,7 +162,6 @@
 		return () => {
 			cancelAnimationFrame(raf);
 			window.removeEventListener('resize', resize);
-			window.removeEventListener('scroll', redraw);
 		};
 	}
 </script>
