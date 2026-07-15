@@ -12,11 +12,12 @@
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
-<Header />
-
-<main class="mx-auto max-w-5xl px-4 py-10">
-	{@render children()}
-</main>
+<div class="flex min-h-dvh flex-col">
+	<Header />
+	<main class="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-10">
+		{@render children()}
+	</main>
+</div>
 
 <div style="display:none">
 	{#each locales as locale (locale)}
