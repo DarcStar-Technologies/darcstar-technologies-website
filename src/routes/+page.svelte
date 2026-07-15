@@ -155,10 +155,7 @@
 			</div>
 		</section>
 
-		<section
-			class="glass-panel rounded-2xl p-10 text-center sm:p-16"
-			style="background-image: radial-gradient(80% 120% at 50% 0%, color-mix(in oklab, var(--charge-b) 12%, transparent), transparent 70%);"
-		>
+		<section class="glass-panel rounded-2xl p-10 text-center sm:p-16">
 			<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
 				Proven, not just tested.
 			</h2>
