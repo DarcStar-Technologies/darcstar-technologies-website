@@ -9,10 +9,15 @@ function createAuth() {
 	return betterAuth({
 		baseURL: ORIGIN,
 		secret: BETTER_AUTH_SECRET,
-		// Cloudflare preview deployments get per-version workers.dev URLs; trust
-		// them so auth (CSRF / cookie origin checks) works on previews. Production
-		// (ORIGIN) is trusted automatically. `*` matches the version/branch prefix.
-		trustedOrigins: ['*-darcstar-technologies-website.darcstar.workers.dev'],
+		// Trust the Cloudflare workers.dev origins for auth (CSRF / cookie origin
+		// checks). Production (ORIGIN) is trusted automatically.
+		// - bare production alias (exact match needs the scheme)
+		// - per-version preview URLs (`*` matches the version/branch prefix; host
+		//   form is matched against the hostname, so no scheme)
+		trustedOrigins: [
+			'https://darcstar-technologies-website.darcstar.workers.dev',
+			'*-darcstar-technologies-website.darcstar.workers.dev'
+		],
 		database: drizzleAdapter(getDb(), { provider: 'sqlite' }),
 		emailAndPassword: { enabled: true },
 		plugins: [
