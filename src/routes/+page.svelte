@@ -176,9 +176,9 @@
 			</p>
 			<a
 				href={contactHref}
-				class="glass-btn mt-8 inline-flex items-center gap-2.5 rounded-full px-6 py-3 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
+				class="glass-btn mt-8 inline-flex items-center gap-3 rounded-full px-7 py-3.5 text-lg font-medium text-white transition hover:border-white/30 hover:bg-white/10"
 			>
-				<img src={favicon} alt="" class="logo-spin size-5" />
+				<img src={favicon} alt="" class="size-14" />
 				Contact Us
 			</a>
 		</section>
