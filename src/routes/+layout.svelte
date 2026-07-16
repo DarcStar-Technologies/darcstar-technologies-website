@@ -6,6 +6,7 @@
 	import './layout.css';
 	import favicon from '$lib/assets/favicon-16.svg';
 	import Header from '$lib/components/Header.svelte';
+	import Footer from '$lib/components/Footer.svelte';
 
 	let { children } = $props();
 </script>
@@ -17,6 +18,7 @@
 	<main class="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-10">
 		{@render children()}
 	</main>
+	<Footer />
 </div>
 
 <div style="display:none">
