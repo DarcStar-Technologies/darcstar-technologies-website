@@ -79,7 +79,7 @@
 
 		<!-- The twisting triple helix centres in this gap; CosmicBackdrop measures
 		     #helix-slot to place and size it responsively. -->
-		<div id="helix-slot" class="h-6 sm:h-[min(25vw,19rem)]"></div>
+		<div id="helix-slot" class="h-6 min-[360px]:h-[min(25vw,19rem)]"></div>
 
 		<div
 			class="glass-panel mx-auto w-full max-w-3xl rounded-2xl px-8 py-10 text-center sm:px-10 sm:py-12"
