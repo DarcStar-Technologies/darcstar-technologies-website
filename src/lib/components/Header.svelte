@@ -3,8 +3,14 @@
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import favicon from '$lib/assets/favicon.svg';
 
-	// Starter links point to existing routes; replace with real nav as the site grows.
-	const links = [{ label: 'Home', href: '/' }];
+	// Nav links. Path links (Home) get localized; fragment links (#about → the
+	// global footer) are same-page anchors and stay raw so they hold the current
+	// locale instead of routing back to the base one.
+	const links = [
+		{ label: 'Home', href: '/' },
+		{ label: 'About', href: '#about' }
+	];
+	const navHref = (href: string) => (href.startsWith('#') ? href : localizeHref(href));
 
 	let open = $state(false);
 	let stuck = $state(false);
@@ -51,7 +57,7 @@
 					{#each links as link (link.href)}
 						<li>
 							<a
-								href={localizeHref(link.href)}
+								href={navHref(link.href)}
 								class="rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500"
 							>
 								{link.label}
@@ -110,7 +116,7 @@
 				{#each links as link (link.href)}
 					<li>
 						<a
-							href={localizeHref(link.href)}
+							href={navHref(link.href)}
 							onclick={() => (open = false)}
 							class="block rounded px-3 py-2 text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary"
 						>
