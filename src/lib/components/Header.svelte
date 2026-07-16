@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
 	import { localizeHref } from '$lib/paraglide/runtime';
-	import favicon from '$lib/assets/favicon.svg';
+	import { scrollBehavior } from '$lib/scroll';
+	import Wordmark from './Wordmark.svelte';
 
 	// Nav links. Path links (Home) get localized; fragment links (#about → the
 	// global footer) are same-page anchors and stay raw so they hold the current
@@ -27,8 +28,7 @@
 		const target = document.getElementById(href.slice(1));
 		if (!target) return;
 		e.preventDefault();
-		const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-		target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' });
+		target.scrollIntoView({ behavior: scrollBehavior() });
 		history.pushState(null, '', href);
 	}
 
@@ -48,6 +48,14 @@
 	}}
 />
 
+<!-- One link markup for both the desktop and mobile lists; `className` carries the
+     per-list styling so the two never drift. -->
+{#snippet navLink(link: { label: string; href: string }, className: string)}
+	<a href={navHref(link.href)} onclick={(e) => handleNavClick(e, link.href)} class={className}>
+		{link.label}
+	</a>
+{/snippet}
+
 <!-- Sticky-detection sentinel: out of flow at the document top (no layout shift), it
      scrolls out of view as the header sticks, flipping `stuck` → the shadow-on-scroll. -->
 <div
@@ -56,16 +64,15 @@
 	class="pointer-events-none absolute top-0 left-0 h-px w-px"
 ></div>
 
-<header class="sticky top-0 z-50 px-4 pt-3">
+<header class="sticky top-0 z-50 px-4 pt-[var(--header-gap-top)]">
 	<nav class="glass-nav mx-auto max-w-5xl rounded-2xl px-4" data-stuck={stuck} aria-label="Primary">
-		<div class="flex h-24 items-center justify-between gap-6">
+		<div class="flex h-[var(--header-bar-h)] items-center justify-between gap-6">
 			<a
 				href={localizeHref('/')}
 				onclick={() => (open = false)}
 				class="flex items-center gap-2.5 text-xl font-bold tracking-tight text-white sm:text-4xl"
 			>
-				<img src={favicon} alt="" class="size-20" />
-				<span>DarcStar <span class="charge-flow">Technologies</span></span>
+				<Wordmark markClass="size-20" />
 			</a>
 
 			<div class="flex items-center gap-2 sm:gap-4">
@@ -73,13 +80,10 @@
 				<ul class="hidden items-center gap-1 sm:flex">
 					{#each links as link (link.href)}
 						<li>
-							<a
-								href={navHref(link.href)}
-								onclick={(e) => handleNavClick(e, link.href)}
-								class="rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500"
-							>
-								{link.label}
-							</a>
+							{@render navLink(
+								link,
+								'rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500'
+							)}
 						</li>
 					{/each}
 				</ul>
@@ -133,13 +137,10 @@
 			>
 				{#each links as link (link.href)}
 					<li>
-						<a
-							href={navHref(link.href)}
-							onclick={(e) => handleNavClick(e, link.href)}
-							class="block rounded px-3 py-2 text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary"
-						>
-							{link.label}
-						</a>
+						{@render navLink(
+							link,
+							'block rounded px-3 py-2 text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary'
+						)}
 					</li>
 				{/each}
 			</ul>

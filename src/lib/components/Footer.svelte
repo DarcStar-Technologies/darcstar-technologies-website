@@ -3,7 +3,7 @@
 	// legal name + © year, location, secondary nav, and social/contact links.
 	// Rendered once in +layout.svelte, so it appears on every page below <main>.
 	import { localizeHref } from '$lib/paraglide/runtime';
-	import favicon from '$lib/assets/favicon.svg';
+	import Wordmark from './Wordmark.svelte';
 
 	// Rendered at request time (SSR) — no hydration mismatch since client agrees.
 	const year = new Date().getFullYear();
@@ -26,7 +26,7 @@
 		aria-label={label}
 		rel={external ? 'noreferrer' : null}
 		target={external ? '_blank' : null}
-		class="glass-btn flex size-10 items-center justify-center rounded-lg text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white"
+		class="glass-btn flex size-10 items-center justify-center rounded-lg text-white/70 hover:text-white"
 	>
 		{#if label === 'GitHub'}
 			<svg class="size-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -62,8 +62,7 @@
 					href={localizeHref('/')}
 					class="flex items-center gap-2.5 text-lg font-bold tracking-tight text-white"
 				>
-					<img src={favicon} alt="" class="size-9" />
-					<span>DarcStar <span class="charge-flow">Technologies</span></span>
+					<Wordmark markClass="size-9" />
 				</a>
 				<p class="mt-4 text-sm text-white/70">
 					Real-time intelligent control with formal safety guarantees.
