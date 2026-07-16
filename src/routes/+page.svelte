@@ -63,10 +63,15 @@
 	</svg>
 {/snippet}
 
-{#snippet sectionHead(kicker: string, heading: string)}
+{#snippet sectionHead(kicker: string, heading: string, sub?: string)}
 	<div class="p-8 text-center sm:p-10">
 		<p class="font-mono text-xs tracking-[0.25em] text-white/60 uppercase">{kicker}</p>
 		<h2 class="mx-auto mt-3 max-w-3xl text-3xl font-medium tracking-tight text-white">{heading}</h2>
+		{#if sub}
+			<!-- Optional systems-stack caption (mono, one line). Reframes the polyglot
+			     stack as an engineering signal, not a line-count cost metric (issue #14). -->
+			<p class="mt-4 font-mono text-xs tracking-wide text-white/60">{sub}</p>
+		{/if}
 	</div>
 {/snippet}
 
@@ -126,7 +131,7 @@
 		<section id="gide" class="glass-panel scroll-mt-24 overflow-hidden rounded-2xl">
 			{@render sectionHead(
 				'// intelligence with guarantees',
-				'Nearly 1 M lines and counting of Zig, C++, Rust, and Python w/ custom CUDA Kernels'
+				'Safe, real-time, and self-improving.'
 			)}
 			<div
 				class="grid divide-y divide-white/10 border-t border-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0"
@@ -147,7 +152,11 @@
 		</section>
 
 		<section class="glass-panel overflow-hidden rounded-2xl">
-			{@render sectionHead('// one engine, infinite domains', 'Specialized at compile time')}
+			{@render sectionHead(
+				'// one engine, infinite domains',
+				'Specialized at compile time',
+				'Zig · C++ · Rust · Python · custom CUDA kernels'
+			)}
 			<div class="divide-y divide-white/10 border-t border-white/10">
 				{#each domains as d (d.n)}
 					<div class="flex flex-col gap-1 px-8 py-5 sm:flex-row sm:items-baseline sm:gap-6">
