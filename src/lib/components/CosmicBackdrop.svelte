@@ -67,6 +67,7 @@
 		const helixCenter = () => slotCy || Math.min(h * 0.42, 360);
 
 		function drawHelix(t: number) {
+			if (w < 640) return; // too cramped on phones — drop it (matches the sm: gap collapse)
 			const cx = w / 2;
 			const cy = helixCenter();
 			const span = Math.min(w * 0.94, 1180);

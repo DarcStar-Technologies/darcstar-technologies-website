@@ -72,16 +72,14 @@
 <CosmicBackdrop />
 
 <div class="space-y-24">
-	<section
-		class="-mt-10 flex min-h-[calc(100svh-4rem)] flex-col items-center px-6 pt-6 pb-20 text-center sm:pt-8"
-	>
+	<section class="-mt-10 flex flex-col items-center px-6 pt-6 pb-16 text-center sm:pt-8">
 		<p class="font-mono text-sm tracking-[0.3em] text-white/40 uppercase">
 			GIDE · Guaranteed Intelligent Dynamics Engine
 		</p>
 
 		<!-- The twisting triple helix centres in this gap; CosmicBackdrop measures
 		     #helix-slot to place and size it responsively. -->
-		<div id="helix-slot" class="flex-1"></div>
+		<div id="helix-slot" class="h-6 sm:h-[min(25vw,19rem)]"></div>
 
 		<div
 			class="glass-panel mx-auto w-full max-w-3xl rounded-2xl px-8 py-10 text-center sm:px-10 sm:py-12"
