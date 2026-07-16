@@ -5,11 +5,29 @@
 
 	const contactHref = 'mailto:mharris@darcstar.tech';
 
+	// Domains the one engine has actually shipped into. Declared before `readouts`
+	// so the stats row can source its "domains shipped" figure from this list's
+	// length — the number can never drift from the rows rendered in the section below.
+	const domains = [
+		{ n: 'Cart-pole control', d: '3D cart-pole balancing with machine-checked CBF safety proofs.' },
+		{ n: 'Quadrotor flight', d: '6-DOF quadrotors with hybrid CfC / LQR / MPC control.' },
+		{ n: 'Financial markets', d: 'Live FX trading, a 36-objective curriculum, Oanda connector.' },
+		{ n: 'Language models', d: 'Entropy, grounding, and safety regulation for LLM control.' },
+		{ n: 'Autonomous software', d: 'A Self-Dev loop that specs, builds, and verifies itself.' }
+	];
+
+	// Stats row — REAL, verifiable numbers only (issue #13). Latency and the
+	// 13,000× real-time margin (i.e. it computes 13,000× inside the control-loop
+	// deadline, consistent with 0.767 µs) are measured; "theorems proven" is the
+	// machine-checked count; "domains shipped" is the length of `domains` above.
+	// The former "∞ / domains possible" and "proven / machine-checked" entries were
+	// slogans typeset as data — that message now lives only in prose (the
+	// "// one engine, infinite domains" kicker and the "Proven, not just tested." section).
 	const readouts = [
 		{ v: '0.767 µs', l: 'CfC inference' },
-		{ v: '13,000×', l: 'real-time' },
-		{ v: '∞', l: 'domains possible' },
-		{ v: 'proven', l: 'machine-checked' }
+		{ v: '13,000×', l: 'faster than real-time' },
+		{ v: '150', l: 'theorems proven' },
+		{ v: String(domains.length), l: 'domains shipped' }
 	];
 	const pillars = [
 		{
@@ -22,7 +40,7 @@
 			cvar: 'var(--charge-b)',
 			icon: 'bolt',
 			title: 'Real-time',
-			body: 'Closed-form continuous-time inference at 0.767 µs — 13,000× ahead of the world.'
+			body: 'Closed-form continuous-time inference at 0.767 µs — 13,000× faster than real-time.'
 		},
 		{
 			cvar: 'var(--charge-g)',
@@ -30,13 +48,6 @@
 			title: 'Self-improving',
 			body: 'Neuroevolution and an autonomous Self-Dev loop that writes and verifies its own code.'
 		}
-	];
-	const domains = [
-		{ n: 'Cart-pole control', d: '3D cart-pole balancing with machine-checked CBF safety proofs.' },
-		{ n: 'Quadrotor flight', d: '6-DOF quadrotors with hybrid CfC / LQR / MPC control.' },
-		{ n: 'Financial markets', d: 'Live FX trading, a 36-objective curriculum, Oanda connector.' },
-		{ n: 'Language models', d: 'Entropy, grounding, and safety regulation for LLM control.' },
-		{ n: 'Autonomous software', d: 'A Self-Dev loop that specs, builds, and verifies itself.' }
 	];
 </script>
 
