@@ -14,7 +14,11 @@
 	);
 </script>
 
-<svelte:head><title>{page.status} — DarcStar Technologies</title></svelte:head>
+<!-- Error pages carry a title but must stay out of the index (noindex). -->
+<svelte:head>
+	<title>{page.status} — DarcStar Technologies</title>
+	<meta name="robots" content="noindex" />
+</svelte:head>
 
 <!-- Same cosmic void as the homepage; the canvas is fixed/-z-10 and centres its
      helix at a fallback position when there's no #helix-slot on the page. -->

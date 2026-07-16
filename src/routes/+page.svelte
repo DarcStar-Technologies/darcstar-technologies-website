@@ -1,5 +1,6 @@
 <script lang="ts">
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
+	import Seo from '$lib/components/Seo.svelte';
 	import favicon from '$lib/assets/favicon.svg';
 
 	const contactHref = 'mailto:mharris@darcstar.tech';
@@ -68,6 +69,8 @@
 		<h2 class="mx-auto mt-3 max-w-3xl text-3xl font-medium tracking-tight text-white">{heading}</h2>
 	</div>
 {/snippet}
+
+<Seo />
 
 <CosmicBackdrop />
 

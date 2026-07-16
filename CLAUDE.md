@@ -21,6 +21,7 @@ Non-negotiables:
 | Svelte conventions (runes, mdsvex, Svelte MCP) | [docs/svelte.md](docs/svelte.md)                               |
 | i18n — Paraglide / inlang                      | [docs/i18n.md](docs/i18n.md)                                   |
 | Styling & UI — Tailwind v4, Skeleton v4        | [docs/styling.md](docs/styling.md)                             |
+| SEO — head tags & OG/Twitter social card       | [docs/seo.md](docs/seo.md)                                     |
 | Deployment — Cloudflare                        | [docs/deployment.md](docs/deployment.md)                       |
 | Skeleton LLM reference (large)                 | [docs/llms/skeleton-svelte.txt](docs/llms/skeleton-svelte.txt) |
 
@@ -38,3 +39,4 @@ Durable gotchas — keep to one line; link to the doc that carries the detail.
 - `checkJs` is **off** — generated Paraglide `.js` clashes with the Cloudflare `Request` global; no hand-written `.js` exists, so `.js` bodies aren't checked. → [i18n](docs/i18n.md)
 - e2e builds + previews the Cloudflare bundle; match the vitest project to your filename (`client` / `server` / `storybook`). → [commands](docs/commands.md)
 - Use the Svelte MCP (list-sections → get-documentation) for Svelte/SvelteKit questions; run svelte-autofixer on any Svelte you write. → [svelte](docs/svelte.md)
+- Page head (title/description/OG/Twitter) comes from one `<Seo>` component — render it **once per page** in `+page.svelte`, never the layout (SvelteKit merges heads → duplicate tags). OG card is `node scripts/gen-og.mjs` (Chromium rasterizes the brand to 1200×630 PNG). → [seo](docs/seo.md)
