@@ -61,6 +61,9 @@
 			canvas.width = Math.floor(w * dpr);
 			canvas.height = Math.floor(h * dpr);
 			c.setTransform(dpr, 0, 0, dpr, 0, 0);
+			// Re-measure the helix slot here rather than per frame: its centre is
+			// scroll-invariant (rect.top + scrollY), so only a resize/reflow moves it.
+			measureSlot();
 			if (reduce) draw(lastT);
 		}
 
@@ -142,7 +145,6 @@
 
 		function draw(t: number) {
 			lastT = t;
-			measureSlot();
 			c.clearRect(0, 0, w, h);
 
 			c.fillStyle = '#000000';
@@ -182,24 +184,52 @@
 			c.fillRect(0, 0, w, h);
 		}
 
+		// Ambient motion is slow, so cap the redraw at ~30fps (halves the work vs. a
+		// 60/120Hz display) and pause entirely while the tab is hidden.
+		const frameMs = 1000 / 30;
 		let raf = 0;
+		let lastDraw = 0;
 		function loop(t: number) {
-			draw(t);
 			raf = requestAnimationFrame(loop);
+			if (t - lastDraw < frameMs) return;
+			lastDraw = t;
+			draw(t);
+		}
+		function start() {
+			if (!raf && !reduce) raf = requestAnimationFrame(loop);
+		}
+		function stop() {
+			if (raf) {
+				cancelAnimationFrame(raf);
+				raf = 0;
+			}
+		}
+
+		// slotCy only shifts on layout changes, so re-measure on resize/scroll instead
+		// of every frame (on mobile, URL-bar reflow can surface as a scroll event).
+		function onScroll() {
+			measureSlot();
+			if (reduce) draw(lastT);
+		}
+		// The rAF loop already stalls in background tabs; stopping explicitly frees the
+		// per-frame canvas work regardless and makes the intent clear.
+		function onVisibility() {
+			if (document.hidden) stop();
+			else start();
 		}
 
 		resize();
 		window.addEventListener('resize', resize);
+		window.addEventListener('scroll', onScroll, { passive: true });
+		document.addEventListener('visibilitychange', onVisibility);
 
-		if (reduce) {
-			draw(0);
-		} else {
-			raf = requestAnimationFrame(loop);
-		}
+		if (!reduce) start();
 
 		return () => {
-			cancelAnimationFrame(raf);
+			stop();
 			window.removeEventListener('resize', resize);
+			window.removeEventListener('scroll', onScroll);
+			document.removeEventListener('visibilitychange', onVisibility);
 		};
 	}
 </script>
