@@ -178,7 +178,7 @@
 				href={contactHref}
 				class="glass-btn mt-8 inline-flex items-center gap-2.5 rounded-full px-6 py-3 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
 			>
-				<img src={favicon} alt="" class="size-5" />
+				<img src={favicon} alt="" class="size-10" />
 				Contact Us
 			</a>
 		</section>
