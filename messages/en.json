@@ -1,4 +1,75 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
-	"hello_world": "Hello, {name} from en!"
+
+	"nav_home": "Home",
+	"nav_about": "About",
+	"nav_primary_label": "Primary",
+	"nav_menu_open": "Open menu",
+	"nav_menu_close": "Close menu",
+
+	"hero_kicker": "GIDE · Guaranteed Intelligent Dynamics Engine",
+	"hero_heading_lead": "Autonomous control you can",
+	"hero_heading_emphasis": "prove",
+	"hero_heading_tail": "is safe.",
+	"hero_body": "GIDE is a real-time intelligent control engine with formal safety guarantees — one system, proven across robotics, markets, and software that improves itself.",
+	"hero_cta_explore": "Explore GIDE",
+	"hero_cta_contact": "Get in touch →",
+
+	"readout_cfc_label": "CfC inference",
+	"readout_realtime_label": "faster than real-time",
+	"readout_theorems_label": "theorems proven",
+	"readout_domains_label": "domains shipped",
+
+	"pillar_safe_title": "Provably safe",
+	"pillar_safe_body": "Control Barrier Functions, machine-checked in Lean 4 and Isabelle. Not tested — proven.",
+	"pillar_realtime_title": "Real-time",
+	"pillar_realtime_body": "Closed-form continuous-time inference at 0.767 µs — 13,000× faster than real-time.",
+	"pillar_selfimproving_title": "Self-improving",
+	"pillar_selfimproving_body": "Neuroevolution and an autonomous Self-Dev loop that writes and verifies its own code.",
+
+	"section_gide_kicker": "// intelligence with guarantees",
+	"section_gide_heading": "Safe, real-time, and self-improving.",
+	"section_domains_kicker": "// one engine, infinite domains",
+	"section_domains_heading": "Specialized at compile time",
+	"section_domains_sub": "Zig · C++ · Rust · Python · custom CUDA kernels",
+	"section_proven_heading": "Proven, not just tested.",
+	"section_proven_body": "Every safety guarantee is machine-checked through a formal-verification pipeline — Lean 4, Isabelle, and SMT solvers. When GIDE says a system is safe, there is a proof.",
+	"section_cta_heading": "Let's build something guaranteed.",
+	"section_cta_body": "Safety-critical control, autonomous systems, formal methods — we'd like to hear from you.",
+	"section_cta_button": "Contact Us",
+
+	"domain_cartpole_name": "Cart-pole control",
+	"domain_cartpole_desc": "3D cart-pole balancing with machine-checked CBF safety proofs.",
+	"domain_quadrotor_name": "Quadrotor flight",
+	"domain_quadrotor_desc": "6-DOF quadrotors with hybrid CfC / LQR / MPC control.",
+	"domain_markets_name": "Financial markets",
+	"domain_markets_desc": "Live FX trading, a 36-objective curriculum, Oanda connector.",
+	"domain_llm_name": "Language models",
+	"domain_llm_desc": "Entropy, grounding, and safety regulation for LLM control.",
+	"domain_selfdev_name": "Autonomous software",
+	"domain_selfdev_desc": "A Self-Dev loop that specs, builds, and verifies itself.",
+
+	"footer_tagline": "Real-time intelligent control with formal safety guarantees.",
+	"footer_nav_label": "Footer",
+	"footer_nav_heading": "Navigate",
+	"footer_nav_home": "Home",
+	"footer_nav_gide": "GIDE",
+	"footer_nav_contact": "Contact",
+	"footer_social_github": "GitHub",
+	"footer_social_email": "Email",
+	"footer_copyright": "© {year} DarcStar Technologies · All rights reserved.",
+	"footer_location": "United States",
+
+	"error_title": "{status} — DarcStar Technologies",
+	"error_404_heading": "Lost in the void",
+	"error_generic_heading": "Something went wrong",
+	"error_404_detail": "That page drifted off the map — the link may be broken, or the page may have moved.",
+	"error_generic_detail": "An unexpected error occurred.",
+	"error_home_link": "Return home →",
+
+	"seo_default_title": "DarcStar Technologies — Provably-safe autonomous control",
+	"seo_default_description": "GIDE is a real-time intelligent control engine with machine-checked safety guarantees — proven across robotics, markets, and software that improves itself.",
+	"seo_default_image_alt": "DarcStar Technologies — GIDE, provably-safe autonomous control",
+
+	"back_to_top": "Back to top"
 }

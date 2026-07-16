@@ -36,9 +36,15 @@ The site-wide default title/description live at the top of the component.
   deploys therefore self-canonicalize to their own preview origin, which is fine
   (previews aren't meant to be indexed).
 - **Locale** — `og:locale` is derived from the active Paraglide locale
-  (`en`→`en_US`, `es`→`es_ES`) with the other locales emitted as
-  `og:locale:alternate`. The map mirrors `project.inlang` locales; extend
-  `OG_LOCALE` when a locale is added.
+  (`en`→`en_US`, `es`→`es_ES`). `og:locale:alternate` is emitted **only** for
+  locales in `TRANSLATED_LOCALES` (currently `[baseLocale]`), so no alternate is
+  advertised while `es` is untranslated placeholder English (issue #18). Extend
+  both `OG_LOCALE` **and** `TRANSLATED_LOCALES` when a locale actually ships.
+- **Untranslated locales are `noindex`.** `Seo.svelte` emits
+  `<meta name="robots" content="noindex, follow">` for any non-base locale until
+  its `messages/<locale>.json` is real (added to `TRANSLATED_LOCALES`). `hreflang`
+  alternates are deferred until then — a `TODO` in `Seo.svelte` marks where the
+  reciprocal set + `x-default` go. See [i18n](i18n.md).
 - **SSR is required.** Scrapers (Slack, LinkedIn, Facebook, X) don't run JS, so
   the tags must be in the server-rendered HTML — they are, because `<Seo>` renders
   during SSR. Do **not** prerender-disable or client-only these routes.

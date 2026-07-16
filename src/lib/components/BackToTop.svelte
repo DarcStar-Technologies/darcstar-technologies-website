@@ -2,6 +2,7 @@
 	import { fade } from 'svelte/transition';
 	import { scrollY, innerHeight } from 'svelte/reactivity/window';
 	import { scrollBehavior } from '$lib/scroll';
+	import { m } from '$lib/paraglide/messages.js';
 
 	// Floating "back to top" control, rendered once in +layout.svelte so it's on
 	// every page. Appears only after the page is scrolled more than 2/3 of a
@@ -23,7 +24,7 @@
 	<button
 		type="button"
 		onclick={toTop}
-		aria-label="Back to top"
+		aria-label={m.back_to_top()}
 		transition:fade={{ duration: 150 }}
 		class="glass-btn fixed right-5 bottom-5 z-40 flex size-11 items-center justify-center rounded-full text-white/80 hover:text-white sm:right-8 sm:bottom-8"
 	>
