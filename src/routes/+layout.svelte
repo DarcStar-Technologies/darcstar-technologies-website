@@ -22,6 +22,10 @@
 	<Footer />
 </div>
 
+<!-- Fixed void-coloured gradient below the header: content dissolves into the
+     void before it slides under/around the glass nav. See .header-scrim. -->
+<div class="header-scrim" aria-hidden="true"></div>
+
 <BackToTop />
 
 <div style="display:none">

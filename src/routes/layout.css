@@ -61,6 +61,35 @@
 	}
 }
 
+/* Top scroll scrim — content used to bleed under the translucent glass nav and
+   through the margins/padding around it. This is a fixed, void-coloured gradient
+   pinned to the viewport top, painted ABOVE the page content but BELOW the header
+   (z-40 vs the header's z-50): it's fully opaque through the header band so
+   scrolling content dissolves into the void before it reaches the glass — nothing
+   shows under or around the nav, and the header's backdrop-blur samples flat void
+   instead of blurred content — then fades to transparent just below the header so
+   content emerges seamlessly. Colour matches the CosmicBackdrop void (#000);
+   pointer-events:none keeps the content beneath it clickable.
+
+     --scrim-solid : opaque down to here (≈ the header's bottom edge, 110px)
+     --scrim-fade  : transparent from here (content fully opaque just below the nav)
+   The header bar is a fixed height (h-24 + pt-3), so these stops are stable. */
+.header-scrim {
+	--scrim-solid: 6.875rem; /* 110px — header bottom */
+	--scrim-fade: 8.75rem; /* 140px — content fully visible ~30px below the nav */
+	position: fixed;
+	inset: 0 0 auto 0;
+	height: var(--scrim-fade);
+	z-index: 40;
+	pointer-events: none;
+	background: linear-gradient(
+		to bottom,
+		#000 0,
+		#000 var(--scrim-solid),
+		transparent var(--scrim-fade)
+	);
+}
+
 /* The homepage's three "color-charge" accents (red/green/blue) used by the hero
    and its CosmicBackdrop helix. These are semantic ALIASES onto the darcstar
    theme — the single source of truth for the triad — naming which Skeleton family
