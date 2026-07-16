@@ -101,20 +101,32 @@
 
 /* Flowing R→B→G color-charge gradient for text (clipped). Colour order matches
    the braided helix left→right; the ~7.35s period over a 120px cycle scrolls at
-   roughly the helix's horizontal drift rate. Shared by "prove" and "Technologies". */
+   roughly the helix's horizontal drift rate. Shared by "prove" and "Technologies".
+
+   Legibility (issue #21): this clipped text floats on translucent glass over the
+   void, where the -500 triad's rose stop and the R→B blend dipped to ~3.3:1 —
+   marginal on the 20px header. It uses the brighter -300 steps of the SAME theme
+   hues (local --flow-* aliases below) so every point of the moving cycle clears
+   ~5:1, holding margin under the blurred backdrop — still one source of truth (the
+   theme ramp), no re-typed hexes. And it runs a finite few cycles then settles
+   instead of looping forever, so a headline keyword doesn't permanently draw the
+   eye (WCAG 2.2.2). Reduced-motion drops the motion entirely (below). */
 .charge-flow {
+	--flow-r: var(--color-tertiary-300); /* rose      */
+	--flow-b: var(--color-primary-300); /* cyan-blue */
+	--flow-g: var(--color-secondary-300); /* green     */
 	background-image: repeating-linear-gradient(
 		90deg,
-		var(--charge-r) 0,
-		var(--charge-b) 40px,
-		var(--charge-g) 80px,
-		var(--charge-r) 120px
+		var(--flow-r) 0,
+		var(--flow-b) 40px,
+		var(--flow-g) 80px,
+		var(--flow-r) 120px
 	);
 	-webkit-background-clip: text;
 	background-clip: text;
 	-webkit-text-fill-color: transparent;
 	color: transparent;
-	animation: charge-flow 7.35s linear infinite;
+	animation: charge-flow 7.35s linear 3;
 }
 @keyframes charge-flow {
 	to {
