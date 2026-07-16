@@ -2,13 +2,13 @@
 
 @import '@skeletonlabs/skeleton';
 @import '@skeletonlabs/skeleton-svelte';
-@import '@skeletonlabs/skeleton/themes/cerberus';
+@import '../themes/darcstar.css';
 
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
 
 /* Dark-only site: `data-mode="dark"` is hardcoded on <html> in app.html.
-   The custom variant is kept so Skeleton/cerberus dark tokens resolve. */
+   The custom variant is kept so the darcstar theme's dark tokens resolve. */
 @custom-variant dark (&:where([data-mode='dark'], [data-mode='dark'] *));
 
 /* Three "color-charge" accents (red/green/blue) used by the homepage hero and

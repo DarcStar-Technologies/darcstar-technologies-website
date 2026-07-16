@@ -30,6 +30,7 @@ Durable gotchas — keep to one line; link to the doc that carries the detail.
 
 - Keep `@tailwindcss/forms`; Skeleton's form components depend on it. → [styling](docs/styling.md)
 - Site is **dark-only**: `data-mode="dark"` hardcoded on `<html>` in `app.html`, no toggle. Distinct from `data-theme` (palette). → [styling](docs/styling.md)
+- Palette is the **custom `darcstar` Skeleton theme** (`src/themes/darcstar.css`); regenerate ramps via `node scripts/gen-theme.mjs`, don't hand-edit. → [styling](docs/styling.md)
 - `pnpm preview` runs the built worker on the real Workers runtime (Wrangler), not `vite preview`. → [commands](docs/commands.md)
 - Run `pnpm gen` after changing `wrangler.jsonc` bindings to refresh the `Env` type. → [deployment](docs/deployment.md)
 - e2e builds + previews the Cloudflare bundle; match the vitest project to your filename (`client` / `server` / `storybook`). → [commands](docs/commands.md)
