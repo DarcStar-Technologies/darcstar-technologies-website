@@ -1,16 +1,18 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
 	import { localizeHref } from '$lib/paraglide/runtime';
+	import { m } from '$lib/paraglide/messages.js';
 	import { scrollBehavior } from '$lib/scroll';
 	import Wordmark from './Wordmark.svelte';
 
 	// Nav links. Path links (Home) get localized; fragment links (#about → the
 	// global footer) are same-page anchors and stay raw so they hold the current
-	// locale instead of routing back to the base one.
-	const links = [
-		{ label: 'Home', href: '/' },
-		{ label: 'About', href: '#about' }
-	];
+	// locale instead of routing back to the base one. `$derived` so the labels track
+	// the active locale.
+	const links = $derived([
+		{ label: m.nav_home(), href: '/' },
+		{ label: m.nav_about(), href: '#about' }
+	]);
 	const navHref = (href: string) => (href.startsWith('#') ? href : localizeHref(href));
 
 	let open = $state(false);
@@ -65,7 +67,11 @@
 ></div>
 
 <header class="sticky top-0 z-50 px-4 pt-[var(--header-gap-top)]">
-	<nav class="glass-nav mx-auto max-w-5xl rounded-2xl px-4" data-stuck={stuck} aria-label="Primary">
+	<nav
+		class="glass-nav mx-auto max-w-5xl rounded-2xl px-4"
+		data-stuck={stuck}
+		aria-label={m.nav_primary_label()}
+	>
 		<div class="flex h-[var(--header-bar-h)] items-center justify-between gap-6">
 			<a
 				href={localizeHref('/')}
@@ -92,7 +98,7 @@
 				<button
 					type="button"
 					class="btn-icon hover:preset-tonal sm:hidden"
-					aria-label={open ? 'Close menu' : 'Open menu'}
+					aria-label={open ? m.nav_menu_close() : m.nav_menu_open()}
 					aria-expanded={open}
 					aria-controls="mobile-nav"
 					onclick={() => (open = !open)}

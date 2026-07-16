@@ -1,6 +1,7 @@
 <script lang="ts">
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import Seo from '$lib/components/Seo.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 	import favicon from '$lib/assets/favicon.svg';
 
 	const contactHref = 'mailto:mharris@darcstar.tech';
@@ -8,47 +9,50 @@
 	// Domains the one engine has actually shipped into. Declared before `readouts`
 	// so the stats row can source its "domains shipped" figure from this list's
 	// length — the number can never drift from the rows rendered in the section below.
-	const domains = [
-		{ n: 'Cart-pole control', d: '3D cart-pole balancing with machine-checked CBF safety proofs.' },
-		{ n: 'Quadrotor flight', d: '6-DOF quadrotors with hybrid CfC / LQR / MPC control.' },
-		{ n: 'Financial markets', d: 'Live FX trading, a 36-objective curriculum, Oanda connector.' },
-		{ n: 'Language models', d: 'Entropy, grounding, and safety regulation for LLM control.' },
-		{ n: 'Autonomous software', d: 'A Self-Dev loop that specs, builds, and verifies itself.' }
-	];
+	// `$derived` (not a plain const): the visible copy is Paraglide messages, so the
+	// array re-resolves if a locale switcher is ever added — getLocale() is $state-backed
+	// (src/lib/paraglide.svelte.ts). On SSR it evaluates exactly once. Structural fields
+	// (icon/cvar) stay literal.
+	const domains = $derived([
+		{ n: m.domain_cartpole_name(), d: m.domain_cartpole_desc() },
+		{ n: m.domain_quadrotor_name(), d: m.domain_quadrotor_desc() },
+		{ n: m.domain_markets_name(), d: m.domain_markets_desc() },
+		{ n: m.domain_llm_name(), d: m.domain_llm_desc() },
+		{ n: m.domain_selfdev_name(), d: m.domain_selfdev_desc() }
+	]);
 
-	// Stats row — REAL, verifiable numbers only (issue #13). Latency and the
-	// 13,000× real-time margin (i.e. it computes 13,000× inside the control-loop
-	// deadline, consistent with 0.767 µs) are measured; "theorems proven" is the
-	// machine-checked count; "domains shipped" is the length of `domains` above.
-	// The former "∞ / domains possible" and "proven / machine-checked" entries were
-	// slogans typeset as data — that message now lives only in prose (the
-	// "// one engine, infinite domains" kicker and the "Proven, not just tested." section).
-	const readouts = [
-		{ v: '0.767 µs', l: 'CfC inference' },
-		{ v: '13,000×', l: 'faster than real-time' },
-		{ v: '150', l: 'theorems proven' },
-		{ v: String(domains.length), l: 'domains shipped' }
-	];
-	const pillars = [
+	// Stats row — REAL, verifiable numbers only (issue #13). Latency and the 13,000×
+	// real-time margin are measured; "theorems proven" is the machine-checked count;
+	// "domains shipped" is `domains.length`. Only the LABELS are messages — the values
+	// stay as data: they're en-formatted figures, not translatable prose (a real `es`
+	// would run them through Intl.NumberFormat, e.g. "13.000×"), and the numbers must
+	// read identically across locales.
+	const readouts = $derived([
+		{ v: '0.767 µs', l: m.readout_cfc_label() },
+		{ v: '13,000×', l: m.readout_realtime_label() },
+		{ v: '150', l: m.readout_theorems_label() },
+		{ v: String(domains.length), l: m.readout_domains_label() }
+	]);
+	const pillars = $derived([
 		{
 			cvar: 'var(--charge-r)',
 			icon: 'shield',
-			title: 'Provably safe',
-			body: 'Control Barrier Functions, machine-checked in Lean 4 and Isabelle. Not tested — proven.'
+			title: m.pillar_safe_title(),
+			body: m.pillar_safe_body()
 		},
 		{
 			cvar: 'var(--charge-b)',
 			icon: 'bolt',
-			title: 'Real-time',
-			body: 'Closed-form continuous-time inference at 0.767 µs — 13,000× faster than real-time.'
+			title: m.pillar_realtime_title(),
+			body: m.pillar_realtime_body()
 		},
 		{
 			cvar: 'var(--charge-g)',
 			icon: 'cycle',
-			title: 'Self-improving',
-			body: 'Neuroevolution and an autonomous Self-Dev loop that writes and verifies its own code.'
+			title: m.pillar_selfimproving_title(),
+			body: m.pillar_selfimproving_body()
 		}
-	];
+	]);
 </script>
 
 {#snippet icon(name: string)}
@@ -93,7 +97,7 @@
 <div class="space-y-24">
 	<section class="-mt-10 flex flex-col items-center px-6 pt-6 pb-16 text-center sm:pt-8">
 		<p class="font-mono text-sm tracking-[0.3em] text-white/60 uppercase">
-			GIDE · Guaranteed Intelligent Dynamics Engine
+			{m.hero_kicker()}
 		</p>
 
 		<!-- The twisting triple helix centres in this gap; CosmicBackdrop measures
@@ -103,23 +107,26 @@
 		<div
 			class="glass-panel mx-auto w-full max-w-3xl rounded-2xl px-8 py-10 text-center sm:px-10 sm:py-12"
 		>
+			<!-- Heading split into three message fragments so the charge-flow emphasis can
+			     wrap only "prove"; keep them as one grammatical set. Whitespace lives in the
+			     markup (Svelte collapses it to single spaces) — never bake spaces into the
+			     message values, or the rendered line double-spaces. -->
 			<h1 class="text-4xl font-medium tracking-tight text-balance text-white sm:text-6xl">
-				Autonomous control you can
-				<span class="charge-flow">prove</span>
-				is safe.
+				{m.hero_heading_lead()}
+				<span class="charge-flow">{m.hero_heading_emphasis()}</span>
+				{m.hero_heading_tail()}
 			</h1>
 			<p class="mx-auto mt-6 max-w-xl text-base text-white/70 sm:text-lg">
-				GIDE is a real-time intelligent control engine with formal safety guarantees — one system,
-				proven across robotics, markets, and software that improves itself.
+				{m.hero_body()}
 			</p>
 			<div class="mt-9 flex flex-wrap justify-center gap-3">
 				<a href="#gide" class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white"
-					>Explore GIDE</a
+					>{m.hero_cta_explore()}</a
 				>
 				<a
 					href={contactHref}
 					class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white"
-					>Get in touch →</a
+					>{m.hero_cta_contact()}</a
 				>
 			</div>
 		</div>
@@ -140,10 +147,7 @@
 		</div>
 
 		<section id="gide" class="glass-panel scroll-mt-24 overflow-hidden rounded-2xl">
-			{@render sectionHead(
-				'// intelligence with guarantees',
-				'Safe, real-time, and self-improving.'
-			)}
+			{@render sectionHead(m.section_gide_kicker(), m.section_gide_heading())}
 			<div
 				class="grid divide-y divide-white/10 border-t border-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0"
 			>
@@ -164,9 +168,9 @@
 
 		<section class="glass-panel overflow-hidden rounded-2xl">
 			{@render sectionHead(
-				'// one engine, infinite domains',
-				'Specialized at compile time',
-				'Zig · C++ · Rust · Python · custom CUDA kernels'
+				m.section_domains_kicker(),
+				m.section_domains_heading(),
+				m.section_domains_sub()
 			)}
 			<div class="divide-y divide-white/10 border-t border-white/10">
 				{#each domains as d (d.n)}
@@ -180,27 +184,26 @@
 
 		<section class="glass-panel rounded-2xl p-10 text-center sm:p-16">
 			<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
-				Proven, not just tested.
+				{m.section_proven_heading()}
 			</h2>
 			<p class="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-white/70 sm:text-base">
-				Every safety guarantee is machine-checked through a formal-verification pipeline — Lean 4,
-				Isabelle, and SMT solvers. When GIDE says a system is safe, there is a proof.
+				{m.section_proven_body()}
 			</p>
 		</section>
 
 		<section class="glass-panel rounded-2xl px-8 py-14 text-center">
 			<h2 class="text-3xl font-medium tracking-tight text-white sm:text-4xl">
-				Let's build something guaranteed.
+				{m.section_cta_heading()}
 			</h2>
 			<p class="mx-auto mt-4 max-w-lg text-sm text-white/70">
-				Safety-critical control, autonomous systems, formal methods — we'd like to hear from you.
+				{m.section_cta_body()}
 			</p>
 			<a
 				href={contactHref}
 				class="glass-btn mt-8 inline-flex items-center gap-3 rounded-full px-7 py-3.5 text-lg font-medium text-white"
 			>
 				<img src={favicon} alt="" class="size-14" />
-				Contact Us
+				{m.section_cta_button()}
 			</a>
 		</section>
 	</div>

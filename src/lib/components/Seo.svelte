@@ -8,17 +8,22 @@
 	// component's <svelte:head>, so a layout copy plus a page copy would duplicate
 	// the OG tags). Props override the site-wide defaults below.
 	import { page } from '$app/state';
-	import { getLocale, locales } from '$lib/paraglide/runtime';
+	import { getLocale, baseLocale } from '$lib/paraglide/runtime';
+	import { m } from '$lib/paraglide/messages.js';
 	// Fingerprint-imported: a regenerated card (node scripts/gen-og.mjs) gets a new
 	// hashed URL, so scrapers re-fetch instead of caching stale. Source: scripts/gen-og.mjs.
 	import ogImage from '$lib/assets/og-image.png';
 
+	// Brand name — a proper noun, identical across locales, so it stays a plain
+	// constant (used for og:site_name), not a message.
 	const SITE = 'DarcStar Technologies';
-	const DEFAULT_TITLE = 'DarcStar Technologies — Provably-safe autonomous control';
-	const DEFAULT_DESCRIPTION =
-		'GIDE is a real-time intelligent control engine with machine-checked safety guarantees — proven across robotics, markets, and software that improves itself.';
 	// BCP-47 → OG's underscore locale form. Mirrors project.inlang locales (en, es).
 	const OG_LOCALE: Record<string, string> = { en: 'en_US', es: 'es_ES' };
+	// Locales whose copy is genuinely translated. `es` is wired but still English
+	// placeholder (issue #18), so it is NOT listed — this one flag gates the
+	// og:locale:alternate loop below and (later) the hreflang set, and drives the
+	// noindex on untranslated locales. Add 'es' the day messages/es.json is real.
+	const TRANSLATED_LOCALES: string[] = [baseLocale];
 
 	interface Props {
 		/** Full <title>. Defaults to the brand + tagline. */
@@ -35,12 +40,12 @@
 	}
 
 	let {
-		title = DEFAULT_TITLE,
-		description = DEFAULT_DESCRIPTION,
+		title = m.seo_default_title(),
+		description = m.seo_default_description(),
 		path,
 		type = 'website',
 		image = ogImage,
-		imageAlt = 'DarcStar Technologies — GIDE, provably-safe autonomous control'
+		imageAlt = m.seo_default_image_alt()
 	}: Props = $props();
 
 	// Absolutize against the serving origin — on production this is darcstar.tech,
@@ -50,13 +55,25 @@
 	const imageUrl = $derived(origin + image);
 	const locale = $derived(getLocale());
 	const ogLocale = $derived(OG_LOCALE[locale] ?? 'en_US');
-	const altLocales = $derived(locales.filter((l) => l !== locale));
+	// Only advertise alternates that are genuinely translated (none but the base
+	// today), so scrapers aren't told `es_ES` exists while it's placeholder English.
+	const altLocales = $derived(TRANSLATED_LOCALES.filter((l) => l !== locale));
+	// Untranslated non-base locales (e.g. /es today) serve byte-identical English —
+	// keep them out of the index until real translations ship. `follow` so the en
+	// links on the page are still crawled. Same posture as +error.svelte's noindex.
+	const noindex = $derived(!TRANSLATED_LOCALES.includes(locale));
 </script>
 
 <svelte:head>
 	<title>{title}</title>
 	<meta name="description" content={description} />
 	<link rel="canonical" href={canonical} />
+	{#if noindex}
+		<!-- Untranslated locale (e.g. /es): keep the duplicate-English page out of the
+		     index. TODO: when a locale joins TRANSLATED_LOCALES, drop its noindex and emit
+		     the reciprocal <link rel="alternate" hreflang> set + x-default here. -->
+		<meta name="robots" content="noindex, follow" />
+	{/if}
 	<meta name="theme-color" content="#04050a" />
 
 	<!-- Open Graph -->

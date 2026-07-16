@@ -1,22 +1,21 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { localizeHref } from '$lib/paraglide/runtime';
+	import { m } from '$lib/paraglide/messages.js';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 
 	// 404 is the common case (dead/old links) and gets a bespoke line; any other
 	// status falls back to the framework-supplied error message.
 	let is404 = $derived(page.status === 404);
-	let heading = $derived(is404 ? 'Lost in the void' : 'Something went wrong');
+	let heading = $derived(is404 ? m.error_404_heading() : m.error_generic_heading());
 	let detail = $derived(
-		is404
-			? 'That page drifted off the map — the link may be broken, or the page may have moved.'
-			: (page.error?.message ?? 'An unexpected error occurred.')
+		is404 ? m.error_404_detail() : (page.error?.message ?? m.error_generic_detail())
 	);
 </script>
 
 <!-- Error pages carry a title but must stay out of the index (noindex). -->
 <svelte:head>
-	<title>{page.status} — DarcStar Technologies</title>
+	<title>{m.error_title({ status: String(page.status) })}</title>
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
@@ -36,7 +35,7 @@
 				href={localizeHref('/')}
 				class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white"
 			>
-				Return home →
+				{m.error_home_link()}
 			</a>
 		</div>
 	</div>

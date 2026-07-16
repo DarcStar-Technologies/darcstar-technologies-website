@@ -37,6 +37,7 @@ Durable gotchas — keep to one line; link to the doc that carries the detail.
 - `pnpm preview` runs the built worker on the real Workers runtime (Wrangler), not `vite preview`. → [commands](docs/commands.md)
 - Run `pnpm gen` after changing `wrangler.jsonc` bindings to refresh the `Env` type. → [deployment](docs/deployment.md)
 - `checkJs` is **off** — generated Paraglide `.js` clashes with the Cloudflare `Request` global; no hand-written `.js` exists, so `.js` bodies aren't checked. → [i18n](docs/i18n.md)
+- **All UI copy lives in Paraglide messages** (`messages/*.json`); the `local/no-raw-text` ESLint rule blocks hardcoded `.svelte` text/attrs (Wordmark exempt). `es` is untranslated placeholder → non-base locales are `noindex` via `Seo.svelte`'s `TRANSLATED_LOCALES` flag; hreflang deferred until `es` is real. → [i18n](docs/i18n.md)
 - e2e builds + previews the Cloudflare bundle; match the vitest project to your filename (`client` / `server` / `storybook`). → [commands](docs/commands.md)
 - Use the Svelte MCP (list-sections → get-documentation) for Svelte/SvelteKit questions; run svelte-autofixer on any Svelte you write. → [svelte](docs/svelte.md)
 - Page head (title/description/OG/Twitter) comes from one `<Seo>` component — render it **once per page** in `+page.svelte`, never the layout (SvelteKit merges heads → duplicate tags). OG card is `node scripts/gen-og.mjs` (Chromium rasterizes the brand to 1200×630 PNG). → [seo](docs/seo.md)

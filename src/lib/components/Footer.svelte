@@ -3,6 +3,7 @@
 	// legal name + © year, location, secondary nav, and social/contact links.
 	// Rendered once in +layout.svelte, so it appears on every page below <main>.
 	import { localizeHref } from '$lib/paraglide/runtime';
+	import { m } from '$lib/paraglide/messages.js';
 	import Wordmark from './Wordmark.svelte';
 
 	// Rendered at request time (SSR) — no hydration mismatch since client agrees.
@@ -12,15 +13,16 @@
 
 	// Secondary nav for the single-page site: home, the GIDE section anchor
 	// (prefixed with the localized home path so it resolves from any page), and
-	// the contact mailto. localizeHref keeps internal links locale-correct.
-	const nav = [
-		{ label: 'Home', href: localizeHref('/') },
-		{ label: 'GIDE', href: `${localizeHref('/')}#gide` },
-		{ label: 'Contact', href: `mailto:${email}` }
-	];
+	// the contact mailto. localizeHref keeps internal links locale-correct; `$derived`
+	// so the labels track the active locale.
+	const nav = $derived([
+		{ label: m.footer_nav_home(), href: localizeHref('/') },
+		{ label: m.footer_nav_gide(), href: `${localizeHref('/')}#gide` },
+		{ label: m.footer_nav_contact(), href: `mailto:${email}` }
+	]);
 </script>
 
-{#snippet socialLink(href: string, label: string, external: boolean)}
+{#snippet socialLink(href: string, icon: string, label: string, external: boolean)}
 	<a
 		{href}
 		aria-label={label}
@@ -28,13 +30,13 @@
 		target={external ? '_blank' : null}
 		class="glass-btn flex size-10 items-center justify-center rounded-lg text-white/70 hover:text-white"
 	>
-		{#if label === 'GitHub'}
+		{#if icon === 'github'}
 			<svg class="size-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
 				<path
 					d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.8 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17 4.6 18 4.9 18 4.9c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.5-2.7 5.5-5.3 5.8.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"
 				/>
 			</svg>
-		{:else if label === 'Email'}
+		{:else if icon === 'email'}
 			<svg
 				class="size-5"
 				viewBox="0 0 24 24"
@@ -65,17 +67,19 @@
 					<Wordmark markClass="size-9" />
 				</a>
 				<p class="mt-4 text-sm text-white/70">
-					Real-time intelligent control with formal safety guarantees.
+					{m.footer_tagline()}
 				</p>
 				<div class="mt-5 flex gap-3">
-					{@render socialLink(githubUrl, 'GitHub', true)}
-					{@render socialLink(`mailto:${email}`, 'Email', false)}
+					{@render socialLink(githubUrl, 'github', m.footer_social_github(), true)}
+					{@render socialLink(`mailto:${email}`, 'email', m.footer_social_email(), false)}
 				</div>
 			</div>
 
 			<!-- Secondary nav -->
-			<nav aria-label="Footer">
-				<h2 class="font-mono text-xs tracking-widest text-white/60 uppercase">Navigate</h2>
+			<nav aria-label={m.footer_nav_label()}>
+				<h2 class="font-mono text-xs tracking-widest text-white/60 uppercase">
+					{m.footer_nav_heading()}
+				</h2>
 				<ul class="mt-4 space-y-2.5">
 					{#each nav as link (link.label)}
 						<li>
@@ -95,8 +99,8 @@
 		<div
 			class="mt-10 flex flex-col gap-1.5 border-t border-white/10 pt-6 text-xs text-white/60 sm:flex-row sm:items-center sm:justify-between"
 		>
-			<p>© {year} DarcStar Technologies · All rights reserved.</p>
-			<p>United States</p>
+			<p>{m.footer_copyright({ year: String(year) })}</p>
+			<p>{m.footer_location()}</p>
 		</div>
 	</div>
 </footer>
