@@ -80,11 +80,6 @@
 		inset 0 1px 0 rgb(255 255 255 / 0.1),
 		inset 0 -1px 0 rgb(0 0 0 / 0.3);
 }
-@media (prefers-reduced-motion: reduce) {
-	.glass-nav {
-		transition: none;
-	}
-}
 @utility glass-btn {
 	border: 1px solid rgb(255 255 255 / 0.15);
 	background-color: rgb(255 255 255 / 0.05);
@@ -101,14 +96,25 @@
 
 /* Flowing R→B→G color-charge gradient for text (clipped). Colour order matches
    the braided helix left→right; the ~7.35s period over a 120px cycle scrolls at
-   roughly the helix's horizontal drift rate. Shared by "prove" and "Technologies". */
+   roughly the helix's horizontal drift rate. Shared by "prove" and "Technologies".
+
+   Legibility (issue #21): this clipped text floats on translucent glass over the
+   void, where the -500 triad's rose stop and the R→B blend dipped to ~3.3:1 —
+   marginal on the 20px header. It uses the brighter -300 steps of the SAME theme
+   hues (local --flow-* aliases below) so every point of the moving cycle clears
+   ~5:1, holding margin under the blurred backdrop — still one source of truth (the
+   theme ramp), no re-typed hexes. The shimmer loops continuously; reduced-motion
+   drops it to a static gradient (consolidated block at the end of this file). */
 .charge-flow {
+	--flow-r: var(--color-tertiary-300); /* rose      */
+	--flow-b: var(--color-primary-300); /* cyan-blue */
+	--flow-g: var(--color-secondary-300); /* green     */
 	background-image: repeating-linear-gradient(
 		90deg,
-		var(--charge-r) 0,
-		var(--charge-b) 40px,
-		var(--charge-g) 80px,
-		var(--charge-r) 120px
+		var(--flow-r) 0,
+		var(--flow-b) 40px,
+		var(--flow-g) 80px,
+		var(--flow-r) 120px
 	);
 	-webkit-background-clip: text;
 	background-clip: text;
@@ -119,11 +125,6 @@
 @keyframes charge-flow {
 	to {
 		background-position: 120px 0;
-	}
-}
-@media (prefers-reduced-motion: reduce) {
-	.charge-flow {
-		animation: none;
 	}
 }
 
@@ -137,8 +138,15 @@
 		transform: rotate(-360deg);
 	}
 }
+
+/* Reduced motion — freeze the looping shimmer, the logo spin, and the header's
+   shadow-on-scroll transition to their static states. */
 @media (prefers-reduced-motion: reduce) {
+	.charge-flow,
 	.logo-spin {
 		animation: none;
+	}
+	.glass-nav {
+		transition: none;
 	}
 }
