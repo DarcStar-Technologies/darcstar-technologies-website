@@ -15,6 +15,23 @@
 	let open = $state(false);
 	let stuck = $state(false);
 
+	// Same-page anchor links (About → #about) need a smooth scroll. SvelteKit's
+	// router intercepts hash links and scrolls INSTANTLY (ignoring CSS
+	// scroll-behavior), so take over: preventDefault stops its jump, then
+	// scrollIntoView animates — honouring scroll-mt on the target for the sticky
+	// header, and staying instant under prefers-reduced-motion. Path links fall
+	// through to normal SvelteKit routing. Also closes the mobile menu.
+	function handleNavClick(e: MouseEvent, href: string) {
+		open = false;
+		if (!href.startsWith('#')) return;
+		const target = document.getElementById(href.slice(1));
+		if (!target) return;
+		e.preventDefault();
+		const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' });
+		history.pushState(null, '', href);
+	}
+
 	// The header lifts its shadow only once it detaches from the top of the page. The
 	// sentinel below sits at the document top; IntersectionObserver flips `stuck` as it
 	// scrolls out of view — no per-scroll handler, only a fire at the crossing.
@@ -58,6 +75,7 @@
 						<li>
 							<a
 								href={navHref(link.href)}
+								onclick={(e) => handleNavClick(e, link.href)}
 								class="rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500"
 							>
 								{link.label}
@@ -117,7 +135,7 @@
 					<li>
 						<a
 							href={navHref(link.href)}
-							onclick={() => (open = false)}
+							onclick={(e) => handleNavClick(e, link.href)}
 							class="block rounded px-3 py-2 text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary"
 						>
 							{link.label}
