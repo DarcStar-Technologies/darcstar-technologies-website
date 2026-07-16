@@ -63,9 +63,9 @@
 
 <div class="space-y-24">
 	<section
-		class="flex min-h-[calc(100svh-4rem)] flex-col items-center px-6 pt-16 pb-20 text-center sm:pt-24"
+		class="-mt-10 flex min-h-[calc(100svh-4rem)] flex-col items-center px-6 pt-6 pb-20 text-center sm:pt-8"
 	>
-		<p class="font-mono text-xs tracking-[0.3em] text-white/40 uppercase">
+		<p class="font-mono text-sm tracking-[0.3em] text-white/40 uppercase">
 			GIDE · Guaranteed Intelligent Dynamics Engine
 		</p>
 
@@ -77,7 +77,7 @@
 				class="mx-auto max-w-3xl text-4xl font-medium tracking-tight text-balance text-white sm:text-6xl"
 			>
 				Autonomous control you can
-				<span class="prove-flow">prove</span>
+				<span class="charge-flow">prove</span>
 				is safe.
 			</h1>
 			<p class="mx-auto mt-6 max-w-xl text-base text-white/55 sm:text-lg">
@@ -184,32 +184,3 @@
 		</section>
 	</div>
 </div>
-
-<style>
-	/* Repeating R→G→B tint on the word "prove" that flows left-to-right —
-	   opposite the helix's right-to-left drift. */
-	.prove-flow {
-		background-image: repeating-linear-gradient(
-			90deg,
-			var(--charge-r) 0,
-			var(--charge-g) 0.67em,
-			var(--charge-b) 1.33em,
-			var(--charge-r) 2em
-		);
-		-webkit-background-clip: text;
-		background-clip: text;
-		-webkit-text-fill-color: transparent;
-		color: transparent;
-		animation: prove-flow 4s linear infinite;
-	}
-	@keyframes prove-flow {
-		to {
-			background-position: 2em 0;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.prove-flow {
-			animation: none;
-		}
-	}
-</style>

@@ -60,3 +60,31 @@
 		0 12px 28px -18px color-mix(in oklab, var(--charge-b) 30%, transparent),
 		inset 0 1px 0 rgb(255 255 255 / 0.14);
 }
+
+/* Flowing R→B→G color-charge gradient for text (clipped). Colour order matches
+   the braided helix left→right; the ~7.35s period over a 120px cycle scrolls at
+   roughly the helix's horizontal drift rate. Shared by "prove" and "Technologies". */
+.charge-flow {
+	background-image: repeating-linear-gradient(
+		90deg,
+		var(--charge-r) 0,
+		var(--charge-b) 40px,
+		var(--charge-g) 80px,
+		var(--charge-r) 120px
+	);
+	-webkit-background-clip: text;
+	background-clip: text;
+	-webkit-text-fill-color: transparent;
+	color: transparent;
+	animation: charge-flow 7.35s linear infinite;
+}
+@keyframes charge-flow {
+	to {
+		background-position: 120px 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.charge-flow {
+		animation: none;
+	}
+}

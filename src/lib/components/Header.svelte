@@ -27,14 +27,7 @@
 				class="flex items-center gap-2.5 text-xl font-bold tracking-tight text-white"
 			>
 				<img src={favicon} alt="" class="size-8" />
-				<span
-					>DarcStar
-					<span
-						class="bg-clip-text text-transparent"
-						style="background-image: linear-gradient(90deg, var(--charge-r), var(--charge-g), var(--charge-b));"
-						>Technologies</span
-					></span
-				>
+				<span>DarcStar <span class="charge-flow">Technologies</span></span>
 			</a>
 
 			<div class="flex items-center gap-2 sm:gap-4">
