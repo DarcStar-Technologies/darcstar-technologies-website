@@ -80,11 +80,6 @@
 		inset 0 1px 0 rgb(255 255 255 / 0.1),
 		inset 0 -1px 0 rgb(0 0 0 / 0.3);
 }
-@media (prefers-reduced-motion: reduce) {
-	.glass-nav {
-		transition: none;
-	}
-}
 @utility glass-btn {
 	border: 1px solid rgb(255 255 255 / 0.15);
 	background-color: rgb(255 255 255 / 0.05);
@@ -108,9 +103,8 @@
    marginal on the 20px header. It uses the brighter -300 steps of the SAME theme
    hues (local --flow-* aliases below) so every point of the moving cycle clears
    ~5:1, holding margin under the blurred backdrop — still one source of truth (the
-   theme ramp), no re-typed hexes. And it runs a finite few cycles then settles
-   instead of looping forever, so a headline keyword doesn't permanently draw the
-   eye (WCAG 2.2.2). Reduced-motion drops the motion entirely (below). */
+   theme ramp), no re-typed hexes. The shimmer loops continuously; reduced-motion
+   drops it to a static gradient (consolidated block at the end of this file). */
 .charge-flow {
 	--flow-r: var(--color-tertiary-300); /* rose      */
 	--flow-b: var(--color-primary-300); /* cyan-blue */
@@ -126,16 +120,11 @@
 	background-clip: text;
 	-webkit-text-fill-color: transparent;
 	color: transparent;
-	animation: charge-flow 7.35s linear 3;
+	animation: charge-flow 7.35s linear infinite;
 }
 @keyframes charge-flow {
 	to {
 		background-position: 120px 0;
-	}
-}
-@media (prefers-reduced-motion: reduce) {
-	.charge-flow {
-		animation: none;
 	}
 }
 
@@ -149,8 +138,15 @@
 		transform: rotate(-360deg);
 	}
 }
+
+/* Reduced motion — freeze the looping shimmer, the logo spin, and the header's
+   shadow-on-scroll transition to their static states. */
 @media (prefers-reduced-motion: reduce) {
+	.charge-flow,
 	.logo-spin {
 		animation: none;
+	}
+	.glass-nav {
+		transition: none;
 	}
 }
