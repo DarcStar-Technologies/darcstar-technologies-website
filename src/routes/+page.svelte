@@ -2,6 +2,8 @@
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import favicon from '$lib/assets/favicon.svg';
 
+	const contactHref = 'mailto:mharris@darcstar.tech';
+
 	const readouts = [
 		{ v: '0.767 µs', l: 'CfC inference' },
 		{ v: '13,000×', l: 'real-time' },
@@ -60,6 +62,13 @@
 	</svg>
 {/snippet}
 
+{#snippet sectionHead(kicker: string, heading: string)}
+	<div class="p-8 text-center sm:p-10">
+		<p class="font-mono text-xs tracking-[0.25em] text-white/35 uppercase">{kicker}</p>
+		<h2 class="mx-auto mt-3 max-w-3xl text-3xl font-medium tracking-tight text-white">{heading}</h2>
+	</div>
+{/snippet}
+
 <CosmicBackdrop />
 
 <div class="space-y-24">
@@ -92,7 +101,7 @@
 					>Explore GIDE</a
 				>
 				<a
-					href="mailto:mharris@darcstar.tech"
+					href={contactHref}
 					class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
 					>Get in touch →</a
 				>
@@ -115,14 +124,10 @@
 		</div>
 
 		<section id="gide" class="glass-panel scroll-mt-24 overflow-hidden rounded-2xl">
-			<div class="p-8 text-center sm:p-10">
-				<p class="font-mono text-xs tracking-[0.25em] text-white/35 uppercase">
-					// intelligence with guarantees
-				</p>
-				<h2 class="mx-auto mt-3 max-w-3xl text-3xl font-medium tracking-tight text-white">
-					Nearly 1 M lines and counting of Zig, C++, Rust, and Python w/ custom CUDA Kernels
-				</h2>
-			</div>
+			{@render sectionHead(
+				'// intelligence with guarantees',
+				'Nearly 1 M lines and counting of Zig, C++, Rust, and Python w/ custom CUDA Kernels'
+			)}
 			<div
 				class="grid divide-y divide-white/10 border-t border-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0"
 			>
@@ -142,14 +147,7 @@
 		</section>
 
 		<section class="glass-panel overflow-hidden rounded-2xl">
-			<div class="p-8 text-center sm:p-10">
-				<p class="font-mono text-xs tracking-[0.25em] text-white/35 uppercase">
-					// one engine, infinite domains
-				</p>
-				<h2 class="mt-3 text-3xl font-medium tracking-tight text-white">
-					Specialized at compile time
-				</h2>
-			</div>
+			{@render sectionHead('// one engine, infinite domains', 'Specialized at compile time')}
 			<div class="divide-y divide-white/10 border-t border-white/10">
 				{#each domains as d (d.n)}
 					<div class="flex flex-col gap-1 px-8 py-5 sm:flex-row sm:items-baseline sm:gap-6">
@@ -178,7 +176,7 @@
 				Safety-critical control, autonomous systems, formal methods — we'd like to hear from you.
 			</p>
 			<a
-				href="mailto:mharris@darcstar.tech"
+				href={contactHref}
 				class="glass-btn mt-8 inline-flex items-center gap-2.5 rounded-full px-6 py-3 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
 			>
 				<img src={favicon} alt="" class="logo-spin size-5" />
