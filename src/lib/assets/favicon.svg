@@ -2,6 +2,14 @@
 
 
             <defs>
+              <style>
+                /* Orbit the colour-charge rings and their bright "Kepler" particles.
+                   stroke-dasharray sums to ~222 (one ellipse circumference), so a full
+                   -222 dashoffset cycle = one lap per 7.37s; the three are phase-offset. */
+                @keyframes dashflow { to { stroke-dashoffset: -222; } }
+                @keyframes keplerflow { to { stroke-dashoffset: -222; } }
+                @media (prefers-reduced-motion: reduce) { ellipse { animation: none !important; } }
+              </style>
               <radialGradient id="sph4b"><stop offset="0.55" stop-color="#04050a"></stop><stop offset="0.92" stop-color="#0d1017"></stop><stop offset="1" stop-color="#232a35"></stop></radialGradient>
               <clipPath id="front4b"><rect x="-20" y="56" width="140" height="68" transform="rotate(-15 38 56)"></rect></clipPath>
               <clipPath id="top4b"><rect x="-20" y="-16" width="140" height="72" transform="rotate(-15 38 56)"></rect></clipPath>

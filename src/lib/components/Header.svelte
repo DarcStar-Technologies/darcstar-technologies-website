@@ -35,13 +35,13 @@
 
 <header class="sticky top-0 z-50 px-4 pt-3">
 	<nav class="glass-nav mx-auto max-w-5xl rounded-2xl px-4" data-stuck={stuck} aria-label="Primary">
-		<div class="flex h-16 items-center justify-between gap-6">
+		<div class="flex h-20 items-center justify-between gap-6">
 			<a
 				href={localizeHref('/')}
 				onclick={() => (open = false)}
 				class="flex items-center gap-2.5 text-xl font-bold tracking-tight text-white"
 			>
-				<img src={favicon} alt="" class="size-12" />
+				<img src={favicon} alt="" class="size-16" />
 				<span>DarcStar <span class="charge-flow">Technologies</span></span>
 			</a>
 
