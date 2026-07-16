@@ -7,6 +7,16 @@
 	const links = [{ label: 'Home', href: '/' }];
 
 	let open = $state(false);
+	let stuck = $state(false);
+
+	// The header lifts its shadow only once it detaches from the top of the page. The
+	// sentinel below sits at the document top; IntersectionObserver flips `stuck` as it
+	// scrolls out of view — no per-scroll handler, only a fire at the crossing.
+	function stickWatch(node: HTMLElement) {
+		const io = new IntersectionObserver(([entry]) => (stuck = !entry.isIntersecting));
+		io.observe(node);
+		return () => io.disconnect();
+	}
 </script>
 
 <svelte:window
@@ -15,8 +25,16 @@
 	}}
 />
 
+<!-- Sticky-detection sentinel: out of flow at the document top (no layout shift), it
+     scrolls out of view as the header sticks, flipping `stuck` → the shadow-on-scroll. -->
+<div
+	{@attach stickWatch}
+	aria-hidden="true"
+	class="pointer-events-none absolute top-0 left-0 h-px w-px"
+></div>
+
 <header class="sticky top-0 z-50 px-4 pt-3">
-	<nav class="glass-nav mx-auto max-w-5xl rounded-2xl px-4" aria-label="Primary">
+	<nav class="glass-nav mx-auto max-w-5xl rounded-2xl px-4" data-stuck={stuck} aria-label="Primary">
 		<div class="flex h-14 items-center justify-between gap-6">
 			<a
 				href={localizeHref('/')}

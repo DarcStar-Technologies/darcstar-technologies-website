@@ -59,7 +59,9 @@ The homepage's RGB "color-charge" motif (the nucleon triple helix) is **the same
 
 Three `@utility` classes in `layout.css` render the frosted panes that float over the void: `glass-panel` (sections, readout bar), `glass-nav` (the sticky header), and `glass-btn` (CTAs). All compose a translucent fill, the shared `--grain` film, `backdrop-filter: blur`, and a lift shadow.
 
-`glass-panel` and `glass-btn` also carry a faint R→G→B charge tint and a colour-charge drop shadow, sized for large panes. **`glass-nav` deliberately drops both.** The panel's 84px black halo + spread R/G/B glow were tuned for the hero panes; on the thin sticky bar they smeared over the page and floated as you scrolled (issue #20). The nav keeps only the frosted blur, grain, and top sheen over a thin border + a tight, neutral shadow — so reach for `glass-nav`, not `glass-panel`, on any slim always-visible chrome.
+`glass-panel` and `glass-btn` also carry a faint R→G→B charge tint and a colour-charge drop shadow, sized for large panes. **`glass-nav` deliberately drops both.** The panel's 84px black halo + spread R/G/B glow were tuned for the hero panes; on the thin sticky bar they smeared over the page and floated as you scrolled (issue #20). The nav keeps only the frosted blur, grain, and top sheen over a thin border — so reach for `glass-nav`, not `glass-panel`, on any slim always-visible chrome.
+
+`glass-nav`'s drop shadow is **shadow-on-scroll**: it's flat at the top of the page (the bar sits over the hero, nothing to lift off) and fades in a tight, neutral shadow once the header detaches from the top. `Header.svelte` toggles `data-stuck` on the `<nav>` via an `IntersectionObserver` watching a 0-height sentinel pinned at document top — so there is **no per-scroll handler**, only a fire as the header crosses the top edge (`.glass-nav[data-stuck='true']` carries the lifted shadow; the transition respects `prefers-reduced-motion`).
 
 **Contrast-safe text rules.** These panels sit on the near-black void with a heavy blur, so foreground text is **pure white at graded opacity** (a deliberate, consistent hierarchy — not token drift):
 
