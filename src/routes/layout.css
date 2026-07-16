@@ -48,6 +48,19 @@
 	}
 }
 
+/* Smooth in-page anchor scrolling — e.g. the header's About → #about footer
+   (the target carries scroll-mt-24 to clear the sticky header). Native CSS
+   (Tailwind's `scroll-smooth`), not a Skeleton feature. This is the no-JS /
+   native-anchor fallback: SvelteKit's client router intercepts same-page hash
+   links and scrolls INSTANTLY (ignoring this property), so Header.svelte adds a
+   reduced-motion-aware scrollIntoView handler for the enhanced path. Gated to
+   motion-safe users so prefers-reduced-motion keeps the instant jump. */
+@media (prefers-reduced-motion: no-preference) {
+	html {
+		scroll-behavior: smooth;
+	}
+}
+
 /* The homepage's three "color-charge" accents (red/green/blue) used by the hero
    and its CosmicBackdrop helix. These are semantic ALIASES onto the darcstar
    theme — the single source of truth for the triad — naming which Skeleton family

@@ -3,11 +3,34 @@
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import favicon from '$lib/assets/favicon.svg';
 
-	// Starter links point to existing routes; replace with real nav as the site grows.
-	const links = [{ label: 'Home', href: '/' }];
+	// Nav links. Path links (Home) get localized; fragment links (#about → the
+	// global footer) are same-page anchors and stay raw so they hold the current
+	// locale instead of routing back to the base one.
+	const links = [
+		{ label: 'Home', href: '/' },
+		{ label: 'About', href: '#about' }
+	];
+	const navHref = (href: string) => (href.startsWith('#') ? href : localizeHref(href));
 
 	let open = $state(false);
 	let stuck = $state(false);
+
+	// Same-page anchor links (About → #about) need a smooth scroll. SvelteKit's
+	// router intercepts hash links and scrolls INSTANTLY (ignoring CSS
+	// scroll-behavior), so take over: preventDefault stops its jump, then
+	// scrollIntoView animates — honouring scroll-mt on the target for the sticky
+	// header, and staying instant under prefers-reduced-motion. Path links fall
+	// through to normal SvelteKit routing. Also closes the mobile menu.
+	function handleNavClick(e: MouseEvent, href: string) {
+		open = false;
+		if (!href.startsWith('#')) return;
+		const target = document.getElementById(href.slice(1));
+		if (!target) return;
+		e.preventDefault();
+		const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' });
+		history.pushState(null, '', href);
+	}
 
 	// The header lifts its shadow only once it detaches from the top of the page. The
 	// sentinel below sits at the document top; IntersectionObserver flips `stuck` as it
@@ -51,7 +74,8 @@
 					{#each links as link (link.href)}
 						<li>
 							<a
-								href={localizeHref(link.href)}
+								href={navHref(link.href)}
+								onclick={(e) => handleNavClick(e, link.href)}
 								class="rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500"
 							>
 								{link.label}
@@ -110,8 +134,8 @@
 				{#each links as link (link.href)}
 					<li>
 						<a
-							href={localizeHref(link.href)}
-							onclick={() => (open = false)}
+							href={navHref(link.href)}
+							onclick={(e) => handleNavClick(e, link.href)}
 							class="block rounded px-3 py-2 text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary"
 						>
 							{link.label}
