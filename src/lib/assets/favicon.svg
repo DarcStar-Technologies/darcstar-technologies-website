@@ -6,25 +6,32 @@
                 /* Orbit the colour-charge rings and their bright "Kepler" particles.
                    stroke-dasharray sums to ~222 (one ellipse circumference), so a full
                    +222 dashoffset cycle = one forward lap per 7.37s (the three are
-                   phase-offset). The stops are NON-linear on purpose — Kepler's 2nd law:
-                   the pulse accelerates into the black sphere (perihelion, the ~50% mark
-                   that the -15deg group rotation puts down-left by the sphere) and
-                   decelerates as it recedes to the far side (aphelion, 0/100%). That
-                   variable speed IS the gravitational "Doppler" read. Time stays linear
-                   (see the inline `linear`); this value curve (a ~5.7x sinusoidal rate
-                   swing) does the easing. Increments are symmetric: 7.7,13.2,22.2,31.2,
-                   36.7,36.7,31.2,22.2,13.2,7.7. */
+                   phase-offset). Kepler's 2nd law: the pulse sweeps ~3.4x faster through
+                   periapsis (closest approach to the black sphere) and coasts through
+                   apoapsis. Periapsis is at arc-fraction ~0.66 of the path (computed from
+                   the sphere at 38,56 and the -15deg group + per-ring rotations); the
+                   stops are eased in the SPACE domain (v(s) sinusoidal, peak at 0.66) so
+                   max speed lands EXACTLY at closest approach — which falls at ~75% of the
+                   linear time cycle, since the pulse dwells longer on the slow far side.
+                   Time stays linear (see the inline `linear`); this value curve is the
+                   easing. Peak/min per-5% increment ~20.1 vs ~6.0 (=3.4x), monotonic. */
                 @keyframes keplerflow {
-                  0%{stroke-dashoffset:0}    10%{stroke-dashoffset:7.7}   20%{stroke-dashoffset:20.9}
-                  30%{stroke-dashoffset:43.1} 40%{stroke-dashoffset:74.3}  50%{stroke-dashoffset:111}
-                  60%{stroke-dashoffset:147.7} 70%{stroke-dashoffset:178.9} 80%{stroke-dashoffset:201.1}
-                  90%{stroke-dashoffset:214.3} 100%{stroke-dashoffset:222}
+                  0%{stroke-dashoffset:0} 5%{stroke-dashoffset:8.6} 10%{stroke-dashoffset:16.2}
+                  15%{stroke-dashoffset:22.9} 20%{stroke-dashoffset:29.2} 25%{stroke-dashoffset:35.2}
+                  30%{stroke-dashoffset:41.3} 35%{stroke-dashoffset:47.6} 40%{stroke-dashoffset:54.3}
+                  45%{stroke-dashoffset:61.7} 50%{stroke-dashoffset:70.2} 55%{stroke-dashoffset:80.4}
+                  60%{stroke-dashoffset:92.7} 65%{stroke-dashoffset:107.7} 70%{stroke-dashoffset:125.7}
+                  75%{stroke-dashoffset:145.7} 80%{stroke-dashoffset:165.8} 85%{stroke-dashoffset:184}
+                  90%{stroke-dashoffset:199.2} 95%{stroke-dashoffset:211.7} 100%{stroke-dashoffset:222}
                 }
                 @keyframes dashflow {
-                  0%{stroke-dashoffset:0}    10%{stroke-dashoffset:7.7}   20%{stroke-dashoffset:20.9}
-                  30%{stroke-dashoffset:43.1} 40%{stroke-dashoffset:74.3}  50%{stroke-dashoffset:111}
-                  60%{stroke-dashoffset:147.7} 70%{stroke-dashoffset:178.9} 80%{stroke-dashoffset:201.1}
-                  90%{stroke-dashoffset:214.3} 100%{stroke-dashoffset:222}
+                  0%{stroke-dashoffset:0} 5%{stroke-dashoffset:8.6} 10%{stroke-dashoffset:16.2}
+                  15%{stroke-dashoffset:22.9} 20%{stroke-dashoffset:29.2} 25%{stroke-dashoffset:35.2}
+                  30%{stroke-dashoffset:41.3} 35%{stroke-dashoffset:47.6} 40%{stroke-dashoffset:54.3}
+                  45%{stroke-dashoffset:61.7} 50%{stroke-dashoffset:70.2} 55%{stroke-dashoffset:80.4}
+                  60%{stroke-dashoffset:92.7} 65%{stroke-dashoffset:107.7} 70%{stroke-dashoffset:125.7}
+                  75%{stroke-dashoffset:145.7} 80%{stroke-dashoffset:165.8} 85%{stroke-dashoffset:184}
+                  90%{stroke-dashoffset:199.2} 95%{stroke-dashoffset:211.7} 100%{stroke-dashoffset:222}
                 }
                 @media (prefers-reduced-motion: reduce) { ellipse { animation: none !important; } }
               </style>
