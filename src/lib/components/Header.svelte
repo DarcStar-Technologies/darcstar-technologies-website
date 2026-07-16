@@ -18,15 +18,15 @@
 	}}
 />
 
-<header class="sticky top-0 z-50 bg-black/10 backdrop-blur-md">
-	<nav class="mx-auto max-w-5xl px-4" aria-label="Primary">
-		<div class="flex h-16 items-center justify-between gap-6">
+<header class="sticky top-0 z-50 px-4 pt-3">
+	<nav class="glass-panel mx-auto max-w-5xl rounded-2xl px-4" aria-label="Primary">
+		<div class="flex h-14 items-center justify-between gap-6">
 			<a
 				href={localizeHref('/')}
 				onclick={() => (open = false)}
 				class="flex items-center gap-2.5 text-xl font-bold tracking-tight text-white"
 			>
-				<img src={favicon} alt="" class="size-8" />
+				<img src={favicon} alt="" class="logo-spin size-8" />
 				<span>DarcStar <span class="charge-flow">Technologies</span></span>
 			</a>
 

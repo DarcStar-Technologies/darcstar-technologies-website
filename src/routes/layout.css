@@ -88,3 +88,19 @@
 		animation: none;
 	}
 }
+
+/* The logo mark spins counter-clockwise, one revolution per ~31.4s — matching
+   the helix's twist rate (phase 0.0002 rad/ms → 2π every ~31.4s). */
+.logo-spin {
+	animation: logo-spin 31.4s linear infinite;
+}
+@keyframes logo-spin {
+	to {
+		transform: rotate(-360deg);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.logo-spin {
+		animation: none;
+	}
+}
