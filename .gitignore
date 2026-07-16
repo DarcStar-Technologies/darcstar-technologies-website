@@ -28,3 +28,6 @@ test-results
 storybook-static
 # SQLite
 *.db
+
+# Claude Code local config (personal / machine-specific)
+.claude/gh-user

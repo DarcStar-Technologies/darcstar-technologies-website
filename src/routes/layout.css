@@ -11,12 +11,16 @@
    The custom variant is kept so the darcstar theme's dark tokens resolve. */
 @custom-variant dark (&:where([data-mode='dark'], [data-mode='dark'] *));
 
-/* Three "color-charge" accents (red/green/blue) used by the homepage hero and
-   its CosmicBackdrop helix. Keep in sync with the palette in CosmicBackdrop.svelte. */
+/* The homepage's three "color-charge" accents (red/green/blue) used by the hero
+   and its CosmicBackdrop helix. These are semantic ALIASES onto the darcstar
+   theme — the single source of truth for the triad — naming which Skeleton family
+   plays each charge. Never hardcode the hexes here; edit them in the theme
+   (scripts/gen-theme.mjs → src/themes/darcstar.css). CosmicBackdrop.svelte reads
+   the same theme tokens at runtime, so JS never duplicates them either. */
 :root {
-	--charge-r: #fb5a6f;
-	--charge-g: #3ddc84;
-	--charge-b: #48c6ef;
+	--charge-r: var(--color-tertiary-500); /* rose      */
+	--charge-g: var(--color-secondary-500); /* green     */
+	--charge-b: var(--color-primary-500); /* cyan-blue */
 	/* Tileable, desaturated film grain shared by the frosted-glass surfaces. */
 	--grain: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='140'%20height='140'%3E%3Cfilter%20id='n'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='0.8'%20numOctaves='2'%20stitchTiles='stitch'/%3E%3CfeColorMatrix%20type='saturate'%20values='0'/%3E%3C/filter%3E%3Crect%20width='100%25'%20height='100%25'%20filter='url(%23n)'%20opacity='0.25'/%3E%3C/svg%3E");
 }

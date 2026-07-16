@@ -11,6 +11,17 @@
 
 		const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+		// Palette = the darcstar brand triad, read straight from the theme tokens so
+		// the canvas never duplicates the hexes (single source of truth:
+		// src/themes/darcstar.css). Order is charge R, G, B — matching the helix
+		// strands and nebula glows below.
+		const cs = getComputedStyle(document.documentElement);
+		const triad = ['--color-tertiary-500', '--color-secondary-500', '--color-primary-500'].map(
+			(v) => cs.getPropertyValue(v).trim()
+		);
+		// oklch(L C H) → oklch(L C H / a); the generated tokens are always alpha-less.
+		const withAlpha = (col: string, a: number) => col.replace(/\)\s*$/, ` / ${a})`);
+
 		let w = 0;
 		let h = 0;
 		// Vertical centre + height of the gap the helix sits in, in document coords
@@ -78,7 +89,7 @@
 			const turns = 2.3;
 			const N = 66;
 			const phase = t * 0.0002;
-			const colors = ['#fb5a6f', '#3ddc84', '#48c6ef'];
+			const colors = triad;
 
 			const segs: { x0: number; y0: number; x1: number; y1: number; z: number; col: string }[] = [];
 			for (let i = 0; i < N; i++) {
@@ -134,9 +145,9 @@
 			c.fillRect(0, 0, w, h);
 
 			const glows = [
-				{ x: w * 0.26, y: h * 0.3, col: 'rgba(251,90,111,0.13)' },
-				{ x: w * 0.74, y: h * 0.28, col: 'rgba(61,220,132,0.13)' },
-				{ x: w * 0.5, y: h * 0.74, col: 'rgba(72,198,239,0.13)' }
+				{ x: w * 0.26, y: h * 0.3, col: withAlpha(triad[0], 0.13) },
+				{ x: w * 0.74, y: h * 0.28, col: withAlpha(triad[1], 0.13) },
+				{ x: w * 0.5, y: h * 0.74, col: withAlpha(triad[2], 0.13) }
 			];
 			const rad = Math.max(w, h) * 0.42;
 			for (const g of glows) {
