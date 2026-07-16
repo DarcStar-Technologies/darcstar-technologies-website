@@ -2,7 +2,6 @@
 	import { slide } from 'svelte/transition';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import favicon from '$lib/assets/favicon.svg';
-	import ThemeToggle from './ThemeToggle.svelte';
 
 	// Starter links point to existing routes; replace with real nav as the site grows.
 	const links = [
@@ -19,16 +18,16 @@
 	}}
 />
 
-<header class="sticky top-0 z-50 border-b border-surface-200-800 bg-surface-100-900">
-	<nav class="mx-auto max-w-5xl px-4" aria-label="Primary">
-		<div class="flex h-16 items-center justify-between gap-6">
+<header class="sticky top-0 z-50 px-4 pt-3">
+	<nav class="glass-panel mx-auto max-w-5xl rounded-2xl px-4" aria-label="Primary">
+		<div class="flex h-14 items-center justify-between gap-6">
 			<a
 				href={localizeHref('/')}
 				onclick={() => (open = false)}
-				class="flex items-center gap-2 text-lg font-bold tracking-tight"
+				class="flex items-center gap-2.5 text-xl font-bold tracking-tight text-white"
 			>
-				<img src={favicon} alt="" class="size-7" />
-				<span>DarcStar <span class="text-primary-500">Technologies</span></span>
+				<img src={favicon} alt="" class="logo-spin size-8" />
+				<span>DarcStar <span class="charge-flow">Technologies</span></span>
 			</a>
 
 			<div class="flex items-center gap-2 sm:gap-4">
@@ -45,8 +44,6 @@
 						</li>
 					{/each}
 				</ul>
-
-				<ThemeToggle />
 
 				<!-- Mobile menu toggle -->
 				<button

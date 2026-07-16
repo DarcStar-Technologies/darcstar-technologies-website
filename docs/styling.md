@@ -29,11 +29,10 @@ Via the Vite plugin. The stylesheet entry is `src/routes/layout.css` (Prettier's
 
 ## Dark mode
 
-Data-attribute strategy (`data-mode` on `<html>`), following Skeleton's Light Switch recipe. Both `dark:` utilities and color pairings (`bg-primary-50-950`, …) respond to it.
+**The site is dark-only** (product decision) — there is no light theme and no toggle. `data-mode="dark"` is hardcoded on `<html>` in `src/app.html`, so Skeleton's cerberus dark tokens and `dark:` utilities always resolve.
 
-- **Variant** — `layout.css` declares `@custom-variant dark (&:where([data-mode="dark"], [data-mode="dark"] *));`.
-- **No flash** — an inline script in `src/app.html` `<head>` sets `data-mode` from `localStorage.mode` (falling back to `prefers-color-scheme`) before first paint.
-- **Toggle** — `src/lib/components/ThemeToggle.svelte` (Skeleton `Switch` + sun/moon icons) writes `data-mode` and persists `localStorage.mode` (key: `mode`, values `light` / `dark`). It reads the initial state from the DOM that the no-flash script already set. Rendered in the site header (`src/lib/components/Header.svelte`), which `src/routes/+layout.svelte` mounts on every page.
-- `data-mode` (light/dark) and `data-theme` (which palette, e.g. `cerberus`) are independent — a theme defines both its light and dark colors.
+- **Variant** — `layout.css` declares `@custom-variant dark (&:where([data-mode="dark"], [data-mode="dark"] *));`. Kept so Skeleton/cerberus dark tokens resolve; since `data-mode` is always `dark`, prefer plain (non-`dark:`) utilities in new markup.
+- `data-mode` (light/dark) and `data-theme` (which palette, e.g. `cerberus`) are independent — a theme defines both its light and dark colors; we only ever use the dark half.
+- The homepage void (black + starfield + twisting RGB triple helix) lives in `src/lib/components/CosmicBackdrop.svelte`; its accent colors mirror the `--charge-r/g/b` vars in `layout.css`.
 
 **Reference** — Skeleton's official LLM doc is at [`llms/skeleton-svelte.txt`](llms/skeleton-svelte.txt) (component APIs + design-system tokens). Skeleton ships no dedicated MCP; use the Svelte MCP (see [svelte.md](svelte.md)) for Svelte/SvelteKit questions.
