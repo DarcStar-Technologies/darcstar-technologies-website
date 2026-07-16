@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
 	import { scrollY, innerHeight } from 'svelte/reactivity/window';
+	import { scrollBehavior } from '$lib/scroll';
 
 	// Floating "back to top" control, rendered once in +layout.svelte so it's on
 	// every page. Appears only after the page is scrolled more than 2/3 of a
@@ -14,8 +15,7 @@
 	const show = $derived((scrollY.current ?? 0) > (innerHeight.current ?? 0) * (2 / 3));
 
 	function toTop() {
-		const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-		window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+		window.scrollTo({ top: 0, behavior: scrollBehavior() });
 	}
 </script>
 
@@ -25,7 +25,7 @@
 		onclick={toTop}
 		aria-label="Back to top"
 		transition:fade={{ duration: 150 }}
-		class="glass-btn fixed right-5 bottom-5 z-40 flex size-11 items-center justify-center rounded-full text-white/80 transition hover:border-white/30 hover:bg-white/10 hover:text-white sm:right-8 sm:bottom-8"
+		class="glass-btn fixed right-5 bottom-5 z-40 flex size-11 items-center justify-center rounded-full text-white/80 hover:text-white sm:right-8 sm:bottom-8"
 	>
 		<svg
 			class="size-5"

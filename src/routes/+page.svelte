@@ -97,14 +97,12 @@
 				proven across robotics, markets, and software that improves itself.
 			</p>
 			<div class="mt-9 flex flex-wrap justify-center gap-3">
-				<a
-					href="#gide"
-					class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
+				<a href="#gide" class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white"
 					>Explore GIDE</a
 				>
 				<a
 					href={contactHref}
-					class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
+					class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white"
 					>Get in touch →</a
 				>
 			</div>
@@ -179,7 +177,7 @@
 			</p>
 			<a
 				href={contactHref}
-				class="glass-btn mt-8 inline-flex items-center gap-3 rounded-full px-7 py-3.5 text-lg font-medium text-white transition hover:border-white/30 hover:bg-white/10"
+				class="glass-btn mt-8 inline-flex items-center gap-3 rounded-full px-7 py-3.5 text-lg font-medium text-white"
 			>
 				<img src={favicon} alt="" class="size-14" />
 				Contact Us

@@ -34,7 +34,7 @@
 		<div class="mt-9 flex justify-center">
 			<a
 				href={localizeHref('/')}
-				class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
+				class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white"
 			>
 				Return home →
 			</a>

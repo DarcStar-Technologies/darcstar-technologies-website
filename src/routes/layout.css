@@ -71,12 +71,13 @@
    content emerges seamlessly. Colour matches the CosmicBackdrop void (#000);
    pointer-events:none keeps the content beneath it clickable.
 
-     --scrim-solid : opaque down to here (≈ the header's bottom edge, 110px)
+     --scrim-solid : opaque down to here (the header's bottom edge)
      --scrim-fade  : transparent from here (content fully opaque just below the nav)
-   The header bar is a fixed height (h-24 + pt-3), so these stops are stable. */
+   Both derive from the shared --header-* vars (see :root), so the scrim tracks
+   the nav height automatically. */
 .header-scrim {
-	--scrim-solid: 6.875rem; /* 110px — header bottom */
-	--scrim-fade: 8.75rem; /* 140px — content fully visible ~30px below the nav */
+	--scrim-solid: calc(var(--header-gap-top) + var(--header-bar-h)); /* header bottom */
+	--scrim-fade: calc(var(--scrim-solid) + 2rem); /* content fully visible ~32px below */
 	position: fixed;
 	inset: 0 0 auto 0;
 	height: var(--scrim-fade);
@@ -97,6 +98,11 @@
    (scripts/gen-theme.mjs → src/themes/darcstar.css). CosmicBackdrop.svelte reads
    the same theme tokens at runtime, so JS never duplicates them either. */
 :root {
+	/* Sticky-header dimensions — the single source shared by Header.svelte (which
+	   sizes the bar with h-[var(--header-bar-h)] and pt-[var(--header-gap-top)])
+	   and the .header-scrim gradient stops below. Change these and both track. */
+	--header-bar-h: 6rem; /* nav bar height */
+	--header-gap-top: 0.75rem; /* gap above the bar */
 	--charge-r: var(--color-tertiary-500); /* rose      */
 	--charge-g: var(--color-secondary-500); /* green     */
 	--charge-b: var(--color-primary-500); /* cyan-blue */
@@ -171,6 +177,16 @@
 		0 14px 32px -14px rgb(0 0 0 / 0.6),
 		0 12px 28px -18px color-mix(in oklab, var(--charge-b) 30%, transparent),
 		inset 0 1px 0 rgb(255 255 255 / 0.14);
+	/* The border/background hover lift was repeated on every call site — bake it in.
+	   Consumers add `hover:text-*` themselves where the label/icon also lightens. */
+	transition:
+		border-color 150ms ease,
+		background-color 150ms ease,
+		color 150ms ease;
+	&:hover {
+		border-color: rgb(255 255 255 / 0.3);
+		background-color: rgb(255 255 255 / 0.1);
+	}
 }
 
 /* Flowing R→B→G color-charge gradient for text (clipped). Colour order matches
