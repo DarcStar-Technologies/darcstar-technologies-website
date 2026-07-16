@@ -20,6 +20,15 @@
    The custom variant is kept so the darcstar theme's dark tokens resolve. */
 @custom-variant dark (&:where([data-mode='dark'], [data-mode='dark'] *));
 
+/* Tell the UA the page is dark so NATIVE controls render with a dark palette —
+   the <select> option popup, scrollbars, autofill, spinners, date pickers. Without
+   it the contact form's interest options render white-on-white until highlighted.
+   Pairs with the hardcoded data-mode="dark"; the options also carry explicit dark
+   fills (bg-surface-*) for browsers that ignore color-scheme on option lists. */
+html {
+	color-scheme: dark;
+}
+
 /* Brand typography (issue #17) — self-hosted, no OS default. The faces load via
    the Fontsource @import block above; this block only names them.
      • body   → Inter          (Skeleton --base-font-family, in gen-theme.mjs)

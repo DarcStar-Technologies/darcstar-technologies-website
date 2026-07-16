@@ -187,9 +187,13 @@
 						<label class="block">
 							<span class={labelClass}>{m.contact_field_interest_label()}</span>
 							<select {...submitContact.fields.interest.as('select')} class={fieldClass}>
-								<option value="">{m.contact_interest_placeholder()}</option>
+								<option value="" class="bg-surface-900 text-white">
+									{m.contact_interest_placeholder()}
+								</option>
 								{#each INTERESTS as slug (slug)}
-									<option value={slug}>{interestLabel[slug]()}</option>
+									<option value={slug} class="bg-surface-900 text-white">
+										{interestLabel[slug]()}
+									</option>
 								{/each}
 							</select>
 						</label>
