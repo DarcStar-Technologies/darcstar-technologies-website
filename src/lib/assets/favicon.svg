@@ -5,10 +5,27 @@
               <style>
                 /* Orbit the colour-charge rings and their bright "Kepler" particles.
                    stroke-dasharray sums to ~222 (one ellipse circumference), so a full
-                   +222 dashoffset cycle = one forward lap per 7.37s; the three are
-                   phase-offset. (Positive offset → particles orbit forward.) */
-                @keyframes dashflow { to { stroke-dashoffset: 222; } }
-                @keyframes keplerflow { to { stroke-dashoffset: 222; } }
+                   +222 dashoffset cycle = one forward lap per 7.37s (the three are
+                   phase-offset). The stops are NON-linear on purpose — Kepler's 2nd law:
+                   the pulse accelerates into the black sphere (perihelion, the ~50% mark
+                   that the -15deg group rotation puts down-left by the sphere) and
+                   decelerates as it recedes to the far side (aphelion, 0/100%). That
+                   variable speed IS the gravitational "Doppler" read. Time stays linear
+                   (see the inline `linear`); this value curve (a ~5.7x sinusoidal rate
+                   swing) does the easing. Increments are symmetric: 7.7,13.2,22.2,31.2,
+                   36.7,36.7,31.2,22.2,13.2,7.7. */
+                @keyframes keplerflow {
+                  0%{stroke-dashoffset:0}    10%{stroke-dashoffset:7.7}   20%{stroke-dashoffset:20.9}
+                  30%{stroke-dashoffset:43.1} 40%{stroke-dashoffset:74.3}  50%{stroke-dashoffset:111}
+                  60%{stroke-dashoffset:147.7} 70%{stroke-dashoffset:178.9} 80%{stroke-dashoffset:201.1}
+                  90%{stroke-dashoffset:214.3} 100%{stroke-dashoffset:222}
+                }
+                @keyframes dashflow {
+                  0%{stroke-dashoffset:0}    10%{stroke-dashoffset:7.7}   20%{stroke-dashoffset:20.9}
+                  30%{stroke-dashoffset:43.1} 40%{stroke-dashoffset:74.3}  50%{stroke-dashoffset:111}
+                  60%{stroke-dashoffset:147.7} 70%{stroke-dashoffset:178.9} 80%{stroke-dashoffset:201.1}
+                  90%{stroke-dashoffset:214.3} 100%{stroke-dashoffset:222}
+                }
                 @media (prefers-reduced-motion: reduce) { ellipse { animation: none !important; } }
               </style>
               <radialGradient id="sph4b"><stop offset="0.55" stop-color="#04050a"></stop><stop offset="0.92" stop-color="#0d1017"></stop><stop offset="1" stop-color="#232a35"></stop></radialGradient>
