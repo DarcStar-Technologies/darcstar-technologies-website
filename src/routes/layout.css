@@ -165,22 +165,10 @@
 	}
 }
 
-/* The logo mark spins counter-clockwise, one revolution per ~31.4s — matching
-   the helix's twist rate (phase 0.0002 rad/ms → 2π every ~31.4s). */
-.logo-spin {
-	animation: logo-spin 31.4s linear infinite;
-}
-@keyframes logo-spin {
-	to {
-		transform: rotate(-360deg);
-	}
-}
-
-/* Reduced motion — freeze the looping shimmer, the logo spin, and the header's
-   shadow-on-scroll transition to their static states. */
+/* Reduced motion — freeze the looping shimmer and the header's shadow-on-scroll
+   transition to their static states. */
 @media (prefers-reduced-motion: reduce) {
-	.charge-flow,
-	.logo-spin {
+	.charge-flow {
 		animation: none;
 	}
 	.glass-nav {
