@@ -4,34 +4,35 @@
             <defs>
               <style>
                 /* Orbit the colour-charge rings and their bright "Kepler" particles.
-                   stroke-dasharray sums to ~222 (one ellipse circumference), so a full
-                   +222 dashoffset cycle = one forward lap per 7.37s (the three are
-                   phase-offset). Kepler's 2nd law: the pulse sweeps ~3.4x faster through
-                   periapsis (closest approach to the black sphere) and coasts through
-                   apoapsis. Periapsis is at arc-fraction ~0.66 of the path (computed from
-                   the sphere at 38,56 and the -15deg group + per-ring rotations); the
-                   stops are eased in the SPACE domain (v(s) sinusoidal, peak at 0.66) so
-                   max speed lands EXACTLY at closest approach — which falls at ~75% of the
-                   linear time cycle, since the pulse dwells longer on the slow far side.
-                   Time stays linear (see the inline `linear`); this value curve is the
-                   easing. Peak/min per-5% increment ~20.1 vs ~6.0 (=3.4x), monotonic. */
+                   stroke-dasharray sums to ~222 (one ellipse circumference); a full +222
+                   dashoffset cycle = one forward lap per 7.37s (the three are phase-offset).
+                   Black-hole velocity: the pulse COASTS slowly through apoapsis, then whips
+                   through periapsis — closest approach to the sphere, arc-fraction ~0.66
+                   (computed from the sphere at 38,56 and the -15deg group + per-ring
+                   rotations) — at ~5x the apoapsis speed. Modelled as a single sharp speed
+                   peak at periapsis (raised-cosine^2 — fast pickup out of apoapsis, quick
+                   fall-off after) eased in the SPACE domain, so peak speed lands EXACTLY at
+                   closest approach and the long slow dwell sits on the far side (peak in
+                   time ~78%, later than 66% because the pulse loiters at apoapsis). Time
+                   stays linear (inline `linear`); this value curve is the easing.
+                   Peak/min per-5% step ~30.6 vs ~6.3 (=~4.9x), monotonic — never reverses. */
                 @keyframes keplerflow {
-                  0%{stroke-dashoffset:0} 5%{stroke-dashoffset:8.6} 10%{stroke-dashoffset:16.2}
-                  15%{stroke-dashoffset:22.9} 20%{stroke-dashoffset:29.2} 25%{stroke-dashoffset:35.2}
-                  30%{stroke-dashoffset:41.3} 35%{stroke-dashoffset:47.6} 40%{stroke-dashoffset:54.3}
-                  45%{stroke-dashoffset:61.7} 50%{stroke-dashoffset:70.2} 55%{stroke-dashoffset:80.4}
-                  60%{stroke-dashoffset:92.7} 65%{stroke-dashoffset:107.7} 70%{stroke-dashoffset:125.7}
-                  75%{stroke-dashoffset:145.7} 80%{stroke-dashoffset:165.8} 85%{stroke-dashoffset:184}
-                  90%{stroke-dashoffset:199.2} 95%{stroke-dashoffset:211.7} 100%{stroke-dashoffset:222}
+                  0%{stroke-dashoffset:0} 5%{stroke-dashoffset:7.2} 10%{stroke-dashoffset:13.9}
+                  15%{stroke-dashoffset:20.3} 20%{stroke-dashoffset:26.6} 25%{stroke-dashoffset:33}
+                  30%{stroke-dashoffset:39.3} 35%{stroke-dashoffset:45.6} 40%{stroke-dashoffset:51.9}
+                  45%{stroke-dashoffset:58.4} 50%{stroke-dashoffset:65.2} 55%{stroke-dashoffset:72.6}
+                  60%{stroke-dashoffset:81.3} 65%{stroke-dashoffset:92.7} 70%{stroke-dashoffset:109.2}
+                  75%{stroke-dashoffset:134.8} 80%{stroke-dashoffset:165.4} 85%{stroke-dashoffset:188.3}
+                  90%{stroke-dashoffset:203.1} 95%{stroke-dashoffset:213.6} 100%{stroke-dashoffset:222}
                 }
                 @keyframes dashflow {
-                  0%{stroke-dashoffset:0} 5%{stroke-dashoffset:8.6} 10%{stroke-dashoffset:16.2}
-                  15%{stroke-dashoffset:22.9} 20%{stroke-dashoffset:29.2} 25%{stroke-dashoffset:35.2}
-                  30%{stroke-dashoffset:41.3} 35%{stroke-dashoffset:47.6} 40%{stroke-dashoffset:54.3}
-                  45%{stroke-dashoffset:61.7} 50%{stroke-dashoffset:70.2} 55%{stroke-dashoffset:80.4}
-                  60%{stroke-dashoffset:92.7} 65%{stroke-dashoffset:107.7} 70%{stroke-dashoffset:125.7}
-                  75%{stroke-dashoffset:145.7} 80%{stroke-dashoffset:165.8} 85%{stroke-dashoffset:184}
-                  90%{stroke-dashoffset:199.2} 95%{stroke-dashoffset:211.7} 100%{stroke-dashoffset:222}
+                  0%{stroke-dashoffset:0} 5%{stroke-dashoffset:7.2} 10%{stroke-dashoffset:13.9}
+                  15%{stroke-dashoffset:20.3} 20%{stroke-dashoffset:26.6} 25%{stroke-dashoffset:33}
+                  30%{stroke-dashoffset:39.3} 35%{stroke-dashoffset:45.6} 40%{stroke-dashoffset:51.9}
+                  45%{stroke-dashoffset:58.4} 50%{stroke-dashoffset:65.2} 55%{stroke-dashoffset:72.6}
+                  60%{stroke-dashoffset:81.3} 65%{stroke-dashoffset:92.7} 70%{stroke-dashoffset:109.2}
+                  75%{stroke-dashoffset:134.8} 80%{stroke-dashoffset:165.4} 85%{stroke-dashoffset:188.3}
+                  90%{stroke-dashoffset:203.1} 95%{stroke-dashoffset:213.6} 100%{stroke-dashoffset:222}
                 }
                 @media (prefers-reduced-motion: reduce) { ellipse { animation: none !important; } }
               </style>
