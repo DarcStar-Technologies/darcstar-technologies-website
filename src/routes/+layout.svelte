@@ -7,6 +7,7 @@
 	import favicon from '$lib/assets/favicon-16.svg';
 	import Header from '$lib/components/Header.svelte';
 	import Footer from '$lib/components/Footer.svelte';
+	import BackToTop from '$lib/components/BackToTop.svelte';
 
 	let { children } = $props();
 </script>
@@ -20,6 +21,8 @@
 	</main>
 	<Footer />
 </div>
+
+<BackToTop />
 
 <div style="display:none">
 	{#each locales as locale (locale)}
