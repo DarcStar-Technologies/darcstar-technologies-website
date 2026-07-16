@@ -1,0 +1,223 @@
+<script lang="ts">
+	// Global contact modal (issue #11). Rendered ONCE in +layout.svelte; opened from
+	// the hero/CTA buttons (+page.svelte) and the footer link via the shared
+	// `contactDialog` rune. Submits through the `submitContact` remote form → Turso.
+	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
+	import { contactDialog } from '$lib/contact-dialog.svelte';
+	import { submitContact } from '$lib/contact.remote';
+	import { INTERESTS, type Interest } from '$lib/contact-interests';
+	import { m } from '$lib/paraglide/messages.js';
+
+	// slug → localized label, single-sourced from INTERESTS (order follows the array).
+	const interestLabel: Record<Interest, () => string> = {
+		robotics: m.contact_interest_robotics,
+		markets: m.contact_interest_markets,
+		'formal-methods': m.contact_interest_formal_methods,
+		partnership: m.contact_interest_partnership,
+		other: m.contact_interest_other
+	};
+
+	let showSuccess = $state(false);
+	let serverError = $state(false);
+
+	// Skeleton controlled open/close; clear transient state when the dialog closes.
+	function handleOpenChange(open: boolean) {
+		contactDialog.open = open;
+		if (!open) {
+			showSuccess = false;
+			serverError = false;
+		}
+	}
+
+	// Glass-consistent field styling — a translucent fill (NOT Skeleton `.input`, whose
+	// Windows bugfix forces an opaque surface); @tailwindcss/forms supplies the reset.
+	const fieldClass =
+		'w-full rounded-lg border border-white/15 bg-white/5 px-3.5 py-2.5 text-sm text-white transition-colors placeholder:text-white/40 focus:border-primary-500 focus:bg-white/[0.07] focus:ring-1 focus:ring-primary-500/40 focus:outline-none aria-invalid:border-error-500/70';
+	const labelClass = 'mb-1.5 block text-xs font-medium tracking-wide text-white/70';
+</script>
+
+{#snippet fieldError(issues: { message: string }[] | undefined)}
+	{#each issues ?? [] as issue (issue.message)}
+		<p class="mt-1.5 text-xs text-error-400">{issue.message}</p>
+	{/each}
+{/snippet}
+
+<Dialog open={contactDialog.open} onOpenChange={(e) => handleOpenChange(e.open)}>
+	<Portal>
+		<Dialog.Backdrop class="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm" />
+		<Dialog.Positioner
+			class="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4"
+		>
+			<Dialog.Content
+				class="glass-panel relative my-8 w-full max-w-lg rounded-2xl p-6 text-left sm:p-8"
+			>
+				<Dialog.CloseTrigger
+					class="glass-btn absolute top-4 right-4 flex size-9 items-center justify-center rounded-full text-white/70 hover:text-white"
+					aria-label={m.contact_close()}
+				>
+					<svg
+						class="size-4"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<path d="M18 6 6 18M6 6l12 12" />
+					</svg>
+				</Dialog.CloseTrigger>
+
+				{#if showSuccess}
+					<div class="py-4 text-center">
+						<div
+							class="mx-auto flex size-12 items-center justify-center rounded-full bg-success-500/15 text-success-400"
+						>
+							<svg
+								class="size-6"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"
+							>
+								<path d="M20 6 9 17l-5-5" />
+							</svg>
+						</div>
+						<Dialog.Title class="mt-4 text-2xl font-medium tracking-tight text-white">
+							{m.contact_success_title()}
+						</Dialog.Title>
+						<Dialog.Description class="mx-auto mt-2 max-w-sm text-sm text-white/70">
+							{m.contact_success_body()}
+						</Dialog.Description>
+						<Dialog.CloseTrigger
+							class="glass-btn mt-6 rounded-full px-6 py-2.5 text-sm font-medium text-white"
+						>
+							{m.contact_close()}
+						</Dialog.CloseTrigger>
+					</div>
+				{:else}
+					<Dialog.Title class="text-2xl font-medium tracking-tight text-white">
+						{m.contact_dialog_title()}
+					</Dialog.Title>
+					<Dialog.Description class="mt-2 text-sm text-white/70">
+						{m.contact_dialog_description()}
+					</Dialog.Description>
+
+					<form
+						class="mt-6 space-y-4"
+						{...submitContact.enhance(async (form) => {
+							serverError = false;
+							try {
+								if (await form.submit()) {
+									form.element.reset();
+									showSuccess = true;
+								}
+							} catch {
+								serverError = true;
+							}
+						})}
+					>
+						<!-- Honeypot: off-screen, out of the a11y tree, unfocusable. Humans never
+						     fill it; a non-empty value is silently dropped server-side. -->
+						<div
+							class="pointer-events-none absolute -left-[9999px] h-0 w-0 overflow-hidden"
+							aria-hidden="true"
+						>
+							<input
+								{...submitContact.fields.website.as('text')}
+								tabindex="-1"
+								autocomplete="off"
+								aria-hidden="true"
+							/>
+						</div>
+
+						<!-- Whole-form issues (e.g. rate limit); field issues render under their field. -->
+						{#each submitContact.fields.allIssues() as issue (issue.message)}
+							{#if issue.path.length === 0}
+								<p
+									class="rounded-lg border border-error-500/30 bg-error-500/10 px-3 py-2 text-sm text-error-400"
+									role="alert"
+								>
+									{issue.message}
+								</p>
+							{/if}
+						{/each}
+
+						<label class="block">
+							<span class={labelClass}>{m.contact_field_name_label()}</span>
+							<input
+								{...submitContact.fields.name.as('text')}
+								class={fieldClass}
+								placeholder={m.contact_field_name_placeholder()}
+								autocomplete="name"
+							/>
+							{@render fieldError(submitContact.fields.name.issues())}
+						</label>
+
+						<label class="block">
+							<span class={labelClass}>{m.contact_field_email_label()}</span>
+							<input
+								{...submitContact.fields.email.as('email')}
+								class={fieldClass}
+								placeholder={m.contact_field_email_placeholder()}
+								autocomplete="email"
+							/>
+							{@render fieldError(submitContact.fields.email.issues())}
+						</label>
+
+						<label class="block">
+							<span
+								class="mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-white/70"
+							>
+								{m.contact_field_company_label()}
+								<span class="font-normal text-white/50">{m.contact_field_company_optional()}</span>
+							</span>
+							<input
+								{...submitContact.fields.company.as('text')}
+								class={fieldClass}
+								placeholder={m.contact_field_company_placeholder()}
+								autocomplete="organization"
+							/>
+						</label>
+
+						<label class="block">
+							<span class={labelClass}>{m.contact_field_interest_label()}</span>
+							<select {...submitContact.fields.interest.as('select')} class={fieldClass}>
+								<option value="">{m.contact_interest_placeholder()}</option>
+								{#each INTERESTS as slug (slug)}
+									<option value={slug}>{interestLabel[slug]()}</option>
+								{/each}
+							</select>
+						</label>
+
+						<label class="block">
+							<span class={labelClass}>{m.contact_field_message_label()}</span>
+							<textarea
+								{...submitContact.fields.message.as('text')}
+								rows="4"
+								class="{fieldClass} min-h-28 resize-y"
+								placeholder={m.contact_field_message_placeholder()}></textarea>
+							{@render fieldError(submitContact.fields.message.issues())}
+						</label>
+
+						{#if serverError}
+							<p class="text-sm text-error-400" role="alert">{m.contact_error_generic()}</p>
+						{/if}
+
+						<button
+							type="submit"
+							disabled={!!submitContact.pending}
+							class="glass-btn w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							{submitContact.pending ? m.contact_submitting() : m.contact_submit()}
+						</button>
+					</form>
+				{/if}
+			</Dialog.Content>
+		</Dialog.Positioner>
+	</Portal>
+</Dialog>

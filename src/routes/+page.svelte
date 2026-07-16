@@ -2,9 +2,8 @@
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import Seo from '$lib/components/Seo.svelte';
 	import { m } from '$lib/paraglide/messages.js';
+	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import favicon from '$lib/assets/favicon.svg';
-
-	const contactHref = 'mailto:mharris@darcstar.tech';
 
 	// Domains the one engine has actually shipped into. Declared before `readouts`
 	// so the stats row can source its "domains shipped" figure from this list's
@@ -123,10 +122,12 @@
 				<a href="#gide" class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white"
 					>{m.hero_cta_explore()}</a
 				>
-				<a
-					href={contactHref}
+				<button
+					type="button"
+					aria-haspopup="dialog"
+					onclick={() => contactDialog.show()}
 					class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white"
-					>{m.hero_cta_contact()}</a
+					>{m.hero_cta_contact()}</button
 				>
 			</div>
 		</div>
@@ -198,13 +199,15 @@
 			<p class="mx-auto mt-4 max-w-lg text-sm text-white/70">
 				{m.section_cta_body()}
 			</p>
-			<a
-				href={contactHref}
+			<button
+				type="button"
+				aria-haspopup="dialog"
+				onclick={() => contactDialog.show()}
 				class="glass-btn mt-8 inline-flex items-center gap-3 rounded-full px-7 py-3.5 text-lg font-medium text-white"
 			>
 				<img src={favicon} alt="" class="size-14" />
 				{m.section_cta_button()}
-			</a>
+			</button>
 		</section>
 	</div>
 </div>
