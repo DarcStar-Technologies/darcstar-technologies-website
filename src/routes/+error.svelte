@@ -26,7 +26,7 @@
 		<h1 class="mt-5 text-2xl font-medium tracking-tight text-balance text-white sm:text-3xl">
 			{heading}
 		</h1>
-		<p class="mx-auto mt-4 max-w-sm text-base text-white/55">{detail}</p>
+		<p class="mx-auto mt-4 max-w-sm text-base text-white/70">{detail}</p>
 		<div class="mt-9 flex justify-center">
 			<a
 				href={localizeHref('/')}
