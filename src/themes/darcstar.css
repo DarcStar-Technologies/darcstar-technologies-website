@@ -6,7 +6,7 @@
 	--text-scaling: 1.067;
 	--base-font-color: var(--color-surface-950);
 	--base-font-color-dark: var(--color-surface-50);
-	--base-font-family: system-ui;
+	--base-font-family: 'Inter Variable', system-ui, sans-serif;
 	--base-font-size: inherit;
 	--base-line-height: inherit;
 	--base-font-weight: normal;
@@ -14,7 +14,7 @@
 	--base-letter-spacing: 0em;
 	--heading-font-color: inherit;
 	--heading-font-color-dark: inherit;
-	--heading-font-family: inherit;
+	--heading-font-family: 'Space Grotesk Variable', system-ui, sans-serif;
 	--heading-font-weight: bold;
 	--heading-font-style: normal;
 	--heading-letter-spacing: inherit;

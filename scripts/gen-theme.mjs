@@ -159,11 +159,15 @@ const SEMANTIC = `\t--color-success-50: oklch(0.94 0.09 178.68);
 \t--color-error-contrast-950: var(--color-error-contrast-light);
 `;
 
+// Brand typography (issue #17): body = Inter, headings = Space Grotesk, both
+// self-hosted via Fontsource (@import'd in src/routes/layout.css). These two
+// Skeleton tokens are the source for body/heading; the MONO face (JetBrains Mono,
+// used by the `font-mono` kickers/readouts) is Tailwind's --font-mono, in layout.css.
 const GLOBAL = `\t--spacing: 0.25rem;
 \t--text-scaling: 1.067;
 \t--base-font-color: var(--color-surface-950);
 \t--base-font-color-dark: var(--color-surface-50);
-\t--base-font-family: system-ui;
+\t--base-font-family: 'Inter Variable', system-ui, sans-serif;
 \t--base-font-size: inherit;
 \t--base-line-height: inherit;
 \t--base-font-weight: normal;
@@ -171,7 +175,7 @@ const GLOBAL = `\t--spacing: 0.25rem;
 \t--base-letter-spacing: 0em;
 \t--heading-font-color: inherit;
 \t--heading-font-color-dark: inherit;
-\t--heading-font-family: inherit;
+\t--heading-font-family: 'Space Grotesk Variable', system-ui, sans-serif;
 \t--heading-font-weight: bold;
 \t--heading-font-style: normal;
 \t--heading-letter-spacing: inherit;
