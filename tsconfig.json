@@ -3,7 +3,12 @@
 	"compilerOptions": {
 		"rewriteRelativeImportExtensions": true,
 		"allowJs": true,
-		"checkJs": true,
+		// The only .js in scope is generated (Paraglide src/lib/paraglide/*.js); its
+		// body doesn't type-check against the Cloudflare runtime `Request` global that
+		// worker-configuration.d.ts injects (its self-inconsistent clone()/constructor
+		// types — harmless at runtime). We have no hand-written .js, and importers still
+		// get full type safety against Paraglide's inferred API, so don't check .js bodies.
+		"checkJs": false,
 		"esModuleInterop": true,
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,

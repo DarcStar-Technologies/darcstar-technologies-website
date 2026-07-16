@@ -34,5 +34,6 @@ Durable gotchas — keep to one line; link to the doc that carries the detail.
 - The RGB **color-charge triad has ONE source** — the theme (`tertiary`/`secondary`/`primary` = R/G/B). `--charge-*` and `CosmicBackdrop`'s canvas both derive from `--color-*-500`; never re-type the hexes. → [styling](docs/styling.md)
 - `pnpm preview` runs the built worker on the real Workers runtime (Wrangler), not `vite preview`. → [commands](docs/commands.md)
 - Run `pnpm gen` after changing `wrangler.jsonc` bindings to refresh the `Env` type. → [deployment](docs/deployment.md)
+- `checkJs` is **off** — generated Paraglide `.js` clashes with the Cloudflare `Request` global; no hand-written `.js` exists, so `.js` bodies aren't checked. → [i18n](docs/i18n.md)
 - e2e builds + previews the Cloudflare bundle; match the vitest project to your filename (`client` / `server` / `storybook`). → [commands](docs/commands.md)
 - Use the Svelte MCP (list-sections → get-documentation) for Svelte/SvelteKit questions; run svelte-autofixer on any Svelte you write. → [svelte](docs/svelte.md)
