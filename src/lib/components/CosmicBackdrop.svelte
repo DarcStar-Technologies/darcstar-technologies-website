@@ -4,6 +4,7 @@
 	// stays fixed in the background as the page scrolls. The helix scales as a rigid
 	// unit (amplitude tracks its width) and centres in the hero's #helix-slot gap.
 	// Respects prefers-reduced-motion.
+	import { prefersReducedMotion } from 'svelte/motion';
 
 	function backdrop(canvas: HTMLCanvasElement) {
 		const ctx = canvas.getContext('2d');
@@ -13,7 +14,7 @@
 		// widen it back to `| null`. Binding to a typed const fixes that once.
 		const c: CanvasRenderingContext2D = ctx;
 
-		const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		const reduce = prefersReducedMotion.current;
 
 		// Palette = the darcstar brand triad, read straight from the theme tokens so
 		// the canvas never duplicates the hexes (single source of truth:
