@@ -1,5 +1,6 @@
 <script lang="ts">
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
+	import favicon from '$lib/assets/favicon.svg';
 
 	const readouts = [
 		{ v: '0.767 µs', l: 'CfC inference' },
@@ -15,13 +16,13 @@
 			body: 'Control Barrier Functions, machine-checked in Lean 4 and Isabelle. Not tested — proven.'
 		},
 		{
-			cvar: 'var(--charge-g)',
+			cvar: 'var(--charge-b)',
 			icon: 'bolt',
 			title: 'Real-time',
 			body: 'Closed-form continuous-time inference at 0.767 µs — 13,000× ahead of the world.'
 		},
 		{
-			cvar: 'var(--charge-b)',
+			cvar: 'var(--charge-g)',
 			icon: 'cycle',
 			title: 'Self-improving',
 			body: 'Neuroevolution and an autonomous Self-Dev loop that writes and verifies its own code.'
@@ -72,10 +73,10 @@
 		<!-- The twisting triple helix (CosmicBackdrop) fills this gap on first load. -->
 		<div class="flex-1"></div>
 
-		<div class="w-full">
-			<h1
-				class="mx-auto max-w-3xl text-4xl font-medium tracking-tight text-balance text-white sm:text-6xl"
-			>
+		<div
+			class="glass-panel mx-auto w-full max-w-3xl rounded-2xl px-8 py-10 text-center sm:px-10 sm:py-12"
+		>
+			<h1 class="text-4xl font-medium tracking-tight text-balance text-white sm:text-6xl">
 				Autonomous control you can
 				<span class="charge-flow">prove</span>
 				is safe.
@@ -118,8 +119,8 @@
 				<p class="font-mono text-xs tracking-[0.25em] text-white/35 uppercase">
 					// intelligence with guarantees
 				</p>
-				<h2 class="mt-3 text-3xl font-medium tracking-tight text-white">
-					A ~715K-line hybrid Zig / C++ runtime
+				<h2 class="mx-auto mt-3 max-w-3xl text-3xl font-medium tracking-tight text-white">
+					Nearly 1 M lines and counting of Zig, C++, Rust, and Python w/ custom CUDA Kernels
 				</h2>
 			</div>
 			<div
@@ -178,9 +179,11 @@
 			</p>
 			<a
 				href="mailto:mharris@darcstar.tech"
-				class="glass-btn mt-8 inline-block rounded-full px-7 py-3 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
-				>Contact DarcStar</a
+				class="glass-btn mt-8 inline-flex items-center gap-2.5 rounded-full px-6 py-3 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
 			>
+				<img src={favicon} alt="" class="logo-spin size-5" />
+				Contact Us
+			</a>
 		</section>
 	</div>
 </div>
