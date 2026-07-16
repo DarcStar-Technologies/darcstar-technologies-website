@@ -6,8 +6,12 @@
 	// Respects prefers-reduced-motion.
 
 	function backdrop(canvas: HTMLCanvasElement) {
-		const c = canvas.getContext('2d');
-		if (!c) return;
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return;
+		// Give `c` a non-null DECLARED type: the guard above only narrows within this
+		// scope, and the nested draw/resize/loop function declarations would otherwise
+		// widen it back to `| null`. Binding to a typed const fixes that once.
+		const c: CanvasRenderingContext2D = ctx;
 
 		const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
