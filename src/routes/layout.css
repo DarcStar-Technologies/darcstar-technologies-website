@@ -51,6 +51,25 @@
 		inset 0 1px 0 rgb(255 255 255 / 0.12),
 		inset 0 -1px 0 rgb(0 0 0 / 0.3);
 }
+/* Lighter frosted variant for the STICKY HEADER. The hero-tuned glass-panel above
+   carries an 84px black halo + a spread R/G/B color-charge glow; on a thin nav bar
+   that smears over the page and floats as you scroll (issue #20). This drops the
+   colored glow and heavy lift for a thin border + a tight, neutral shadow, keeping
+   only the frosted blur, film grain, and top sheen. */
+@utility glass-nav {
+	border: 1px solid rgb(255 255 255 / 0.1);
+	background-color: rgb(255 255 255 / 0.05);
+	/* Film grain + top sheen only — the diagonal charge tint reads as a patch on a thin bar. */
+	background-image:
+		var(--grain), linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0));
+	-webkit-backdrop-filter: blur(16px);
+	backdrop-filter: blur(16px);
+	/* Tight, neutral lift — no 84px halo, no R/G/B color-charge spread glow. */
+	box-shadow:
+		0 8px 24px -16px rgb(0 0 0 / 0.7),
+		inset 0 1px 0 rgb(255 255 255 / 0.1),
+		inset 0 -1px 0 rgb(0 0 0 / 0.3);
+}
 @utility glass-btn {
 	border: 1px solid rgb(255 255 255 / 0.15);
 	background-color: rgb(255 255 255 / 0.05);

@@ -16,7 +16,7 @@
 />
 
 <header class="sticky top-0 z-50 px-4 pt-3">
-	<nav class="glass-panel mx-auto max-w-5xl rounded-2xl px-4" aria-label="Primary">
+	<nav class="glass-nav mx-auto max-w-5xl rounded-2xl px-4" aria-label="Primary">
 		<div class="flex h-14 items-center justify-between gap-6">
 			<a
 				href={localizeHref('/')}
