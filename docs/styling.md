@@ -27,6 +27,28 @@ Via the Vite plugin. The stylesheet entry is `src/routes/layout.css` (Prettier's
 
 **Lesson: keep `@tailwindcss/forms`** — Skeleton's form components depend on it; removing it breaks them.
 
+## Typography
+
+The site ships **three self-hosted brand faces** (issue #17) — no `system-ui`, no Google CDN:
+
+| Role        | Face              | Where it applies                                        | Token (source of truth)                          |
+| ----------- | ----------------- | ------------------------------------------------------- | ------------------------------------------------ |
+| **Display** | Space Grotesk     | all headings (`<h1>`–`<h6>`)                             | `--heading-font-family` — `scripts/gen-theme.mjs` |
+| **Body**    | Inter             | body copy + UI (`<body>` down)                          | `--base-font-family` — `scripts/gen-theme.mjs`   |
+| **Mono**    | JetBrains Mono    | `font-mono` — GIDE kicker, section kickers, readout bar | `--font-mono` — `layout.css` `@theme`            |
+
+**Self-hosting** — the faces load via [Fontsource](https://fontsource.org) variable packages (`@fontsource-variable/{space-grotesk,inter,jetbrains-mono}`), imported as **CSS `@import` at the top of `layout.css`** (not a JS side-effect import in `+layout.svelte`). Fontsource ships the variable `.woff2` + `@font-face` (`font-display: swap`); Vite fingerprints and bundles the files, and the per-subset `unicode-range` means an English visitor downloads only the **latin** woff2 per family (~3 files). Each is a single variable file spanning all weights the site uses (Space Grotesk `300–700` covers `font-medium`/`font-semibold`).
+
+- **Why CSS `@import`, not `import '@fontsource-variable/…'` in the layout script:** under `moduleResolution: bundler` the specifier resolves straight to the package's `index.css`, and svelte-check errors on the untyped side-effect import ("Cannot find module or type declarations…"). An ambient `declare module` can't shadow a specifier that already resolves to a file, so the fix is to keep font loading in CSS, which is never type-checked.
+
+**The token split — two files, one contract (the family names):**
+
+- **Body + heading** are Skeleton tokens (`--base-font-family` / `--heading-font-family`), set in `scripts/gen-theme.mjs` and emitted into `src/themes/darcstar.css`. Edit the `GLOBAL` block and rerun `node scripts/gen-theme.mjs` — **don't hand-edit the generated theme.**
+- **Mono + sans** are Tailwind's `--font-mono` / `--font-sans`, set in the `@theme` block in `layout.css` (that's what the `font-mono` / `font-sans` utilities resolve to).
+- **Headings need a base-layer nudge.** Skeleton wires `--heading-font-family` only to its `.h1`–`.h6` _utility classes_, but this site writes semantic `<h1>`–`<h6>` with Tailwind `text-*` sizing. A small `@layer base { h1,…,h6 { font-family: var(--heading-font-family) } }` rule in `layout.css` maps the elements to the display face (same token — no second source).
+
+**Changing a face** — `pnpm add -D @fontsource-variable/<name>`, add its `@import` to `layout.css`, and point the relevant token (theme token via `gen-theme.mjs`, or `--font-mono`/`--font-sans` in the `@theme` block) at the new `'<Name> Variable'` family.
+
 ## Dark mode
 
 **The site is dark-only** (product decision) — there is no light theme and no toggle. `data-mode="dark"` is hardcoded on `<html>` in `src/app.html`, so the `darcstar` dark tokens and `dark:` utilities always resolve.

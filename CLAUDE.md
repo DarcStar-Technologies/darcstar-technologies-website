@@ -32,6 +32,7 @@ Durable gotchas — keep to one line; link to the doc that carries the detail.
 - Site is **dark-only**: `data-mode="dark"` hardcoded on `<html>` in `app.html`, no toggle. Distinct from `data-theme` (palette). → [styling](docs/styling.md)
 - Palette is the **custom `darcstar` Skeleton theme** (`src/themes/darcstar.css`); regenerate ramps via `node scripts/gen-theme.mjs`, don't hand-edit. → [styling](docs/styling.md)
 - The RGB **color-charge triad has ONE source** — the theme (`tertiary`/`secondary`/`primary` = R/G/B). `--charge-*` and `CosmicBackdrop`'s canvas both derive from `--color-*-500`; never re-type the hexes. → [styling](docs/styling.md)
+- **Brand type is self-hosted** (Space Grotesk / Inter / JetBrains Mono via Fontsource `@import` in `layout.css` — CSS, not a JS import, or svelte-check chokes). Body/heading tokens live in `gen-theme.mjs`; mono/sans in `layout.css` `@theme`; bare `<h1>`–`<h6>` need the base-layer rule (Skeleton styles only `.h1`–`.h6`). → [styling](docs/styling.md)
 - `pnpm preview` runs the built worker on the real Workers runtime (Wrangler), not `vite preview`. → [commands](docs/commands.md)
 - Run `pnpm gen` after changing `wrangler.jsonc` bindings to refresh the `Env` type. → [deployment](docs/deployment.md)
 - `checkJs` is **off** — generated Paraglide `.js` clashes with the Cloudflare `Request` global; no hand-written `.js` exists, so `.js` bodies aren't checked. → [i18n](docs/i18n.md)

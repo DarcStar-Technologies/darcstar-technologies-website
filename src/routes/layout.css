@@ -4,12 +4,49 @@
 @import '@skeletonlabs/skeleton-svelte';
 @import '../themes/darcstar.css';
 
+/* Self-hosted brand faces (issue #17) — variable woff2 + @font-face shipped by
+   Fontsource (font-display: swap). Imported here as CSS (not a JS side-effect
+   import) so Vite fingerprints/bundles the woff2 and the browser fetches only the
+   latin subset — with no untyped module for svelte-check to choke on. No Google
+   CDN. The family NAMES are wired below and in gen-theme.mjs; see the @theme block. */
+@import '@fontsource-variable/space-grotesk';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
 
 /* Dark-only site: `data-mode="dark"` is hardcoded on <html> in app.html.
    The custom variant is kept so the darcstar theme's dark tokens resolve. */
 @custom-variant dark (&:where([data-mode='dark'], [data-mode='dark'] *));
+
+/* Brand typography (issue #17) — self-hosted, no OS default. The faces load via
+   the Fontsource @import block above; this block only names them.
+     • body   → Inter          (Skeleton --base-font-family, in gen-theme.mjs)
+     • heading → Space Grotesk  (Skeleton --heading-font-family, in gen-theme.mjs)
+     • mono   → JetBrains Mono  (Tailwind --font-mono, below)
+   The mono face is the one the homepage leans on hardest — the GIDE kicker, the
+   section kickers, and the readout bar (0.767 µs / 13,000× / ∞) all use `font-mono`.
+   `--font-sans` mirrors the body face so Tailwind's sans utility stays in-brand. */
+@theme {
+	--font-sans: 'Inter Variable', system-ui, sans-serif;
+	--font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
+}
+
+/* Skeleton wires --heading-font-family only to its `.h1`–`.h6` utility classes,
+   but this site writes semantic <h1>–<h6> with Tailwind `text-*` sizing. Map the
+   heading elements to the display face (the same theme token — single source) so
+   headings render in Space Grotesk while body copy stays Inter. */
+@layer base {
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 {
+		font-family: var(--heading-font-family);
+	}
+}
 
 /* The homepage's three "color-charge" accents (red/green/blue) used by the hero
    and its CosmicBackdrop helix. These are semantic ALIASES onto the darcstar
