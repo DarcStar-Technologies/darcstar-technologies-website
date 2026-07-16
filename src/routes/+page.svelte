@@ -79,8 +79,9 @@
 			GIDE · Guaranteed Intelligent Dynamics Engine
 		</p>
 
-		<!-- The twisting triple helix (CosmicBackdrop) fills this gap on first load. -->
-		<div class="flex-1"></div>
+		<!-- The twisting triple helix centres in this gap; CosmicBackdrop measures
+		     #helix-slot to place and size it responsively. -->
+		<div id="helix-slot" class="flex-1"></div>
 
 		<div
 			class="glass-panel mx-auto w-full max-w-3xl rounded-2xl px-8 py-10 text-center sm:px-10 sm:py-12"

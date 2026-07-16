@@ -1,7 +1,9 @@
 <script lang="ts">
 	// Fixed, full-viewport decorative canvas: the cosmic void (dark-only site).
 	// Black + nebula glows + a persistent starfield + a twisting triple helix that
-	// stays fixed in the background as the page scrolls. Respects prefers-reduced-motion.
+	// stays fixed in the background as the page scrolls. The helix scales as a rigid
+	// unit (amplitude tracks its width) and centres in the hero's #helix-slot gap.
+	// Respects prefers-reduced-motion.
 
 	function backdrop(canvas: HTMLCanvasElement) {
 		const c = canvas.getContext('2d');
@@ -11,6 +13,10 @@
 
 		let w = 0;
 		let h = 0;
+		// Vertical centre + height of the gap the helix sits in, in document coords
+		// (scroll-invariant). Measured from the hero's #helix-slot; 0 = use fallback.
+		let slotCy = 0;
+		let slotH = 0;
 
 		function mulberry32(seed: number) {
 			return () => {
@@ -43,14 +49,31 @@
 			if (reduce) draw(lastT);
 		}
 
-		const heroCenter = () => Math.min(h * 0.42, 360);
+		// The empty flex-1 gap between the kicker and the headline panel. Using
+		// rect.top + scrollY keeps the measurement scroll-invariant, so the fixed
+		// helix aligns with the gap on first load and stays put while scrolling.
+		function measureSlot() {
+			const el = document.getElementById('helix-slot');
+			if (!el) {
+				slotCy = 0;
+				slotH = 0;
+				return;
+			}
+			const r = el.getBoundingClientRect();
+			slotCy = r.top + window.scrollY + r.height / 2;
+			slotH = r.height;
+		}
+
+		const helixCenter = () => slotCy || Math.min(h * 0.42, 360);
 
 		function drawHelix(t: number) {
 			const cx = w / 2;
-			const cy = heroCenter();
+			const cy = helixCenter();
 			const span = Math.min(w * 0.94, 1180);
 			const x0 = cx - span / 2;
-			const amp = Math.min(h * 0.15, 130);
+			// Amplitude tracks the WIDTH (not viewport height), so the braid keeps its
+			// aspect ratio and simply scales down on narrow screens; capped to the gap.
+			const amp = Math.min(span * 0.11, (slotH || h * 0.5) * 0.42);
 			const turns = 2.3;
 			const N = 66;
 			const phase = t * 0.0002;
@@ -103,6 +126,7 @@
 
 		function draw(t: number) {
 			lastT = t;
+			measureSlot();
 			c.clearRect(0, 0, w, h);
 
 			c.fillStyle = '#000000';
@@ -132,11 +156,9 @@
 			}
 			c.globalAlpha = 1;
 
-			// The helix stays put in the background across the whole scroll (the
-			// canvas is fixed), rather than fading out past the hero.
 			drawHelix(t);
 
-			const cy = heroCenter();
+			const cy = helixCenter();
 			const vg = c.createRadialGradient(w / 2, cy, 0, w / 2, cy, Math.max(w, h) * 0.62);
 			vg.addColorStop(0, 'rgba(0,0,0,0)');
 			vg.addColorStop(1, 'rgba(0,0,0,0.5)');
