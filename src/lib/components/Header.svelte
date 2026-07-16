@@ -39,7 +39,7 @@
 			<a
 				href={localizeHref('/')}
 				onclick={() => (open = false)}
-				class="flex items-center gap-2.5 text-xl font-bold tracking-tight text-white"
+				class="flex items-center gap-2.5 text-xl font-bold tracking-tight text-white sm:text-4xl"
 			>
 				<img src={favicon} alt="" class="size-20" />
 				<span>DarcStar <span class="charge-flow">Technologies</span></span>
