@@ -1,5 +1,8 @@
 <script lang="ts">
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
+	import favicon from '$lib/assets/favicon.svg';
+
+	const contactHref = 'mailto:mharris@darcstar.tech';
 
 	const readouts = [
 		{ v: '0.767 µs', l: 'CfC inference' },
@@ -15,13 +18,13 @@
 			body: 'Control Barrier Functions, machine-checked in Lean 4 and Isabelle. Not tested — proven.'
 		},
 		{
-			cvar: 'var(--charge-g)',
+			cvar: 'var(--charge-b)',
 			icon: 'bolt',
 			title: 'Real-time',
 			body: 'Closed-form continuous-time inference at 0.767 µs — 13,000× ahead of the world.'
 		},
 		{
-			cvar: 'var(--charge-b)',
+			cvar: 'var(--charge-g)',
 			icon: 'cycle',
 			title: 'Self-improving',
 			body: 'Neuroevolution and an autonomous Self-Dev loop that writes and verifies its own code.'
@@ -59,23 +62,29 @@
 	</svg>
 {/snippet}
 
+{#snippet sectionHead(kicker: string, heading: string)}
+	<div class="p-8 text-center sm:p-10">
+		<p class="font-mono text-xs tracking-[0.25em] text-white/35 uppercase">{kicker}</p>
+		<h2 class="mx-auto mt-3 max-w-3xl text-3xl font-medium tracking-tight text-white">{heading}</h2>
+	</div>
+{/snippet}
+
 <CosmicBackdrop />
 
 <div class="space-y-24">
-	<section
-		class="-mt-10 flex min-h-[calc(100svh-4rem)] flex-col items-center px-6 pt-6 pb-20 text-center sm:pt-8"
-	>
+	<section class="-mt-10 flex flex-col items-center px-6 pt-6 pb-16 text-center sm:pt-8">
 		<p class="font-mono text-sm tracking-[0.3em] text-white/40 uppercase">
 			GIDE · Guaranteed Intelligent Dynamics Engine
 		</p>
 
-		<!-- The twisting triple helix (CosmicBackdrop) fills this gap on first load. -->
-		<div class="flex-1"></div>
+		<!-- The twisting triple helix centres in this gap; CosmicBackdrop measures
+		     #helix-slot to place and size it responsively. -->
+		<div id="helix-slot" class="h-6 min-[360px]:h-[min(25vw,19rem)]"></div>
 
-		<div class="w-full">
-			<h1
-				class="mx-auto max-w-3xl text-4xl font-medium tracking-tight text-balance text-white sm:text-6xl"
-			>
+		<div
+			class="glass-panel mx-auto w-full max-w-3xl rounded-2xl px-8 py-10 text-center sm:px-10 sm:py-12"
+		>
+			<h1 class="text-4xl font-medium tracking-tight text-balance text-white sm:text-6xl">
 				Autonomous control you can
 				<span class="charge-flow">prove</span>
 				is safe.
@@ -91,7 +100,7 @@
 					>Explore GIDE</a
 				>
 				<a
-					href="mailto:mharris@darcstar.tech"
+					href={contactHref}
 					class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
 					>Get in touch →</a
 				>
@@ -114,14 +123,10 @@
 		</div>
 
 		<section id="gide" class="glass-panel scroll-mt-24 overflow-hidden rounded-2xl">
-			<div class="p-8 text-center sm:p-10">
-				<p class="font-mono text-xs tracking-[0.25em] text-white/35 uppercase">
-					// intelligence with guarantees
-				</p>
-				<h2 class="mt-3 text-3xl font-medium tracking-tight text-white">
-					A ~715K-line hybrid Zig / C++ runtime
-				</h2>
-			</div>
+			{@render sectionHead(
+				'// intelligence with guarantees',
+				'Nearly 1 M lines and counting of Zig, C++, Rust, and Python w/ custom CUDA Kernels'
+			)}
 			<div
 				class="grid divide-y divide-white/10 border-t border-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0"
 			>
@@ -141,14 +146,7 @@
 		</section>
 
 		<section class="glass-panel overflow-hidden rounded-2xl">
-			<div class="p-8 text-center sm:p-10">
-				<p class="font-mono text-xs tracking-[0.25em] text-white/35 uppercase">
-					// one engine, infinite domains
-				</p>
-				<h2 class="mt-3 text-3xl font-medium tracking-tight text-white">
-					Specialized at compile time
-				</h2>
-			</div>
+			{@render sectionHead('// one engine, infinite domains', 'Specialized at compile time')}
 			<div class="divide-y divide-white/10 border-t border-white/10">
 				{#each domains as d (d.n)}
 					<div class="flex flex-col gap-1 px-8 py-5 sm:flex-row sm:items-baseline sm:gap-6">
@@ -177,10 +175,12 @@
 				Safety-critical control, autonomous systems, formal methods — we'd like to hear from you.
 			</p>
 			<a
-				href="mailto:mharris@darcstar.tech"
-				class="glass-btn mt-8 inline-block rounded-full px-7 py-3 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
-				>Contact DarcStar</a
+				href={contactHref}
+				class="glass-btn mt-8 inline-flex items-center gap-2.5 rounded-full px-6 py-3 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
 			>
+				<img src={favicon} alt="" class="logo-spin size-5" />
+				Contact Us
+			</a>
 		</section>
 	</div>
 </div>

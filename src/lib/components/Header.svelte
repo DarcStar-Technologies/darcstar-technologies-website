@@ -4,10 +4,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 
 	// Starter links point to existing routes; replace with real nav as the site grows.
-	const links = [
-		{ label: 'Home', href: '/' },
-		{ label: 'Demo', href: '/demo' }
-	];
+	const links = [{ label: 'Home', href: '/' }];
 
 	let open = $state(false);
 </script>
