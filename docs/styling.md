@@ -86,10 +86,11 @@ Three `@utility` classes in `layout.css` render the frosted panes that float ove
 
 `glass-nav`'s drop shadow is **shadow-on-scroll**: it's flat at the top of the page (the bar sits over the hero, nothing to lift off) and fades in a tight, neutral shadow once the header detaches from the top. `Header.svelte` toggles `data-stuck` on the `<nav>` via an `IntersectionObserver` watching a 0-height sentinel pinned at document top — so there is **no per-scroll handler**, only a fire as the header crosses the top edge (`.glass-nav[data-stuck='true']` carries the lifted shadow; the transition respects `prefers-reduced-motion`).
 
-**Contrast-safe text rules.** These panels sit on the near-black void with a heavy blur, so foreground text is **pure white at graded opacity** (a deliberate, consistent hierarchy — not token drift):
+**Contrast-safe text rules (WCAG AA).** These panels sit on the near-black void with a heavy blur, and the faint R→G→B charge tint _lightens_ patches of the pane — which **lowers** contrast for white text. Foreground text is **pure white at graded opacity** (a deliberate, consistent hierarchy — not token drift), floored so even the lightened patches clear AA (4.5:1 for normal-size body and labels):
 
-- `text-white` — primary headings.
-- `text-white/55` (`/50` on tighter blocks) — body copy.
-- `text-white/40` / `text-white/35` — mono kickers, labels, and readout captions.
+- `text-white` — headings and primary readout values.
+- `text-white/70` — **body-copy floor** (hero lede, pillar/domain/section copy). The old `/55`–`/50` computed ~4.4:1 _at best_ and less over tinted patches — under AA (issue #16).
+- `text-white/60` at **≥ 12px** (`text-xs`) — mono kickers, tracked labels, readout captions. The old `/40`–`/35`, some at 11px, were well under AA.
+- **`< white/50` is decoration only** — borders, dividers, hover fills (`border-white/10`, `divide-white/10`, `hover:bg-white/10`). Never body text or labels.
 
-Keep body text at **≥ 55%** opacity and reserve `< 40%` for large-tracking mono labels only; below that, white-on-glass drops under a comfortable contrast ratio. Accent (non-white) text uses the triad via `.charge-flow`. When a surface is _not_ glass-over-void (e.g. a future light section), use Skeleton's `text-surface-*` contrast tokens instead of white-at-opacity.
+Keep body text at **≥ 70%** and labels at **≥ 60% / 12px**; below those, white-on-glass drops under AA over the tinted patches. Accent (non-white) text uses the triad via `.charge-flow` (itself floored to the brighter `-300` steps for the same reason — see the triad section). When a surface is _not_ glass-over-void (e.g. a future light section), use Skeleton's `text-surface-*` contrast tokens instead of white-at-opacity.

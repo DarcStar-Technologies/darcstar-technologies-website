@@ -64,7 +64,7 @@
 
 {#snippet sectionHead(kicker: string, heading: string)}
 	<div class="p-8 text-center sm:p-10">
-		<p class="font-mono text-xs tracking-[0.25em] text-white/35 uppercase">{kicker}</p>
+		<p class="font-mono text-xs tracking-[0.25em] text-white/60 uppercase">{kicker}</p>
 		<h2 class="mx-auto mt-3 max-w-3xl text-3xl font-medium tracking-tight text-white">{heading}</h2>
 	</div>
 {/snippet}
@@ -73,7 +73,7 @@
 
 <div class="space-y-24">
 	<section class="-mt-10 flex flex-col items-center px-6 pt-6 pb-16 text-center sm:pt-8">
-		<p class="font-mono text-sm tracking-[0.3em] text-white/40 uppercase">
+		<p class="font-mono text-sm tracking-[0.3em] text-white/60 uppercase">
 			GIDE · Guaranteed Intelligent Dynamics Engine
 		</p>
 
@@ -89,7 +89,7 @@
 				<span class="charge-flow">prove</span>
 				is safe.
 			</h1>
-			<p class="mx-auto mt-6 max-w-xl text-base text-white/55 sm:text-lg">
+			<p class="mx-auto mt-6 max-w-xl text-base text-white/70 sm:text-lg">
 				GIDE is a real-time intelligent control engine with formal safety guarantees — one system,
 				proven across robotics, markets, and software that improves itself.
 			</p>
@@ -115,7 +115,7 @@
 			{#each readouts as ro (ro.l)}
 				<div>
 					<div class="font-mono text-lg text-white sm:text-xl">{ro.v}</div>
-					<div class="mt-0.5 font-mono text-[11px] tracking-widest text-white/40 uppercase">
+					<div class="mt-0.5 font-mono text-xs tracking-widest text-white/60 uppercase">
 						{ro.l}
 					</div>
 				</div>
@@ -139,7 +139,7 @@
 							{@render icon(p.icon)}
 						</div>
 						<h3 class="mt-5 text-base font-medium text-white">{p.title}</h3>
-						<p class="mt-2 text-sm leading-relaxed text-white/55">{p.body}</p>
+						<p class="mt-2 text-sm leading-relaxed text-white/70">{p.body}</p>
 					</div>
 				{/each}
 			</div>
@@ -151,7 +151,7 @@
 				{#each domains as d (d.n)}
 					<div class="flex flex-col gap-1 px-8 py-5 sm:flex-row sm:items-baseline sm:gap-6">
 						<div class="w-52 shrink-0 text-sm font-medium text-white">{d.n}</div>
-						<div class="text-sm text-white/50">{d.d}</div>
+						<div class="text-sm text-white/70">{d.d}</div>
 					</div>
 				{/each}
 			</div>
@@ -161,7 +161,7 @@
 			<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
 				Proven, not just tested.
 			</h2>
-			<p class="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-white/55 sm:text-base">
+			<p class="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-white/70 sm:text-base">
 				Every safety guarantee is machine-checked through a formal-verification pipeline — Lean 4,
 				Isabelle, and SMT solvers. When GIDE says a system is safe, there is a proof.
 			</p>
@@ -171,7 +171,7 @@
 			<h2 class="text-3xl font-medium tracking-tight text-white sm:text-4xl">
 				Let's build something guaranteed.
 			</h2>
-			<p class="mx-auto mt-4 max-w-lg text-sm text-white/55">
+			<p class="mx-auto mt-4 max-w-lg text-sm text-white/70">
 				Safety-critical control, autonomous systems, formal methods — we'd like to hear from you.
 			</p>
 			<a
