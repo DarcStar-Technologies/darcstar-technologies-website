@@ -159,17 +159,20 @@ html {
 		inset 0 -1px 0 rgb(0 0 0 / 0.3);
 }
 
-/* Glinting-light sheen — PATH 2 (single light plane). ONE viewport overlay carrying a
-   single soft diagonal band that sweeps the screen, clipped to the frosted-glass
-   windows so every panel shows the same beam at its true screen position — a single
-   coherent light source (real geometry, not just synced timing). The band is
-   transform-animated (compositor-only); the clip-path (union of glass rects) is
-   maintained by JS (src/lib/glass-sheen.ts) on scroll + resize. z-30 sits above the
-   in-flow sections but below the scrim/header/modal. */
+/* Glinting-light sheen — a single light PLANE. ONE viewport overlay carrying a soft
+   diagonal band that sweeps the screen, clip-path'd to the frosted-glass windows so
+   every surface shows the same beam at its true screen position — one coherent light
+   source (real geometry, not just synced timing). The band is transform-animated
+   (compositor-only); the clip-path (union of rounded glass rects) is maintained by JS
+   (src/lib/glass-sheen.ts) on scroll + resize + modal open. It sits ABOVE every layer
+   (scrim 40 / header 50 / modal 60) so it can catch the nav and the modal too; being
+   clip-path'd to glass + pointer-events:none, it never draws on — or blocks — anything
+   else. While the modal is open the clip switches to the modal's glass only, so page
+   panels don't bleed sheen over the scrim. */
 .sheen-plane {
 	position: fixed;
 	inset: 0;
-	z-index: 30;
+	z-index: 70;
 	pointer-events: none;
 	overflow: hidden;
 	clip-path: path('M0 0Z'); /* nothing until JS sets the glass windows */
@@ -179,12 +182,12 @@ html {
 	inset: -50%; /* oversized so the band sweeps fully across the viewport */
 	background: linear-gradient(
 		125deg,
-		transparent 46%,
-		rgb(255 255 255 / 0.09) 50%,
-		transparent 54%
+		transparent 45%,
+		rgb(255 255 255 / 0.08) 50%,
+		transparent 55%
 	);
 	transform: translate3d(-30%, 30%, 0);
-	animation: sheen-plane-sweep 7.5s linear infinite;
+	animation: sheen-plane-sweep 9s linear infinite;
 	will-change: transform;
 }
 @keyframes sheen-plane-sweep {

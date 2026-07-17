@@ -5,9 +5,19 @@
 	import Footer from '$lib/components/Footer.svelte';
 	import BackToTop from '$lib/components/BackToTop.svelte';
 	import ContactDialog from '$lib/components/ContactDialog.svelte';
-	import { syncSheenPlane } from '$lib/glass-sheen';
+	import { contactDialog } from '$lib/contact-dialog.svelte';
+	import { createSheenSync } from '$lib/glass-sheen';
 
 	let { children } = $props();
+
+	// One coherent light source across all frosted glass (see `.sheen-plane`). The sync
+	// keeps the plane's clip-path tracking the glass windows; re-clip when the modal
+	// opens/closes so its panel joins the beam (and the page panels drop out behind the
+	// scrim while it's up).
+	let sheen: ReturnType<typeof createSheenSync> | undefined;
+	$effect(() => {
+		sheen?.refresh(contactDialog.open);
+	});
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
@@ -24,8 +34,18 @@
      void before it slides under/around the glass nav. See .header-scrim. -->
 <div class="header-scrim" aria-hidden="true"></div>
 
-<!-- Path-2 sheen prototype: one light plane clipped to the frosted-glass windows. -->
-<div class="sheen-plane" aria-hidden="true" {@attach syncSheenPlane}>
+<!-- One light plane clipped to the frosted-glass windows (see .sheen-plane). -->
+<div
+	class="sheen-plane"
+	aria-hidden="true"
+	{@attach (node) => {
+		sheen = createSheenSync(node);
+		return () => {
+			sheen?.destroy();
+			sheen = undefined;
+		};
+	}}
+>
 	<div class="sheen-plane__beam"></div>
 </div>
 
