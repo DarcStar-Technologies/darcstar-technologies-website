@@ -82,9 +82,11 @@
 	<!-- Zag sets the positioner's z-index inline (a class can't win); lift it above the
 	     form's glass-btn, whose backdrop-filter also makes it a z-auto stacking context. -->
 	<div {...mergeProps(api.getPositionerProps(), { style: 'z-index: 70' })}>
+		<!-- Frosted glass menu — grain + sheen + blur + lift over a dark-enough base to
+		     stay legible above the form fields (see `glass-menu` in layout.css). -->
 		<ul
 			{...api.getContentProps()}
-			class="max-h-60 overflow-auto rounded-lg border border-white/10 bg-surface-900/95 p-1 shadow-2xl backdrop-blur-xl focus:outline-none"
+			class="glass-menu max-h-60 overflow-auto rounded-xl p-1 focus:outline-none"
 		>
 			{#each options as opt (opt.value)}
 				<li

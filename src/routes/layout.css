@@ -198,6 +198,25 @@ html {
 	}
 }
 
+/* Frosted-glass floating menu — dropdowns/popovers (e.g. the contact form's interest
+   picker, issue #11). Like glass-panel but with a MORE OPAQUE dark base: this floats
+   over busy content (form fields), not the void, so glass-panel's ~4% fill would let
+   the text behind bleed through and wreck legibility. The dark fill keeps options
+   readable while the grain film + top sheen + heavy blur + lift shadow still read as
+   frosted glass, not a flat black box. Consumers add sizing/rounding/padding. */
+@utility glass-menu {
+	border: 1px solid rgb(255 255 255 / 0.12);
+	background-color: rgb(9 11 18 / 0.82);
+	/* Film grain over a subtle top sheen — the frosted-glass texture cues. */
+	background-image:
+		var(--grain), linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0) 40%);
+	-webkit-backdrop-filter: blur(24px);
+	backdrop-filter: blur(24px);
+	box-shadow:
+		0 24px 60px -24px rgb(0 0 0 / 0.8),
+		inset 0 1px 0 rgb(255 255 255 / 0.1);
+}
+
 /* Form fields carved INTO the frosted glass (contact modal, issue #11). Where
    glass-panel/glass-btn sit proud of the void, a field reads as a recessed well:
    a darker translucent fill + the shared grain film, a crisp dark inner shadow at
