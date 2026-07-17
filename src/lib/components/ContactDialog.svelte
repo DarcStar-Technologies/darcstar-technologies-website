@@ -61,9 +61,9 @@
 	}
 )}
 	<label class="block">
-		<span class="mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-white/70">
+		<span class="mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-body">
 			{labelText}
-			{#if opts.optional}<span class="font-normal text-white/50">{opts.optional}</span>{/if}
+			{#if opts.optional}<span class="font-normal text-faint">{opts.optional}</span>{/if}
 		</span>
 		{#if opts.multiline}
 			<textarea
@@ -93,7 +93,7 @@
 				class="glass-panel relative my-8 w-full max-w-lg rounded-2xl p-6 text-left sm:p-8"
 			>
 				<Dialog.CloseTrigger
-					class="glass-btn absolute top-4 right-4 flex size-9 items-center justify-center rounded-full text-white/70 hover:text-white"
+					class="glass-btn absolute top-4 right-4 flex size-9 items-center justify-center rounded-full text-body hover:text-white"
 					aria-label={m.contact_close()}
 				>
 					<svg
@@ -131,12 +131,10 @@
 						<Dialog.Title class="mt-4 text-2xl font-medium tracking-tight text-white">
 							{m.contact_success_title()}
 						</Dialog.Title>
-						<Dialog.Description class="mx-auto mt-2 max-w-sm text-sm text-white/70">
+						<Dialog.Description class="mx-auto mt-2 max-w-sm text-sm text-body">
 							{m.contact_success_body()}
 						</Dialog.Description>
-						<Dialog.CloseTrigger
-							class="glass-btn mt-6 rounded-full px-6 py-2.5 text-sm font-medium text-white"
-						>
+						<Dialog.CloseTrigger class="glass-btn btn-pill mt-6">
 							{m.contact_close()}
 						</Dialog.CloseTrigger>
 					</div>
@@ -144,7 +142,7 @@
 					<Dialog.Title class="text-2xl font-medium tracking-tight text-white">
 						{m.contact_dialog_title()}
 					</Dialog.Title>
-					<Dialog.Description class="mt-2 text-sm text-white/70">
+					<Dialog.Description class="mt-2 text-sm text-body">
 						{m.contact_dialog_description()}
 					</Dialog.Description>
 

@@ -31,7 +31,7 @@
 		aria-label={label}
 		rel={external ? 'noreferrer' : null}
 		target={external ? '_blank' : null}
-		class="glass-btn flex size-10 items-center justify-center rounded-lg text-white/70 hover:text-white"
+		class="glass-btn flex size-10 items-center justify-center rounded-lg text-body hover:text-white"
 	>
 		{#if icon === 'github'}
 			<svg class="size-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -58,7 +58,7 @@
 {/snippet}
 
 <!-- id="about" is the header's About nav target; scroll-mt clears the sticky header. -->
-<footer id="about" class="scroll-mt-24 border-t border-white/10 bg-white/[0.02]">
+<footer id="about" class="scroll-mt-24 border-t border-hairline bg-white/[0.02]">
 	<div class="mx-auto max-w-5xl px-4 py-12 sm:px-6">
 		<div class="flex flex-col gap-10 sm:flex-row sm:justify-between">
 			<!-- Brand + tagline + socials -->
@@ -69,7 +69,7 @@
 				>
 					<Wordmark markClass="size-9" />
 				</a>
-				<p class="mt-4 text-sm text-white/70">
+				<p class="mt-4 text-sm text-body">
 					{m.footer_tagline()}
 				</p>
 				<div class="mt-5 flex gap-3">
@@ -80,7 +80,7 @@
 
 			<!-- Secondary nav -->
 			<nav aria-label={m.footer_nav_label()}>
-				<h2 class="font-mono text-xs tracking-widest text-white/60 uppercase">
+				<h2 class="eyebrow text-xs tracking-widest">
 					{m.footer_nav_heading()}
 				</h2>
 				<ul class="mt-4 space-y-2.5">
@@ -88,7 +88,7 @@
 						<li>
 							<a
 								href={link.href}
-								class="text-sm text-white/70 transition-colors hover:text-primary-500"
+								class="text-sm text-body transition-colors hover:text-primary-500"
 							>
 								{link.label}
 							</a>
@@ -99,7 +99,7 @@
 							type="button"
 							aria-haspopup="dialog"
 							onclick={() => contactDialog.show()}
-							class="text-sm text-white/70 transition-colors hover:text-primary-500"
+							class="text-sm text-body transition-colors hover:text-primary-500"
 						>
 							{m.footer_nav_contact()}
 						</button>
@@ -110,7 +110,7 @@
 
 		<!-- Legal bar -->
 		<div
-			class="mt-10 flex flex-col gap-1.5 border-t border-white/10 pt-6 text-xs text-white/60 sm:flex-row sm:items-center sm:justify-between"
+			class="mt-10 flex flex-col gap-1.5 border-t border-hairline pt-6 text-xs text-muted sm:flex-row sm:items-center sm:justify-between"
 		>
 			<p>{m.footer_copyright({ year: String(year) })}</p>
 			<p>{m.footer_location()}</p>
