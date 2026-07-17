@@ -207,7 +207,10 @@ html {
    Consumers add sizing (w-full, rounded-lg, padding, text-sm). */
 @utility glass-field {
 	border: 1px solid rgb(255 255 255 / 0.07);
-	background-color: rgb(0 0 0 / 0.22);
+	/* A near-opaque dark fill so text inputs read as solid/dark as the native
+	   <select> (whose control is opaque under color-scheme: dark) instead of letting
+	   the lighter panel tint show through. */
+	background-color: rgb(0 0 0 / 0.55);
 	background-image: var(--grain);
 	color: rgb(255 255 255);
 	box-shadow:
