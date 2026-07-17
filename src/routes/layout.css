@@ -183,11 +183,13 @@ html {
 	background: linear-gradient(
 		125deg,
 		transparent 45%,
-		rgb(255 255 255 / 0.08) 50%,
+		rgb(255 255 255 / 0.15) 50%,
 		transparent 55%
 	);
 	transform: translate3d(-30%, 30%, 0);
-	animation: sheen-plane-sweep 9s linear infinite;
+	/* One sweep per helix rotation — CosmicBackdrop advances the helix phase at
+	   0.0002 rad/ms, so a full 2π turn is 2π/0.0002 ≈ 31.416s. Keep them in step. */
+	animation: sheen-plane-sweep 31.416s linear infinite;
 	will-change: transform;
 }
 @keyframes sheen-plane-sweep {

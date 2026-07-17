@@ -31,16 +31,12 @@ function roundedRect(r: DOMRect, radius: number): string {
 }
 
 function glassElements(modalOpen: boolean): HTMLElement[] {
-	if (modalOpen) {
-		// While the modal is up, the plane sits above the scrim — so clip to the modal's
-		// glass only, or page panels behind the scrim would bleed sheen over it.
-		const dialog = document.querySelector(DIALOG);
-		if (!dialog) return [];
-		return Array.from(dialog.querySelectorAll<HTMLElement>(GLASS));
-	}
-	// Page glass, minus anything living inside a (closed but still-mounted) dialog.
+	// While the modal is up, clip to the modal's glass ONLY (page panels sit behind the
+	// scrim and would otherwise bleed sheen over it); otherwise clip to the page glass.
+	// `closest(DIALOG)` matches the dialog Content itself (it carries data-scope="dialog")
+	// and its buttons — reliable regardless of which dialog part comes first in the DOM.
 	return Array.from(document.querySelectorAll<HTMLElement>(GLASS)).filter(
-		(el) => !el.closest(DIALOG)
+		(el) => Boolean(el.closest(DIALOG)) === modalOpen
 	);
 }
 
@@ -65,6 +61,7 @@ export function createSheenSync(plane: HTMLElement) {
 	}
 
 	let raf = 0;
+	let retry: ReturnType<typeof setTimeout> | undefined;
 	const schedule = () => {
 		cancelAnimationFrame(raf);
 		raf = requestAnimationFrame(apply);
@@ -78,11 +75,15 @@ export function createSheenSync(plane: HTMLElement) {
 		/** Re-clip; call when the set of glass elements changes (modal open/close). */
 		refresh(nextModalOpen: boolean) {
 			modalOpen = nextModalOpen;
-			// A rAF lets the portalled dialog mount before we read its rects.
 			schedule();
+			// The portalled dialog mounts a tick after `open` flips, so re-clip once more
+			// shortly after — the immediate pass can run before its glass is in the DOM.
+			clearTimeout(retry);
+			retry = setTimeout(schedule, 120);
 		},
 		destroy() {
 			cancelAnimationFrame(raf);
+			clearTimeout(retry);
 			window.removeEventListener('scroll', schedule);
 			window.removeEventListener('resize', schedule);
 		}
