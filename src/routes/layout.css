@@ -179,14 +179,18 @@ html {
 }
 .sheen-plane__beam {
 	position: absolute;
-	inset: -50%; /* oversized so the band sweeps fully across the viewport */
+	/* Oversized (2.2× viewport) with a matching ±24% sweep so the beam's EDGES always
+	   stay off-screen — otherwise an edge crosses the viewport near the top and the nav
+	   catches a hard-edged partial sheen (looks like a local flash) while the top of the
+	   screen goes uncovered. Margin: 0.6 vw each side vs a 0.53 vw sweep. */
+	inset: -60%;
 	background: linear-gradient(
 		125deg,
 		transparent 45%,
 		rgb(255 255 255 / 0.15) 50%,
 		transparent 55%
 	);
-	transform: translate3d(-30%, 30%, 0);
+	transform: translate3d(-24%, 24%, 0);
 	/* One sweep per helix rotation — CosmicBackdrop advances the helix phase at
 	   0.0002 rad/ms, so a full 2π turn is 2π/0.0002 ≈ 31.416s. Keep them in step. */
 	animation: sheen-plane-sweep 31.416s linear infinite;
@@ -194,7 +198,7 @@ html {
 }
 @keyframes sheen-plane-sweep {
 	to {
-		transform: translate3d(30%, -30%, 0);
+		transform: translate3d(24%, -24%, 0);
 	}
 }
 /* Lighter frosted variant for the STICKY HEADER. The hero-tuned glass-panel above
