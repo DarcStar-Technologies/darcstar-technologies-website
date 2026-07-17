@@ -7,6 +7,7 @@
 	import { submitContact } from '$lib/contact.remote';
 	import { INTERESTS, type Interest } from '$lib/contact-interests';
 	import { m } from '$lib/paraglide/messages.js';
+	import GlassSelect from './GlassSelect.svelte';
 
 	// slug → localized label, single-sourced from INTERESTS (order follows the array).
 	const interestLabel: Record<Interest, () => string> = {
@@ -16,7 +17,13 @@
 		partnership: m.contact_interest_partnership,
 		other: m.contact_interest_other
 	};
+	const interestOptions = $derived(
+		INTERESTS.map((value) => ({ value, label: interestLabel[value]() }))
+	);
 
+	// Interest uses the custom glass dropdown (GlassSelect) rather than a native
+	// <select>, so its value rides a hidden input into the remote form's FormData.
+	let interest = $state('');
 	let showSuccess = $state(false);
 	let serverError = $state(false);
 
@@ -113,6 +120,7 @@
 							try {
 								if (await form.submit()) {
 									form.element.reset();
+									interest = '';
 									showSuccess = true;
 								}
 							} catch {
@@ -183,36 +191,19 @@
 							/>
 						</label>
 
-						<label class="block">
-							<span class={labelClass}>{m.contact_field_interest_label()}</span>
-							<div class="relative">
-								<select
-									{...submitContact.fields.interest.as('select')}
-									class="glass-field w-full appearance-none rounded-lg py-2.5 pr-10 pl-3.5 text-sm"
-								>
-									<option value="" class="bg-surface-900 text-white">
-										{m.contact_interest_placeholder()}
-									</option>
-									{#each INTERESTS as slug (slug)}
-										<option value={slug} class="bg-surface-900 text-white">
-											{interestLabel[slug]()}
-										</option>
-									{/each}
-								</select>
-								<svg
-									class="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 text-white/50"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									aria-hidden="true"
-								>
-									<path d="m6 9 6 6 6-6" />
-								</svg>
-							</div>
-						</label>
+						<div>
+							<span id="contact-interest-label" class={labelClass}>
+								{m.contact_field_interest_label()}
+							</span>
+							<GlassSelect
+								id="contact-interest"
+								labelId="contact-interest-label"
+								options={interestOptions}
+								placeholder={m.contact_interest_placeholder()}
+								bind:value={interest}
+							/>
+							<input type="hidden" name="interest" value={interest} />
+						</div>
 
 						<label class="block">
 							<span class={labelClass}>{m.contact_field_message_label()}</span>
