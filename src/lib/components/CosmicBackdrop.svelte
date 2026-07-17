@@ -62,9 +62,47 @@
 		}));
 
 		let lastT = 0;
+		let dpr = 1;
+
+		// Static-layer cache: the black base + the three nebula glows are identical every
+		// frame, so render them ONCE per resize into an offscreen canvas and blit that
+		// each frame — instead of rebuilding 3 radial gradients and filling the viewport
+		// 4× per frame. The vignette must sit ON TOP of the helix, so it stays a per-frame
+		// fill, but its gradient object is cached too (no per-frame createRadialGradient).
+		const bg = document.createElement('canvas');
+		const bgc = bg.getContext('2d');
+		let vignette: CanvasGradient | null = null;
+
+		function renderBackground() {
+			bg.width = canvas.width;
+			bg.height = canvas.height;
+			if (!bgc) return;
+			bgc.setTransform(dpr, 0, 0, dpr, 0, 0);
+			bgc.fillStyle = '#000000';
+			bgc.fillRect(0, 0, w, h);
+			const glows = [
+				{ x: w * 0.26, y: h * 0.3, col: withAlpha(triad[0], 0.13) },
+				{ x: w * 0.74, y: h * 0.28, col: withAlpha(triad[1], 0.13) },
+				{ x: w * 0.5, y: h * 0.74, col: withAlpha(triad[2], 0.13) }
+			];
+			const rad = Math.max(w, h) * 0.42;
+			for (const g of glows) {
+				const grd = bgc.createRadialGradient(g.x, g.y, 0, g.x, g.y, rad);
+				grd.addColorStop(0, g.col);
+				grd.addColorStop(1, 'transparent');
+				bgc.fillStyle = grd;
+				bgc.fillRect(0, 0, w, h);
+			}
+			// Vignette gradient tracks the helix centre; only a resize moves it. Painted
+			// on top of the helix in draw().
+			const cy = helixCenter();
+			vignette = c.createRadialGradient(w / 2, cy, 0, w / 2, cy, Math.max(w, h) * 0.62);
+			vignette.addColorStop(0, 'rgba(0,0,0,0)');
+			vignette.addColorStop(1, 'rgba(0,0,0,0.5)');
+		}
 
 		function resize() {
-			const dpr = Math.min(window.devicePixelRatio || 1, 2);
+			dpr = Math.min(window.devicePixelRatio || 1, 2);
 			w = window.innerWidth;
 			h = window.innerHeight;
 			canvas.width = Math.floor(w * dpr);
@@ -73,9 +111,10 @@
 			// Re-measure the helix slot here rather than per frame: its centre is
 			// scroll-invariant (rect.top + scrollY), so only a resize/reflow moves it.
 			measureSlot();
-			// Resizing clears the bitmap; redraw one frame so a paused (hero offscreen)
-			// or reduced-motion backdrop isn't left blank. A running loop just repaints
-			// again on its next tick.
+			// Rebuild the cached static background at the new size, then redraw one frame
+			// (a paused / reduced-motion backdrop would otherwise be left blank after a
+			// resize; a running loop simply repaints again on its next tick).
+			renderBackground();
 			draw(lastT);
 		}
 
@@ -136,45 +175,37 @@
 			c.lineCap = 'round';
 			for (const sg of segs) {
 				const zz = (sg.z + 1) / 2; // 0 back .. 1 front
+				const alpha = 0.14 + 0.86 * zz;
+				const width = 0.6 + 2.1 * zz;
 				c.strokeStyle = sg.col;
-				c.globalAlpha = 0.14 + 0.86 * zz;
-				c.lineWidth = 0.6 + 2.1 * zz;
-				if (zz > 0.5) {
-					c.shadowBlur = 9 * zz;
-					c.shadowColor = sg.col;
-				} else {
-					c.shadowBlur = 0;
-				}
 				c.beginPath();
 				c.moveTo(sg.x0, sg.y0);
 				c.lineTo(sg.x1, sg.y1);
+				// Front strands get a soft halo — a wide, faint additive stroke under the
+				// bright core — approximating the glow far more cheaply than the previous
+				// per-segment `shadowBlur` (the priciest 2D op, run ~99×/frame).
+				if (zz > 0.5) {
+					c.globalAlpha = alpha * 0.2;
+					c.lineWidth = width + 7 * zz;
+					c.stroke();
+				}
+				c.globalAlpha = alpha;
+				c.lineWidth = width;
 				c.stroke();
 			}
 			c.globalAlpha = 1;
-			c.shadowBlur = 0;
 			c.globalCompositeOperation = 'source-over';
 		}
 
 		function draw(t: number) {
 			lastT = t;
-			c.clearRect(0, 0, w, h);
 
-			c.fillStyle = '#000000';
-			c.fillRect(0, 0, w, h);
-
-			const glows = [
-				{ x: w * 0.26, y: h * 0.3, col: withAlpha(triad[0], 0.13) },
-				{ x: w * 0.74, y: h * 0.28, col: withAlpha(triad[1], 0.13) },
-				{ x: w * 0.5, y: h * 0.74, col: withAlpha(triad[2], 0.13) }
-			];
-			const rad = Math.max(w, h) * 0.42;
-			for (const g of glows) {
-				const grd = c.createRadialGradient(g.x, g.y, 0, g.x, g.y, rad);
-				grd.addColorStop(0, g.col);
-				grd.addColorStop(1, 'transparent');
-				c.fillStyle = grd;
-				c.fillRect(0, 0, w, h);
-			}
+			// Blit the cached static background (black + nebula glows) 1:1 in device px.
+			// It's an opaque base, so it doubles as the frame clear; then restore the DPR
+			// transform for the dynamic layers.
+			c.setTransform(1, 0, 0, 1, 0, 0);
+			c.drawImage(bg, 0, 0);
+			c.setTransform(dpr, 0, 0, dpr, 0, 0);
 
 			for (const st of stars) {
 				const tw = reduce ? 1 : 0.55 + 0.45 * Math.sin(t * 0.001 * st.sp + st.tw);
@@ -188,17 +219,16 @@
 
 			drawHelix(t);
 
-			const cy = helixCenter();
-			const vg = c.createRadialGradient(w / 2, cy, 0, w / 2, cy, Math.max(w, h) * 0.62);
-			vg.addColorStop(0, 'rgba(0,0,0,0)');
-			vg.addColorStop(1, 'rgba(0,0,0,0.5)');
-			c.fillStyle = vg;
-			c.fillRect(0, 0, w, h);
+			// Vignette on top of the helix (cached gradient — see renderBackground).
+			if (vignette) {
+				c.fillStyle = vignette;
+				c.fillRect(0, 0, w, h);
+			}
 		}
 
-		// Ambient motion is slow, so cap the redraw at ~30fps (halves the work vs. a
-		// 60/120Hz display) and pause entirely while the tab is hidden.
-		const frameMs = 1000 / 30;
+		// Ambient motion is slow, so cap the redraw at ~24fps (well under a 60/120Hz
+		// display — imperceptible for motion this slow) and pause entirely while hidden.
+		const frameMs = 1000 / 24;
 		let raf = 0;
 		let lastDraw = 0;
 		function loop(t: number) {
