@@ -159,45 +159,37 @@ html {
 		inset 0 -1px 0 rgb(0 0 0 / 0.3);
 }
 
-/* Glinting-light sheen — a faint diagonal highlight drifting bottom-left → top-right
-   across the frosted surfaces (panels, nav, buttons), like light glancing off glass.
-   A separate ::after overlay swept purely with `transform` (never background-position),
-   so it composites on top of the already-cached backdrop blur and NEVER forces the
-   element — or its expensive `backdrop-filter` — to repaint (measured: Δ paint = 0).
-   Wrapped in `@layer utilities` + `:where()` (zero specificity) so a call-site
-   `absolute`/`fixed` (e.g. the dialog close button) still wins the position — an
-   UNlayered rule would beat Tailwind's layered utilities regardless of specificity. */
-@layer utilities {
-	:where(.glass-panel, .glass-nav, .glass-btn) {
-		position: relative;
-		overflow: hidden;
-	}
-	.glass-panel::after,
-	.glass-nav::after,
-	.glass-btn::after {
-		content: '';
-		position: absolute;
-		inset: -60%;
-		pointer-events: none;
-		background: linear-gradient(
-			125deg,
-			transparent 44%,
-			rgb(255 255 255 / 0.07) 50%,
-			transparent 56%
-		);
-		transform: translate3d(-28%, 28%, 0);
-		/* One coherent light source: every frosted element runs the SAME transform sweep,
-		   but staggered by a per-element `--sheen-delay` (set from its page position by
-		   src/lib/glass-sheen.ts) so the glint ripples across the scene like a single beam
-		   rather than every panel flashing in unison. `linear` keeps the beam speed even.
-		   Delay only shifts phase — the animation is still transform-only (compositor). */
-		animation: glass-sheen 7.5s linear var(--sheen-delay, 0s) infinite;
-		will-change: transform;
-	}
+/* Glinting-light sheen — PATH 2 (single light plane). ONE viewport overlay carrying a
+   single soft diagonal band that sweeps the screen, clipped to the frosted-glass
+   windows so every panel shows the same beam at its true screen position — a single
+   coherent light source (real geometry, not just synced timing). The band is
+   transform-animated (compositor-only); the clip-path (union of glass rects) is
+   maintained by JS (src/lib/glass-sheen.ts) on scroll + resize. z-30 sits above the
+   in-flow sections but below the scrim/header/modal. */
+.sheen-plane {
+	position: fixed;
+	inset: 0;
+	z-index: 30;
+	pointer-events: none;
+	overflow: hidden;
+	clip-path: path('M0 0Z'); /* nothing until JS sets the glass windows */
 }
-@keyframes glass-sheen {
+.sheen-plane__beam {
+	position: absolute;
+	inset: -50%; /* oversized so the band sweeps fully across the viewport */
+	background: linear-gradient(
+		125deg,
+		transparent 46%,
+		rgb(255 255 255 / 0.09) 50%,
+		transparent 54%
+	);
+	transform: translate3d(-30%, 30%, 0);
+	animation: sheen-plane-sweep 7.5s linear infinite;
+	will-change: transform;
+}
+@keyframes sheen-plane-sweep {
 	to {
-		transform: translate3d(28%, -28%, 0);
+		transform: translate3d(30%, -30%, 0);
 	}
 }
 /* Lighter frosted variant for the STICKY HEADER. The hero-tuned glass-panel above
@@ -378,10 +370,8 @@ html {
 	.glass-nav {
 		transition: none;
 	}
-	/* Freeze the glass sheen mid-drift (keeps a static highlight, no motion). */
-	.glass-panel::after,
-	.glass-nav::after,
-	.glass-btn::after {
+	/* Freeze the glass sheen plane (keeps a static highlight, no motion). */
+	.sheen-plane__beam {
 		animation: none;
 	}
 }

@@ -1,51 +1,53 @@
-// Glass-sheen coherence (prototype). The sheen itself is a compositor-only `::after`
-// on every frosted surface (see the `glass-sheen` animation in layout.css). By default
-// each element runs it on the same clock, so they all glint in unison — reads as "every
-// panel shimmers together", not "one light sweeps the scene".
+// Glass-sheen PATH 2 (single light plane) — prototype.
 //
-// This aligns them to a single PAGE-ANCHORED light source by giving each element a
-// negative `animation-delay` proportional to its position along the sweep axis
-// (bottom-left → top-right), so the glint ripples across in sequence. It only sets a CSS
-// variable — the animation stays transform-only, so the per-frame cost is unchanged
-// (measured: Paint Δ ~0). Positions are page-relative, so scrolling needs no updates;
-// we only recompute on resize (layout reflow) and when the caller re-invokes (e.g. the
-// contact modal opening, which adds its own glass elements).
+// A single fixed overlay (`.sheen-plane` in +layout.svelte) carries one soft diagonal
+// band, transform-animated across the viewport. This keeps its `clip-path` set to the
+// union of the frosted-glass rectangles, so the band is only visible ON the glass — one
+// coherent light source whose geometry (not just timing) is shared across every panel.
+//
+// Cost profile vs path 1: the beam sweep is compositor-only (transform), same as before.
+// The NEW cost is here — reading the glass rects and rebuilding the clip-path. Because
+// the plane is viewport-fixed, the windows move as you scroll, so this must run on
+// scroll (rAF-batched) as well as resize. That's the tradeoff path 1 avoided.
+//
+// Scope: the homepage sections (.glass-panel). Sharp rects (rounded corners not clipped)
+// — a prototype; rounding would need arc segments in the path.
 
-const SELECTOR = '.glass-panel, .glass-nav, .glass-btn';
-const PERIOD_S = 7.5; // must match the CSS animation duration
+const SELECTOR = '.glass-panel';
 
-function apply() {
-	const els = Array.from(document.querySelectorAll<HTMLElement>(SELECTOR));
-	if (els.length === 0) return;
+export function syncSheenPlane(plane: HTMLElement): () => void {
+	function apply() {
+		const rects = Array.from(document.querySelectorAll<HTMLElement>(SELECTOR)).map((el) =>
+			el.getBoundingClientRect()
+		);
+		if (rects.length === 0) {
+			plane.style.clipPath = "path('M0 0Z')";
+			return;
+		}
+		// One rectangular subpath per glass window, in the plane's (viewport) coordinates.
+		const d = rects
+			.map((r) => {
+				const l = r.left.toFixed(1);
+				const t = r.top.toFixed(1);
+				const ri = r.right.toFixed(1);
+				const b = r.bottom.toFixed(1);
+				return `M${l} ${t}H${ri}V${b}H${l}Z`;
+			})
+			.join('');
+		plane.style.clipPath = `path('${d}')`;
+	}
 
-	// Sweep axis: bottom-left → top-right, so project each element's page-space centre
-	// onto (x − y). Lower value = more bottom-left (glints first); higher = top-right.
-	const d = els.map((el) => {
-		const r = el.getBoundingClientRect();
-		const cx = r.left + window.scrollX + r.width / 2;
-		const cy = r.top + window.scrollY + r.height / 2;
-		return cx - cy;
-	});
-	const min = Math.min(...d);
-	const span = Math.max(...d) - min || 1;
-
-	els.forEach((el, i) => {
-		const frac = (d[i] - min) / span; // 0 (bottom-left) … 1 (top-right)
-		el.style.setProperty('--sheen-delay', `${(-frac * PERIOD_S).toFixed(3)}s`);
-	});
-}
-
-/** Start syncing; returns a cleanup that removes the resize listener. */
-export function syncGlassSheen(): () => void {
 	let raf = 0;
 	const schedule = () => {
 		cancelAnimationFrame(raf);
 		raf = requestAnimationFrame(apply);
 	};
 	schedule();
+	window.addEventListener('scroll', schedule, { passive: true });
 	window.addEventListener('resize', schedule, { passive: true });
 	return () => {
 		cancelAnimationFrame(raf);
+		window.removeEventListener('scroll', schedule);
 		window.removeEventListener('resize', schedule);
 	};
 }

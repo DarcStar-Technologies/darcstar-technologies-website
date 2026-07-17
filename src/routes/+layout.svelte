@@ -5,18 +5,9 @@
 	import Footer from '$lib/components/Footer.svelte';
 	import BackToTop from '$lib/components/BackToTop.svelte';
 	import ContactDialog from '$lib/components/ContactDialog.svelte';
-	import { contactDialog } from '$lib/contact-dialog.svelte';
-	import { syncGlassSheen } from '$lib/glass-sheen';
+	import { syncSheenPlane } from '$lib/glass-sheen';
 
 	let { children } = $props();
-
-	// Prototype: align every frosted-glass sheen to one page-anchored light source
-	// (per-element animation-delay from position). Re-runs when the modal opens so its
-	// glass panels/buttons join the same beam; page-anchored, so scroll needs no work.
-	$effect(() => {
-		void contactDialog.open; // re-sync when the modal mounts its glass elements
-		return syncGlassSheen();
-	});
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
@@ -32,6 +23,11 @@
 <!-- Fixed void-coloured gradient below the header: content dissolves into the
      void before it slides under/around the glass nav. See .header-scrim. -->
 <div class="header-scrim" aria-hidden="true"></div>
+
+<!-- Path-2 sheen prototype: one light plane clipped to the frosted-glass windows. -->
+<div class="sheen-plane" aria-hidden="true" {@attach syncSheenPlane}>
+	<div class="sheen-plane__beam"></div>
+</div>
 
 <BackToTop />
 
