@@ -73,10 +73,33 @@
 		const bgc = bg.getContext('2d');
 		let vignette: CanvasGradient | null = null;
 
+		// A second cache — the FULL static backdrop with the starfield FROZEN and no helix
+		// (black + glows + steady stars + vignette). Used only once the hero has scrolled
+		// away: the helix keeps turning, but instead of repainting the whole viewport (which
+		// forces every glass panel to re-blur) we restore just the helix's strip from this
+		// frame and redraw the helix there — so the canvas's dirty region, and the panels
+		// that re-blur, shrink to that band. Stars stop twinkling while scrolled because
+		// their per-frame change is what would otherwise dirty the whole canvas.
+		const staticFrame = document.createElement('canvas');
+		const sfc = staticFrame.getContext('2d');
+		let freezePending = false;
+
+		function makeVignette(x: CanvasRenderingContext2D) {
+			const cy = helixCenter();
+			const g = x.createRadialGradient(w / 2, cy, 0, w / 2, cy, Math.max(w, h) * 0.62);
+			g.addColorStop(0, 'rgba(0,0,0,0)');
+			g.addColorStop(1, 'rgba(0,0,0,0.5)');
+			return g;
+		}
+
 		function renderBackground() {
 			bg.width = canvas.width;
 			bg.height = canvas.height;
-			if (!bgc) return;
+			staticFrame.width = canvas.width;
+			staticFrame.height = canvas.height;
+			if (!bgc || !sfc) return;
+
+			// bg = black + the three nebula glows.
 			bgc.setTransform(dpr, 0, 0, dpr, 0, 0);
 			bgc.fillStyle = '#000000';
 			bgc.fillRect(0, 0, w, h);
@@ -95,10 +118,23 @@
 			}
 			// Vignette gradient tracks the helix centre; only a resize moves it. Painted
 			// on top of the helix in draw().
-			const cy = helixCenter();
-			vignette = c.createRadialGradient(w / 2, cy, 0, w / 2, cy, Math.max(w, h) * 0.62);
-			vignette.addColorStop(0, 'rgba(0,0,0,0)');
-			vignette.addColorStop(1, 'rgba(0,0,0,0.5)');
+			vignette = makeVignette(c);
+
+			// staticFrame = bg + frozen (steady) stars + vignette — the helix-less backdrop
+			// the scrolled-away path restores the helix strip from each frame.
+			sfc.setTransform(1, 0, 0, 1, 0, 0);
+			sfc.drawImage(bg, 0, 0);
+			sfc.setTransform(dpr, 0, 0, dpr, 0, 0);
+			for (const st of stars) {
+				sfc.globalAlpha = Math.max(0, st.base);
+				sfc.beginPath();
+				sfc.arc(st.x * w, st.y * h, st.r, 0, Math.PI * 2);
+				sfc.fillStyle = '#ffffff';
+				sfc.fill();
+			}
+			sfc.globalAlpha = 1;
+			sfc.fillStyle = makeVignette(sfc);
+			sfc.fillRect(0, 0, w, h);
 		}
 
 		function resize() {
@@ -111,11 +147,15 @@
 			// Re-measure the helix slot here rather than per frame: its centre is
 			// scroll-invariant (rect.top + scrollY), so only a resize/reflow moves it.
 			measureSlot();
-			// Rebuild the cached static background at the new size, then redraw one frame
-			// (a paused / reduced-motion backdrop would otherwise be left blank after a
-			// resize; a running loop simply repaints again on its next tick).
+			// Rebuild the cached backgrounds at the new size, then redraw one frame in the
+			// current mode (a paused / reduced-motion backdrop would otherwise be left blank
+			// after a resize; a running loop simply repaints again on its next tick).
 			renderBackground();
-			draw(lastT);
+			if (heroVisible || reduce) draw(lastT);
+			else {
+				freezePending = true;
+				drawHelixOnly(lastT);
+			}
 		}
 
 		// The empty flex-1 gap between the kicker and the headline panel. Using
@@ -226,6 +266,55 @@
 			}
 		}
 
+		// The helix's bounding band (full width × the strand amplitude), padded for the
+		// stroke + additive glow so nothing trails outside when we repaint only this region.
+		function helixBBox() {
+			const cy = helixCenter();
+			const span = Math.min(w * 0.94, 1180);
+			const amp = Math.min(span * 0.11, (slotH || h * 0.5) * 0.42);
+			const pad = 14;
+			const x = Math.max(0, w / 2 - span / 2 - pad);
+			const y = Math.max(0, cy - amp - pad);
+			return {
+				x,
+				y,
+				width: Math.min(w - x, span + 2 * pad),
+				height: Math.min(h - y, 2 * amp + 2 * pad)
+			};
+		}
+
+		// Scrolled past the hero: keep the helix turning but freeze everything else. Restore
+		// only the previous helix band from the frozen staticFrame and redraw the helix
+		// there (clipped) — so the canvas's dirty region is that band, not the whole
+		// viewport, and only panels overlapping the band re-blur.
+		function drawHelixOnly(t: number) {
+			lastT = t;
+			if (freezePending) {
+				// First frame after leaving the hero: lay down one clean frozen full frame
+				// (whole starfield consistent) before switching to strip-only repaints.
+				freezePending = false;
+				c.setTransform(1, 0, 0, 1, 0, 0);
+				c.drawImage(staticFrame, 0, 0);
+				c.setTransform(dpr, 0, 0, dpr, 0, 0);
+				drawHelix(t);
+				return;
+			}
+			const b = helixBBox();
+			const sx = Math.floor(b.x * dpr);
+			const sy = Math.floor(b.y * dpr);
+			const sw = Math.ceil(b.width * dpr);
+			const sh = Math.ceil(b.height * dpr);
+			c.setTransform(1, 0, 0, 1, 0, 0);
+			c.drawImage(staticFrame, sx, sy, sw, sh, sx, sy, sw, sh);
+			c.setTransform(dpr, 0, 0, dpr, 0, 0);
+			c.save();
+			c.beginPath();
+			c.rect(b.x, b.y, b.width, b.height);
+			c.clip();
+			drawHelix(t);
+			c.restore();
+		}
+
 		// Ambient motion is slow, so cap the redraw at ~24fps (well under a 60/120Hz
 		// display — imperceptible for motion this slow) and pause entirely while hidden.
 		const frameMs = 1000 / 24;
@@ -235,7 +324,10 @@
 			raf = requestAnimationFrame(loop);
 			if (t - lastDraw < frameMs) return;
 			lastDraw = t;
-			draw(t);
+			// In the hero: full draw (twinkling stars + helix). Scrolled past: cheap
+			// helix-only path (frozen stars, only the helix band repaints).
+			if (heroVisible) draw(t);
+			else drawHelixOnly(t);
 		}
 		// Raw rAF controls; `sync()` decides whether the loop SHOULD be running.
 		function start() {
@@ -248,15 +340,15 @@
 			}
 		}
 
-		// The animation is only worth running while the hero (with the moving helix) is
-		// on screen, the tab is visible, and motion isn't reduced. The real cost on this
-		// page isn't the canvas itself but that every glass panel's backdrop-filter must
-		// re-blur the canvas on each frame it changes; pausing once the hero scrolls away
-		// freezes the backdrop so those panels stop re-compositing while you read below.
+		// The loop runs whenever motion is allowed, the tab is visible, and the contact
+		// modal is closed. `heroVisible` does NOT gate running — it switches the DRAW MODE
+		// (full vs. the cheap helix-only path): scrolled past the hero the helix keeps
+		// turning, but frozen stars + a strip-only repaint stop the glass panels from
+		// re-blurring the whole canvas every frame.
 		let heroVisible = true;
 		let modalOpen = false;
 		function runnable() {
-			return !reduce && !document.hidden && heroVisible && !modalOpen;
+			return !reduce && !document.hidden && !modalOpen;
 		}
 		function sync() {
 			if (runnable()) start();
@@ -282,15 +374,18 @@
 		// stops the per-frame work explicitly and makes the intent clear.
 		document.addEventListener('visibilitychange', sync);
 
-		// Pause the loop once the hero section scrolls out of view, resume on return. A
-		// margin keeps it running just past the edge so there's no flicker at the
-		// boundary. No hero (e.g. the error page) → stays always-on, as before.
+		// Switch to the cheap helix-only draw once the hero section scrolls out of view,
+		// back to the full draw on return. A margin flips it just past the edge so there's
+		// no flicker at the boundary. No hero (e.g. the error page) → stays in full mode.
 		const heroRegion = document.getElementById('helix-slot')?.closest('section');
 		let io: IntersectionObserver | undefined;
 		if (heroRegion) {
 			io = new IntersectionObserver(
 				([entry]) => {
-					heroVisible = entry.isIntersecting;
+					const vis = entry.isIntersecting;
+					// Leaving the hero → flag one clean frozen frame before the strip-only path.
+					if (heroVisible && !vis) freezePending = true;
+					heroVisible = vis;
 					sync();
 				},
 				{ rootMargin: '200px 0px 200px 0px' }
