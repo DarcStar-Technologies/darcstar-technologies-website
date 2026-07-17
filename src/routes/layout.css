@@ -136,10 +136,6 @@ html {
    the backdrop blur over the cosmic canvas, a bevel (inset top highlight + bottom
    shadow), and a soft drop shadow lifting the pane off the void. */
 @utility glass-panel {
-	/* `relative` + `overflow-hidden` anchor and clip the sheen pseudo below; the
-	   element's OWN drop shadow/glow renders outside the border-box and is unaffected. */
-	position: relative;
-	overflow: hidden;
 	border: 1px solid rgb(255 255 255 / 0.1);
 	background-color: rgb(255 255 255 / 0.04);
 	/* Layers (front→back): film grain, top sheen, faint R→G→B color-charge tint. */
@@ -161,14 +157,24 @@ html {
 		36px 28px 62px -50px color-mix(in oklab, var(--charge-b) 30%, transparent),
 		inset 0 1px 0 rgb(255 255 255 / 0.12),
 		inset 0 -1px 0 rgb(0 0 0 / 0.3);
+}
 
-	/* Glinting-light sheen (prototype): a faint diagonal highlight that drifts from the
-	   top-right to the bottom-left, like light glancing off the glass. It is a separate
-	   overlay layer swept purely with `transform` (never background-position), so it
-	   composites on top of the already-cached backdrop blur and NEVER forces the panel —
-	   or its expensive `backdrop-filter` — to repaint. `will-change: transform` keeps it
-	   on the compositor. Oversized (inset -60%) so the band fully crosses the panel. */
-	&::after {
+/* Glinting-light sheen — a faint diagonal highlight drifting bottom-left → top-right
+   across the frosted surfaces (panels, nav, buttons), like light glancing off glass.
+   A separate ::after overlay swept purely with `transform` (never background-position),
+   so it composites on top of the already-cached backdrop blur and NEVER forces the
+   element — or its expensive `backdrop-filter` — to repaint (measured: Δ paint = 0).
+   Wrapped in `@layer utilities` + `:where()` (zero specificity) so a call-site
+   `absolute`/`fixed` (e.g. the dialog close button) still wins the position — an
+   UNlayered rule would beat Tailwind's layered utilities regardless of specificity. */
+@layer utilities {
+	:where(.glass-panel, .glass-nav, .glass-btn) {
+		position: relative;
+		overflow: hidden;
+	}
+	.glass-panel::after,
+	.glass-nav::after,
+	.glass-btn::after {
 		content: '';
 		position: absolute;
 		inset: -60%;
@@ -179,15 +185,14 @@ html {
 			rgb(255 255 255 / 0.07) 50%,
 			transparent 56%
 		);
-		transform: translate3d(28%, -28%, 0);
+		transform: translate3d(-28%, 28%, 0);
 		animation: glass-sheen 7.5s ease-in-out infinite;
 		will-change: transform;
 	}
 }
-
 @keyframes glass-sheen {
 	to {
-		transform: translate3d(-28%, 28%, 0);
+		transform: translate3d(28%, -28%, 0);
 	}
 }
 /* Lighter frosted variant for the STICKY HEADER. The hero-tuned glass-panel above
@@ -369,7 +374,9 @@ html {
 		transition: none;
 	}
 	/* Freeze the glass sheen mid-drift (keeps a static highlight, no motion). */
-	.glass-panel::after {
+	.glass-panel::after,
+	.glass-nav::after,
+	.glass-btn::after {
 		animation: none;
 	}
 }
