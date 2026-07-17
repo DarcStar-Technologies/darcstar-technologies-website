@@ -80,7 +80,7 @@ The homepage's RGB "color-charge" motif (the nucleon triple helix) is **the same
 
 ### Glass surfaces — `glass-panel` / `glass-nav` / `glass-btn`
 
-Three `@utility` classes in `layout.css` render the frosted panes that float over the void: `glass-panel` (sections, readout bar), `glass-nav` (the sticky header), and `glass-btn` (CTAs). All compose a translucent fill, the shared `--grain` film, `backdrop-filter: blur`, and a lift shadow.
+Three `@utility` classes in `layout.css` render the frosted panes that float over the void: `glass-panel` (sections, readout bar), `glass-nav` (the sticky header), and `glass-btn` (CTAs). All compose a translucent fill, the shared `--grain` film, `backdrop-filter: blur`, and a lift shadow. A fourth, **`glass-field`**, is the _inverse_ — form inputs carved **into** the glass via inset (rather than lift) shadows: a darker fill + grain, a dark top-inner depth shadow and a light bottom-inner bevel, with primary/error focus rings. See [contact](contact.md).
 
 `glass-panel` and `glass-btn` also carry a faint R→G→B charge tint and a colour-charge drop shadow, sized for large panes. **`glass-nav` deliberately drops both.** The panel's 84px black halo + spread R/G/B glow were tuned for the hero panes; on the thin sticky bar they smeared over the page and floated as you scrolled (issue #20). The nav keeps only the frosted blur, grain, and top sheen over a thin border — so reach for `glass-nav`, not `glass-panel`, on any slim always-visible chrome.
 

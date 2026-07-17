@@ -29,10 +29,9 @@
 		}
 	}
 
-	// Glass-consistent field styling — a translucent fill (NOT Skeleton `.input`, whose
-	// Windows bugfix forces an opaque surface); @tailwindcss/forms supplies the reset.
-	const fieldClass =
-		'w-full rounded-lg border border-white/15 bg-white/5 px-3.5 py-2.5 text-sm text-white transition-colors placeholder:text-white/40 focus:border-primary-500 focus:bg-white/[0.07] focus:ring-1 focus:ring-primary-500/40 focus:outline-none aria-invalid:border-error-500/70';
+	// Recessed, beveled, grainy fields carved into the glass panel — the look lives in
+	// the `glass-field` utility (layout.css); consumers add only sizing.
+	const fieldClass = 'glass-field w-full rounded-lg px-3.5 py-2.5 text-sm';
 	const labelClass = 'mb-1.5 block text-xs font-medium tracking-wide text-white/70';
 </script>
 
@@ -186,16 +185,33 @@
 
 						<label class="block">
 							<span class={labelClass}>{m.contact_field_interest_label()}</span>
-							<select {...submitContact.fields.interest.as('select')} class={fieldClass}>
-								<option value="" class="bg-surface-900 text-white">
-									{m.contact_interest_placeholder()}
-								</option>
-								{#each INTERESTS as slug (slug)}
-									<option value={slug} class="bg-surface-900 text-white">
-										{interestLabel[slug]()}
+							<div class="relative">
+								<select
+									{...submitContact.fields.interest.as('select')}
+									class="glass-field w-full appearance-none rounded-lg py-2.5 pr-10 pl-3.5 text-sm"
+								>
+									<option value="" class="bg-surface-900 text-white">
+										{m.contact_interest_placeholder()}
 									</option>
-								{/each}
-							</select>
+									{#each INTERESTS as slug (slug)}
+										<option value={slug} class="bg-surface-900 text-white">
+											{interestLabel[slug]()}
+										</option>
+									{/each}
+								</select>
+								<svg
+									class="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 text-white/50"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+								>
+									<path d="m6 9 6 6 6-6" />
+								</svg>
+							</div>
 						</label>
 
 						<label class="block">
