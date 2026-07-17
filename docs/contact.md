@@ -23,6 +23,16 @@ Replaces the personal `mailto:` CTAs with a modal contact form that persists to 
 
 `contact_submission` (`id`, `name`, `email`, `company?`, `interest?`, `message`, `ip_hash?`, `user_agent?`, `created_at`). Applied to Turso with **`pnpm db:push`** (this repo is schema-first — no migrations dir). The deployed Worker and local dev share the one Turso DB, so the table only needs pushing once. Read submissions with `pnpm db:studio` until an admin UI / notification lands.
 
+## Tests
+
+Three layers, so a regression fails fast at the cheapest one:
+
+- **Unit** (`server` project) — `src/lib/server/contact.spec.ts` covers `validateContact` (every field rule, trim, optional/unknown-interest coercion) and `hashIp`.
+- **Component** (`client`/browser project) — `GlassSelect.svelte.test.ts` (via `GlassSelectHarness.svelte`) asserts the dropdown's contract: renders options, click/keyboard selection binds the slug into the hidden input, and reopening reflects the selection. `ContactDialog.svelte.test.ts` asserts the modal opens from the `contactDialog` rune, renders the intake fields, and keeps the honeypot hidden + out of the a11y tree.
+- **e2e** (`src/routes/page.svelte.e2e.ts`) — the CTA opens the modal and Escape closes it, against the built Cloudflare worker.
+
+The happy-path submit (validation → Turso) is exercised manually rather than in CI, to avoid writing to the production DB.
+
 ## Follow-ups (filed separately)
 
 Email/lead notification on submit; Cloudflare Turnstile (stronger than the honeypot); a `hello@` role alias to replace the personal address; optionally a `/contact` no-JS fallback page and an in-app admin view.

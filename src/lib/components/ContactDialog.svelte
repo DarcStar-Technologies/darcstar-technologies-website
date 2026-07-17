@@ -39,13 +39,48 @@
 	// Recessed, beveled, grainy fields carved into the glass panel — the look lives in
 	// the `glass-field` utility (layout.css); consumers add only sizing.
 	const fieldClass = 'glass-field w-full rounded-lg px-3.5 py-2.5 text-sm';
-	const labelClass = 'mb-1.5 block text-xs font-medium tracking-wide text-white/70';
 </script>
 
 {#snippet fieldError(issues: { message: string }[] | undefined)}
 	{#each issues ?? [] as issue (issue.message)}
 		<p class="mt-1.5 text-xs text-error-400">{issue.message}</p>
 	{/each}
+{/snippet}
+
+<!-- One text/textarea field — label (+ optional badge), the glass-field control, and its
+     inline validation errors. `remoteField` is a submitContact.fields.* accessor. -->
+{#snippet field(
+	labelText: string,
+	remoteField: typeof submitContact.fields.name,
+	opts: {
+		placeholder: string;
+		type?: 'text' | 'email';
+		autocomplete?: AutoFill;
+		optional?: string;
+		multiline?: boolean;
+	}
+)}
+	<label class="block">
+		<span class="mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-white/70">
+			{labelText}
+			{#if opts.optional}<span class="font-normal text-white/50">{opts.optional}</span>{/if}
+		</span>
+		{#if opts.multiline}
+			<textarea
+				{...remoteField.as('text')}
+				rows="4"
+				class="{fieldClass} min-h-28 resize-y"
+				placeholder={opts.placeholder}></textarea>
+		{:else}
+			<input
+				{...remoteField.as(opts.type ?? 'text')}
+				class={fieldClass}
+				placeholder={opts.placeholder}
+				autocomplete={opts.autocomplete}
+			/>
+		{/if}
+		{@render fieldError(remoteField.issues())}
+	</label>
 {/snippet}
 
 <Dialog open={contactDialog.open} onOpenChange={(e) => handleOpenChange(e.open)}>
@@ -154,42 +189,22 @@
 							{/if}
 						{/each}
 
-						<label class="block">
-							<span class={labelClass}>{m.contact_field_name_label()}</span>
-							<input
-								{...submitContact.fields.name.as('text')}
-								class={fieldClass}
-								placeholder={m.contact_field_name_placeholder()}
-								autocomplete="name"
-							/>
-							{@render fieldError(submitContact.fields.name.issues())}
-						</label>
+						{@render field(m.contact_field_name_label(), submitContact.fields.name, {
+							placeholder: m.contact_field_name_placeholder(),
+							autocomplete: 'name'
+						})}
 
-						<label class="block">
-							<span class={labelClass}>{m.contact_field_email_label()}</span>
-							<input
-								{...submitContact.fields.email.as('email')}
-								class={fieldClass}
-								placeholder={m.contact_field_email_placeholder()}
-								autocomplete="email"
-							/>
-							{@render fieldError(submitContact.fields.email.issues())}
-						</label>
+						{@render field(m.contact_field_email_label(), submitContact.fields.email, {
+							type: 'email',
+							placeholder: m.contact_field_email_placeholder(),
+							autocomplete: 'email'
+						})}
 
-						<label class="block">
-							<span
-								class="mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-white/70"
-							>
-								{m.contact_field_company_label()}
-								<span class="font-normal text-white/50">{m.contact_field_company_optional()}</span>
-							</span>
-							<input
-								{...submitContact.fields.company.as('text')}
-								class={fieldClass}
-								placeholder={m.contact_field_company_placeholder()}
-								autocomplete="organization"
-							/>
-						</label>
+						{@render field(m.contact_field_company_label(), submitContact.fields.company, {
+							placeholder: m.contact_field_company_placeholder(),
+							autocomplete: 'organization',
+							optional: m.contact_field_company_optional()
+						})}
 
 						<div>
 							<GlassSelect
@@ -202,15 +217,10 @@
 							<input type="hidden" name="interest" value={interest} />
 						</div>
 
-						<label class="block">
-							<span class={labelClass}>{m.contact_field_message_label()}</span>
-							<textarea
-								{...submitContact.fields.message.as('text')}
-								rows="4"
-								class="{fieldClass} min-h-28 resize-y"
-								placeholder={m.contact_field_message_placeholder()}></textarea>
-							{@render fieldError(submitContact.fields.message.issues())}
-						</label>
+						{@render field(m.contact_field_message_label(), submitContact.fields.message, {
+							placeholder: m.contact_field_message_placeholder(),
+							multiline: true
+						})}
 
 						{#if serverError}
 							<p class="text-sm text-error-400" role="alert">{m.contact_error_generic()}</p>
