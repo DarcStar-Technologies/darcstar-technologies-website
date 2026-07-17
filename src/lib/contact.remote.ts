@@ -8,6 +8,7 @@ import { and, eq, gt } from 'drizzle-orm';
 import { getDb } from '$lib/server/db';
 import { contactSubmission } from '$lib/server/db/schema';
 import { hashIp, validateContact } from '$lib/server/contact';
+import { sendLeadNotification } from '$lib/server/contact-notify';
 import { m } from '$lib/paraglide/messages.js';
 
 // Abuse throttle: at most THROTTLE_MAX submissions per hashed IP per window.
@@ -33,6 +34,9 @@ export const submitContact = form<ContactInput, { success: true }>(
 		const event = getRequestEvent();
 		const ip = event.getClientAddress();
 		const userAgent = event.request.headers.get('user-agent') ?? null;
+		// Captured before the first await (workerd platform is request-scoped) for the
+		// lead-notification send scheduled after the insert.
+		const platform = event.platform;
 
 		// Honeypot: humans never fill the hidden `website` field; bots do. Silently
 		// accept (don't persist, don't reveal the trap).
@@ -67,6 +71,19 @@ export const submitContact = form<ContactInput, { success: true }>(
 			ipHash,
 			userAgent
 		});
+
+		// Fire-and-forget lead notification (issue #52). The row is already persisted,
+		// so a send failure must NOT fail the submission — we log and move on. On
+		// workerd, ctx.waitUntil keeps the Worker alive until the send resolves after
+		// the response is returned; without a key (unconfigured) or ctx (vite dev) we
+		// simply skip. Never awaited — the visitor's response doesn't wait on email.
+		const resendKey = platform?.env?.RESEND_API_KEY;
+		if (resendKey) {
+			const send = sendLeadNotification(resendKey, cleaned).catch((err) =>
+				console.error('contact lead notification failed', err)
+			);
+			if (platform?.ctx) platform.ctx.waitUntil(send);
+		}
 
 		return { success: true };
 	}
