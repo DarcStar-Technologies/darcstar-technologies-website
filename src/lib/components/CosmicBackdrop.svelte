@@ -5,6 +5,14 @@
 	// unit (amplitude tracks its width) and centres in the hero's #helix-slot gap.
 	// Respects prefers-reduced-motion.
 	import { prefersReducedMotion } from 'svelte/motion';
+	import { contactDialog } from '$lib/contact-dialog.svelte';
+
+	// Bridge: the $effect at the bottom flips the backdrop's pause flag when the contact
+	// modal opens/closes, WITHOUT re-running the attachment (which would re-init the
+	// canvas). The modal is the site's only full-viewport overlay; while it's up, its
+	// scrim + glass panel re-blur the backdrop every frame, so freezing the canvas is a
+	// pure win and invisible — you're looking at the modal, not the void behind it.
+	let setModalOpen: ((open: boolean) => void) | undefined;
 
 	function backdrop(canvas: HTMLCanvasElement) {
 		const ctx = canvas.getContext('2d');
@@ -216,13 +224,19 @@
 		// re-blur the canvas on each frame it changes; pausing once the hero scrolls away
 		// freezes the backdrop so those panels stop re-compositing while you read below.
 		let heroVisible = true;
+		let modalOpen = false;
 		function runnable() {
-			return !reduce && !document.hidden && heroVisible;
+			return !reduce && !document.hidden && heroVisible && !modalOpen;
 		}
 		function sync() {
 			if (runnable()) start();
 			else stop();
 		}
+		// Driven by the component-level $effect below (see the bridge note up top).
+		setModalOpen = (open: boolean) => {
+			modalOpen = open;
+			sync();
+		};
 
 		// slotCy only shifts on layout changes, so re-measure on resize/scroll instead
 		// of every frame (on mobile, URL-bar reflow can surface as a scroll event).
@@ -258,12 +272,18 @@
 
 		return () => {
 			stop();
+			setModalOpen = undefined;
 			io?.disconnect();
 			window.removeEventListener('resize', resize);
 			window.removeEventListener('scroll', onScroll);
 			document.removeEventListener('visibilitychange', sync);
 		};
 	}
+
+	// Pause the backdrop while the contact modal is open (see the bridge note up top).
+	$effect(() => {
+		setModalOpen?.(contactDialog.open);
+	});
 </script>
 
 <canvas
