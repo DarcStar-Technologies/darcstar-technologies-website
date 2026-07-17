@@ -374,9 +374,11 @@
 		// stops the per-frame work explicitly and makes the intent clear.
 		document.addEventListener('visibilitychange', sync);
 
-		// Switch to the cheap helix-only draw once the hero section scrolls out of view,
-		// back to the full draw on return. A margin flips it just past the edge so there's
-		// no flicker at the boundary. No hero (e.g. the error page) → stays in full mode.
+		// Switch to the cheap helix-only draw the moment the hero <section> (kicker + helix
+		// gap + headline/CTA panel) fully leaves the viewport — so the star twinkle runs
+		// through the whole hero, then freezes — and back to the full draw on return. No
+		// margin: freezing the (imperceptible) twinkle any later just wastes GPU on the
+		// content below. No hero (e.g. the error page) → stays in full mode.
 		const heroRegion = document.getElementById('helix-slot')?.closest('section');
 		let io: IntersectionObserver | undefined;
 		if (heroRegion) {
@@ -388,7 +390,7 @@
 					heroVisible = vis;
 					sync();
 				},
-				{ rootMargin: '200px 0px 200px 0px' }
+				{ rootMargin: '0px' }
 			);
 			io.observe(heroRegion);
 		}
