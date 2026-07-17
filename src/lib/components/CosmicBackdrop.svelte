@@ -65,7 +65,10 @@
 			// Re-measure the helix slot here rather than per frame: its centre is
 			// scroll-invariant (rect.top + scrollY), so only a resize/reflow moves it.
 			measureSlot();
-			if (reduce) draw(lastT);
+			// Resizing clears the bitmap; redraw one frame so a paused (hero offscreen)
+			// or reduced-motion backdrop isn't left blank. A running loop just repaints
+			// again on its next tick.
+			draw(lastT);
 		}
 
 		// The empty flex-1 gap between the kicker and the headline panel. Using
@@ -196,8 +199,9 @@
 			lastDraw = t;
 			draw(t);
 		}
+		// Raw rAF controls; `sync()` decides whether the loop SHOULD be running.
 		function start() {
-			if (!raf && !reduce) raf = requestAnimationFrame(loop);
+			if (!raf) raf = requestAnimationFrame(loop);
 		}
 		function stop() {
 			if (raf) {
@@ -206,31 +210,58 @@
 			}
 		}
 
+		// The animation is only worth running while the hero (with the moving helix) is
+		// on screen, the tab is visible, and motion isn't reduced. The real cost on this
+		// page isn't the canvas itself but that every glass panel's backdrop-filter must
+		// re-blur the canvas on each frame it changes; pausing once the hero scrolls away
+		// freezes the backdrop so those panels stop re-compositing while you read below.
+		let heroVisible = true;
+		function runnable() {
+			return !reduce && !document.hidden && heroVisible;
+		}
+		function sync() {
+			if (runnable()) start();
+			else stop();
+		}
+
 		// slotCy only shifts on layout changes, so re-measure on resize/scroll instead
 		// of every frame (on mobile, URL-bar reflow can surface as a scroll event).
 		function onScroll() {
 			measureSlot();
 			if (reduce) draw(lastT);
 		}
-		// The rAF loop already stalls in background tabs; stopping explicitly frees the
-		// per-frame canvas work regardless and makes the intent clear.
-		function onVisibility() {
-			if (document.hidden) stop();
-			else start();
-		}
 
 		resize();
 		window.addEventListener('resize', resize);
 		window.addEventListener('scroll', onScroll, { passive: true });
-		document.addEventListener('visibilitychange', onVisibility);
+		// The rAF loop already stalls in background tabs; syncing on visibilitychange
+		// stops the per-frame work explicitly and makes the intent clear.
+		document.addEventListener('visibilitychange', sync);
 
-		if (!reduce) start();
+		// Pause the loop once the hero section scrolls out of view, resume on return. A
+		// margin keeps it running just past the edge so there's no flicker at the
+		// boundary. No hero (e.g. the error page) → stays always-on, as before.
+		const heroRegion = document.getElementById('helix-slot')?.closest('section');
+		let io: IntersectionObserver | undefined;
+		if (heroRegion) {
+			io = new IntersectionObserver(
+				([entry]) => {
+					heroVisible = entry.isIntersecting;
+					sync();
+				},
+				{ rootMargin: '200px 0px 200px 0px' }
+			);
+			io.observe(heroRegion);
+		}
+
+		sync();
 
 		return () => {
 			stop();
+			io?.disconnect();
 			window.removeEventListener('resize', resize);
 			window.removeEventListener('scroll', onScroll);
-			document.removeEventListener('visibilitychange', onVisibility);
+			document.removeEventListener('visibilitychange', sync);
 		};
 	}
 </script>
