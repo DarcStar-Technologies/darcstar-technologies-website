@@ -1,10 +1,13 @@
 <script lang="ts">
-	// Accessible, theme-styled single-select dropdown (issue #11) — replaces the native
-	// <select> so the popup wears the glass/theme and renders identically across
-	// browsers. ARIA "select-only combobox" pattern (APG): a role=combobox button that
-	// owns the keyboard and points `aria-activedescendant` at the highlighted option in
-	// a role=listbox popup (options are NOT individually focusable). The chosen value is
-	// plain state; the consumer serializes it for the remote form via a hidden input.
+	// Accessible single-select dropdown (issue #11) built on the maintained Zag select
+	// machine (@zag-js/select via @zag-js/svelte) — the same headless engine Skeleton
+	// wraps for its own components — styled entirely with our theme + glass utilities.
+	// Zag owns keyboard nav, ARIA, focus management, typeahead, and popper positioning;
+	// we own the look. The chosen value is exposed via $bindable so the consumer can
+	// serialize it into the remote form (a hidden input).
+	import * as select from '@zag-js/select';
+	import { mergeProps, normalizeProps, useMachine } from '@zag-js/svelte';
+
 	interface Option {
 		value: string;
 		label: string;
@@ -14,153 +17,84 @@
 		options,
 		value = $bindable(''),
 		placeholder,
-		labelId,
+		label,
 		id
 	}: {
 		options: Option[];
 		value?: string;
 		placeholder: string;
-		labelId: string;
+		label: string;
 		id: string;
 	} = $props();
 
-	let open = $state(false);
-	let activeIndex = $state(-1);
-	let button = $state<HTMLButtonElement | null>(null);
+	const collection = $derived(
+		select.collection({
+			items: options,
+			itemToString: (o) => o.label,
+			itemToValue: (o) => o.value
+		})
+	);
 
-	const selectedLabel = $derived(options.find((o) => o.value === value)?.label ?? placeholder);
-
-	function openList() {
-		open = true;
-		const sel = options.findIndex((o) => o.value === value);
-		activeIndex = sel >= 0 ? sel : 0;
-	}
-	function close(focusButton = true) {
-		open = false;
-		activeIndex = -1;
-		if (focusButton) button?.focus();
-	}
-	function pick(i: number) {
-		if (i >= 0 && i < options.length) value = options[i].value;
-		close();
-	}
-	function onkeydown(e: KeyboardEvent) {
-		switch (e.key) {
-			case 'ArrowDown':
-				e.preventDefault();
-				if (open) activeIndex = Math.min(activeIndex + 1, options.length - 1);
-				else openList();
-				break;
-			case 'ArrowUp':
-				e.preventDefault();
-				if (open) activeIndex = Math.max(activeIndex - 1, 0);
-				else openList();
-				break;
-			case 'Home':
-				if (open) {
-					e.preventDefault();
-					activeIndex = 0;
-				}
-				break;
-			case 'End':
-				if (open) {
-					e.preventDefault();
-					activeIndex = options.length - 1;
-				}
-				break;
-			case 'Enter':
-			case ' ':
-				e.preventDefault();
-				if (open) pick(activeIndex);
-				else openList();
-				break;
-			case 'Escape':
-				if (open) {
-					e.preventDefault();
-					close();
-				}
-				break;
-			case 'Tab':
-				if (open) close(false);
-				break;
-		}
-	}
-
-	// Close when a pointer press lands outside the widget.
-	function outsideClose(node: HTMLElement) {
-		const handler = (e: PointerEvent) => {
-			if (open && !node.contains(e.target as Node)) close(false);
-		};
-		document.addEventListener('pointerdown', handler, true);
-		return () => document.removeEventListener('pointerdown', handler, true);
-	}
-
-	// Keep the highlighted option in view during keyboard navigation.
-	$effect(() => {
-		if (open && activeIndex >= 0) {
-			document.getElementById(`${id}-opt-${activeIndex}`)?.scrollIntoView({ block: 'nearest' });
-		}
-	});
+	const service = useMachine(select.machine, () => ({
+		id,
+		collection,
+		value: value ? [value] : [],
+		onValueChange: (details: { value: string[] }) => (value = details.value[0] ?? ''),
+		positioning: { sameWidth: true }
+	}));
+	const api = $derived(select.connect(service, normalizeProps));
 </script>
 
-<div class="relative" {@attach outsideClose}>
-	<button
-		bind:this={button}
-		type="button"
-		role="combobox"
-		aria-haspopup="listbox"
-		aria-expanded={open}
-		aria-controls="{id}-listbox"
-		aria-labelledby={labelId}
-		aria-activedescendant={open && activeIndex >= 0 ? `${id}-opt-${activeIndex}` : undefined}
-		class="glass-field flex w-full items-center justify-between gap-2 rounded-lg px-3.5 py-2.5 text-left text-sm"
-		onclick={() => (open ? close() : openList())}
-		{onkeydown}
+<div {...api.getRootProps()}>
+	<label
+		{...api.getLabelProps()}
+		class="mb-1.5 block text-xs font-medium tracking-wide text-white/70"
 	>
-		<span class={value ? 'text-white' : 'text-white/40'}>{selectedLabel}</span>
-		<svg
-			class="size-4 shrink-0 text-white/50 transition-transform duration-150 {open
-				? 'rotate-180'
-				: ''}"
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="2"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
+		{label}
+	</label>
+
+	<button
+		{...api.getTriggerProps()}
+		class="glass-field flex w-full items-center justify-between gap-2 rounded-lg px-3.5 py-2.5 text-left text-sm"
+	>
+		<span {...api.getValueTextProps()} class={api.value.length ? 'text-white' : 'text-white/40'}>
+			{api.valueAsString || placeholder}
+		</span>
+		<span
+			{...api.getIndicatorProps()}
+			class="flex shrink-0 text-white/50 transition-transform duration-150 data-[state=open]:rotate-180"
 		>
-			<path d="m6 9 6 6 6-6" />
-		</svg>
+			<svg
+				class="size-4"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				aria-hidden="true"
+			>
+				<path d="m6 9 6 6 6-6" />
+			</svg>
+		</span>
 	</button>
 
-	{#if open}
+	<!-- Zag sets the positioner's z-index inline (a class can't win); lift it above the
+	     form's glass-btn, whose backdrop-filter also makes it a z-auto stacking context. -->
+	<div {...mergeProps(api.getPositionerProps(), { style: 'z-index: 70' })}>
 		<ul
-			id="{id}-listbox"
-			role="listbox"
-			aria-labelledby={labelId}
-			class="absolute top-full left-0 z-[70] mt-1.5 max-h-60 w-full overflow-auto rounded-lg border border-white/10 bg-surface-900/95 p-1 shadow-2xl backdrop-blur-xl"
+			{...api.getContentProps()}
+			class="max-h-60 overflow-auto rounded-lg border border-white/10 bg-surface-900/95 p-1 shadow-2xl backdrop-blur-xl focus:outline-none"
 		>
-			{#each options as opt, i (opt.value)}
-				<!-- Options are controlled by the button via aria-activedescendant (APG
-				     select-only combobox); they are not tab stops and have no key handlers
-				     of their own — pointer handlers alone are correct here. -->
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
+			{#each options as opt (opt.value)}
 				<li
-					id="{id}-opt-{i}"
-					role="option"
-					aria-selected={opt.value === value}
-					class="flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm transition-colors {i ===
-					activeIndex
-						? 'bg-primary-500/25 text-white'
-						: 'text-white/80'}"
-					onclick={() => pick(i)}
-					onpointermove={() => (activeIndex = i)}
+					{...api.getItemProps({ item: opt })}
+					class="flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm text-white/80 transition-colors data-[highlighted]:bg-primary-500/25 data-[highlighted]:text-white data-[state=checked]:text-white"
 				>
-					{opt.label}
-					{#if opt.value === value}
+					<span {...api.getItemTextProps({ item: opt })}>{opt.label}</span>
+					<span {...api.getItemIndicatorProps({ item: opt })} class="text-primary-400">
 						<svg
-							class="text-primary-400 size-4 shrink-0"
+							class="size-4 shrink-0"
 							viewBox="0 0 24 24"
 							fill="none"
 							stroke="currentColor"
@@ -171,9 +105,9 @@
 						>
 							<path d="M20 6 9 17l-5-5" />
 						</svg>
-					{/if}
+					</span>
 				</li>
 			{/each}
 		</ul>
-	{/if}
+	</div>
 </div>

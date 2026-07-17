@@ -7,6 +7,13 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@zag-js/select':
+        specifier: 1.39.1
+        version: 1.39.1
+      '@zag-js/svelte':
+        specifier: 1.39.1
+        version: 1.39.1(svelte@5.56.4(@typescript-eslint/types@8.63.0))
     devDependencies:
       '@better-auth/cli':
         specifier: ~1.4.21
@@ -2228,6 +2235,9 @@ packages:
 
   '@zag-js/scroll-snap@1.39.1':
     resolution: {integrity: sha512-AzCc8MAAVqkiK5Y0cJZ24OIBZDQrUmEexACMuR6M5yZmlcEbS0EA/d6Wq+LSR1JMVTD4B+UwcMj1D3vJQ90ZTw==}
+
+  '@zag-js/select@1.39.1':
+    resolution: {integrity: sha512-Q0qIYJ+UaMe1zIRjBYJYtqg0Ig3CAA2LS2bMD12RokKhrdq2HY+XE+pONoox5/9hb0cgtCLfUxcxSLFwS2D9iQ==}
 
   '@zag-js/slider@1.39.1':
     resolution: {integrity: sha512-OEA9R7Ly5cw+6ANofnMpuHH3rAo8gZEnxy7iEwePu11pq2RCnt8DSj2V+uqU+dTq15Uup1LSzRgJfTnAC4Z85A==}
@@ -6299,6 +6309,18 @@ snapshots:
   '@zag-js/scroll-snap@1.39.1':
     dependencies:
       '@zag-js/dom-query': 1.39.1
+
+  '@zag-js/select@1.39.1':
+    dependencies:
+      '@zag-js/anatomy': 1.39.1
+      '@zag-js/collection': 1.39.1
+      '@zag-js/core': 1.39.1
+      '@zag-js/dismissable': 1.39.1
+      '@zag-js/dom-query': 1.39.1
+      '@zag-js/focus-visible': 1.39.1
+      '@zag-js/popper': 1.39.1
+      '@zag-js/types': 1.39.1
+      '@zag-js/utils': 1.39.1
 
   '@zag-js/slider@1.39.1':
     dependencies:

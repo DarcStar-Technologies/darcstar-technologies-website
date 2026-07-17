@@ -192,12 +192,9 @@
 						</label>
 
 						<div>
-							<span id="contact-interest-label" class={labelClass}>
-								{m.contact_field_interest_label()}
-							</span>
 							<GlassSelect
 								id="contact-interest"
-								labelId="contact-interest-label"
+								label={m.contact_field_interest_label()}
 								options={interestOptions}
 								placeholder={m.contact_interest_placeholder()}
 								bind:value={interest}
