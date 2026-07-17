@@ -5,8 +5,18 @@
 	import Footer from '$lib/components/Footer.svelte';
 	import BackToTop from '$lib/components/BackToTop.svelte';
 	import ContactDialog from '$lib/components/ContactDialog.svelte';
+	import { contactDialog } from '$lib/contact-dialog.svelte';
+	import { syncGlassSheen } from '$lib/glass-sheen';
 
 	let { children } = $props();
+
+	// Prototype: align every frosted-glass sheen to one page-anchored light source
+	// (per-element animation-delay from position). Re-runs when the modal opens so its
+	// glass panels/buttons join the same beam; page-anchored, so scroll needs no work.
+	$effect(() => {
+		void contactDialog.open; // re-sync when the modal mounts its glass elements
+		return syncGlassSheen();
+	});
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
