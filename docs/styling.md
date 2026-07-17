@@ -31,11 +31,11 @@ Via the Vite plugin. The stylesheet entry is `src/routes/layout.css` (Prettier's
 
 The site ships **three self-hosted brand faces** (issue #17) — no `system-ui`, no Google CDN:
 
-| Role        | Face              | Where it applies                                        | Token (source of truth)                          |
-| ----------- | ----------------- | ------------------------------------------------------- | ------------------------------------------------ |
-| **Display** | Space Grotesk     | all headings (`<h1>`–`<h6>`)                             | `--heading-font-family` — `scripts/gen-theme.mjs` |
-| **Body**    | Inter             | body copy + UI (`<body>` down)                          | `--base-font-family` — `scripts/gen-theme.mjs`   |
-| **Mono**    | JetBrains Mono    | `font-mono` — GIDE kicker, section kickers, readout bar | `--font-mono` — `layout.css` `@theme`            |
+| Role        | Face           | Where it applies                                        | Token (source of truth)                           |
+| ----------- | -------------- | ------------------------------------------------------- | ------------------------------------------------- |
+| **Display** | Space Grotesk  | all headings (`<h1>`–`<h6>`)                            | `--heading-font-family` — `scripts/gen-theme.mjs` |
+| **Body**    | Inter          | body copy + UI (`<body>` down)                          | `--base-font-family` — `scripts/gen-theme.mjs`    |
+| **Mono**    | JetBrains Mono | `font-mono` — GIDE kicker, section kickers, readout bar | `--font-mono` — `layout.css` `@theme`             |
 
 **Self-hosting** — the faces load via [Fontsource](https://fontsource.org) variable packages (`@fontsource-variable/{space-grotesk,inter,jetbrains-mono}`), imported as **CSS `@import` at the top of `layout.css`** (not a JS side-effect import in `+layout.svelte`). Fontsource ships the variable `.woff2` + `@font-face` (`font-display: swap`); Vite fingerprints and bundles the files, and the per-subset `unicode-range` means an English visitor downloads only the **latin** woff2 per family (~3 files). Each is a single variable file spanning all weights the site uses (Space Grotesk `300–700` covers `font-medium`/`font-semibold`).
 
