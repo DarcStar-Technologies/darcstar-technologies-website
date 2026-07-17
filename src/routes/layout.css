@@ -40,6 +40,19 @@ html {
 @theme {
 	--font-sans: 'Inter Variable', system-ui, sans-serif;
 	--font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
+
+	/* Semantic INK scale — translucent white over the dark void, one source for the
+	   opacities that were hand-typed as `text-white/NN` everywhere. `body` and `muted`
+	   are the documented WCAG-AA floors (body copy ≥ 0.7, labels ≥ 0.6); staying on
+	   the named token keeps text from silently dropping below them. Headings stay pure
+	   `text-white`. Each token generates text-, bg- and border- utilities (we use the
+	   text- forms plus border-hairline). */
+	--color-emphasis: rgb(255 255 255 / 0.8); /* prominent secondary text */
+	--color-body: rgb(255 255 255 / 0.7); /* body copy — AA floor */
+	--color-muted: rgb(255 255 255 / 0.6); /* labels / eyebrows — AA floor */
+	--color-faint: rgb(255 255 255 / 0.5); /* de-emphasised hints */
+	--color-subtle: rgb(255 255 255 / 0.4); /* placeholders / disabled */
+	--color-hairline: rgb(255 255 255 / 0.1); /* 1px dividers / panel edges */
 }
 
 /* Skeleton wires --heading-font-family only to its `.h1`–`.h6` utility classes,
@@ -263,6 +276,21 @@ html {
 			inset 0 -1px 0 rgb(255 255 255 / 0.06),
 			0 0 0 3px color-mix(in oklab, var(--color-error-500) 18%, transparent);
 	}
+}
+
+/* Mono, uppercase, muted-ink eyebrow/kicker label (GIDE kicker, section kickers,
+   footer nav heading, readout labels). Captures only the invariant part; consumers
+   add their own size + tracking (deliberately varied — small labels are text-xs
+   tracking-widest, the hero kicker is larger/looser). */
+@utility eyebrow {
+	@apply font-mono text-muted uppercase;
+}
+
+/* Default pill CTA — pairs with the `glass-btn` surface (`glass-btn btn-pill`).
+   The larger hero CTA and the full-width submit are deliberate one-offs and keep
+   their explicit sizing rather than overriding this. */
+@utility btn-pill {
+	@apply rounded-full px-6 py-2.5 text-sm font-medium text-white;
 }
 
 /* Flowing R→B→G color-charge gradient for text (clipped). Colour order matches

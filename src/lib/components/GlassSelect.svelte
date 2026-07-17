@@ -46,10 +46,7 @@
 </script>
 
 <div {...api.getRootProps()}>
-	<label
-		{...api.getLabelProps()}
-		class="mb-1.5 block text-xs font-medium tracking-wide text-white/70"
-	>
+	<label {...api.getLabelProps()} class="mb-1.5 block text-xs font-medium tracking-wide text-body">
 		{label}
 	</label>
 
@@ -57,12 +54,12 @@
 		{...api.getTriggerProps()}
 		class="glass-field flex w-full items-center justify-between gap-2 rounded-lg px-3.5 py-2.5 text-left text-sm"
 	>
-		<span {...api.getValueTextProps()} class={api.value.length ? 'text-white' : 'text-white/40'}>
+		<span {...api.getValueTextProps()} class={api.value.length ? 'text-white' : 'text-subtle'}>
 			{api.valueAsString || placeholder}
 		</span>
 		<span
 			{...api.getIndicatorProps()}
-			class="flex shrink-0 text-white/50 transition-transform duration-150 data-[state=open]:rotate-180"
+			class="flex shrink-0 text-faint transition-transform duration-150 data-[state=open]:rotate-180"
 		>
 			<svg
 				class="size-4"
@@ -91,7 +88,7 @@
 			{#each options as opt (opt.value)}
 				<li
 					{...api.getItemProps({ item: opt })}
-					class="flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm text-white/80 transition-colors data-[highlighted]:bg-primary-500/25 data-[highlighted]:text-white data-[state=checked]:text-white"
+					class="flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm text-emphasis transition-colors data-[highlighted]:bg-primary-500/25 data-[highlighted]:text-white data-[state=checked]:text-white"
 				>
 					<span {...api.getItemTextProps({ item: opt })}>{opt.label}</span>
 					<span {...api.getItemIndicatorProps({ item: opt })} class="text-primary-400">

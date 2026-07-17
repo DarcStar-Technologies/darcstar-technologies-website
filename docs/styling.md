@@ -67,7 +67,30 @@ The site ships **three self-hosted brand faces** (issue #17) — no `system-ui`,
 
 ## Design system
 
-**Skeleton is the system, not dead weight.** The `darcstar` theme is the single source of truth for colour; new UI should reach for Skeleton tokens (`text-surface-*`, `bg-surface-*`, `*-primary-500`, `preset-*`, `btn`, `card`, …) and the glass utilities below rather than inventing one-off values. Skeleton components are used where they earn their keep (e.g. the header's `btn-icon` / `preset-tonal`); the theme's token layer is used everywhere.
+**Skeleton is the system, not dead weight.** The `darcstar` theme is the single source of truth for colour; new UI should reach for Skeleton tokens (`text-surface-*`, `bg-surface-*`, `*-primary-500`, `preset-*`, `btn`, `card`, …), the semantic tokens/utilities below, and the glass utilities rather than inventing one-off values. Skeleton components are used where they earn their keep (e.g. the header's `btn-icon` / `preset-tonal`); the theme's token layer is used everywhere.
+
+### Semantic ink scale — the on-void text opacities
+
+Translucent-white text over the dark void used to be hand-typed as `text-white/NN` at ~30 sites. It's now a named scale in the `@theme` block of `layout.css` (`--color-*` → Tailwind `text-*`/`border-*` utilities). **Use these, not raw `text-white/NN`:**
+
+| Utility           | Value       | Use                                                 |
+| ----------------- | ----------- | --------------------------------------------------- |
+| `text-white`      | 1.0         | headings                                            |
+| `text-emphasis`   | white / 0.8 | prominent secondary text                            |
+| **`text-body`**   | white / 0.7 | body copy — **WCAG-AA floor**                       |
+| **`text-muted`**  | white / 0.6 | labels / eyebrows — **WCAG-AA floor**               |
+| `text-faint`      | white / 0.5 | de-emphasised hints                                 |
+| `text-subtle`     | white / 0.4 | placeholders / disabled                             |
+| `border-hairline` | white / 0.1 | 1px dividers / panel edges (also `divide-hairline`) |
+
+`body` and `muted` are the documented AA floors (body copy ≥ 0.7, labels ≥ 0.6) — staying on the token keeps text from silently dropping below them. The values equal the opacities they replaced, so it's a look-neutral rename.
+
+### `eyebrow` and `btn-pill` — repeated patterns
+
+Two `@utility` blocks in `layout.css` (built with `@apply`) capture copy-pasted class runs:
+
+- **`eyebrow`** = `font-mono uppercase text-muted` — the mono/caps/muted kicker label. Consumers add their own **size + tracking** (they legitimately vary: `eyebrow text-xs tracking-widest` for labels, the hero kicker is larger/looser).
+- **`btn-pill`** = `rounded-full px-6 py-2.5 text-sm font-medium text-white` — the default pill CTA; pair it with the surface: `glass-btn btn-pill`. The large hero CTA and the full-width submit stay hand-written (deliberate one-off sizes).
 
 ### The color-charge triad — one source of truth
 

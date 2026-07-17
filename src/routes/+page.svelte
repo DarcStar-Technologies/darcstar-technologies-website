@@ -79,12 +79,12 @@
 
 {#snippet sectionHead(kicker: string, heading: string, sub?: string)}
 	<div class="p-8 text-center sm:p-10">
-		<p class="font-mono text-xs tracking-[0.25em] text-white/60 uppercase">{kicker}</p>
+		<p class="eyebrow text-xs tracking-[0.25em]">{kicker}</p>
 		<h2 class="mx-auto mt-3 max-w-3xl text-3xl font-medium tracking-tight text-white">{heading}</h2>
 		{#if sub}
 			<!-- Optional systems-stack caption (mono, one line). Reframes the polyglot
 			     stack as an engineering signal, not a line-count cost metric (issue #14). -->
-			<p class="mt-4 font-mono text-xs tracking-wide text-white/60">{sub}</p>
+			<p class="mt-4 font-mono text-xs tracking-wide text-muted">{sub}</p>
 		{/if}
 	</div>
 {/snippet}
@@ -95,7 +95,7 @@
 
 <div class="space-y-24">
 	<section class="-mt-10 flex flex-col items-center px-6 pt-6 pb-16 text-center sm:pt-8">
-		<p class="font-mono text-sm tracking-[0.3em] text-white/60 uppercase">
+		<p class="eyebrow text-sm tracking-[0.3em]">
 			{m.hero_kicker()}
 		</p>
 
@@ -115,19 +115,16 @@
 				<span class="charge-flow">{m.hero_heading_emphasis()}</span>
 				{m.hero_heading_tail()}
 			</h1>
-			<p class="mx-auto mt-6 max-w-xl text-base text-white/70 sm:text-lg">
+			<p class="mx-auto mt-6 max-w-xl text-base text-body sm:text-lg">
 				{m.hero_body()}
 			</p>
 			<div class="mt-9 flex flex-wrap justify-center gap-3">
-				<a href="#gide" class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white"
-					>{m.hero_cta_explore()}</a
-				>
+				<a href="#gide" class="glass-btn btn-pill">{m.hero_cta_explore()}</a>
 				<button
 					type="button"
 					aria-haspopup="dialog"
 					onclick={() => contactDialog.show()}
-					class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white"
-					>{m.hero_cta_contact()}</button
+					class="glass-btn btn-pill">{m.hero_cta_contact()}</button
 				>
 			</div>
 		</div>
@@ -140,7 +137,7 @@
 			{#each readouts as ro (ro.l)}
 				<div>
 					<div class="font-mono text-lg text-white sm:text-xl">{ro.v}</div>
-					<div class="mt-0.5 font-mono text-xs tracking-widest text-white/60 uppercase">
+					<div class="mt-0.5 eyebrow text-xs tracking-widest">
 						{ro.l}
 					</div>
 				</div>
@@ -150,7 +147,7 @@
 		<section id="gide" class="glass-panel scroll-mt-24 overflow-hidden rounded-2xl">
 			{@render sectionHead(m.section_gide_kicker(), m.section_gide_heading())}
 			<div
-				class="grid divide-y divide-white/10 border-t border-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0"
+				class="grid divide-y divide-hairline border-t border-hairline sm:grid-cols-3 sm:divide-x sm:divide-y-0"
 			>
 				{#each pillars as p (p.title)}
 					<div class="p-7">
@@ -161,7 +158,7 @@
 							{@render icon(p.icon)}
 						</div>
 						<h3 class="mt-5 text-base font-medium text-white">{p.title}</h3>
-						<p class="mt-2 text-sm leading-relaxed text-white/70">{p.body}</p>
+						<p class="mt-2 text-sm leading-relaxed text-body">{p.body}</p>
 					</div>
 				{/each}
 			</div>
@@ -173,11 +170,11 @@
 				m.section_domains_heading(),
 				m.section_domains_sub()
 			)}
-			<div class="divide-y divide-white/10 border-t border-white/10">
+			<div class="divide-y divide-hairline border-t border-hairline">
 				{#each domains as d (d.n)}
 					<div class="flex flex-col gap-1 px-8 py-5 sm:flex-row sm:items-baseline sm:gap-6">
 						<div class="w-52 shrink-0 text-sm font-medium text-white">{d.n}</div>
-						<div class="text-sm text-white/70">{d.d}</div>
+						<div class="text-sm text-body">{d.d}</div>
 					</div>
 				{/each}
 			</div>
@@ -187,7 +184,7 @@
 			<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
 				{m.section_proven_heading()}
 			</h2>
-			<p class="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-white/70 sm:text-base">
+			<p class="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-body sm:text-base">
 				{m.section_proven_body()}
 			</p>
 		</section>
@@ -196,7 +193,7 @@
 			<h2 class="text-3xl font-medium tracking-tight text-white sm:text-4xl">
 				{m.section_cta_heading()}
 			</h2>
-			<p class="mx-auto mt-4 max-w-lg text-sm text-white/70">
+			<p class="mx-auto mt-4 max-w-lg text-sm text-body">
 				{m.section_cta_body()}
 			</p>
 			<button

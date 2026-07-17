@@ -29,12 +29,9 @@
 		<h1 class="mt-5 text-2xl font-medium tracking-tight text-balance text-white sm:text-3xl">
 			{heading}
 		</h1>
-		<p class="mx-auto mt-4 max-w-sm text-base text-white/70">{detail}</p>
+		<p class="mx-auto mt-4 max-w-sm text-base text-body">{detail}</p>
 		<div class="mt-9 flex justify-center">
-			<a
-				href={localizeHref('/')}
-				class="glass-btn rounded-full px-6 py-2.5 text-sm font-medium text-white"
-			>
+			<a href={localizeHref('/')} class="glass-btn btn-pill">
 				{m.error_home_link()}
 			</a>
 		</div>
