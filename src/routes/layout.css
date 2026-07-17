@@ -205,7 +205,7 @@ html {
    readable while the grain film + top sheen + heavy blur + lift shadow still read as
    frosted glass, not a flat black box. Consumers add sizing/rounding/padding. */
 @utility glass-menu {
-	border: 1px solid rgb(255 255 255 / 0.12);
+	border: 1px solid rgb(255 255 255 / 0.14);
 	background-color: rgb(9 11 18 / 0.82);
 	/* Film grain over a subtle top sheen — the frosted-glass texture cues. */
 	background-image:
@@ -214,7 +214,11 @@ html {
 	backdrop-filter: blur(24px);
 	box-shadow:
 		0 24px 60px -24px rgb(0 0 0 / 0.8),
-		inset 0 1px 0 rgb(255 255 255 / 0.1);
+		/* A whisper of outer glow — a soft luminous halo + a faint cool charge tint —
+		   so the menu's edges read as distinct from the backdrop behind it. */
+			0 0 20px -2px rgb(255 255 255 / 0.1),
+		0 0 28px -6px color-mix(in oklab, var(--charge-b) 35%, transparent),
+		inset 0 1px 0 rgb(255 255 255 / 0.12);
 }
 
 /* Form fields carved INTO the frosted glass (contact modal, issue #11). Where
