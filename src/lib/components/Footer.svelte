@@ -9,7 +9,9 @@
 
 	// Rendered at request time (SSR) — no hydration mismatch since client agrees.
 	const year = new Date().getFullYear();
-	const email = 'mharris@darcstar.tech';
+	// Public role alias (issue #54) — reads as the company and survives staffing
+	// changes; not a personal address. The inbox/alias is provisioned on the mail host.
+	const email = 'info@darcstar.tech';
 	const githubUrl = 'https://github.com/DarcStar-Technologies';
 
 	// Secondary nav for the single-page site: home + the GIDE section anchor
