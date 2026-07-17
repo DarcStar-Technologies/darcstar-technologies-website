@@ -31,11 +31,11 @@ Via the Vite plugin. The stylesheet entry is `src/routes/layout.css` (Prettier's
 
 The site ships **three self-hosted brand faces** (issue #17) — no `system-ui`, no Google CDN:
 
-| Role        | Face              | Where it applies                                        | Token (source of truth)                          |
-| ----------- | ----------------- | ------------------------------------------------------- | ------------------------------------------------ |
-| **Display** | Space Grotesk     | all headings (`<h1>`–`<h6>`)                             | `--heading-font-family` — `scripts/gen-theme.mjs` |
-| **Body**    | Inter             | body copy + UI (`<body>` down)                          | `--base-font-family` — `scripts/gen-theme.mjs`   |
-| **Mono**    | JetBrains Mono    | `font-mono` — GIDE kicker, section kickers, readout bar | `--font-mono` — `layout.css` `@theme`            |
+| Role        | Face           | Where it applies                                        | Token (source of truth)                           |
+| ----------- | -------------- | ------------------------------------------------------- | ------------------------------------------------- |
+| **Display** | Space Grotesk  | all headings (`<h1>`–`<h6>`)                            | `--heading-font-family` — `scripts/gen-theme.mjs` |
+| **Body**    | Inter          | body copy + UI (`<body>` down)                          | `--base-font-family` — `scripts/gen-theme.mjs`    |
+| **Mono**    | JetBrains Mono | `font-mono` — GIDE kicker, section kickers, readout bar | `--font-mono` — `layout.css` `@theme`             |
 
 **Self-hosting** — the faces load via [Fontsource](https://fontsource.org) variable packages (`@fontsource-variable/{space-grotesk,inter,jetbrains-mono}`), imported as **CSS `@import` at the top of `layout.css`** (not a JS side-effect import in `+layout.svelte`). Fontsource ships the variable `.woff2` + `@font-face` (`font-display: swap`); Vite fingerprints and bundles the files, and the per-subset `unicode-range` means an English visitor downloads only the **latin** woff2 per family (~3 files). Each is a single variable file spanning all weights the site uses (Space Grotesk `300–700` covers `font-medium`/`font-semibold`).
 
@@ -80,7 +80,7 @@ The homepage's RGB "color-charge" motif (the nucleon triple helix) is **the same
 
 ### Glass surfaces — `glass-panel` / `glass-nav` / `glass-btn`
 
-Three `@utility` classes in `layout.css` render the frosted panes that float over the void: `glass-panel` (sections, readout bar), `glass-nav` (the sticky header), and `glass-btn` (CTAs). All compose a translucent fill, the shared `--grain` film, `backdrop-filter: blur`, and a lift shadow.
+Three `@utility` classes in `layout.css` render the frosted panes that float over the void: `glass-panel` (sections, readout bar), `glass-nav` (the sticky header), and `glass-btn` (CTAs). All compose a translucent fill, the shared `--grain` film, `backdrop-filter: blur`, and a lift shadow. Two more serve the contact form (see [contact](contact.md)): **`glass-field`** is the _inverse_ — form inputs carved **into** the glass via inset (rather than lift) shadows (darker fill + grain, dark top-inner depth shadow + light bottom-inner bevel, primary/error focus rings); **`glass-menu`** is a floating dropdown/popover surface — like `glass-panel` but with a **more opaque** dark base, because it floats over busy content (form fields) rather than the void, so `glass-panel`'s ~4% fill would let text bleed through. It keeps the grain + sheen + heavy blur + lift so it still reads as frosted glass while staying legible.
 
 `glass-panel` and `glass-btn` also carry a faint R→G→B charge tint and a colour-charge drop shadow, sized for large panes. **`glass-nav` deliberately drops both.** The panel's 84px black halo + spread R/G/B glow were tuned for the hero panes; on the thin sticky bar they smeared over the page and floated as you scrolled (issue #20). The nav keeps only the frosted blur, grain, and top sheen over a thin border — so reach for `glass-nav`, not `glass-panel`, on any slim always-visible chrome.
 

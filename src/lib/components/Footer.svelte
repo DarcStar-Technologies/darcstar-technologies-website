@@ -4,6 +4,7 @@
 	// Rendered once in +layout.svelte, so it appears on every page below <main>.
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
+	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import Wordmark from './Wordmark.svelte';
 
 	// Rendered at request time (SSR) — no hydration mismatch since client agrees.
@@ -11,14 +12,14 @@
 	const email = 'mharris@darcstar.tech';
 	const githubUrl = 'https://github.com/DarcStar-Technologies';
 
-	// Secondary nav for the single-page site: home, the GIDE section anchor
-	// (prefixed with the localized home path so it resolves from any page), and
-	// the contact mailto. localizeHref keeps internal links locale-correct; `$derived`
-	// so the labels track the active locale.
+	// Secondary nav for the single-page site: home + the GIDE section anchor
+	// (prefixed with the localized home path so it resolves from any page).
+	// localizeHref keeps internal links locale-correct; `$derived` so the labels
+	// track the active locale. Contact is a separate button that opens the contact
+	// modal (issue #11); the footer email icon below stays a direct mailto.
 	const nav = $derived([
 		{ label: m.footer_nav_home(), href: localizeHref('/') },
-		{ label: m.footer_nav_gide(), href: `${localizeHref('/')}#gide` },
-		{ label: m.footer_nav_contact(), href: `mailto:${email}` }
+		{ label: m.footer_nav_gide(), href: `${localizeHref('/')}#gide` }
 	]);
 </script>
 
@@ -91,6 +92,16 @@
 							</a>
 						</li>
 					{/each}
+					<li>
+						<button
+							type="button"
+							aria-haspopup="dialog"
+							onclick={() => contactDialog.show()}
+							class="text-sm text-white/70 transition-colors hover:text-primary-500"
+						>
+							{m.footer_nav_contact()}
+						</button>
+					</li>
 				</ul>
 			</nav>
 		</div>

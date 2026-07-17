@@ -4,6 +4,7 @@
 	import Header from '$lib/components/Header.svelte';
 	import Footer from '$lib/components/Footer.svelte';
 	import BackToTop from '$lib/components/BackToTop.svelte';
+	import ContactDialog from '$lib/components/ContactDialog.svelte';
 
 	let { children } = $props();
 </script>
@@ -23,3 +24,7 @@
 <div class="header-scrim" aria-hidden="true"></div>
 
 <BackToTop />
+
+<!-- Global contact modal (issue #11) — rendered once; opened from the hero/CTA
+     buttons and the footer link via the shared `contactDialog` rune. -->
+<ContactDialog />

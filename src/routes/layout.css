@@ -20,6 +20,15 @@
    The custom variant is kept so the darcstar theme's dark tokens resolve. */
 @custom-variant dark (&:where([data-mode='dark'], [data-mode='dark'] *));
 
+/* Tell the UA the page is dark so NATIVE controls render with a dark palette —
+   the <select> option popup, scrollbars, autofill, spinners, date pickers. Without
+   it the contact form's interest options render white-on-white until highlighted.
+   Pairs with the hardcoded data-mode="dark"; the options also carry explicit dark
+   fills (bg-surface-*) for browsers that ignore color-scheme on option lists. */
+html {
+	color-scheme: dark;
+}
+
 /* Brand typography (issue #17) — self-hosted, no OS default. The faces load via
    the Fontsource @import block above; this block only names them.
      • body   → Inter          (Skeleton --base-font-family, in gen-theme.mjs)
@@ -186,6 +195,73 @@
 	&:hover {
 		border-color: rgb(255 255 255 / 0.3);
 		background-color: rgb(255 255 255 / 0.1);
+	}
+}
+
+/* Frosted-glass floating menu — dropdowns/popovers (e.g. the contact form's interest
+   picker, issue #11). Like glass-panel but with a MORE OPAQUE dark base: this floats
+   over busy content (form fields), not the void, so glass-panel's ~4% fill would let
+   the text behind bleed through and wreck legibility. The dark fill keeps options
+   readable while the grain film + top sheen + heavy blur + lift shadow still read as
+   frosted glass, not a flat black box. Consumers add sizing/rounding/padding. */
+@utility glass-menu {
+	border: 1px solid rgb(255 255 255 / 0.14);
+	background-color: rgb(9 11 18 / 0.82);
+	/* Film grain over a subtle top sheen — the frosted-glass texture cues. */
+	background-image:
+		var(--grain), linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0) 40%);
+	-webkit-backdrop-filter: blur(24px);
+	backdrop-filter: blur(24px);
+	box-shadow:
+		0 24px 60px -24px rgb(0 0 0 / 0.8),
+		/* A whisper of outer glow — a soft luminous halo + a faint cool charge tint —
+		   so the menu's edges read as distinct from the backdrop behind it. */
+			0 0 20px -2px rgb(255 255 255 / 0.1),
+		0 0 28px -6px color-mix(in oklab, var(--charge-b) 35%, transparent),
+		inset 0 1px 0 rgb(255 255 255 / 0.12);
+}
+
+/* Form fields carved INTO the frosted glass (contact modal, issue #11). Where
+   glass-panel/glass-btn sit proud of the void, a field reads as a recessed well:
+   a darker translucent fill + the shared grain film, a crisp dark inner shadow at
+   the top edge and a soft inner depth shadow (the recess), and a 1px inner light
+   line along the bottom (the bevel catch, as if lit from above). Focus lifts a
+   primary ring; aria-invalid (set by the remote-form `.as()`) an error ring.
+   Consumers add sizing (w-full, rounded-lg, padding, text-sm). */
+@utility glass-field {
+	border: 1px solid rgb(255 255 255 / 0.07);
+	/* A near-opaque dark fill so text inputs read as solid/dark as the native
+	   <select> (whose control is opaque under color-scheme: dark) instead of letting
+	   the lighter panel tint show through. */
+	background-color: rgb(0 0 0 / 0.55);
+	background-image: var(--grain);
+	color: rgb(255 255 255);
+	box-shadow:
+		inset 0 1px 2px rgb(0 0 0 / 0.5),
+		inset 0 2px 6px rgb(0 0 0 / 0.3),
+		inset 0 -1px 0 rgb(255 255 255 / 0.06);
+	transition:
+		border-color 150ms ease,
+		box-shadow 150ms ease;
+	&::placeholder {
+		color: rgb(255 255 255 / 0.4);
+	}
+	&:focus {
+		outline: none;
+		border-color: color-mix(in oklab, var(--color-primary-500) 55%, transparent);
+		box-shadow:
+			inset 0 1px 2px rgb(0 0 0 / 0.5),
+			inset 0 2px 6px rgb(0 0 0 / 0.3),
+			inset 0 -1px 0 rgb(255 255 255 / 0.06),
+			0 0 0 3px color-mix(in oklab, var(--color-primary-500) 22%, transparent);
+	}
+	&[aria-invalid='true'] {
+		border-color: color-mix(in oklab, var(--color-error-500) 60%, transparent);
+		box-shadow:
+			inset 0 1px 2px rgb(0 0 0 / 0.5),
+			inset 0 2px 6px rgb(0 0 0 / 0.3),
+			inset 0 -1px 0 rgb(255 255 255 / 0.06),
+			0 0 0 3px color-mix(in oklab, var(--color-error-500) 18%, transparent);
 	}
 }
 
