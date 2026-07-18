@@ -158,6 +158,58 @@ html {
 		inset 0 1px 0 rgb(255 255 255 / 0.12),
 		inset 0 -1px 0 rgb(0 0 0 / 0.3);
 }
+
+/* Glinting-light sheen — a single light PLANE. ONE viewport overlay carrying a soft
+   diagonal band that sweeps the screen, clip-path'd to the frosted-glass windows so
+   every surface shows the same beam at its true screen position — one coherent light
+   source (real geometry, not just synced timing). The band is transform-animated
+   (compositor-only); the clip-path (union of rounded glass rects) is maintained by JS
+   (src/lib/glass-sheen.ts) on scroll + resize + modal open. It sits ABOVE every layer
+   (scrim 40 / header 50 / modal 60) so it can catch the nav and the modal too; being
+   clip-path'd to glass + pointer-events:none, it never draws on — or blocks — anything
+   else. While the modal is open the clip switches to the modal's glass only, so page
+   panels don't bleed sheen over the scrim. */
+.sheen-plane {
+	position: fixed;
+	inset: 0;
+	z-index: 70;
+	pointer-events: none;
+	overflow: hidden;
+	clip-path: path('M0 0Z'); /* nothing until JS sets the glass windows */
+}
+.sheen-plane__beam {
+	position: absolute;
+	/* Oversized (2.2× viewport) with a matching ±24% sweep so the beam's EDGES always
+	   stay off-screen — otherwise an edge crosses the viewport near the top and the nav
+	   catches a hard-edged partial sheen (looks like a local flash) while the top of the
+	   screen goes uncovered. Margin: 0.6 vw each side vs a 0.53 vw sweep. */
+	inset: -60%;
+	/* Three bands sweeping together: a bright, tight central glint (0.22) flanked by two
+	   softer, wider glows (0.1). The triple reads as a richer "light passing over the
+	   glass" than a single stripe and catches the eye better; the wide side glows also
+	   keep small targets (the footer icons) lit longer on the slow, helix-rate sweep.
+	   Still one gradient on one transform-animated beam — same compositor-only cost. */
+	background: linear-gradient(
+		125deg,
+		transparent 20%,
+		rgb(255 255 255 / 0.1) 30%,
+		transparent 44%,
+		rgb(255 255 255 / 0.22) 50%,
+		transparent 56%,
+		rgb(255 255 255 / 0.1) 70%,
+		transparent 80%
+	);
+	transform: translate3d(-24%, 24%, 0);
+	/* One sweep per helix rotation — CosmicBackdrop advances the helix phase at
+	   0.0002 rad/ms, so a full 2π turn is 2π/0.0002 ≈ 31.416s. Keep them in step. */
+	animation: sheen-plane-sweep 31.416s linear infinite;
+	will-change: transform;
+}
+@keyframes sheen-plane-sweep {
+	to {
+		transform: translate3d(24%, -24%, 0);
+	}
+}
 /* Lighter frosted variant for the STICKY HEADER. The hero-tuned glass-panel above
    carries an 84px black halo + a spread R/G/B color-charge glow; on a thin nav bar
    that smears over the page and floats as you scroll (issue #20). This drops the
@@ -335,5 +387,9 @@ html {
 	}
 	.glass-nav {
 		transition: none;
+	}
+	/* Freeze the glass sheen plane (keeps a static highlight, no motion). */
+	.sheen-plane__beam {
+		animation: none;
 	}
 }
