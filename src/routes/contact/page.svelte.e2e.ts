@@ -17,6 +17,11 @@ test('/contact renders the contact form with all fields', async ({ page }) => {
 	await expect(main.getByLabel('Area of interest')).toBeVisible();
 	await expect(main.getByLabel('Message', { exact: true })).toBeVisible();
 	await expect(main.getByRole('button', { name: 'Send message' })).toBeVisible();
+
+	// The interest picker's chevron is a CSS-only affordance (appearance:none + a
+	// background SVG), so it renders without JS. Confirm the native control is stripped;
+	// the same CSS applies whether or not JS runs.
+	await expect(main.getByLabel('Area of interest')).toHaveCSS('appearance', 'none');
 });
 
 // Without JavaScript the page must still submit: the remote form degrades to a native

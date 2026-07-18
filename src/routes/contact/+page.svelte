@@ -165,6 +165,8 @@
 					>
 						{m.contact_field_interest_label()}
 					</span>
+					<!-- The dropdown chevron is a CSS-only affordance (`select.glass-field` in
+					     layout.css) so it renders without JS, matching the modal's GlassSelect. -->
 					<select {...submitContact.fields.interest.as('select')} class={fieldClass}>
 						<option value="">{m.contact_interest_placeholder()}</option>
 						{#each INTERESTS as value (value)}

@@ -330,6 +330,25 @@ html {
 	}
 }
 
+/* Native <select> carved into the glass (the no-JS /contact fallback, issue #55).
+   Strip the platform control and paint our own chevron — a CSS-only inline SVG, so it
+   needs no JS — matching the modal's GlassSelect indicator (text-faint, path m6 9 6 6 6-6).
+   The chevron is layered over the shared grain film; the extra right padding clears it.
+   Unlayered on purpose, so it overrides the glass-field utility's single-layer grain and
+   the px-3.5 right padding. */
+select.glass-field {
+	appearance: none;
+	padding-right: 2.5rem;
+	background-image:
+		url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23ffffff'%20stroke-opacity='0.5'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='m6%209%206%206%206-6'/%3E%3C/svg%3E"),
+		var(--grain);
+	background-repeat: no-repeat, repeat;
+	background-position:
+		right 0.875rem center,
+		0 0;
+	background-size: 1rem, auto;
+}
+
 /* Mono, uppercase, muted-ink eyebrow/kicker label (GIDE kicker, section kickers,
    footer nav heading, readout labels). Captures only the invariant part; consumers
    add their own size + tracking (deliberately varied — small labels are text-xs
