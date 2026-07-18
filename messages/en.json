@@ -100,5 +100,9 @@
 	"contact_error_email": "Please enter a valid email address.",
 	"contact_error_message": "Please enter a message (at least 10 characters).",
 	"contact_error_ratelimit": "You've sent several messages recently — please try again in a little while.",
-	"contact_error_generic": "Something went wrong sending your message. Please try again."
+	"contact_error_generic": "Something went wrong sending your message. Please try again.",
+	"contact_page_title": "Contact — DarcStar Technologies",
+	"contact_page_description": "Get in touch with DarcStar Technologies about safety-critical control, autonomous systems, or formal methods — we read every message.",
+	"contact_page_eyebrow": "Contact",
+	"contact_page_back_home": "Return home →"
 }
