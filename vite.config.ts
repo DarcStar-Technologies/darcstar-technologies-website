@@ -1,4 +1,3 @@
-/// <reference types="vitest/config" />
 import { paraglideVitePlugin } from '@inlang/paraglide-js';
 
 import { mdsvex } from 'mdsvex';
@@ -11,9 +10,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 
-const dirname = typeof __dirname !== 'undefined'
-	? __dirname
-	: path.dirname(fileURLToPath(import.meta.url));
+const dirname =
+	typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 export default defineConfig({
@@ -22,7 +20,8 @@ export default defineConfig({
 		sveltekit({
 			compilerOptions: {
 				// Force runes mode for the project, except for libraries. Can be removed in svelte 6.
-				runes: ({ filename }) => filename.split(/[/\\]/).includes('node_modules') ? undefined : true,
+				runes: ({ filename }) =>
+					filename.split(/[/\\]/).includes('node_modules') ? undefined : true,
 				experimental: { async: true }
 			},
 			adapter: adapter(),
@@ -71,9 +70,7 @@ export default defineConfig({
 
 			{
 				extends: true,
-				plugins: [
-					storybookTest({ configDir: path.join(dirname, '.storybook') })
-				],
+				plugins: [storybookTest({ configDir: path.join(dirname, '.storybook') })],
 				test: {
 					name: 'storybook',
 					browser: {

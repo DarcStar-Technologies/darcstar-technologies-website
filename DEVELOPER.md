@@ -4,10 +4,10 @@
 
 This repo uses [pre-commit](https://pre-commit.com) to run two linters as git hooks (config: `.pre-commit-config.yaml`):
 
-| Hook | Stage | What it does |
-| --- | --- | --- |
-| [actionlint](https://github.com/rhysd/actionlint) | `pre-commit` | Lints GitHub Actions workflow files (`.github/workflows/*.yml`) |
-| [commitlint](https://commitlint.js.org) | `commit-msg` | Enforces [Conventional Commits](https://www.conventionalcommits.org) (config: `commitlint.config.js`) |
+| Hook                                              | Stage        | What it does                                                                                          |
+| ------------------------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
+| [actionlint](https://github.com/rhysd/actionlint) | `pre-commit` | Lints GitHub Actions workflow files (`.github/workflows/*.yml`)                                       |
+| [commitlint](https://commitlint.js.org)           | `commit-msg` | Enforces [Conventional Commits](https://www.conventionalcommits.org) (config: `commitlint.config.js`) |
 
 The same two linters also run in CI on push/PR — see `.github/workflows/actionlint.yml` and `.github/workflows/commitlint.yml` — so they are enforced even for contributors who haven't installed the hooks locally.
 
