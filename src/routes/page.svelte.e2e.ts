@@ -23,6 +23,19 @@ test('homepage renders the hero, a section and the CTAs', async ({ page }) => {
 	await expect(page.getByRole('button', { name: 'Contact Us' })).toBeVisible();
 });
 
+// Header About link is an enhanced in-page anchor to the global footer (issue #50):
+// clicking it scrolls #about into view and records the hash in the URL. The link is now
+// home-anchored (`/#about`) so it degrades to a real navigation when the target is off-page,
+// but on the homepage the enhanced smooth-scroll path runs.
+test('header About link scrolls to the footer and sets the hash', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('link', { name: 'About' }).click();
+
+	await expect(page.getByRole('contentinfo')).toBeInViewport();
+	await expect(page).toHaveURL(/#about$/);
+});
+
 // The contact modal (issue #11) opens from the CTA, shows its fields, and closes on
 // Esc. The happy-path submit (which writes to Turso) is verified manually, not here —
 // validation itself is covered by src/lib/server/contact.spec.ts.
