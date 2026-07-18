@@ -27,9 +27,15 @@ Replaces the personal `mailto:` CTAs with a modal contact form that persists to 
 - **Shape** — `buildLeadEmail(sub)` (pure, unit-tested in `contact-notify.spec.ts`) renders subject + text/html from a `CleanedContact`. **From/To = `info@darcstar.tech`** (the #54 role alias); **Reply-To = the visitor's address**, so replying in Gmail goes straight to the lead. Interest slug → human label via a plain map mirroring `contact_interest_*` (server ops output is English, outside the `no-raw-text` rule). All visitor content is **HTML-escaped** in the HTML body.
 - **Infra (not in the repo)** — `darcstar.tech` must be verified in Resend (DKIM/SPF DNS records) and `RESEND_API_KEY` set locally (`.env`) and in prod (`wrangler secret put RESEND_API_KEY`) before real mail sends. See [deployment](deployment.md).
 
+## Standalone page (`/contact`, issue #55)
+
+A shareable, no-JS fallback for the modal, at `src/routes/contact/+page.svelte`. It spreads the **same** `submitContact` remote form, so it progressively enhances when JS is present and degrades to a native POST otherwise: on success the reloaded page renders `submitContact.result`, and validation errors + repopulated values come back through the fields' `.issues()`/`.as()` during SSR (no custom `enhance` — the default enhancement + native fallback are exactly what a fallback page wants). The interest picker is a **native `<select>`** here — the modal's `GlassSelect` is a JS-only Zag component, so it can't be the no-JS control — styled by the shared `glass-field` utility (its opaque fill was tuned to match a native select under `color-scheme: dark`, so no extra CSS). Reuses every `contact_*` message + the `INTERESTS` single-source; the page-only copy is `contact_page_*`.
+
+The global `ContactDialog` (rendered once in the layout) keeps its own copy of the contact form mounted-but-hidden and portaled **outside `<main>`**, so on this route two `<form>`s with the same remote action exist in the DOM — the e2e selectors scope to `<main>` to disambiguate. e2e (`src/routes/contact/page.svelte.e2e.ts`): the page renders with JS, and falls back to a native POST without JS (`javaScriptEnabled: false`, asserting `method`/`action`) — no live submit, to avoid writing to the prod DB.
+
 ## Database
 
-`contact_submission` (`id`, `name`, `email`, `company?`, `interest?`, `message`, `ip_hash?`, `user_agent?`, `created_at`). Applied to Turso with **`pnpm db:push`** (this repo is schema-first — no migrations dir). The deployed Worker and local dev share the one Turso DB, so the table only needs pushing once. Leads also arrive by email on submit (see Lead notification above); `pnpm db:studio` remains the full archive until an admin UI (#55) lands.
+`contact_submission` (`id`, `name`, `email`, `company?`, `interest?`, `message`, `ip_hash?`, `user_agent?`, `created_at`). Applied to Turso with **`pnpm db:push`** (this repo is schema-first — no migrations dir). The deployed Worker and local dev share the one Turso DB, so the table only needs pushing once. Leads also arrive by email on submit (see Lead notification above); `pnpm db:studio` remains the full archive until an admin UI (#69) lands.
 
 ## Tests
 
@@ -43,4 +49,4 @@ The happy-path submit (validation → Turso) is exercised manually rather than i
 
 ## Follow-ups (filed separately)
 
-Cloudflare Turnstile (#53, stronger than the honeypot); optionally a `/contact` no-JS fallback page and an in-app admin view (#55). ✅ Lead notification on submit (#52) and the `info@` role alias (#54) shipped.
+Cloudflare Turnstile (#53, stronger than the honeypot); a gated in-app admin view of submissions (#69, split out of #55). ✅ Lead notification on submit (#52), the `info@` role alias (#54), and the `/contact` no-JS fallback page (#55) shipped.
