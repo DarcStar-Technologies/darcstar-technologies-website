@@ -18,7 +18,18 @@ const handleParaglide: Handle = ({ event, resolve }) =>
 		});
 	});
 
+// Better Auth's default basePath — the entire auth API + session cookies live under it.
+const AUTH_API_PREFIX = '/api/auth';
+
 const handleBetterAuth: Handle = async ({ event, resolve }) => {
+	// Better Auth is wired but not used by any page yet: no sign-in UI, and nothing reads
+	// locals.user/session (that ships with the gated area, #69). Confine the whole surface to
+	// /api/auth/* so ordinary page views don't pay a session lookup each request and the auth
+	// API can't touch the rest of the app. Sign-up itself is disabled in auth.ts (#48). Grow
+	// this prefix to cover protected routes when they land. `event.url` is the original request
+	// path (handleParaglide reassigns event.request, not event.url), so the match is exact.
+	if (!event.url.pathname.startsWith(AUTH_API_PREFIX)) return resolve(event);
+
 	const auth = getAuth();
 	const session = await auth.api.getSession({ headers: event.request.headers });
 

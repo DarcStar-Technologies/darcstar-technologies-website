@@ -23,6 +23,7 @@ Non-negotiables:
 | Styling & UI — Tailwind v4, Skeleton v4        | [docs/styling.md](docs/styling.md)                             |
 | SEO — head tags & OG/Twitter social card       | [docs/seo.md](docs/seo.md)                                     |
 | Contact form — modal → Turso                   | [docs/contact.md](docs/contact.md)                             |
+| Auth — Better Auth (server-only, locked down)  | [docs/auth.md](docs/auth.md)                                   |
 | Deployment — Cloudflare                        | [docs/deployment.md](docs/deployment.md)                       |
 | Skeleton LLM reference (large)                 | [docs/llms/skeleton-svelte.txt](docs/llms/skeleton-svelte.txt) |
 
@@ -43,3 +44,4 @@ Durable gotchas — keep to one line; link to the doc that carries the detail.
 - Use the Svelte MCP (list-sections → get-documentation) for Svelte/SvelteKit questions; run svelte-autofixer on any Svelte you write. → [svelte](docs/svelte.md)
 - Page head (title/description/OG/Twitter) comes from one `<Seo>` component — render it **once per page** in `+page.svelte`, never the layout (SvelteKit merges heads → duplicate tags). OG card is `node scripts/gen-og.mjs` (Chromium rasterizes the brand to 1200×630 PNG). → [seo](docs/seo.md)
 - Contact CTAs open **one** modal (`ContactDialog`, rendered in the layout) via the `contactDialog` rune; it submits through a SvelteKit **remote `form`** (`contact.remote.ts`) → `contact_submission` in Turso, with a honeypot + IP/time throttle, then a **fire-and-forget Resend email** to `info@` (`contact-notify.ts`, via `ctx.waitUntil` — never fails the submission; needs `RESEND_API_KEY` + a verified Resend domain). `.remote.ts` may live anywhere except `$lib/server`. Run `pnpm db:push` after schema changes (schema-first, no migrations dir). → [contact](docs/contact.md)
+- **Better Auth is server-only and locked down** — public sign-up is disabled (`disableSignUp`) and `handleBetterAuth` is confined to `/api/auth/*`; no sign-in UI/protected route exists yet (that's #69). Don't re-open endpoints or read `locals.user` piecemeal. → [auth](docs/auth.md)
