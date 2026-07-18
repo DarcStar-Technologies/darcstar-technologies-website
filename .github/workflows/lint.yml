@@ -1,0 +1,35 @@
+name: lint
+
+# Gate `pnpm lint` (prettier --check + eslint) so formatting/lint regressions can't
+# land on main unnoticed and re-accumulate the noise #63 cleared (issue #65).
+#
+# No build step is needed: `worker-configuration.d.ts` is committed, and `pnpm install`
+# runs the `prepare` script (`svelte-kit sync`) which generates `.svelte-kit` for
+# type-aware linting. Paraglide's vite-plugin output is absent on a clean checkout, but
+# lint stays green without it (typescript-eslint's projectService degrades gracefully;
+# no import/no-unresolved rule), so `pnpm build` would be slow overkill here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # action-setup reads the pnpm version from package.json `packageManager`.
+      - uses: pnpm/action-setup@v4
+      # No engines/.nvmrc pin exists, and `.npmrc` sets engine-strict, so a pin would
+      # gate every dev's local install — hardcode the CI node here instead. Matches local dev (24).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
