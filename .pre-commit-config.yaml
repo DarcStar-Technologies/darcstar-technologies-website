@@ -22,12 +22,18 @@ repos:
           - '@commitlint/config-conventional'
 
   # Keep generated Cloudflare env types in sync with wrangler.jsonc bindings.
-  # Runs `wrangler types` on every commit and fails if worker-configuration.d.ts
-  # drifted from what's staged, so binding changes can't be committed with stale
-  # types. Wrangler is pinned to an exact version (package.json) for reproducible
-  # output. Note: `pnpm build`/`check` no longer run `wrangler types --check` —
-  # that gate is build-state-dependent (the `mainModule` block only exists after
-  # `vite build`), so they regenerate types instead of gating on a committed snapshot.
+  # Scoped to commits that touch wrangler.jsonc — bindings only live there, so that's
+  # the only edit that can stale the types. The hook regenerates worker-configuration.d.ts
+  # and fails if it drifted from what's staged, so a binding change can't land with stale
+  # types. Wrangler is pinned to an exact version (package.json) for reproducible output.
+  #
+  # The committed worker-configuration.d.ts is the build-independent snapshot: generated
+  # with no built worker on disk, it carries no `mainModule` block importing the gitignored
+  # .svelte-kit/cloudflare/_worker (that block only appears after `vite build`). A fresh
+  # `wrangler types` on any clean checkout reproduces it byte-for-byte. That's why this hook
+  # is `files`-scoped rather than `always_run`: firing on every commit made it regenerate the
+  # build-state-dependent file and abort unrelated commits (issue #67). `pnpm build`/`check`
+  # likewise regenerate types rather than gating on the committed snapshot.
   - repo: local
     hooks:
       - id: wrangler-types
@@ -35,4 +41,4 @@ repos:
         entry: pnpm run gen
         language: system
         pass_filenames: false
-        always_run: true
+        files: ^wrangler\.jsonc$
