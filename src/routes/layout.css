@@ -184,11 +184,14 @@ html {
 	   catches a hard-edged partial sheen (looks like a local flash) while the top of the
 	   screen goes uncovered. Margin: 0.6 vw each side vs a 0.53 vw sweep. */
 	inset: -60%;
+	/* Band ~20% of the beam (40→60%) rather than a tight 10% — small targets (e.g. the
+	   footer icon buttons) then dwell in the light long enough to read on the slow,
+	   helix-rate sweep, at the cost of a softer/broader glow than a tight glint. */
 	background: linear-gradient(
 		125deg,
-		transparent 45%,
+		transparent 40%,
 		rgb(255 255 255 / 0.15) 50%,
-		transparent 55%
+		transparent 60%
 	);
 	transform: translate3d(-24%, 24%, 0);
 	/* One sweep per helix rotation — CosmicBackdrop advances the helix phase at
