@@ -1,6 +1,3 @@
-// For more info, see https://github.com/storybookjs/eslint-plugin-storybook#configuration-flat-config-format
-import storybook from 'eslint-plugin-storybook';
-
 import prettier from 'eslint-config-prettier';
 import path from 'node:path';
 import js from '@eslint/js';
@@ -14,6 +11,23 @@ const gitignorePath = path.resolve(import.meta.dirname, '.gitignore');
 
 export default defineConfig(
 	includeIgnoreFile(gitignorePath),
+	{
+		// Don't lint generated or throwaway output. `includeIgnoreFile` only reads the ROOT
+		// .gitignore, so Paraglide's output (ignored by its own nested .gitignore) and the
+		// tracked-but-generated files below slip through — list them explicitly. vitest.shims.d.ts
+		// is a scaffold shim whose sole content is a necessary triple-slash reference. The
+		// `src/stories` / vitest-examples scaffold is disposable `sv create`/Storybook demo
+		// content (see CLAUDE.md); mirror the .prettierignore treatment. (src/lib/paraglide.svelte.ts
+		// is deliberately NOT ignored — it's hand-authored app code.)
+		ignores: [
+			'src/lib/paraglide/**',
+			'worker-configuration.d.ts',
+			'vitest.shims.d.ts',
+			'src/lib/server/db/auth.schema.ts',
+			'src/stories/**',
+			'src/lib/vitest-examples/**'
+		]
+	},
 	js.configs.recommended,
 	ts.configs.recommended,
 	svelte.configs.recommended,
@@ -62,8 +76,13 @@ export default defineConfig(
 		rules: { 'local/no-raw-text': 'off' }
 	},
 	{
-		// Override or add rule settings here, such as:
-		// 'svelte/button-has-type': 'error'
-		rules: {}
+		rules: {
+			// Paraglide's localizeHref()/goto() ARE this project's locale-correct link resolver;
+			// SvelteKit's resolve() (what this rule wants) adds nothing here — there's no configured
+			// `base` path — and can't touch the generated paraglide.svelte.ts goto() either. The
+			// rule therefore only ever fires false positives on our i18n links (issue #63).
+			// Re-enable if a `base` path is ever introduced.
+			'svelte/no-navigation-without-resolve': 'off'
+		}
 	}
 );
