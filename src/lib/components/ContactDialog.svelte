@@ -9,6 +9,15 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import GlassSelect from './GlassSelect.svelte';
 
+	// This global modal is mounted on EVERY page (via +layout.svelte) — including
+	// /contact, which renders its own <form> bound to the same `submitContact` remote
+	// singleton. A remote form object can only attach its progressive-enhancement to a
+	// single <form>; with two live forms sharing the base instance, one loses enhancement
+	// and silently degrades to a native full-page POST. `.for('modal')` gives this dialog
+	// an isolated instance so the two coexist. The modal is JS-only, so keying it (rather
+	// than the page) keeps the standalone /contact no-JS fallback on the base instance.
+	const contactForm = submitContact.for('modal');
+
 	// slug → localized label, single-sourced from INTERESTS (order follows the array).
 	const interestLabel: Record<Interest, () => string> = {
 		robotics: m.contact_interest_robotics,
@@ -48,10 +57,10 @@
 {/snippet}
 
 <!-- One text/textarea field — label (+ optional badge), the glass-field control, and its
-     inline validation errors. `remoteField` is a submitContact.fields.* accessor. -->
+     inline validation errors. `remoteField` is a contactForm.fields.* accessor. -->
 {#snippet field(
 	labelText: string,
-	remoteField: typeof submitContact.fields.name,
+	remoteField: typeof contactForm.fields.name,
 	opts: {
 		placeholder: string;
 		type?: 'text' | 'email';
@@ -148,7 +157,7 @@
 
 					<form
 						class="mt-6 space-y-4"
-						{...submitContact.enhance(async (form) => {
+						{...contactForm.enhance(async (form) => {
 							serverError = false;
 							try {
 								if (await form.submit()) {
@@ -168,7 +177,7 @@
 							aria-hidden="true"
 						>
 							<input
-								{...submitContact.fields.website.as('text')}
+								{...contactForm.fields.website.as('text')}
 								tabindex="-1"
 								autocomplete="off"
 								aria-hidden="true"
@@ -176,7 +185,7 @@
 						</div>
 
 						<!-- Whole-form issues (e.g. rate limit); field issues render under their field. -->
-						{#each submitContact.fields.allIssues() as issue (issue.message)}
+						{#each contactForm.fields.allIssues() as issue (issue.message)}
 							{#if issue.path.length === 0}
 								<p
 									class="rounded-lg border border-error-500/30 bg-error-500/10 px-3 py-2 text-sm text-error-400"
@@ -187,18 +196,18 @@
 							{/if}
 						{/each}
 
-						{@render field(m.contact_field_name_label(), submitContact.fields.name, {
+						{@render field(m.contact_field_name_label(), contactForm.fields.name, {
 							placeholder: m.contact_field_name_placeholder(),
 							autocomplete: 'name'
 						})}
 
-						{@render field(m.contact_field_email_label(), submitContact.fields.email, {
+						{@render field(m.contact_field_email_label(), contactForm.fields.email, {
 							type: 'email',
 							placeholder: m.contact_field_email_placeholder(),
 							autocomplete: 'email'
 						})}
 
-						{@render field(m.contact_field_company_label(), submitContact.fields.company, {
+						{@render field(m.contact_field_company_label(), contactForm.fields.company, {
 							placeholder: m.contact_field_company_placeholder(),
 							autocomplete: 'organization',
 							optional: m.contact_field_company_optional()
@@ -215,7 +224,7 @@
 							<input type="hidden" name="interest" value={interest} />
 						</div>
 
-						{@render field(m.contact_field_message_label(), submitContact.fields.message, {
+						{@render field(m.contact_field_message_label(), contactForm.fields.message, {
 							placeholder: m.contact_field_message_placeholder(),
 							multiline: true
 						})}
@@ -226,10 +235,10 @@
 
 						<button
 							type="submit"
-							disabled={!!submitContact.pending}
+							disabled={!!contactForm.pending}
 							class="glass-btn w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
 						>
-							{submitContact.pending ? m.contact_submitting() : m.contact_submit()}
+							{contactForm.pending ? m.contact_submitting() : m.contact_submit()}
 						</button>
 					</form>
 				{/if}
