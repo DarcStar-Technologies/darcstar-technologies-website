@@ -1,3 +1,12 @@
+<script module lang="ts">
+	// A single dropdown option — the shape ContactDialog builds and the test harness reuses.
+	// Exported so those consumers share one source instead of re-declaring it.
+	export interface Option {
+		value: string;
+		label: string;
+	}
+</script>
+
 <script lang="ts">
 	// Accessible single-select dropdown (issue #11) built on the maintained Zag select
 	// machine (@zag-js/select via @zag-js/svelte) — the same headless engine Skeleton
@@ -8,11 +17,6 @@
 	import * as select from '@zag-js/select';
 	import { mergeProps, normalizeProps, useMachine } from '@zag-js/svelte';
 	import Icon from './Icon.svelte';
-
-	interface Option {
-		value: string;
-		label: string;
-	}
 
 	let {
 		options,
