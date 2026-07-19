@@ -35,6 +35,8 @@
 		/** Root-relative image path (fingerprinted OG card by default). */
 		image?: string;
 		imageAlt?: string;
+		/** Force `robots: noindex` regardless of locale — for gated/internal pages (#69 /admin, /login). */
+		noindex?: boolean;
 	}
 
 	let {
@@ -43,7 +45,8 @@
 		path,
 		type = 'website',
 		image = ogImage,
-		imageAlt = m.seo_default_image_alt()
+		imageAlt = m.seo_default_image_alt(),
+		noindex: forceNoindex = false
 	}: Props = $props();
 
 	// Absolutize against the serving origin — on production this is darcstar.tech,
@@ -59,7 +62,9 @@
 	// Untranslated non-base locales (e.g. /es today) serve byte-identical English —
 	// keep them out of the index until real translations ship. `follow` so the en
 	// links on the page are still crawled. Same posture as +error.svelte's noindex.
-	const noindex = $derived(!TRANSLATED_LOCALES.includes(locale));
+	// `forceNoindex` (a page prop) also covers gated/internal pages that must never be
+	// indexed in any locale (#69: /admin, /login).
+	const noindex = $derived(forceNoindex || !TRANSLATED_LOCALES.includes(locale));
 </script>
 
 <svelte:head>

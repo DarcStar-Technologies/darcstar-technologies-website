@@ -35,7 +35,7 @@ The global `ContactDialog` (rendered once in the layout) keeps its own copy of t
 
 ## Database
 
-`contact_submission` (`id`, `name`, `email`, `company?`, `interest?`, `message`, `ip_hash?`, `user_agent?`, `created_at`). Applied to Turso with **`pnpm db:push`** (this repo is schema-first — no migrations dir). The deployed Worker and local dev share the one Turso DB, so the table only needs pushing once. Leads also arrive by email on submit (see Lead notification above); `pnpm db:studio` remains the full archive until an admin UI (#69) lands.
+`contact_submission` (`id`, `name`, `email`, `company?`, `interest?`, `message`, `ip_hash?`, `user_agent?`, `created_at`). Applied to Turso with **`pnpm db:push`** (this repo is schema-first — no migrations dir). The deployed Worker and local dev share the one Turso DB, so the table only needs pushing once. Leads also arrive by email on submit (see Lead notification above); the gated **`/admin`** view (#69, see [auth.md](auth.md)) is the in-app triage surface, with `pnpm db:studio` as the full archive.
 
 ## Tests
 
@@ -49,4 +49,4 @@ The happy-path submit (validation → Turso) is exercised manually rather than i
 
 ## Follow-ups (filed separately)
 
-Cloudflare Turnstile (#53, stronger than the honeypot); a gated in-app admin view of submissions (#69, split out of #55). ✅ Lead notification on submit (#52), the `info@` role alias (#54), and the `/contact` no-JS fallback page (#55) shipped.
+Cloudflare Turnstile (#53, stronger than the honeypot). ✅ Lead notification on submit (#52), the `info@` role alias (#54), the `/contact` no-JS fallback page (#55), and the gated `/admin` submissions view (#69, see [auth.md](auth.md)) shipped.
