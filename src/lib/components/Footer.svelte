@@ -7,6 +7,7 @@
 	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import { CONTACT_EMAIL, GITHUB_URL } from '$lib/site';
 	import Wordmark from './Wordmark.svelte';
+	import Icon from './Icon.svelte';
 
 	// Rendered at request time (SSR) — no hydration mismatch since client agrees.
 	const year = new Date().getFullYear();
@@ -37,19 +38,10 @@
 				/>
 			</svg>
 		{:else if icon === 'email'}
-			<svg
-				class="size-5"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="1.5"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				aria-hidden="true"
-			>
+			<Icon class="size-5" strokeWidth={1.5}>
 				<rect x="3" y="5" width="18" height="14" rx="2" />
 				<path d="m3 7 9 6 9-6" />
-			</svg>
+			</Icon>
 		{/if}
 	</a>
 {/snippet}

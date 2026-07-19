@@ -10,6 +10,7 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import GlassSelect from './GlassSelect.svelte';
 	import ContactFields from './ContactFields.svelte';
+	import Icon from './Icon.svelte';
 
 	// This global modal is mounted on EVERY page (via +layout.svelte) — including
 	// /contact, which renders its own <form> bound to the same `submitContact` remote
@@ -57,18 +58,9 @@
 					class="glass-btn absolute top-4 right-4 flex size-9 items-center justify-center rounded-full text-body hover:text-white"
 					aria-label={m.contact_close()}
 				>
-					<svg
-						class="size-4"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						aria-hidden="true"
-					>
+					<Icon class="size-4">
 						<path d="M18 6 6 18M6 6l12 12" />
-					</svg>
+					</Icon>
 				</Dialog.CloseTrigger>
 
 				{#if showSuccess}
@@ -76,18 +68,9 @@
 						<div
 							class="mx-auto flex size-12 items-center justify-center rounded-full bg-success-500/15 text-success-400"
 						>
-							<svg
-								class="size-6"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								aria-hidden="true"
-							>
+							<Icon class="size-6">
 								<path d="M20 6 9 17l-5-5" />
-							</svg>
+							</Icon>
 						</div>
 						<Dialog.Title class="mt-4 text-2xl font-medium tracking-tight text-white">
 							{m.contact_success_title()}

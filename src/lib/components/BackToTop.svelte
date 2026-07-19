@@ -3,6 +3,7 @@
 	import { scrollY, innerHeight } from 'svelte/reactivity/window';
 	import { scrollBehavior } from '$lib/scroll';
 	import { m } from '$lib/paraglide/messages.js';
+	import Icon from './Icon.svelte';
 
 	// Floating "back to top" control, rendered once in +layout.svelte so it's on
 	// every page. Appears only after the page is scrolled more than 2/3 of a
@@ -28,17 +29,8 @@
 		transition:fade={{ duration: 150 }}
 		class="glass-btn fixed right-5 bottom-5 z-40 flex size-11 items-center justify-center rounded-full text-emphasis hover:text-white sm:right-8 sm:bottom-8"
 	>
-		<svg
-			class="size-5"
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="2"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-		>
+		<Icon class="size-5">
 			<path d="M12 19V5M5 12l7-7 7 7" />
-		</svg>
+		</Icon>
 	</button>
 {/if}
