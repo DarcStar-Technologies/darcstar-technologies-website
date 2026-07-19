@@ -9,6 +9,7 @@
 	import { interestLabel } from '$lib/contact-interest-labels';
 	import { m } from '$lib/paraglide/messages.js';
 	import GlassSelect from './GlassSelect.svelte';
+	import ContactFields from './ContactFields.svelte';
 
 	// This global modal is mounted on EVERY page (via +layout.svelte) — including
 	// /contact, which renders its own <form> bound to the same `submitContact` remote
@@ -27,7 +28,9 @@
 
 	// Interest uses the custom glass dropdown (GlassSelect) rather than a native
 	// <select>, so its value rides a hidden input into the remote form's FormData.
-	let interest = $state('');
+	// Named `interestValue` (not `interest`) so it doesn't collide with the `interest`
+	// snippet passed to ContactFields below.
+	let interestValue = $state('');
 	let showSuccess = $state(false);
 	let serverError = $state(false);
 
@@ -39,53 +42,7 @@
 			serverError = false;
 		}
 	}
-
-	// Recessed, beveled, grainy fields carved into the glass panel — the look lives in
-	// the `glass-field` utility (layout.css); consumers add only sizing.
-	const fieldClass = 'glass-field w-full rounded-lg px-3.5 py-2.5 text-sm';
 </script>
-
-{#snippet fieldError(issues: { message: string }[] | undefined)}
-	{#each issues ?? [] as issue (issue.message)}
-		<p class="mt-1.5 text-xs text-error-400">{issue.message}</p>
-	{/each}
-{/snippet}
-
-<!-- One text/textarea field — label (+ optional badge), the glass-field control, and its
-     inline validation errors. `remoteField` is a contactForm.fields.* accessor. -->
-{#snippet field(
-	labelText: string,
-	remoteField: typeof contactForm.fields.name,
-	opts: {
-		placeholder: string;
-		type?: 'text' | 'email';
-		autocomplete?: AutoFill;
-		optional?: string;
-		multiline?: boolean;
-	}
-)}
-	<label class="block">
-		<span class="mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-body">
-			{labelText}
-			{#if opts.optional}<span class="font-normal text-faint">{opts.optional}</span>{/if}
-		</span>
-		{#if opts.multiline}
-			<textarea
-				{...remoteField.as('text')}
-				rows="4"
-				class="{fieldClass} min-h-28 resize-y"
-				placeholder={opts.placeholder}></textarea>
-		{:else}
-			<input
-				{...remoteField.as(opts.type ?? 'text')}
-				class={fieldClass}
-				placeholder={opts.placeholder}
-				autocomplete={opts.autocomplete}
-			/>
-		{/if}
-		{@render fieldError(remoteField.issues())}
-	</label>
-{/snippet}
 
 <Dialog open={contactDialog.open} onOpenChange={(e) => handleOpenChange(e.open)}>
 	<Portal>
@@ -157,7 +114,7 @@
 							try {
 								if (await form.submit()) {
 									form.element.reset();
-									interest = '';
+									interestValue = '';
 									showSuccess = true;
 								}
 							} catch {
@@ -165,76 +122,26 @@
 							}
 						})}
 					>
-						<!-- Honeypot: off-screen, out of the a11y tree, unfocusable. Humans never
-						     fill it; a non-empty value is silently dropped server-side. -->
-						<div
-							class="pointer-events-none absolute -left-[9999px] h-0 w-0 overflow-hidden"
-							aria-hidden="true"
-						>
-							<input
-								{...contactForm.fields.website.as('text')}
-								tabindex="-1"
-								autocomplete="off"
-								aria-hidden="true"
-							/>
-						</div>
+						<ContactFields form={contactForm}>
+							{#snippet interest()}
+								<div>
+									<GlassSelect
+										id="contact-interest"
+										label={m.contact_field_interest_label()}
+										options={interestOptions}
+										placeholder={m.contact_interest_placeholder()}
+										bind:value={interestValue}
+									/>
+									<input type="hidden" name="interest" value={interestValue} />
+								</div>
+							{/snippet}
 
-						<!-- Whole-form issues (e.g. rate limit); field issues render under their field. -->
-						{#each contactForm.fields.allIssues() as issue (issue.message)}
-							{#if issue.path.length === 0}
-								<p
-									class="rounded-lg border border-error-500/30 bg-error-500/10 px-3 py-2 text-sm text-error-400"
-									role="alert"
-								>
-									{issue.message}
-								</p>
-							{/if}
-						{/each}
-
-						{@render field(m.contact_field_name_label(), contactForm.fields.name, {
-							placeholder: m.contact_field_name_placeholder(),
-							autocomplete: 'name'
-						})}
-
-						{@render field(m.contact_field_email_label(), contactForm.fields.email, {
-							type: 'email',
-							placeholder: m.contact_field_email_placeholder(),
-							autocomplete: 'email'
-						})}
-
-						{@render field(m.contact_field_company_label(), contactForm.fields.company, {
-							placeholder: m.contact_field_company_placeholder(),
-							autocomplete: 'organization',
-							optional: m.contact_field_company_optional()
-						})}
-
-						<div>
-							<GlassSelect
-								id="contact-interest"
-								label={m.contact_field_interest_label()}
-								options={interestOptions}
-								placeholder={m.contact_interest_placeholder()}
-								bind:value={interest}
-							/>
-							<input type="hidden" name="interest" value={interest} />
-						</div>
-
-						{@render field(m.contact_field_message_label(), contactForm.fields.message, {
-							placeholder: m.contact_field_message_placeholder(),
-							multiline: true
-						})}
-
-						{#if serverError}
-							<p class="text-sm text-error-400" role="alert">{m.contact_error_generic()}</p>
-						{/if}
-
-						<button
-							type="submit"
-							disabled={!!contactForm.pending}
-							class="glass-btn w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-						>
-							{contactForm.pending ? m.contact_submitting() : m.contact_submit()}
-						</button>
+							{#snippet error()}
+								{#if serverError}
+									<p class="text-sm text-error-400" role="alert">{m.contact_error_generic()}</p>
+								{/if}
+							{/snippet}
+						</ContactFields>
 					</form>
 				{/if}
 			</Dialog.Content>
