@@ -2,42 +2,18 @@
 	import { slide } from 'svelte/transition';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
-	import { scrollBehavior } from '$lib/scroll';
 	import Wordmark from './Wordmark.svelte';
 
-	// Nav links. Each href is final (already localized): Home is the localized base
-	// path; About is home-anchored (`/#about` → the global footer) rather than a bare
-	// `#about`, so a click from a page that lacks the target degrades to a real
-	// navigation to the anchor's page instead of a silent no-op (issue #50), while
-	// staying locale-correct (matches the footer's `${localizeHref('/')}#gide`). `$derived`
-	// so hrefs + labels track the active locale; `id` is a stable {#each} key across switches.
+	// Nav links — plain localized path links (About now points at the real /about page,
+	// issue #61; the old `/#about` footer-anchor workaround is retired). `$derived` so
+	// hrefs + labels track the active locale; `id` is a stable {#each} key across switches.
 	const links = $derived([
 		{ id: 'home', label: m.nav_home(), href: localizeHref('/') },
-		{ id: 'about', label: m.nav_about(), href: `${localizeHref('/')}#about` }
+		{ id: 'about', label: m.nav_about(), href: localizeHref('/about') }
 	]);
 
 	let open = $state(false);
 	let stuck = $state(false);
-
-	// In-page anchor links (About → the #about footer) get an enhanced smooth scroll.
-	// SvelteKit's router intercepts hash links and scrolls INSTANTLY (ignoring CSS
-	// scroll-behavior), so take over: preventDefault stops its jump, then
-	// scrollIntoView animates — honouring scroll-mt on the target for the sticky
-	// header, and staying instant under prefers-reduced-motion. We enhance ONLY when
-	// the target is on the current page; if it isn't (another page/locale), we fall
-	// through so the router navigates to the href (which carries the path) and lands on
-	// the anchor there — never a silent no-op (issue #50). Pure path links fall through
-	// too. Also closes the mobile menu.
-	function handleNavClick(e: MouseEvent, href: string) {
-		open = false;
-		const hashIndex = href.indexOf('#');
-		if (hashIndex === -1) return; // pure path link → normal routing
-		const target = document.getElementById(href.slice(hashIndex + 1));
-		if (!target) return; // anchor lives on another page → let the router navigate there
-		e.preventDefault();
-		target.scrollIntoView({ behavior: scrollBehavior() });
-		history.pushState(null, '', href.slice(hashIndex)); // push just #hash → keep path + locale
-	}
 
 	// The header lifts its shadow only once it detaches from the top of the page. The
 	// sentinel below sits at the document top; IntersectionObserver flips `stuck` as it
@@ -56,9 +32,10 @@
 />
 
 <!-- One link markup for both the desktop and mobile lists; `className` carries the
-     per-list styling so the two never drift. -->
+     per-list styling so the two never drift. Plain path links now, so the click only
+     closes the mobile menu (the router handles navigation). -->
 {#snippet navLink(link: { id: string; label: string; href: string }, className: string)}
-	<a href={link.href} onclick={(e) => handleNavClick(e, link.href)} class={className}>
+	<a href={link.href} onclick={() => (open = false)} class={className}>
 		{link.label}
 	</a>
 {/snippet}

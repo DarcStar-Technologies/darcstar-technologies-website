@@ -57,8 +57,7 @@
 	</a>
 {/snippet}
 
-<!-- id="about" is the header's About nav target; scroll-mt clears the sticky header. -->
-<footer id="about" class="scroll-mt-24 border-t border-hairline bg-white/[0.02]">
+<footer class="border-t border-hairline bg-white/[0.02]">
 	<div class="mx-auto max-w-5xl px-4 py-12 sm:px-6">
 		<div class="flex flex-col gap-10 sm:flex-row sm:justify-between">
 			<!-- Brand + tagline + socials -->
