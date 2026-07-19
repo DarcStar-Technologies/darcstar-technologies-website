@@ -4,13 +4,14 @@ import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { getRequestEvent } from '$app/server';
 import { getDb } from '$lib/server/db';
 import { emailAndPassword } from '$lib/server/auth-options';
+import { readEnv } from '$lib/server/env';
 
 function createAuth() {
-	// Per-request Cloudflare env (secrets/vars); process.env fallback for dev.
-	const cfEnv = getRequestEvent().platform?.env;
+	// Secrets/vars are read per-request from platform.env (see readEnv). `getRequestEvent`
+	// is still imported below for the sveltekitCookies plugin.
 	return betterAuth({
-		baseURL: cfEnv?.ORIGIN ?? process.env.ORIGIN,
-		secret: cfEnv?.BETTER_AUTH_SECRET ?? process.env.BETTER_AUTH_SECRET,
+		baseURL: readEnv('ORIGIN'),
+		secret: readEnv('BETTER_AUTH_SECRET'),
 		// Trust the Cloudflare workers.dev origins for auth (CSRF / cookie origin
 		// checks). Production (ORIGIN) is trusted automatically.
 		// - bare production alias (exact match needs the scheme)

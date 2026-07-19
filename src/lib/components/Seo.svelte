@@ -13,10 +13,8 @@
 	// Fingerprint-imported: a regenerated card (node scripts/gen-og.mjs) gets a new
 	// hashed URL, so scrapers re-fetch instead of caching stale. Source: scripts/gen-og.mjs.
 	import ogImage from '$lib/assets/og-image.png';
+	import { SITE_NAME } from '$lib/site';
 
-	// Brand name — a proper noun, identical across locales, so it stays a plain
-	// constant (used for og:site_name), not a message.
-	const SITE = 'DarcStar Technologies';
 	// BCP-47 → OG's underscore locale form. Mirrors project.inlang locales (en, es).
 	const OG_LOCALE: Record<string, string> = { en: 'en_US', es: 'es_ES' };
 	// Locales whose copy is genuinely translated. `es` is wired but still English
@@ -78,7 +76,7 @@
 
 	<!-- Open Graph -->
 	<meta property="og:type" content={type} />
-	<meta property="og:site_name" content={SITE} />
+	<meta property="og:site_name" content={SITE_NAME} />
 	<meta property="og:title" content={title} />
 	<meta property="og:description" content={description} />
 	<meta property="og:url" content={canonical} />

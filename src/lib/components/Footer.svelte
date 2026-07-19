@@ -5,14 +5,11 @@
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 	import { contactDialog } from '$lib/contact-dialog.svelte';
+	import { CONTACT_EMAIL, GITHUB_URL } from '$lib/site';
 	import Wordmark from './Wordmark.svelte';
 
 	// Rendered at request time (SSR) — no hydration mismatch since client agrees.
 	const year = new Date().getFullYear();
-	// Public role alias (issue #54) — reads as the company and survives staffing
-	// changes; not a personal address. The inbox/alias is provisioned on the mail host.
-	const email = 'info@darcstar.tech';
-	const githubUrl = 'https://github.com/DarcStar-Technologies';
 
 	// Secondary nav for the single-page site: home + the GIDE section anchor
 	// (prefixed with the localized home path so it resolves from any page).
@@ -72,8 +69,8 @@
 					{m.footer_tagline()}
 				</p>
 				<div class="mt-5 flex gap-3">
-					{@render socialLink(githubUrl, 'github', m.footer_social_github(), true)}
-					{@render socialLink(`mailto:${email}`, 'email', m.footer_social_email(), false)}
+					{@render socialLink(GITHUB_URL, 'github', m.footer_social_github(), true)}
+					{@render socialLink(`mailto:${CONTACT_EMAIL}`, 'email', m.footer_social_email(), false)}
 				</div>
 			</div>
 

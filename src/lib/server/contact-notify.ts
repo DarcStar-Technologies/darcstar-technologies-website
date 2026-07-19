@@ -10,17 +10,22 @@
 // English by design: this is internal ops output, not localized UI, so it sits
 // outside the no-raw-text rule (which only scopes routes + components anyway).
 import type { CleanedContact } from './contact';
+import type { Interest } from '$lib/contact-interests';
+import { CONTACT_EMAIL } from '$lib/site';
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 
 // `from` must be on the Resend-verified sending domain; `to` is where leads land.
-// Both are the role alias — the real lead address rides on Reply-To.
-const FROM = 'DarcStar Contact <info@darcstar.tech>';
-const TO = 'info@darcstar.tech';
+// Both are the role alias (single-sourced from site.ts) — the real lead address
+// rides on Reply-To.
+const FROM = `DarcStar Contact <${CONTACT_EMAIL}>`;
+const TO = CONTACT_EMAIL;
 
 // Slug -> human label, mirroring the contact_interest_* UI copy. A plain map (not
-// Paraglide) because this email is server-side ops output, always English.
-const INTEREST_LABELS: Record<string, string> = {
+// Paraglide) because this email is server-side ops output, always English. Keyed on the
+// `Interest` union so adding a slug to contact-interests.ts without a label is a compile
+// error, not a silent 'Not specified'.
+const INTEREST_LABELS: Record<Interest, string> = {
 	robotics: 'Robotics & control',
 	markets: 'Financial markets',
 	'formal-methods': 'Formal methods & verification',
@@ -29,7 +34,7 @@ const INTEREST_LABELS: Record<string, string> = {
 };
 
 const interestLabel = (slug: string | null): string =>
-	(slug ? INTEREST_LABELS[slug] : undefined) ?? 'Not specified';
+	(slug ? INTEREST_LABELS[slug as Interest] : undefined) ?? 'Not specified';
 
 // Escape the HTML-significant chars so visitor content can't break out of — or
 // inject markup into — the HTML body. The text/plain part needs no escaping.
