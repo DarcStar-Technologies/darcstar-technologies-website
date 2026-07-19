@@ -7,6 +7,7 @@
 	// serialize it into the remote form (a hidden input).
 	import * as select from '@zag-js/select';
 	import { mergeProps, normalizeProps, useMachine } from '@zag-js/svelte';
+	import Icon from './Icon.svelte';
 
 	interface Option {
 		value: string;
@@ -61,18 +62,9 @@
 			{...api.getIndicatorProps()}
 			class="flex shrink-0 text-faint transition-transform duration-150 data-[state=open]:rotate-180"
 		>
-			<svg
-				class="size-4"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				aria-hidden="true"
-			>
+			<Icon class="size-4">
 				<path d="m6 9 6 6 6-6" />
-			</svg>
+			</Icon>
 		</span>
 	</button>
 
@@ -92,18 +84,9 @@
 				>
 					<span {...api.getItemTextProps({ item: opt })}>{opt.label}</span>
 					<span {...api.getItemIndicatorProps({ item: opt })} class="text-primary-400">
-						<svg
-							class="size-4 shrink-0"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2.5"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							aria-hidden="true"
-						>
+						<Icon class="size-4 shrink-0" strokeWidth={2.5}>
 							<path d="M20 6 9 17l-5-5" />
-						</svg>
+						</Icon>
 					</span>
 				</li>
 			{/each}
