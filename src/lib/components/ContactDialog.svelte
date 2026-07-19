@@ -5,7 +5,8 @@
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
 	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import { submitContact } from '$lib/contact.remote';
-	import { INTERESTS, type Interest } from '$lib/contact-interests';
+	import { INTERESTS } from '$lib/contact-interests';
+	import { interestLabel } from '$lib/contact-interest-labels';
 	import { m } from '$lib/paraglide/messages.js';
 	import GlassSelect from './GlassSelect.svelte';
 
@@ -18,14 +19,8 @@
 	// than the page) keeps the standalone /contact no-JS fallback on the base instance.
 	const contactForm = submitContact.for('modal');
 
-	// slug → localized label, single-sourced from INTERESTS (order follows the array).
-	const interestLabel: Record<Interest, () => string> = {
-		robotics: m.contact_interest_robotics,
-		markets: m.contact_interest_markets,
-		'formal-methods': m.contact_interest_formal_methods,
-		partnership: m.contact_interest_partnership,
-		other: m.contact_interest_other
-	};
+	// {value,label} options for the glass dropdown; labels come from the shared interest map
+	// (contact-interest-labels.ts). `$derived` so they re-resolve on locale change.
 	const interestOptions = $derived(
 		INTERESTS.map((value) => ({ value, label: interestLabel[value]() }))
 	);

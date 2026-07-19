@@ -13,18 +13,10 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import { submitContact } from '$lib/contact.remote';
-	import { INTERESTS, type Interest } from '$lib/contact-interests';
+	import { INTERESTS } from '$lib/contact-interests';
+	import { interestLabel } from '$lib/contact-interest-labels';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
-
-	// slug → localized label, single-sourced from INTERESTS (mirrors ContactDialog).
-	const interestLabel: Record<Interest, () => string> = {
-		robotics: m.contact_interest_robotics,
-		markets: m.contact_interest_markets,
-		'formal-methods': m.contact_interest_formal_methods,
-		partnership: m.contact_interest_partnership,
-		other: m.contact_interest_other
-	};
 
 	// Same recessed glass wells as the modal; consumers add only sizing.
 	const fieldClass = 'glass-field w-full rounded-lg px-3.5 py-2.5 text-sm';

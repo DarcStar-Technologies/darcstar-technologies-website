@@ -7,14 +7,10 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { contactDialog } from '$lib/contact-dialog.svelte';
-
-	// Proper-noun / contact constants — rendered as `{expr}` mustaches (not raw template
-	// text), so the no-raw-text ESLint rule leaves them alone, and the real address/handle
-	// stay visible. Mirrors Footer.svelte / Seo.svelte, which hold the same literals.
-	const SITE = 'DarcStar Technologies';
-	const email = 'info@darcstar.tech';
-	const githubUrl = 'https://github.com/DarcStar-Technologies';
-	const githubHandle = 'DarcStar-Technologies';
+	// Brand/contact identity from the single source (src/lib/site.ts). Rendered as `{expr}`
+	// mustaches below, so the real address/handle stay visible and the no-raw-text rule is
+	// satisfied.
+	import { SITE_NAME, CONTACT_EMAIL, GITHUB_URL, GITHUB_HANDLE } from '$lib/site';
 
 	// $derived so the three principles re-resolve if a locale switcher is ever added
 	// (getLocale() is $state-backed); `title` is a stable {#each} key across switches.
@@ -85,7 +81,7 @@
 			</h2>
 			<dl class="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-[10rem_1fr]">
 				<dt class="eyebrow text-xs tracking-widest">{m.about_facts_company_label()}</dt>
-				<dd class="text-sm text-emphasis">{SITE}</dd>
+				<dd class="text-sm text-emphasis">{SITE_NAME}</dd>
 
 				<dt class="eyebrow text-xs tracking-widest">{m.about_facts_location_label()}</dt>
 				<dd class="text-sm text-emphasis">{m.footer_location()}</dd>
@@ -96,13 +92,14 @@
 				<dt class="eyebrow text-xs tracking-widest">{m.about_facts_contact_label()}</dt>
 				<dd class="flex flex-col gap-1.5 text-sm">
 					<a
-						href={githubUrl}
+						href={GITHUB_URL}
 						target="_blank"
 						rel="noreferrer"
-						class="text-body transition-colors hover:text-primary-500">{githubHandle}</a
+						class="text-body transition-colors hover:text-primary-500">{GITHUB_HANDLE}</a
 					>
-					<a href={`mailto:${email}`} class="text-body transition-colors hover:text-primary-500"
-						>{email}</a
+					<a
+						href={`mailto:${CONTACT_EMAIL}`}
+						class="text-body transition-colors hover:text-primary-500">{CONTACT_EMAIL}</a
 					>
 				</dd>
 			</dl>
