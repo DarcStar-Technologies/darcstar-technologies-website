@@ -7,6 +7,7 @@
 	import ContactDialog from '$lib/components/ContactDialog.svelte';
 	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import { createSheenSync } from '$lib/glass-sheen';
+	import { afterNavigate } from '$app/navigation';
 
 	let { children } = $props();
 
@@ -18,6 +19,11 @@
 	$effect(() => {
 		sheen?.refresh(contactDialog.open);
 	});
+
+	// The sheen plane persists across client-side navigation (it's in this layout), but each
+	// route has its own glass panels — so re-clip after every navigation, else the beam stays
+	// pinned to the previous page's panels (a ghost that only realigns on scroll/refresh).
+	afterNavigate(() => sheen?.refresh(contactDialog.open));
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
