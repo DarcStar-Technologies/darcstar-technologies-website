@@ -92,6 +92,23 @@
 			return g;
 		}
 
+		// Paint the starfield into `ctx`. `alphaOf` gives each star's opacity — a steady
+		// `st.base` for the frozen cache, `st.base × twinkle` for the live frame — so the two
+		// star passes share one arc/fill loop. Resets globalAlpha to 1 when done.
+		function drawStars(
+			ctx: CanvasRenderingContext2D,
+			alphaOf: (st: (typeof stars)[number]) => number
+		) {
+			for (const st of stars) {
+				ctx.globalAlpha = Math.max(0, alphaOf(st));
+				ctx.beginPath();
+				ctx.arc(st.x * w, st.y * h, st.r, 0, Math.PI * 2);
+				ctx.fillStyle = '#ffffff';
+				ctx.fill();
+			}
+			ctx.globalAlpha = 1;
+		}
+
 		function renderBackground() {
 			bg.width = canvas.width;
 			bg.height = canvas.height;
@@ -125,14 +142,7 @@
 			sfc.setTransform(1, 0, 0, 1, 0, 0);
 			sfc.drawImage(bg, 0, 0);
 			sfc.setTransform(dpr, 0, 0, dpr, 0, 0);
-			for (const st of stars) {
-				sfc.globalAlpha = Math.max(0, st.base);
-				sfc.beginPath();
-				sfc.arc(st.x * w, st.y * h, st.r, 0, Math.PI * 2);
-				sfc.fillStyle = '#ffffff';
-				sfc.fill();
-			}
-			sfc.globalAlpha = 1;
+			drawStars(sfc, (st) => st.base);
 			sfc.fillStyle = makeVignette(sfc);
 			sfc.fillRect(0, 0, w, h);
 		}
@@ -175,19 +185,26 @@
 
 		const helixCenter = () => slotCy || Math.min(h * 0.42, 360);
 
+		// Shared helix geometry — centre, span, left edge, amplitude. drawHelix() and
+		// helixBBox() both derive from these, so the drawn braid and the band it repaints
+		// can't drift apart. Amplitude tracks the WIDTH (not viewport height), so the braid
+		// keeps its aspect ratio and simply scales down on narrow screens; capped to the gap.
+		function helixGeom() {
+			const span = Math.min(w * 0.94, 1180);
+			return {
+				cy: helixCenter(),
+				span,
+				x0: w / 2 - span / 2,
+				amp: Math.min(span * 0.11, (slotH || h * 0.5) * 0.42)
+			};
+		}
+
 		function drawHelix(t: number) {
 			if (w < 360) return; // extra-small only — drop it (matches the min-[360px] gap collapse)
-			const cx = w / 2;
-			const cy = helixCenter();
-			const span = Math.min(w * 0.94, 1180);
-			const x0 = cx - span / 2;
-			// Amplitude tracks the WIDTH (not viewport height), so the braid keeps its
-			// aspect ratio and simply scales down on narrow screens; capped to the gap.
-			const amp = Math.min(span * 0.11, (slotH || h * 0.5) * 0.42);
+			const { cy, span, x0, amp } = helixGeom();
 			const turns = 2.3;
 			const N = 66;
 			const phase = t * 0.0002;
-			const colors = triad;
 
 			const segs: { x0: number; y0: number; x1: number; y1: number; z: number; col: string }[] = [];
 			for (let i = 0; i < N; i++) {
@@ -205,7 +222,7 @@
 						x1: x0 + t1 * span,
 						y1: cy + amp * e1 * Math.sin(a1),
 						z: Math.cos((a0 + a1) / 2),
-						col: colors[s]
+						col: triad[s]
 					});
 				}
 			}
@@ -247,15 +264,10 @@
 			c.drawImage(bg, 0, 0);
 			c.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-			for (const st of stars) {
-				const tw = reduce ? 1 : 0.55 + 0.45 * Math.sin(t * 0.001 * st.sp + st.tw);
-				c.globalAlpha = Math.max(0, st.base * tw);
-				c.beginPath();
-				c.arc(st.x * w, st.y * h, st.r, 0, Math.PI * 2);
-				c.fillStyle = '#ffffff';
-				c.fill();
-			}
-			c.globalAlpha = 1;
+			drawStars(
+				c,
+				(st) => st.base * (reduce ? 1 : 0.55 + 0.45 * Math.sin(t * 0.001 * st.sp + st.tw))
+			);
 
 			drawHelix(t);
 
@@ -269,11 +281,9 @@
 		// The helix's bounding band (full width × the strand amplitude), padded for the
 		// stroke + additive glow so nothing trails outside when we repaint only this region.
 		function helixBBox() {
-			const cy = helixCenter();
-			const span = Math.min(w * 0.94, 1180);
-			const amp = Math.min(span * 0.11, (slotH || h * 0.5) * 0.42);
+			const { cy, span, x0, amp } = helixGeom();
 			const pad = 14;
-			const x = Math.max(0, w / 2 - span / 2 - pad);
+			const x = Math.max(0, x0 - pad);
 			const y = Math.max(0, cy - amp - pad);
 			return {
 				x,
