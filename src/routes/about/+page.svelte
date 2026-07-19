@@ -30,14 +30,25 @@
 <CosmicBackdrop />
 
 <div class="space-y-20">
-	<!-- Intro -->
-	<section class="flex flex-col items-center px-6 pt-6 pb-4 text-center sm:pt-10">
+	<!-- Hero — matches the homepage standard (the pattern for every page's hero): kicker,
+	     then the twisting triple helix, then the heading + lead inside a frosted glass-panel. -->
+	<section class="-mt-10 flex flex-col items-center px-6 pt-6 pb-16 text-center sm:pt-8">
 		<p class="eyebrow text-sm tracking-[0.3em]">{m.about_eyebrow()}</p>
-		<h1 class="mt-6 text-4xl font-medium tracking-tight text-balance text-white sm:text-5xl">
-			<span class="charge-flow">{m.about_heading_emphasis()}</span>
-			{m.about_heading_tail()}
-		</h1>
-		<p class="mx-auto mt-6 max-w-2xl text-base text-body sm:text-lg">{m.about_lead()}</p>
+
+		<!-- The twisting triple helix centres in this gap; CosmicBackdrop measures
+		     #helix-slot to place and size it responsively (falls back to a default spot
+		     when absent — which is why the hero panel must sit below this slot). -->
+		<div id="helix-slot" class="h-6 min-[360px]:h-[min(25vw,19rem)]"></div>
+
+		<div
+			class="glass-panel mx-auto w-full max-w-3xl rounded-2xl px-8 py-10 text-center sm:px-10 sm:py-12"
+		>
+			<h1 class="text-4xl font-medium tracking-tight text-balance text-white sm:text-5xl">
+				<span class="charge-flow">{m.about_heading_emphasis()}</span>
+				{m.about_heading_tail()}
+			</h1>
+			<p class="mx-auto mt-6 max-w-2xl text-base text-body sm:text-lg">{m.about_lead()}</p>
+		</div>
 	</section>
 
 	<div class="mx-auto max-w-3xl space-y-14">
