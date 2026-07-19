@@ -36,6 +36,32 @@ test('header About link navigates to the about page', async ({ page }) => {
 	);
 });
 
+// Regression: the glass sheen light-plane lives in the persistent layout, so its clip-path
+// (the union of the CURRENT route's glass panels) must be rebuilt on client-side navigation.
+// Before the afterNavigate re-clip, the beam stayed pinned to the previous page's panels — a
+// ghost that only realigned after a scroll or refresh. Here the clip must change to the about
+// page's (fewer, differently-placed) panels with NO scroll (the user's old workaround).
+test('the glass sheen clip-path is rebuilt on navigation (no ghost of the prior page)', async ({
+	page
+}) => {
+	await page.goto('/');
+
+	const clipPath = () =>
+		page.evaluate(() => document.querySelector<HTMLElement>('.sheen-plane')?.style.clipPath ?? '');
+
+	// The clip is applied an rAF after load; wait for it, then capture the homepage geometry.
+	await expect.poll(clipPath).not.toBe('');
+	const homeClip = await clipPath();
+
+	// SPA navigation (link click, not a reload) to a page whose panels differ from home's.
+	await page.getByRole('link', { name: 'About' }).click();
+	await expect(page).toHaveURL(/\/about$/);
+
+	// Without the fix this stays === homeClip forever (poll would time out); with it, the clip
+	// rebuilds to the about page's panels promptly and with no scroll.
+	await expect.poll(clipPath).not.toBe(homeClip);
+});
+
 // The contact modal (issue #11) opens from the CTA, shows its fields, and closes on
 // Esc. The happy-path submit (which writes to Turso) is verified manually, not here —
 // validation itself is covered by src/lib/server/contact.spec.ts.

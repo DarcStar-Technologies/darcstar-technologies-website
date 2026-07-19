@@ -72,12 +72,19 @@ export function createSheenSync(plane: HTMLElement) {
 	window.addEventListener('resize', schedule, { passive: true });
 
 	return {
-		/** Re-clip; call when the set of glass elements changes (modal open/close). */
+		/**
+		 * Re-clip; call whenever the set (or position) of glass windows changes — the modal
+		 * opening/closing, OR a client-side route change. The plane lives in the persistent
+		 * layout, so navigation doesn't rebuild this sync; without an explicit re-clip the beam
+		 * stays pinned to the previous route's panels (a ghost that only lines up again after a
+		 * scroll/resize). Pass the current modal-open state.
+		 */
 		refresh(nextModalOpen: boolean) {
 			modalOpen = nextModalOpen;
 			schedule();
-			// The portalled dialog mounts a tick after `open` flips, so re-clip once more
-			// shortly after — the immediate pass can run before its glass is in the DOM.
+			// The new glass mounts a tick after this call (the portalled dialog after `open`
+			// flips; the next route's panels after navigation), so re-clip once more shortly
+			// after — the immediate pass can run before that glass is in the DOM.
 			clearTimeout(retry);
 			retry = setTimeout(schedule, 120);
 		},
