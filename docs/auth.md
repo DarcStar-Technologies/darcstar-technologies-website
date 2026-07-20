@@ -37,8 +37,9 @@ operators from the roster UI. This doc maps what's wired and why.
   so it stays out of the CLI config. The `admin` plugin is schema-affecting (adds
   `user.role/banned/ban_reason/ban_expires` + `session.impersonated_by`), so a **bare `admin()`**
   is mirrored into `auth-cli.ts`; its behavioral options stay in `auth.ts`. Tables reach Turso via
-  `pnpm db:push` (schema-first, no migrations dir — see [contact.md](contact.md)); **rerun it after
-  schema changes** (it added `rate_limit`, then the admin columns).
+  **`pnpm db:push`** (the default apply path; a versioned `drizzle/` migration trail also exists —
+  see [deployment.md](deployment.md)); **rerun it after schema changes** (it added `rate_limit`,
+  then the admin columns).
 - **Secrets** — `BETTER_AUTH_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` via
   `wrangler secret` + local `.env`. See [deployment.md](deployment.md).
 

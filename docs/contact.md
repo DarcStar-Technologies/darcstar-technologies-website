@@ -35,7 +35,7 @@ The global `ContactDialog` (rendered once in the layout) keeps its own copy of t
 
 ## Database
 
-`contact_submission` (`id`, `name`, `email`, `company?`, `interest?`, `message`, `ip_hash?`, `user_agent?`, `created_at`). Applied to Turso with **`pnpm db:push`** (this repo is schema-first — no migrations dir). The deployed Worker and local dev share the one Turso DB, so the table only needs pushing once. Leads also arrive by email on submit (see Lead notification above); the gated **`/admin`** view (#69, see [auth.md](auth.md)) is the in-app triage surface, with `pnpm db:studio` as the full archive.
+`contact_submission` (`id`, `name`, `email`, `company?`, `interest?`, `message`, `ip_hash?`, `user_agent?`, `created_at`). Applied to Turso with **`pnpm db:push`** (the default apply path; a versioned `drizzle/` migration trail also exists — see [deployment.md](deployment.md)). The deployed Worker and local dev share the one Turso DB, so the table only needs pushing once. Leads also arrive by email on submit (see Lead notification above); the gated **`/admin`** view (#69, see [auth.md](auth.md)) is the in-app triage surface, with `pnpm db:studio` as the full archive.
 
 ## Tests
 
