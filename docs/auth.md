@@ -16,11 +16,8 @@ create an operator account is the provisioning script (below). This doc maps wha
   - `emailAndPassword` — `enabled` but **`disableSignUp: true`** (#48).
   - `rateLimit` — `{ enabled: true, storage: 'database' }` (#69). DB-backed so counters survive
     Cloudflare isolate churn; adds the **`rate_limit`** table (schema-affecting → mirrored in the
-    CLI config). Only requests through Better Auth's **router** are limited (the mounted
-    `/api/auth/*` endpoints), which is why sign-in goes over HTTP, not a direct `auth.api` call.
-- **`src/lib/auth-client.ts`** — the browser `createAuthClient` (`better-auth/svelte`), used **only**
-  by the login page so the sign-in POST traverses the router (and thus the rate limiter). A
-  server-side `auth.api.signInEmail` would skip the router and go unthrottled.
+    CLI config). Only requests through Better Auth's **router** are limited, which is why the login
+    action forwards to `auth.handler()` rather than calling `auth.api.signInEmail` directly.
 - **`src/hooks.server.ts`** — `handleBetterAuth` populates `locals.user`/`locals.session` for the
   paths that read it — `/api/auth/*`, **`/admin`**, and **`/login`** (matched on the de-localized
   path, since URLs localize as `/es/*`) — and mounts the auth API via `svelteKitHandler` for
@@ -61,12 +58,17 @@ logic runs**, making an endpoint-level e2e meaningless there.
 
 The gated surface #48 fenced off:
 
-- **`/login`** (`src/routes/login/`) — email/password sign-in. The `+page.svelte` calls
-  `authClient.signIn.email` (so the request is rate-limited); a generic "incorrect email or
-  password" covers wrong-password / unknown-account / empty alike (no user enumeration), and a 429
-  surfaces the rate-limit. `+page.server.ts` `load` bounces an already-signed-in operator to
-  `/admin`. On success the client navigates to `/admin` (a full server load, so the guard re-runs
-  with the fresh cookie).
+- **`/login`** (`src/routes/login/`) — email/password sign-in as a **server form action**
+  (`+page.server.ts`), so it works **without JS** (native POST → 303 → `/admin`) and progressively
+  enhances (`use:enhance` in `LoginForm.svelte`). The action forwards a clean sub-request to
+  `getAuth().handler()` so the sign-in traverses the rate limiter — and, because it calls
+  `handler()` directly (not via `svelteKitHandler`) with no cookie/origin headers, it sidesteps
+  both the `isAuthPath` origin gate and the origin/CSRF check, so it works in every environment
+  (no `ORIGIN` match needed). It then forwards Better Auth's session `Set-Cookie` onto the response
+  (the router path skips the `sveltekitCookies` plugin). A generic "incorrect email or password"
+  covers wrong-password / unknown-account / empty alike (no user enumeration); a 429 surfaces the
+  rate-limit. `load` bounces an already-signed-in operator to `/admin`. The same `LoginForm` backs
+  the navbar's `LoginDialog` (issue #69 follow-up).
 - **`/admin`** (`src/routes/admin/`) — `+layout.server.ts` is the **guard** (`!locals.user` →
   `/login`); `+page.server.ts` reads the newest `contact_submission` rows (capped, newest-first)
   and holds the **sign-out** action (`auth.api.signOut`, then → `/login`). This replaces
@@ -79,10 +81,8 @@ The gated surface #48 fenced off:
 Guarded by an e2e (`src/routes/admin/page.svelte.e2e.ts`): unauthenticated `/admin` → `/login`
 (DB-free — a no-cookie `getSession` returns null without a query). The happy path (sign-in →
 list → sign-out → guard) is a manual smoke, **`pnpm smoke:signin`** (`scripts/smoke-signin.mjs`),
-run against a server on the **`ORIGIN` host+port** (Better Auth's `isAuthPath` only serves
-`/api/auth/*` when the request origin matches `ORIGIN` — with the default `.env` that's
-`http://localhost:5173`, so `wrangler dev … --port 5173`). It writes a session, so — like the
-contact happy-path — it's out of CI.
+run against any built server (`pnpm preview`) — it signs in through the `/login` form action, which
+works on any origin/port. It writes a session, so — like the contact happy-path — it's out of CI.
 
 ## Still deferred
 

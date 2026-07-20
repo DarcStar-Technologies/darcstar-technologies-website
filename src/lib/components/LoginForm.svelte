@@ -1,46 +1,51 @@
 <script lang="ts">
 	// The admin sign-in form (#69) — shared by the standalone /login page and the navbar login
-	// dialog (LoginDialog) so the two can't drift. Sign-in runs through the Better Auth client so
-	// the POST hits /api/auth/sign-in/email → the router's DB-backed rate limiter (a direct
-	// auth.api call would skip the router, and the limiter with it). The host owns the surrounding
-	// chrome (heading/lead + panel or dialog); this owns the fields + submission.
+	// dialog (LoginDialog) so the two can't drift. It's a real SvelteKit form action
+	// (action="/login"), so it works WITHOUT JS (native POST → sign-in → 303 to /admin) and
+	// progressively enhances with use:enhance. The action routes through Better Auth's handler →
+	// the router's DB-backed rate limiter (see login/+page.server.ts). The host owns the
+	// surrounding chrome (heading/lead + panel or dialog); this owns the fields + submission.
+	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
-	import { authClient } from '$lib/auth-client';
+	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 	import { fieldClass } from '$lib/components/ContactFields.svelte';
 
-	// `onSuccess` lets a host (the dialog) react to a successful sign-in — close itself — just
-	// before we navigate to /admin. The standalone page passes nothing.
-	let { onSuccess }: { onSuccess?: () => void } = $props();
+	// `form` is the /login action result — present when the page re-renders after a no-JS submit,
+	// to repopulate the email + show the error. `onSuccess` lets the dialog close on success.
+	let {
+		form,
+		onSuccess
+	}: { form?: { email?: string; error?: string } | null; onSuccess?: () => void } = $props();
 
-	let email = $state('');
-	let password = $state('');
 	let submitting = $state(false);
-	// One generic error state — a wrong password, unknown account, and empty fields all read the
-	// same ("incorrect email or password") so the form can't be used to enumerate accounts. A 429
-	// from the rate limiter is surfaced separately so a locked-out operator knows to wait.
-	let error = $state<'invalid' | 'ratelimited' | null>(null);
-
-	async function signIn(event: SubmitEvent) {
-		event.preventDefault();
-		if (submitting) return;
-		submitting = true;
-		error = null;
-
-		const res = await authClient.signIn.email({ email, password });
-		if (res.error) {
-			error = res.error.status === 429 ? 'ratelimited' : 'invalid';
-			submitting = false;
-			return;
-		}
-
-		onSuccess?.();
-		// Full server navigation so the /admin guard re-runs with the freshly-set session cookie.
-		await goto('/admin', { invalidateAll: true });
-	}
+	// Error from the enhanced (JS) submit; falls back to the server action's `form.error` (no-JS).
+	// One generic message — wrong password, unknown account and empty fields all read the same, so
+	// the form can't be used to enumerate accounts; a 429 from the rate limiter is surfaced apart.
+	let clientError = $state<string | null>(null);
+	const error = $derived(clientError ?? form?.error ?? null);
 </script>
 
-<form method="post" class="mt-6 space-y-4" onsubmit={signIn}>
+<form
+	method="post"
+	action={localizeHref('/login')}
+	class="mt-6 space-y-4"
+	use:enhance={() => {
+		submitting = true;
+		clientError = null;
+		return async ({ result }) => {
+			submitting = false;
+			if (result.type === 'redirect') {
+				onSuccess?.();
+				await goto(result.location, { invalidateAll: true });
+			} else if (result.type === 'failure') {
+				clientError = (result.data as { error?: string } | undefined)?.error ?? 'invalid';
+			} else {
+				clientError = 'invalid';
+			}
+		};
+	}}
+>
 	{#if error}
 		<p
 			class="rounded-lg border border-error-500/30 bg-error-500/10 px-3 py-2 text-sm text-error-400"
@@ -57,7 +62,7 @@
 		<input
 			type="email"
 			name="email"
-			bind:value={email}
+			value={form?.email ?? ''}
 			required
 			autocomplete="username"
 			class={fieldClass}
@@ -72,7 +77,6 @@
 		<input
 			type="password"
 			name="password"
-			bind:value={password}
 			required
 			autocomplete="current-password"
 			class={fieldClass}
