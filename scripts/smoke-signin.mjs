@@ -81,8 +81,10 @@ if (!homeAuthedHtml.includes('action="/logout"')) {
 }
 ok('/ navbar shows the signed-in controls when authenticated');
 
-// 3. Sign out clears the session cookies.
-const signOut = await fetch(`${BASE}/admin?/signout`, {
+// 3. Sign out via /logout — the navbar's global sign-out target (a native form POST). Clears the
+// session cookies and lands on the home page (303 → /). This is the /admin sign-out button's twin
+// (same `auth.api.signOut`), but reachable from any page.
+const signOut = await fetch(`${BASE}/logout`, {
 	method: 'POST',
 	redirect: 'manual',
 	headers: {
@@ -93,14 +95,17 @@ const signOut = await fetch(`${BASE}/admin?/signout`, {
 	},
 	body: ''
 });
+if (signOut.status !== 303 || signOut.headers.get('location') !== '/') {
+	die(`/logout: expected 303 → /, got ${signOut.status} → ${signOut.headers.get('location')}`);
+}
 const cleared = signOut.headers
 	.getSetCookie()
 	.some(
 		(c) =>
 			/session_token=;|session_token=""?;/.test(c) || /session_token=[^;]*;[^]*max-age=0/i.test(c)
 	);
-if (!cleared) die(`sign-out: session cookie was not cleared (status ${signOut.status})`);
-ok('sign-out clears the session');
+if (!cleared) die(`/logout: session cookie was not cleared (status ${signOut.status})`);
+ok('/logout clears the session and redirects home');
 
 // 4. The guard bounces an unauthenticated request.
 const guard = await fetch(`${BASE}/admin`, { redirect: 'manual' });
