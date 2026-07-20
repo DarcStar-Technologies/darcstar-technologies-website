@@ -43,8 +43,10 @@ function forwardSetCookies(cookies: Cookies, res: Response): void {
 }
 
 export const actions: Actions = {
-	default: async ({ request, cookies, url, locals }) => {
+	default: async ({ request, cookies, url, locals, getClientAddress }) => {
 		if (locals.user) redirect(303, '/admin');
+		// getAuth() reads platform.env via getRequestEvent(); resolve it before the first await.
+		const auth = getAuth();
 
 		const data = await request.formData();
 		const email = String(data.get('email') ?? '').trim();
@@ -54,13 +56,28 @@ export const actions: Actions = {
 		// used to enumerate accounts.
 		if (!email || !password) return fail(400, { email, error: 'invalid' as const });
 
-		// A clean sub-request (no cookie/origin headers): Better Auth's origin check only validates
-		// when a cookie is present, so this passes in every environment, and calling handler()
-		// directly (not via svelteKitHandler) sidesteps the isAuthPath origin gate entirely.
-		const res = await getAuth().handler(
+		// A clean sub-request: no cookie/origin headers (Better Auth's origin check only validates
+		// when a cookie is present, so this passes in every environment; calling handler() directly
+		// rather than via svelteKitHandler also sidesteps the isAuthPath origin gate). But DO forward
+		// the client IP — Better Auth's rate limiter keys by it (default header: x-forwarded-for), and
+		// without it every sign-in would share one NO_TRUSTED_IP bucket (a global lockout vector).
+		// getClientAddress() resolves Cloudflare's cf-connecting-ip, which the client can't spoof.
+		const headers = new Headers({ 'content-type': 'application/json' });
+		// On Cloudflare, getClientAddress() returns cf-connecting-ip (always present in prod); it can
+		// return null (or throw on other adapters) when unresolvable — then we omit the header and
+		// Better Auth falls back to a localhost rate-limit key in dev.
+		let clientIp: string | null = null;
+		try {
+			clientIp = getClientAddress();
+		} catch {
+			// adapter couldn't resolve an address
+		}
+		if (clientIp) headers.set('x-forwarded-for', clientIp);
+
+		const res = await auth.handler(
 			new Request(new URL('/api/auth/sign-in/email', url.origin), {
 				method: 'POST',
-				headers: { 'content-type': 'application/json' },
+				headers,
 				body: JSON.stringify({ email, password })
 			})
 		);
