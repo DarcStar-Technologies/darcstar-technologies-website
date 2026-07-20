@@ -147,6 +147,7 @@
 	"login_close": "Close",
 	"login_error": "Incorrect email or password.",
 	"login_error_ratelimit": "Too many attempts. Please wait a moment and try again.",
+	"login_error_generic": "Something went wrong signing in. Please try again.",
 
 	"admin_page_title": "Submissions — DarcStar Technologies",
 	"admin_page_description": "Contact-form submissions for DarcStar Technologies operators.",

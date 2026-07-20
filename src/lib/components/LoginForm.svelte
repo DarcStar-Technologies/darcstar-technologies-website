@@ -41,7 +41,8 @@
 			} else if (result.type === 'failure') {
 				clientError = (result.data as { error?: string } | undefined)?.error ?? 'invalid';
 			} else {
-				clientError = 'invalid';
+				// result.type === 'error' — an unexpected server error, not a credential problem.
+				clientError = 'generic';
 			}
 		};
 	}}
@@ -51,7 +52,11 @@
 			class="rounded-lg border border-error-500/30 bg-error-500/10 px-3 py-2 text-sm text-error-400"
 			role="alert"
 		>
-			{error === 'ratelimited' ? m.login_error_ratelimit() : m.login_error()}
+			{error === 'ratelimited'
+				? m.login_error_ratelimit()
+				: error === 'generic'
+					? m.login_error_generic()
+					: m.login_error()}
 		</p>
 	{/if}
 
