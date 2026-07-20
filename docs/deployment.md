@@ -15,3 +15,16 @@ Non-public values are set with `wrangler secret put <NAME>` (not in `wrangler.js
 - `DATABASE_URL`, `DATABASE_AUTH_TOKEN` — Turso.
 - `BETTER_AUTH_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` — auth.
 - `RESEND_API_KEY` — contact lead notifications (issue #52). **Also requires** verifying `darcstar.tech` as a sending domain in Resend (add the DKIM/SPF DNS records to Cloudflare). Until both are done, submissions still persist — the email send skips (no key) or logs its failure; it never fails the submission. See [contact.md](contact.md).
+
+## Admin area (#69)
+
+The gated `/admin` submissions view needs two one-time setup steps (see [auth.md](auth.md)):
+
+1. **Apply the schema** — `rateLimit.storage: 'database'` adds a `rate_limit` table. Run **`pnpm db:push`** (schema-first, no migrations dir; needs a TTY). The push is additive — it creates `rate_limit` (and offers the dead `task` scaffold table, unrelated). Without the table, sign-in attempts through `/api/auth/*` error, so push **before** the deploy serves auth. The deployed Worker and local dev share one Turso DB, so it's pushed once.
+2. **Provision the first operator** — public sign-up is disabled, so the only way to create an account is **`pnpm admin:create`** with the credentials passed inline (never committed):
+
+   ```sh
+   ADMIN_EMAIL=you@darcstar.tech ADMIN_PASSWORD='a-strong-password' pnpm admin:create
+   ```
+
+   `ADMIN_NAME` is optional. It reads `DATABASE_URL` / `DATABASE_AUTH_TOKEN` from `.env` and writes to whichever Turso DB those point at — so run it against the prod `.env` to provision the production operator. Re-running for an existing email is rejected.

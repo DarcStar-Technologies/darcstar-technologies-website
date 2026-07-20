@@ -12,7 +12,7 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
-import { emailAndPassword } from './auth-options';
+import { emailAndPassword, rateLimit } from './auth-options';
 
 const db = drizzle(createClient({ url: 'http://localhost:8080' }));
 
@@ -21,6 +21,9 @@ export const auth = betterAuth({
 	// Shared with the live config (auth-options.ts) so the auth method can't drift from
 	// auth.ts. `disableSignUp` is behavioral and doesn't affect the generated schema.
 	emailAndPassword,
+	// #69: schema-affecting (`storage: 'database'` adds the `rateLimit` table) — must be here so
+	// `pnpm auth:schema` emits the table into db/auth.schema.ts. Shared with auth.ts, can't drift.
+	rateLimit,
 	socialProviders: {
 		github: { clientId: '', clientSecret: '' }
 	}

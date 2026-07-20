@@ -1,9 +1,8 @@
-# Auth — Better Auth (server-only, locked down)
+# Auth — Better Auth (email/password, admin-only)
 
-Better Auth is wired **server-side only**. There is deliberately **no sign-in UI, no sign-up
-flow, and no route that reads the session yet** — the gated area that will use it (an in-app
-admin view of contact submissions) is deferred to **#69**. Until then auth is kept locked down
-(issue #48); this doc is the map of what exists and why it's fenced off.
+Better Auth gates a single **internal admin area** — the contact-submissions view at `/admin`
+(#69). Email/password sign-in exists; **public sign-up stays disabled** (#48) — the only way to
+create an operator account is the provisioning script (below). This doc maps what's wired and why.
 
 ## What's wired
 
@@ -12,20 +11,28 @@ admin view of contact submissions) is deferred to **#69**. Until then auth is ke
   The drizzle adapter runs on the shared **Turso/libsql** client (`getDb()`, provider `sqlite`);
   `sveltekitCookies` is last in the plugin list; `trustedOrigins` covers the `*.workers.dev`
   preview/alias hosts.
-- **`src/lib/server/auth-options.ts`** — the env-free `emailAndPassword` config (`enabled` but
-  **`disableSignUp: true`**), split out of `auth.ts` so unit tests can import it without pulling
-  in `$app/server`/the DB client (see the test below).
-- **`src/hooks.server.ts`** — `handleBetterAuth` populates `locals.user`/`locals.session` and
-  mounts the auth API via `svelteKitHandler`. It's **confined to `/api/auth/*`** (Better Auth's
-  default `basePath`): any other path early-returns, so ordinary page views don't pay a session
-  lookup and the auth API can't touch the rest of the app. Grow the prefix when protected routes
-  land. It runs after `handleParaglide` in the `sequence(...)`.
-- **`src/lib/server/db/auth.schema.ts`** — the `user`/`session`/`account`/`verification` tables,
-  **generated** by `pnpm run auth:schema` from **`src/lib/server/auth-cli.ts`** (a standalone
-  config the Better Auth CLI can load without SvelteKit's virtual modules). Keep `auth-cli.ts` in
-  sync with `auth.ts` for **schema-affecting** options only (adapter provider, methods,
-  table-adding plugins) — `disableSignUp` is behavioral, so it stays out of the CLI config.
-  Tables reach Turso via `pnpm db:push` (schema-first, no migrations dir — see [contact.md](contact.md)).
+- **`src/lib/server/auth-options.ts`** — the env-free options shared by `auth.ts`, the CLI config,
+  and unit tests (so they can't drift and tests import them without `$app/server`/the DB client):
+  - `emailAndPassword` — `enabled` but **`disableSignUp: true`** (#48).
+  - `rateLimit` — `{ enabled: true, storage: 'database' }` (#69). DB-backed so counters survive
+    Cloudflare isolate churn; adds the **`rate_limit`** table (schema-affecting → mirrored in the
+    CLI config). Only requests through Better Auth's **router** are limited (the mounted
+    `/api/auth/*` endpoints), which is why sign-in goes over HTTP, not a direct `auth.api` call.
+- **`src/lib/auth-client.ts`** — the browser `createAuthClient` (`better-auth/svelte`), used **only**
+  by the login page so the sign-in POST traverses the router (and thus the rate limiter). A
+  server-side `auth.api.signInEmail` would skip the router and go unthrottled.
+- **`src/hooks.server.ts`** — `handleBetterAuth` populates `locals.user`/`locals.session` for the
+  paths that read it — `/api/auth/*`, **`/admin`**, and **`/login`** (matched on the de-localized
+  path, since URLs localize as `/es/*`) — and mounts the auth API via `svelteKitHandler` for
+  `/api/auth/*` only. Every other path early-returns, so ordinary page views still pay no session
+  lookup (the #48 win). It runs after `handleParaglide` in the `sequence(...)`.
+- **`src/lib/server/db/auth.schema.ts`** — the `user`/`session`/`account`/`verification` **and
+  `rate_limit`** tables, **generated** by `pnpm run auth:schema` from **`src/lib/server/auth-cli.ts`**
+  (a standalone config the Better Auth CLI can load without SvelteKit's virtual modules). Keep
+  `auth-cli.ts` in sync with `auth.ts` for **schema-affecting** options only (adapter provider,
+  methods, table-adding plugins, `rateLimit.storage: 'database'`) — `disableSignUp` is behavioral,
+  so it stays out of the CLI config. Tables reach Turso via `pnpm db:push` (schema-first, no
+  migrations dir — see [contact.md](contact.md)); **rerun it after this change** to create `rate_limit`.
 - **Secrets** — `BETTER_AUTH_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` via
   `wrangler secret` + local `.env`. See [deployment.md](deployment.md).
 
@@ -50,9 +57,35 @@ whose origin ≠ the configured `baseURL`/`ORIGIN`, and the e2e preview serves o
 while `ORIGIN` is the production host — so `/api/auth/*` **404s in the preview before any auth
 logic runs**, making an endpoint-level e2e meaningless there.
 
-## Deferred to #69 (do not add piecemeal)
+## The admin area (#69)
 
-Sign-in UI, **rate limiting** on the auth endpoints (the issue defers it — "add when it goes
-real"), first-admin provisioning, and the gated submissions view. When that work starts, re-open
-the relevant endpoints, add rate limiting, and widen the `AUTH_API_PREFIX` gate to the protected
-routes.
+The gated surface #48 fenced off:
+
+- **`/login`** (`src/routes/login/`) — email/password sign-in. The `+page.svelte` calls
+  `authClient.signIn.email` (so the request is rate-limited); a generic "incorrect email or
+  password" covers wrong-password / unknown-account / empty alike (no user enumeration), and a 429
+  surfaces the rate-limit. `+page.server.ts` `load` bounces an already-signed-in operator to
+  `/admin`. On success the client navigates to `/admin` (a full server load, so the guard re-runs
+  with the fresh cookie).
+- **`/admin`** (`src/routes/admin/`) — `+layout.server.ts` is the **guard** (`!locals.user` →
+  `/login`); `+page.server.ts` reads the newest `contact_submission` rows (capped, newest-first)
+  and holds the **sign-out** action (`auth.api.signOut`, then → `/login`). This replaces
+  `pnpm db:studio` for triaging leads. Both pages are `noindex` (a `Seo` prop).
+- **First-admin provisioning** — `scripts/create-admin.ts` (`pnpm admin:create`). Public sign-up
+  stays disabled, so this is the **only** way to create an operator: it builds a throwaway Better
+  Auth instance (same Turso DB + schema, sign-up **enabled**) and calls `signUpEmail`, writing the
+  `user`/`account` rows with Better Auth's own password hashing. See [deployment.md](deployment.md).
+
+Guarded by an e2e (`src/routes/admin/page.svelte.e2e.ts`): unauthenticated `/admin` → `/login`
+(DB-free — a no-cookie `getSession` returns null without a query). The happy path (sign-in →
+list → sign-out → guard) is a manual smoke, **`pnpm smoke:signin`** (`scripts/smoke-signin.mjs`),
+run against a server on the **`ORIGIN` host+port** (Better Auth's `isAuthPath` only serves
+`/api/auth/*` when the request origin matches `ORIGIN` — with the default `.env` that's
+`http://localhost:5173`, so `wrangler dev … --port 5173`). It writes a session, so — like the
+contact happy-path — it's out of CI.
+
+## Still deferred
+
+**Cloudflare Turnstile (#53)** on the auth endpoints (stronger than rate limiting alone), and
+pagination for the submissions list. Public sign-up stays disabled; GitHub OAuth is configured in
+the CLI but not enabled in `auth.ts`.

@@ -3,7 +3,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { getRequestEvent } from '$app/server';
 import { getDb } from '$lib/server/db';
-import { emailAndPassword } from '$lib/server/auth-options';
+import { emailAndPassword, rateLimit } from '$lib/server/auth-options';
 import { readEnv } from '$lib/server/env';
 
 function createAuth() {
@@ -23,6 +23,7 @@ function createAuth() {
 		],
 		database: drizzleAdapter(getDb(), { provider: 'sqlite' }),
 		emailAndPassword, // #48: sign-up disabled — see auth-options.ts
+		rateLimit, // #69: DB-backed limiter on the now-public auth endpoints — see auth-options.ts
 		plugins: [
 			sveltekitCookies(getRequestEvent) // make sure this is the last plugin in the array
 		]
