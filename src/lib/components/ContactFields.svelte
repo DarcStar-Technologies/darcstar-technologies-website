@@ -3,6 +3,9 @@
 	// native <select> interest control (which this component can't own — see below) can match
 	// the fields exactly: `import ContactFields, { fieldClass } from './ContactFields.svelte'`.
 	export const fieldClass = 'glass-field w-full rounded-lg px-3.5 py-2.5 text-sm';
+	// The pill submit button — shared with the login form (LoginForm) so the two can't drift.
+	export const submitButtonClass =
+		'glass-btn w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60';
 </script>
 
 <script lang="ts">
@@ -22,6 +25,7 @@
 	import type { Snippet } from 'svelte';
 	import { submitContact } from '$lib/contact.remote';
 	import { m } from '$lib/paraglide/messages.js';
+	import ErrorBanner from './ErrorBanner.svelte';
 
 	// `Omit<…, 'for'>` so the prop accepts BOTH the base instance (the /contact page) and a
 	// keyed `.for()` instance (the modal) — a keyed instance drops `.for`, and we never call
@@ -84,12 +88,7 @@
 <!-- Whole-form issues (e.g. rate limit); field issues render under their field. -->
 {#each form.fields.allIssues() as issue (issue.message)}
 	{#if issue.path.length === 0}
-		<p
-			class="rounded-lg border border-error-500/30 bg-error-500/10 px-3 py-2 text-sm text-error-400"
-			role="alert"
-		>
-			{issue.message}
-		</p>
+		<ErrorBanner>{issue.message}</ErrorBanner>
 	{/if}
 {/each}
 
@@ -119,10 +118,6 @@
 
 {@render error?.()}
 
-<button
-	type="submit"
-	disabled={!!form.pending}
-	class="glass-btn w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
->
+<button type="submit" disabled={!!form.pending} class={submitButtonClass}>
 	{form.pending ? m.contact_submitting() : m.contact_submit()}
 </button>

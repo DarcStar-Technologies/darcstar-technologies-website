@@ -22,7 +22,7 @@
 	// control (a native <select>, since the modal's GlassSelect is JS-only). `fieldClass` is
 	// re-exported so that <select> matches the fields exactly.
 	import ContactFields, { fieldClass } from '$lib/components/ContactFields.svelte';
-	import Icon from '$lib/components/Icon.svelte';
+	import ContactSuccess from '$lib/components/ContactSuccess.svelte';
 </script>
 
 <Seo title={m.contact_page_title()} description={m.contact_page_description()} />
@@ -30,26 +30,15 @@
 <CosmicBackdrop />
 
 <section class="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:py-16">
-	<div class="glass-panel mx-auto w-full max-w-lg rounded-2xl p-6 text-left sm:p-8">
+	<div class="glass-card mx-auto w-full max-w-lg p-6 text-left sm:p-8">
 		{#if submitContact.result?.success}
-			<div class="py-4 text-center">
-				<div
-					class="mx-auto flex size-12 items-center justify-center rounded-full bg-success-500/15 text-success-400"
-				>
-					<Icon class="size-6">
-						<path d="M20 6 9 17l-5-5" />
-					</Icon>
-				</div>
-				<h1 class="mt-4 text-2xl font-medium tracking-tight text-white">
-					{m.contact_success_title()}
-				</h1>
-				<p class="mx-auto mt-2 max-w-sm text-sm text-body">
-					{m.contact_success_body()}
-				</p>
-				<div class="mt-6 flex justify-center">
-					<a href={localizeHref('/')} class="glass-btn btn-pill">{m.contact_page_back_home()}</a>
-				</div>
-			</div>
+			<ContactSuccess title={m.contact_success_title()} body={m.contact_success_body()}>
+				{#snippet action()}
+					<div class="mt-6 flex justify-center">
+						<a href={localizeHref('/')} class="glass-btn btn-pill">{m.contact_page_back_home()}</a>
+					</div>
+				{/snippet}
+			</ContactSuccess>
 		{:else}
 			<p class="eyebrow text-xs tracking-[0.25em]">{m.contact_page_eyebrow()}</p>
 			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">

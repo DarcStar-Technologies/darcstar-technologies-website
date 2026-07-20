@@ -1,17 +1,7 @@
 // Shared open-state for the single global login modal (#69) — the JS upgrade over the navbar's
 // plain /login link. One instance, imported by the navbar trigger (Header.svelte) and by
-// LoginDialog.svelte (rendered once in +layout.svelte). A runes-class singleton — the same
-// pattern as src/lib/contact-dialog.svelte.ts.
-class LoginDialogState {
-	open = $state(false);
+// LoginDialog.svelte (rendered once in +layout.svelte). The class lives in dialog-state.svelte.ts
+// and is shared with the contact modal so the two can't drift.
+import { createDialogState } from '$lib/dialog-state.svelte';
 
-	show() {
-		this.open = true;
-	}
-
-	close() {
-		this.open = false;
-	}
-}
-
-export const loginDialog = new LoginDialogState();
+export const loginDialog = createDialogState();

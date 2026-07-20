@@ -17,6 +17,7 @@
 	import * as select from '@zag-js/select';
 	import { mergeProps, normalizeProps, useMachine } from '@zag-js/svelte';
 	import Icon from './Icon.svelte';
+	import IconCheck from './IconCheck.svelte';
 
 	let {
 		options,
@@ -88,9 +89,7 @@
 				>
 					<span {...api.getItemTextProps({ item: opt })}>{opt.label}</span>
 					<span {...api.getItemIndicatorProps({ item: opt })} class="text-primary-400">
-						<Icon class="size-4 shrink-0" strokeWidth={2.5}>
-							<path d="M20 6 9 17l-5-5" />
-						</Icon>
+						<IconCheck class="size-4 shrink-0" strokeWidth={2.5} />
 					</span>
 				</li>
 			{/each}

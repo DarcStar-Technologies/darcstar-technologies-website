@@ -9,7 +9,8 @@
 	import { goto } from '$app/navigation';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
-	import { fieldClass } from '$lib/components/ContactFields.svelte';
+	import { fieldClass, submitButtonClass } from '$lib/components/ContactFields.svelte';
+	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 
 	// `form` is the /login action result — present when the page re-renders after a no-JS submit,
 	// to repopulate the email + show the error. `onSuccess` lets the dialog close on success.
@@ -48,16 +49,13 @@
 	}}
 >
 	{#if error}
-		<p
-			class="rounded-lg border border-error-500/30 bg-error-500/10 px-3 py-2 text-sm text-error-400"
-			role="alert"
-		>
+		<ErrorBanner>
 			{error === 'ratelimited'
 				? m.login_error_ratelimit()
 				: error === 'generic'
 					? m.login_error_generic()
 					: m.login_error()}
-		</p>
+		</ErrorBanner>
 	{/if}
 
 	<label class="block">
@@ -89,11 +87,7 @@
 		/>
 	</label>
 
-	<button
-		type="submit"
-		disabled={submitting}
-		class="glass-btn w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-	>
+	<button type="submit" disabled={submitting} class={submitButtonClass}>
 		{submitting ? m.login_submitting() : m.login_submit()}
 	</button>
 </form>

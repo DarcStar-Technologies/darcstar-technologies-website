@@ -95,9 +95,7 @@
 		     #helix-slot to place and size it responsively. -->
 		<div id="helix-slot" class="h-6 min-[360px]:h-[min(25vw,19rem)]"></div>
 
-		<div
-			class="glass-panel mx-auto w-full max-w-3xl rounded-2xl px-8 py-10 text-center sm:px-10 sm:py-12"
-		>
+		<div class="glass-card mx-auto w-full max-w-3xl px-8 py-10 text-center sm:px-10 sm:py-12">
 			<!-- Heading split into three message fragments so the charge-flow emphasis can
 			     wrap only "prove"; keep them as one grammatical set. Whitespace lives in the
 			     markup (Svelte collapses it to single spaces) — never bake spaces into the
@@ -124,7 +122,7 @@
 
 	<div class="mx-auto max-w-5xl space-y-16">
 		<div
-			class="glass-panel flex flex-wrap items-center justify-center gap-x-12 gap-y-4 rounded-2xl px-8 py-7 text-center"
+			class="glass-card flex flex-wrap items-center justify-center gap-x-12 gap-y-4 px-8 py-7 text-center"
 		>
 			{#each readouts as ro (ro.l)}
 				<div>
@@ -136,7 +134,7 @@
 			{/each}
 		</div>
 
-		<section id="gide" class="glass-panel scroll-mt-24 overflow-hidden rounded-2xl">
+		<section id="gide" class="glass-card scroll-mt-24 overflow-hidden">
 			{@render sectionHead(m.section_gide_kicker(), m.section_gide_heading())}
 			<div
 				class="grid divide-y divide-hairline border-t border-hairline sm:grid-cols-3 sm:divide-x sm:divide-y-0"
@@ -156,7 +154,7 @@
 			</div>
 		</section>
 
-		<section class="glass-panel overflow-hidden rounded-2xl">
+		<section class="glass-card overflow-hidden">
 			{@render sectionHead(
 				m.section_domains_kicker(),
 				m.section_domains_heading(),
@@ -172,7 +170,7 @@
 			</div>
 		</section>
 
-		<section class="glass-panel rounded-2xl p-10 text-center sm:p-16">
+		<section class="glass-card p-10 text-center sm:p-16">
 			<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
 				{m.section_proven_heading()}
 			</h2>
@@ -181,7 +179,7 @@
 			</p>
 		</section>
 
-		<section class="glass-panel rounded-2xl px-8 py-14 text-center">
+		<section class="glass-card px-8 py-14 text-center">
 			<h2 class="text-3xl font-medium tracking-tight text-white sm:text-4xl">
 				{m.section_cta_heading()}
 			</h2>
