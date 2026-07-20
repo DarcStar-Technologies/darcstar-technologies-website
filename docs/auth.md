@@ -20,6 +20,14 @@ operators from the roster UI. This doc maps what's wired and why.
     Cloudflare isolate churn; adds the **`rate_limit`** table (schema-affecting → mirrored in the
     CLI config). Only requests through Better Auth's **router** are limited, which is why the login
     action forwards to `auth.handler()` rather than calling `auth.api.signInEmail` directly.
+  - `session` — `{ cookieCache: { enabled: true, maxAge: 300 } }`. Better Auth writes a **signed**
+    (HMAC) snapshot of the session+user into a short-lived `session_data` cookie; within `maxAge`
+    seconds `getSession` serves from that cookie (signature verify only) instead of querying the DB.
+    This matters because #87 made every signed-in page view resolve the session in the hook — without
+    the cache that's a DB round-trip per view. **Behavioral, not schema-affecting** (a cookie, no
+    table), so it stays OUT of the CLI config. Sign-out clears `session_data` (verified), so a
+    signed-out user can't linger on a stale snapshot; the one lag is **server-side** revocation
+    (deleting a `session` row out-of-band), trusted up to `maxAge` — fine for a single-operator area.
 - **`src/hooks.server.ts`** — `handleBetterAuth` populates `locals.user`/`locals.session` and
   mounts the auth API via `svelteKitHandler` for `/api/auth/*` only. It resolves the session on the
   auth-owned prefixes (`/api/auth/*`, **`/admin`**, **`/login`** — matched on the de-localized path,
@@ -28,7 +36,10 @@ operators from the roster UI. This doc maps what's wired and why.
   gate is what lets the navbar reflect sign-in state site-wide (see below) while **anonymous
   visitors — no cookie — still pay no session lookup** (the #48 win, preserved for the traffic that
   matters). Cookie presence only _gates_ the lookup; the real `getSession` still validates, so a
-  forged cookie grants nothing. It runs after `handleParaglide` in the `sequence(...)`.
+  forged cookie grants nothing (the `session_token` is a signed cookie — a bad signature is rejected
+  before any DB read). For a signed-in operator, that `getSession` is served from the `session_data`
+  **cookie-cache** (no DB) within its `maxAge` — see `session` in auth-options.ts. It runs after
+  `handleParaglide` in the `sequence(...)`.
 - **`src/lib/server/db/auth.schema.ts`** — the `user`/`session`/`account`/`verification` **and
   `rate_limit`** tables, **generated** by `pnpm run auth:schema` from **`src/lib/server/auth-cli.ts`**
   (a standalone config the Better Auth CLI can load without SvelteKit's virtual modules). Keep
