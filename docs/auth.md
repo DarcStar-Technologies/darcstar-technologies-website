@@ -77,7 +77,12 @@ The gated surface #48 fenced off:
   `user`/`account` rows with Better Auth's own password hashing. See [deployment.md](deployment.md).
 
 Guarded by an e2e (`src/routes/admin/page.svelte.e2e.ts`): unauthenticated `/admin` → `/login`
-(DB-free — a no-cookie `getSession` returns null without a query).
+(DB-free — a no-cookie `getSession` returns null without a query). The happy path (sign-in →
+list → sign-out → guard) is a manual smoke, **`pnpm smoke:signin`** (`scripts/smoke-signin.mjs`),
+run against a server on the **`ORIGIN` host+port** (Better Auth's `isAuthPath` only serves
+`/api/auth/*` when the request origin matches `ORIGIN` — with the default `.env` that's
+`http://localhost:5173`, so `wrangler dev … --port 5173`). It writes a session, so — like the
+contact happy-path — it's out of CI.
 
 ## Still deferred
 

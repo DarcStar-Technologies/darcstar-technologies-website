@@ -23,7 +23,8 @@
 		"db:migrate": "drizzle-kit migrate",
 		"db:studio": "drizzle-kit studio",
 		"auth:schema": "better-auth generate --config src/lib/server/auth-cli.ts --output src/lib/server/db/auth.schema.ts --yes",
-		"admin:create": "tsx scripts/create-admin.ts"
+		"admin:create": "tsx scripts/create-admin.ts",
+		"smoke:signin": "node scripts/smoke-signin.mjs"
 	},
 	"devDependencies": {
 		"@better-auth/cli": "~1.4.21",
