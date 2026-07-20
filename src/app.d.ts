@@ -17,7 +17,12 @@ declare global {
 		}
 
 		// interface Error {}
-		// interface PageData {}
+		// Minimal auth snapshot exposed to every page by the root `+layout.server.ts`, so shared
+		// UI (the navbar) can reflect sign-in state. `null` when signed out. Not the whole `User`
+		// — the client only needs the email; `locals.user` stays server-only.
+		interface PageData {
+			user?: { email: string } | null;
+		}
 		// interface PageState {}
 	}
 }

@@ -69,6 +69,18 @@ if (!(await authed.text()).includes('Contact submissions')) {
 }
 ok('/admin renders the submissions view when authenticated');
 
+// 2b. The navbar reflects auth state site-wide: a signed-in request to the marketing home page
+// resolves the session (cookie-gated lookup in hooks.server.ts → page.data.user) and renders the
+// signed-in controls. The Sign-out form's `action="/logout"` is the unambiguous marker — it's
+// absent for anonymous visitors, proving the swap is real and not always-on.
+const homeAuthed = await fetch(`${BASE}/`, { headers: { cookie }, redirect: 'manual' });
+const homeAuthedHtml = await homeAuthed.text();
+if (homeAuthed.status !== 200) die(`/ (authed): expected 200, got ${homeAuthed.status}`);
+if (!homeAuthedHtml.includes('action="/logout"')) {
+	die('/ (authed): the navbar did not render the signed-in Sign-out control');
+}
+ok('/ navbar shows the signed-in controls when authenticated');
+
 // 3. Sign out clears the session cookies.
 const signOut = await fetch(`${BASE}/admin?/signout`, {
 	method: 'POST',
@@ -98,5 +110,15 @@ if (guard.status !== 303 || guard.headers.get('location') !== '/login') {
 	);
 }
 ok('/admin redirects to /login when unauthenticated');
+
+// 5. The flip side of 2b: an anonymous home request skips the session lookup entirely (no cookie)
+// and the navbar shows the plain "Sign in" affordance — no signed-in controls.
+const homeAnon = await fetch(`${BASE}/`, { redirect: 'manual' });
+const homeAnonHtml = await homeAnon.text();
+if (homeAnon.status !== 200) die(`/ (anon): expected 200, got ${homeAnon.status}`);
+if (homeAnonHtml.includes('action="/logout"')) {
+	die('/ (anon): the navbar rendered signed-in controls for an unauthenticated visitor');
+}
+ok('/ navbar shows only "Sign in" when unauthenticated');
 
 console.log('\n✓ sign-in smoke test passed');

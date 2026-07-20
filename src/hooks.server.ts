@@ -2,6 +2,7 @@ import { sequence } from '@sveltejs/kit/hooks';
 import { building } from '$app/environment';
 import { getAuth } from '$lib/server/auth';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
+import { getSessionCookie } from 'better-auth/cookies';
 import type { Handle } from '@sveltejs/kit';
 import { deLocalizeUrl, getTextDirection } from '$lib/paraglide/runtime';
 import { paraglideMiddleware } from '$lib/paraglide/server';
@@ -20,10 +21,9 @@ const handleParaglide: Handle = ({ event, resolve }) =>
 
 // Better Auth's default basePath — the entire auth API + session cookies live under it.
 const AUTH_API_PREFIX = '/api/auth';
-// Paths whose server `load` functions read `locals.user`: Better Auth's own API, plus the #69
-// gated area (`/admin`) and the login page (which redirects an already-signed-in operator away).
-// Every OTHER path skips the session lookup entirely — that's the #48 win (no per-view auth cost
-// on marketing/contact pages), preserved.
+// Paths whose server `load` functions unconditionally read `locals.user`: Better Auth's own API,
+// plus the #69 gated area (`/admin`) and the login page (which redirects an already-signed-in
+// operator away). Requests here always resolve the session, even if the cookie is somehow absent.
 const SESSION_PREFIXES = [AUTH_API_PREFIX, '/admin', '/login'];
 
 const handleBetterAuth: Handle = async ({ event, resolve }) => {
@@ -31,7 +31,15 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
 	// strategy). `reroute` (src/hooks.ts) canonicalizes for routing, but `event.url` here is still
 	// the raw request path, so `/es/admin` must be normalized to `/admin` before matching.
 	const path = deLocalizeUrl(event.url).pathname;
-	const needsSession = SESSION_PREFIXES.some((p) => path === p || path.startsWith(p + '/'));
+	// Resolve the session on the auth-owned prefixes above, OR on ANY request that carries a Better
+	// Auth session cookie — so the navbar can reflect sign-in state site-wide (root +layout.server.ts
+	// → page.data.user). `getSessionCookie` is a header-only cookie read (no DB, no auth instance):
+	// anonymous visitors (no cookie = the common case) still skip the lookup entirely — the #48 win,
+	// preserved for the traffic that matters. Cookie presence only GATES the lookup; the real
+	// getSession below still validates, so a forged cookie grants nothing (locals.user stays unset).
+	const needsSession =
+		SESSION_PREFIXES.some((p) => path === p || path.startsWith(p + '/')) ||
+		getSessionCookie(event.request) !== null;
 	if (!needsSession) return resolve(event);
 
 	const auth = getAuth();
@@ -42,10 +50,11 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
 		event.locals.user = session.user;
 	}
 
-	// Only Better Auth's own endpoints are mounted through its handler; `/admin` and `/login` are
-	// ordinary SvelteKit routes that simply read the `locals` populated above. Sign-up stays
-	// disabled in auth.ts (#48); the auth surface can still only touch its own namespace.
-	if (path.startsWith(AUTH_API_PREFIX)) {
+	// Only Better Auth's own endpoints are mounted through its handler; every other route (the admin
+	// area, login, or any cookie-bearing page view) is an ordinary SvelteKit route that just reads
+	// the `locals` populated above. Sign-up stays disabled in auth.ts (#48); the auth surface can
+	// still only touch its own namespace.
+	if (path === AUTH_API_PREFIX || path.startsWith(AUTH_API_PREFIX + '/')) {
 		return svelteKitHandler({ event, resolve, auth, building });
 	}
 	return resolve(event);
