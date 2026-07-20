@@ -16,15 +16,26 @@ Non-public values are set with `wrangler secret put <NAME>` (not in `wrangler.js
 - `BETTER_AUTH_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` — auth.
 - `RESEND_API_KEY` — contact lead notifications (issue #52). **Also requires** verifying `darcstar.tech` as a sending domain in Resend (add the DKIM/SPF DNS records to Cloudflare). Until both are done, submissions still persist — the email send skips (no key) or logs its failure; it never fails the submission. See [contact.md](contact.md).
 
-## Admin area (#69)
+## Database schema → Turso
 
-The gated `/admin` submissions view needs two one-time setup steps (see [auth.md](auth.md)):
+Schema is defined in code (`src/lib/server/db/schema.ts`, which re-exports the Better-Auth-generated `auth.schema.ts`). Two ways to apply it, and **`pnpm db:push` is the default** for this setup:
 
-1. **Apply the schema** — `rateLimit.storage: 'database'` adds a `rate_limit` table. Run **`pnpm db:push`** (schema-first, no migrations dir; needs a TTY). The push is additive — it creates `rate_limit` (and offers the dead `task` scaffold table, unrelated). Without the table, sign-in attempts through `/api/auth/*` error, so push **before** the deploy serves auth. The deployed Worker and local dev share one Turso DB, so it's pushed once.
-2. **Provision the first operator** — public sign-up is disabled, so the only way to create an account is **`pnpm admin:create`** with the credentials passed inline (never committed):
+- **`pnpm db:push`** (default) — `drizzle-kit push` diffs the schema straight against the DB and applies it. Simple and fine here because local dev and prod share **one** Turso DB, so it's pushed once (needs a TTY). Additive changes are safe.
+- **`pnpm db:generate` → `pnpm db:migrate`** (versioned trail) — `generate` writes a SQL migration into `drizzle/` (the baseline is `0000_groovy_scarlet_witch`, a full snapshot of the current schema); `migrate` applies pending ones. Use it when you want a recorded, reviewable migration; otherwise `db:push` stays the default. Keep `drizzle/` in sync (regenerate after schema changes) if you rely on it.
+
+Either way the change must land **before** the deploy serves the feature that needs it.
+
+## Admin area (#69, #89)
+
+The gated `/admin` area (submissions triage + operator-roster management) needs these one-time setup steps (see [auth.md](auth.md)):
+
+1. **Apply the schema** — `pnpm db:push` (above). It's additive and creates: `rate_limit` (#69, DB-backed limiter), the `admin`-plugin columns `user.role/banned/ban_reason/ban_expires` + `session.impersonated_by` (#89), and `contact_submission` (#11) — plus it offers the dead `task` scaffold table (unrelated). Without them, **any** session lookup through `/api/auth/*` or `/admin` errors, so apply first.
+2. **Provision the first operator** — public sign-up is disabled, so the only way to create the first account is **`pnpm admin:create`** with the credentials passed inline (never committed):
 
    ```sh
    ADMIN_EMAIL=you@darcstar.tech ADMIN_PASSWORD='a-strong-password' pnpm admin:create
    ```
 
-   `ADMIN_NAME` is optional. It reads `DATABASE_URL` / `DATABASE_AUTH_TOKEN` from `.env` and writes to whichever Turso DB those point at — so run it against the prod `.env` to provision the production operator. Re-running for an existing email is rejected.
+   `ADMIN_NAME` is optional. It reads `DATABASE_URL` / `DATABASE_AUTH_TOKEN` from `.env` and writes to whichever Turso DB those point at — so run it against the prod `.env` to provision the production operator. Re-running for an existing email prints that account's id (to allowlist below) instead of failing.
+
+3. **Allowlist the owner (#89)** — set **`ADMIN_USER_IDS`** to the operator's user id (comma-separated for several) so they're treated as a **roster admin** who can manage users, even with a null role. It's a runtime var: `wrangler secret put ADMIN_USER_IDS` for prod, plus a line in `.env` locally (then `pnpm gen`). Without it, an operator whose DB `role` isn't `admin` can sign in but can't reach `/admin/users`. `pnpm admin:create` prints the id to use. Once one admin exists, further operators are managed from `/admin/users`.
