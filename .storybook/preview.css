@@ -1,0 +1,11 @@
+/* Storybook preview canvas — match the site's dark void so the glass/theme components render as
+   they do in the app (the site is dark-only; see app.html). Paired with the data-theme/data-mode
+   attributes set in preview.ts and the global styles imported there. */
+html {
+	background-color: #04050a;
+	color-scheme: dark;
+}
+
+body {
+	padding: 2rem;
+}

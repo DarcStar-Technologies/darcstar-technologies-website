@@ -15,17 +15,13 @@ export default defineConfig(
 		// Don't lint generated or throwaway output. `includeIgnoreFile` only reads the ROOT
 		// .gitignore, so Paraglide's output (ignored by its own nested .gitignore) and the
 		// tracked-but-generated files below slip through — list them explicitly. vitest.shims.d.ts
-		// is a scaffold shim whose sole content is a necessary triple-slash reference. The
-		// `src/stories` / vitest-examples scaffold is disposable `sv create`/Storybook demo
-		// content (see CLAUDE.md); mirror the .prettierignore treatment. (src/lib/paraglide.svelte.ts
-		// is deliberately NOT ignored — it's hand-authored app code.)
+		// is a scaffold shim whose sole content is a necessary triple-slash reference.
+		// (src/lib/paraglide.svelte.ts is deliberately NOT ignored — it's hand-authored app code.)
 		ignores: [
 			'src/lib/paraglide/**',
 			'worker-configuration.d.ts',
 			'vitest.shims.d.ts',
-			'src/lib/server/db/auth.schema.ts',
-			'src/stories/**',
-			'src/lib/vitest-examples/**'
+			'src/lib/server/db/auth.schema.ts'
 		]
 	},
 	js.configs.recommended,
@@ -53,9 +49,9 @@ export default defineConfig(
 	},
 	{
 		// Keep UI copy in Paraglide messages (issue #18). Scoped to the real app surface
-		// (routes + components) — not the `src/stories/**` / vitest-examples scaffold, which
-		// is throwaway `sv create`/Storybook demo content. `local/no-raw-text` is a custom
-		// rule (eslint-rules/no-raw-text.js); it rides the svelte parser already active here.
+		// (routes + components); `*.stories.svelte` is exempted below (Storybook demo copy).
+		// `local/no-raw-text` is a custom rule (eslint-rules/no-raw-text.js); it rides the
+		// svelte parser already active here.
 		files: ['src/routes/**/*.svelte', 'src/lib/components/**/*.svelte'],
 		plugins: { local: { rules: { 'no-raw-text': noRawText } } },
 		rules: {
@@ -73,6 +69,12 @@ export default defineConfig(
 		// The brand wordmark ("DarcStar Technologies") is a proper-noun logotype, not
 		// translatable copy — exempt it from the raw-text guard (issue #18).
 		files: ['**/Wordmark.svelte'],
+		rules: { 'local/no-raw-text': 'off' }
+	},
+	{
+		// Storybook stories are demo/documentation content, not shipped UI — hardcoded sample copy
+		// (placeholders, labels) is appropriate and shouldn't be forced into Paraglide messages.
+		files: ['**/*.stories.svelte'],
 		rules: { 'local/no-raw-text': 'off' }
 	},
 	{

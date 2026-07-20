@@ -24,7 +24,3 @@ bun.lockb
 
 # Per-developer local config (gitignored).
 /.claude/settings.local.json
-
-# Throwaway `sv create` / Storybook demo scaffold — not real app source (see CLAUDE.md).
-/src/stories/
-/src/lib/vitest-examples/
