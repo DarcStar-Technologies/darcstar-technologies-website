@@ -42,3 +42,16 @@ repos:
         language: system
         pass_filenames: false
         files: ^wrangler\.jsonc$
+
+      # Keep the drizzle/ migration trail in sync with the DB schema. `db:push` (the default apply
+      # path) doesn't touch drizzle/, so a schema edit can leave it stale. Scoped to the schema
+      # files: on any change there, regenerate migrations — if one was needed, `db:generate` writes
+      # a new SQL file + bumps drizzle/meta/_journal.json, which pre-commit sees and fails on, so the
+      # migration lands in the same commit. Local fast-feedback twin of the `drizzle` CI gate (which
+      # is the enforced one). Reads DATABASE_URL from `.env` like `db:push`, but never connects.
+      - id: drizzle-generate
+        name: drizzle migrations in sync (drizzle/)
+        entry: pnpm run db:generate
+        language: system
+        pass_filenames: false
+        files: ^src/lib/server/db/.*\.ts$

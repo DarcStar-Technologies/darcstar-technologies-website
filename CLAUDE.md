@@ -39,6 +39,7 @@ Durable gotchas — keep to one line; link to the doc that carries the detail.
 - **Every page's hero uses one pattern**: `eyebrow` → `#helix-slot` (CosmicBackdrop centres the RGB helix there) → heading+lede in a **`glass-panel`** below the helix. Match the homepage/`/about`; never a bare centered heading. → [styling](docs/styling.md)
 - `pnpm preview` runs the built worker on the real Workers runtime (Wrangler), not `vite preview`. → [commands](docs/commands.md)
 - Run `pnpm gen` after changing `wrangler.jsonc` bindings to refresh the `Env` type. → [deployment](docs/deployment.md)
+- Changing the DB schema? Run `pnpm db:generate` + commit the `drizzle/` migration — the **`drizzle` CI check** (+ a pre-commit hook) regenerates offline and fails on drift, gating merge→prod. `db:push` stays the default apply path. → [deployment](docs/deployment.md)
 - `checkJs` is **off** — generated Paraglide `.js` clashes with the Cloudflare `Request` global; no hand-written `.js` exists, so `.js` bodies aren't checked. → [i18n](docs/i18n.md)
 - **All UI copy lives in Paraglide messages** (`messages/*.json`); the `local/no-raw-text` ESLint rule blocks hardcoded `.svelte` text/attrs (Wordmark exempt). `es` is untranslated placeholder → non-base locales are `noindex` via `Seo.svelte`'s `TRANSLATED_LOCALES` flag; hreflang deferred until `es` is real. → [i18n](docs/i18n.md)
 - e2e builds + previews the Cloudflare bundle; match the vitest project to your filename (`client` / `server` / `storybook`). → [commands](docs/commands.md)

@@ -21,7 +21,9 @@ Non-public values are set with `wrangler secret put <NAME>` (not in `wrangler.js
 Schema is defined in code (`src/lib/server/db/schema.ts`, which re-exports the Better-Auth-generated `auth.schema.ts`). Two ways to apply it, and **`pnpm db:push` is the default** for this setup:
 
 - **`pnpm db:push`** (default) — `drizzle-kit push` diffs the schema straight against the DB and applies it. Simple and fine here because local dev and prod share **one** Turso DB, so it's pushed once (needs a TTY). Additive changes are safe.
-- **`pnpm db:generate` → `pnpm db:migrate`** (versioned trail) — `generate` writes a SQL migration into `drizzle/` (the baseline is `0000_groovy_scarlet_witch`, a full snapshot of the current schema); `migrate` applies pending ones. Use it when you want a recorded, reviewable migration; otherwise `db:push` stays the default. Keep `drizzle/` in sync (regenerate after schema changes) if you rely on it.
+- **`pnpm db:generate` → `pnpm db:migrate`** (versioned trail) — `generate` writes a SQL migration into `drizzle/` (the baseline is `0000_groovy_scarlet_witch`, a full snapshot of the current schema); `migrate` applies pending ones. Use it when you want a recorded, reviewable migration; otherwise `db:push` stays the default.
+
+The trail **can't silently drift**, so `db:push` and the migrations stay consistent: the **`drizzle` CI check** (`.github/workflows/drizzle.yml`) regenerates migrations from the schema and fails if `drizzle/` isn't committed in sync — a required PR check, so it blocks merge to `main` (which triggers the prod deploy) until you run `pnpm db:generate` and commit. A `db:generate` **pre-commit hook** gives the same feedback locally. `generate` is offline (no DB), so the check needs no credentials.
 
 Either way the change must land **before** the deploy serves the feature that needs it.
 

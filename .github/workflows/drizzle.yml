@@ -1,0 +1,46 @@
+name: drizzle
+
+# Gate the drizzle/ migration trail so it can't silently drift from the schema. `db:push` (the
+# default apply path) doesn't touch drizzle/, so a schema change without a matching `pnpm db:generate`
+# leaves the versioned trail stale. This regenerates migrations from src/lib/server/db/schema.ts and
+# fails if drizzle/ isn't already in sync — as a required PR check it blocks merge to main, which is
+# what triggers the Cloudflare production deploy.
+#
+# `drizzle-kit generate` is OFFLINE: it diffs the schema against drizzle/meta and emits SQL without
+# connecting, so this needs no real credentials — the placeholder DATABASE_URL/AUTH_TOKEN below only
+# satisfy drizzle.config.ts's presence guard. (Mirrors lint.yml's setup.)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  drizzle-sync:
+    name: migrations in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # action-setup reads the pnpm version from package.json `packageManager`.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Regenerate migrations from the schema
+        run: pnpm db:generate
+        env:
+          # generate never connects; drizzle.config.ts throws without these, so pass placeholders.
+          DATABASE_URL: libsql://placeholder.invalid
+          DATABASE_AUTH_TOKEN: placeholder
+      - name: Fail if drizzle/ drifted from the schema
+        run: |
+          if [ -n "$(git status --porcelain -- drizzle)" ]; then
+            echo "::error::drizzle/ is out of date with the schema — run 'pnpm db:generate' and commit the result."
+            git status --porcelain -- drizzle
+            exit 1
+          fi
