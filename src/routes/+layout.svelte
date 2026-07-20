@@ -5,25 +5,31 @@
 	import Footer from '$lib/components/Footer.svelte';
 	import BackToTop from '$lib/components/BackToTop.svelte';
 	import ContactDialog from '$lib/components/ContactDialog.svelte';
+	import LoginDialog from '$lib/components/LoginDialog.svelte';
 	import { contactDialog } from '$lib/contact-dialog.svelte';
+	import { loginDialog } from '$lib/login-dialog.svelte';
 	import { createSheenSync } from '$lib/glass-sheen';
 	import { afterNavigate } from '$app/navigation';
 
 	let { children } = $props();
 
 	// One coherent light source across all frosted glass (see `.sheen-plane`). The sync
-	// keeps the plane's clip-path tracking the glass windows; re-clip when the modal
-	// opens/closes so its panel joins the beam (and the page panels drop out behind the
+	// keeps the plane's clip-path tracking the glass windows; re-clip when a modal (contact or
+	// login) opens/closes so its panel joins the beam (and the page panels drop out behind the
 	// scrim while it's up).
 	let sheen: ReturnType<typeof createSheenSync> | undefined;
 	$effect(() => {
-		sheen?.refresh(contactDialog.open);
+		// Read both up front (not a short-circuiting `||`) so the effect tracks BOTH dialogs and
+		// re-clips whenever either one toggles.
+		const contactOpen = contactDialog.open;
+		const loginOpen = loginDialog.open;
+		sheen?.refresh(contactOpen || loginOpen);
 	});
 
 	// The sheen plane persists across client-side navigation (it's in this layout), but each
 	// route has its own glass panels — so re-clip after every navigation, else the beam stays
 	// pinned to the previous page's panels (a ghost that only realigns on scroll/refresh).
-	afterNavigate(() => sheen?.refresh(contactDialog.open));
+	afterNavigate(() => sheen?.refresh(contactDialog.open || loginDialog.open));
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
@@ -60,3 +66,7 @@
 <!-- Global contact modal (issue #11) — rendered once; opened from the hero/CTA
      buttons and the footer link via the shared `contactDialog` rune. -->
 <ContactDialog />
+
+<!-- Global login modal (issue #69) — rendered once; opened from the navbar "Sign in"
+     link via the shared `loginDialog` rune (the link's href is the no-JS fallback). -->
+<LoginDialog />

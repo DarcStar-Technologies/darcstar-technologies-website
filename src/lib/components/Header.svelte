@@ -2,6 +2,7 @@
 	import { slide } from 'svelte/transition';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
+	import { loginDialog } from '$lib/login-dialog.svelte';
 	import Wordmark from './Wordmark.svelte';
 	import Icon from './Icon.svelte';
 
@@ -41,6 +42,27 @@
 	</a>
 {/snippet}
 
+<!-- Login link: a real /login anchor (the no-JS fallback), upgraded when JS is present to open
+     the frosted login dialog instead of navigating (issue #69). Same markup for both nav lists. -->
+{#snippet loginLink(className: string)}
+	<a
+		href={localizeHref('/login')}
+		data-sveltekit-preload-data="off"
+		onclick={(e) => {
+			// Honour modified clicks (⌘/Ctrl/Shift/Alt) — let the browser follow the href (e.g.
+			// open /login in a new tab) rather than the dialog. A plain left-click with JS opens
+			// the frosted dialog; with no JS the click falls through to the href.
+			if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+			e.preventDefault();
+			open = false;
+			loginDialog.show();
+		}}
+		class={className}
+	>
+		{m.nav_login()}
+	</a>
+{/snippet}
+
 <!-- Sticky-detection sentinel: out of flow at the document top (no layout shift), it
      scrolls out of view as the header sticks, flipping `stuck` → the shadow-on-scroll. -->
 <div
@@ -75,6 +97,11 @@
 							)}
 						</li>
 					{/each}
+					<li>
+						{@render loginLink(
+							'rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500'
+						)}
+					</li>
 				</ul>
 
 				<!-- Mobile menu toggle -->
@@ -114,6 +141,11 @@
 						)}
 					</li>
 				{/each}
+				<li>
+					{@render loginLink(
+						'block rounded px-3 py-2 text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary'
+					)}
+				</li>
 			</ul>
 		{/if}
 	</nav>
