@@ -10,6 +10,7 @@
 // table-adding plugins (`sveltekitCookies` adds none, so it's omitted here).
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { admin } from 'better-auth/plugins';
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
 import { emailAndPassword, rateLimit } from './auth-options';
@@ -24,6 +25,10 @@ export const auth = betterAuth({
 	// #69: schema-affecting (`storage: 'database'` adds the `rateLimit` table) — must be here so
 	// `pnpm auth:schema` emits the table into db/auth.schema.ts. Shared with auth.ts, can't drift.
 	rateLimit,
+	// Schema-affecting: the admin plugin adds columns (user.role/banned/banReason/banExpires +
+	// session.impersonatedBy). Bare here — only its STATIC schema matters for generation; the live
+	// behavioral options (adminUserIds/defaultRole) stay in auth.ts. Must match auth.ts's plugin set.
+	plugins: [admin()],
 	socialProviders: {
 		github: { clientId: '', clientSecret: '' }
 	}

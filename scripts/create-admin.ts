@@ -16,6 +16,7 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
+import { eq } from 'drizzle-orm';
 import * as schema from '../src/lib/server/db/schema';
 
 // Load DB credentials from .env; inline ADMIN_* / ambient env still win (loadEnvFile only fills
@@ -55,11 +56,34 @@ const auth = betterAuth({
 	emailAndPassword: { enabled: true }
 });
 
+function printAdminIdHint(id: string): void {
+	// The owner allowlist (ADMIN_USER_IDS) lets an account manage the operator roster regardless of
+	// its DB role, so it can't be locked out. Print a copy-paste line for .env / the prod secret.
+	console.log(`  To make this account an always-admin owner, allowlist its id:`);
+	console.log(`    .env     → ADMIN_USER_IDS="${id}"`);
+	console.log(`    prod     → wrangler secret put ADMIN_USER_IDS   (value: ${id})`);
+}
+
 try {
 	const res = await auth.api.signUpEmail({ body: { name, email, password } });
 	console.log(`✓ Admin created: ${res.user.email} (id ${res.user.id})`);
+	printAdminIdHint(res.user.id);
 } catch (err) {
 	const msg = err instanceof Error ? err.message : String(err);
-	if (/exist/i.test(msg)) die(`An account already exists for ${email}.`);
+	// An existing account isn't a failure here — the operator usually runs this to DISCOVER the id
+	// to allowlist. Look it up, print it with the hint, and exit 0.
+	if (/exist/i.test(msg)) {
+		const [row] = await db
+			.select({ id: schema.user.id })
+			.from(schema.user)
+			.where(eq(schema.user.email, email))
+			.limit(1);
+		if (row) {
+			console.log(`✓ An account already exists for ${email} (id ${row.id}).`);
+			printAdminIdHint(row.id);
+			process.exit(0);
+		}
+		die(`An account already exists for ${email}, but its id could not be read.`);
+	}
 	die(`Sign-up failed: ${msg}`);
 }

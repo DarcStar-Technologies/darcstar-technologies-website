@@ -1,16 +1,18 @@
 # Auth — Better Auth (email/password, admin-only)
 
-Better Auth gates a single **internal admin area** — the contact-submissions view at `/admin`
-(#69). Email/password sign-in exists; **public sign-up stays disabled** (#48) — the only way to
-create an operator account is the provisioning script (below). This doc maps what's wired and why.
+Better Auth gates an **internal admin area** at `/admin` (#69) — contact-submission triage plus
+operator-roster management (`/admin/users`). Email/password sign-in exists; **public sign-up stays
+disabled** (#48) — the FIRST operator is made by the provisioning script (below), and further
+operators from the roster UI. This doc maps what's wired and why.
 
 ## What's wired
 
 - **`src/lib/server/auth.ts`** — the runtime `betterAuth` instance (a lazy per-request
   singleton; env is read from `getRequestEvent().platform.env`, same reason as `db/index.ts`).
   The drizzle adapter runs on the shared **Turso/libsql** client (`getDb()`, provider `sqlite`);
-  `sveltekitCookies` is last in the plugin list; `trustedOrigins` covers the `*.workers.dev`
-  preview/alias hosts.
+  the **`admin`** plugin (roster management — see "User management" below) leads the plugin list
+  and `sveltekitCookies` stays last; `trustedOrigins` covers the `*.workers.dev` preview/alias
+  hosts.
 - **`src/lib/server/auth-options.ts`** — the env-free options shared by `auth.ts`, the CLI config,
   and unit tests (so they can't drift and tests import them without `$app/server`/the DB client):
   - `emailAndPassword` — `enabled` but **`disableSignUp: true`** (#48).
@@ -32,8 +34,11 @@ create an operator account is the provisioning script (below). This doc maps wha
   (a standalone config the Better Auth CLI can load without SvelteKit's virtual modules). Keep
   `auth-cli.ts` in sync with `auth.ts` for **schema-affecting** options only (adapter provider,
   methods, table-adding plugins, `rateLimit.storage: 'database'`) — `disableSignUp` is behavioral,
-  so it stays out of the CLI config. Tables reach Turso via `pnpm db:push` (schema-first, no
-  migrations dir — see [contact.md](contact.md)); **rerun it after this change** to create `rate_limit`.
+  so it stays out of the CLI config. The `admin` plugin is schema-affecting (adds
+  `user.role/banned/ban_reason/ban_expires` + `session.impersonated_by`), so a **bare `admin()`**
+  is mirrored into `auth-cli.ts`; its behavioral options stay in `auth.ts`. Tables reach Turso via
+  `pnpm db:push` (schema-first, no migrations dir — see [contact.md](contact.md)); **rerun it after
+  schema changes** (it added `rate_limit`, then the admin columns).
 - **Secrets** — `BETTER_AUTH_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` via
   `wrangler secret` + local `.env`. See [deployment.md](deployment.md).
 
@@ -74,13 +79,60 @@ The gated surface #48 fenced off:
   rate-limit. `load` bounces an already-signed-in operator to `/admin`. The same `LoginForm` backs
   the navbar's `LoginDialog` (issue #69 follow-up).
 - **`/admin`** (`src/routes/admin/`) — `+layout.server.ts` is the **guard** (`!locals.user` →
-  `/login`); `+page.server.ts` reads the newest `contact_submission` rows (capped, newest-first)
-  and holds the **sign-out** action (`auth.api.signOut`, then → `/login`). This replaces
-  `pnpm db:studio` for triaging leads. Both pages are `noindex` (a `Seo` prop).
+  `/login`) and also exposes `isAdmin` (roster admins). A shared **`+layout.svelte`** renders the
+  backdrop, the **Submissions | Users** sub-nav (Users only for admins), and the sign-out control —
+  which now posts to the global **`/logout`** endpoint, so the submissions `+page.server.ts` no
+  longer owns a sign-out action; it just reads the newest `contact_submission` rows (capped,
+  newest-first). This replaces `pnpm db:studio` for triaging leads. Pages are `noindex` (a `Seo`
+  prop).
 - **First-admin provisioning** — `scripts/create-admin.ts` (`pnpm admin:create`). Public sign-up
-  stays disabled, so this is the **only** way to create an operator: it builds a throwaway Better
-  Auth instance (same Turso DB + schema, sign-up **enabled**) and calls `signUpEmail`, writing the
-  `user`/`account` rows with Better Auth's own password hashing. See [deployment.md](deployment.md).
+  stays disabled, so this is the **only** way to create the FIRST operator: it builds a throwaway
+  Better Auth instance (same Turso DB + schema, sign-up **enabled**) and calls `signUpEmail`,
+  writing the `user`/`account` rows with Better Auth's own password hashing. If the email already
+  exists it prints that account's id (to allowlist in `ADMIN_USER_IDS`) instead of failing. See
+  [deployment.md](deployment.md). Once an admin exists, further operators are created from the UI.
+
+## User management (roster)
+
+The **Better Auth `admin` plugin** makes `/admin` a two-role area and adds roster management under
+**`/admin/users`**: list, view, create, edit (name/email), change role, reset password, force
+logout across all sessions, reversibly disable/enable, and hard-delete.
+
+- **Two roles.** `admin` manages the roster **and** views submissions; a plain operator (`user`
+  role) signs in and views submissions but **cannot** manage users. New accounts default to `user`
+  (the UI labels it "Operator"). Roles use the plugin defaults — no custom access-control statements.
+- **Owner bootstrap — `ADMIN_USER_IDS`.** A comma-separated env allowlist of user ids treated as
+  admins **before** any role check (`plugins/admin/has-permission.mjs`), so the owner can never be
+  locked out even with a null/`user` role. It's a runtime Worker var (read via `readEnv`): set it in
+  `.env` locally (`pnpm gen` types it into `Env`) and `wrangler secret put ADMIN_USER_IDS` in prod;
+  `pnpm admin:create` prints an existing account's id to copy in. `parseAdminIds` +
+  `isRosterAdmin(user, csv)` (`admin-access.ts`) = `role === 'admin' || id ∈ allowlist`, and gate
+  both the nav tab and the `/admin/users` route.
+- **Behavioral vs schema split.** The plugin's options (`adminUserIds`, `defaultRole`) are
+  env-dependent → `auth.ts` only; its static schema is mirrored as a bare `admin()` in `auth-cli.ts`
+  (see "What's wired"). `pnpm db:push` adds the nullable columns (additive, safe).
+- **Routes.** `/admin` and `/admin/users` share `admin/+layout.svelte`.
+  `admin/users/+layout.server.ts` guards the section (non-admin → `/admin`). `/admin/users` lists +
+  creates (→ the new operator's detail page); `/admin/users/[id]` manages one account. All actions
+  are **no-JS server form actions** → `auth.api.*` (`createUser`, `adminUpdateUser`, `setRole`,
+  `setUserPassword`, `revokeUserSessions`, `banUser`/`unbanUser`, `removeUser`). `createUser` is an
+  admin op, so it works despite `disableSignUp`. Delete is gated by a required "I understand"
+  checkbox (no JS `confirm()` — worker globals aren't typed for svelte-check).
+- **Authorization is authoritative.** Every admin endpoint runs `adminMiddleware` →
+  `getAuthoritativeSessionFromCtx` (`disableCookieCache: true`), so a demoted operator loses
+  management powers immediately at the endpoint — the route guard/nav is defense-in-depth only.
+- **Guardrails + a known limit.** `guardTarget` blocks role/password/session/disable/delete against
+  **your own** account or an **owner** (`ADMIN_USER_IDS`) account; the plugin also blocks
+  self-ban/self-remove. This is a UI foot-gun guard, **not** a hard boundary — the admin API has no
+  owner concept, so a promoted admin could still target an owner via `/api/auth/admin/*` directly.
+  Admins are trusted operators; the load-bearing guarantee is only that an owner can't be locked out
+  by a role mistake.
+
+Tested hermetically (`src/lib/server/admin.spec.ts` — non-admin 403, owner/role admin allowed,
+`createUser` despite `disableSignUp`; `admin-access.spec.ts` — the allowlist/role logic), a DB-free
+guard e2e (`admin/users/page.svelte.e2e.ts` — unauth `/admin/users` → `/login`), and the full
+lifecycle (create → non-admin guard → reset → force-logout → disable → enable → delete) in
+`pnpm smoke:signin`.
 
 ## Auth-aware UI
 
@@ -111,5 +163,7 @@ works on any origin/port. It writes a session, so — like the contact happy-pat
 ## Still deferred
 
 **Cloudflare Turnstile (#53)** on the auth endpoints (stronger than rate limiting alone), and
-pagination for the submissions list. Public sign-up stays disabled; GitHub OAuth is configured in
-the CLI but not enabled in `auth.ts`.
+pagination for the submissions **and roster** lists (both capped at 200, newest-first). Public
+sign-up stays disabled; GitHub OAuth is configured in the CLI but not enabled in `auth.ts`.
+Owner-vs-admin protection at the endpoint level (a promoted admin can still target an owner via the
+raw admin API) is out of scope — admins are trusted; see "User management".

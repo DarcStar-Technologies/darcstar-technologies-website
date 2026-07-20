@@ -81,6 +81,123 @@ if (!homeAuthedHtml.includes('action="/logout"')) {
 }
 ok('/ navbar shows the signed-in controls when authenticated');
 
+// 2c. Roster management (admin-only). As the owner (an ADMIN_USER_IDS admin), exercise the full
+// user lifecycle against a THROWAWAY operator so it cleans up after itself: create → non-admin
+// guard → reset password → force logout → disable → enable → delete. Needs the admin-plugin
+// columns (`pnpm db:push` after this change).
+const rosterView = await fetch(`${BASE}/admin/users`, { headers: { cookie }, redirect: 'manual' });
+if (rosterView.status !== 200) die(`/admin/users (owner): expected 200, got ${rosterView.status}`);
+if (!(await rosterView.text()).includes('Operators')) {
+	die('/admin/users (owner): 200 but the roster did not render');
+}
+ok('/admin/users renders the roster for an admin');
+
+// Owner-authenticated no-JS form POST helper (native 303 or 200 re-render, per the action).
+const post = (path, body, jar = cookie) =>
+	fetch(`${BASE}${path}`, {
+		method: 'POST',
+		redirect: 'manual',
+		headers: {
+			'content-type': 'application/x-www-form-urlencoded',
+			accept: 'text/html',
+			origin,
+			cookie: jar
+		},
+		body: new URLSearchParams(body)
+	});
+
+const opEmail = `smoke-op-${Date.now()}@example.com`;
+const opPassword = 'smoke-operator-pw-123';
+
+// create → 303 to the new operator's detail page (/admin/users/<id>).
+const created = await post('/admin/users?/create', {
+	name: 'Smoke Operator',
+	email: opEmail,
+	password: opPassword,
+	role: 'user'
+});
+const createdLoc = created.headers.get('location') || '';
+const opIdMatch = createdLoc.match(/\/admin\/users\/([^/?#]+)/);
+if (created.status !== 303 || !opIdMatch) {
+	die(`create operator: expected 303 → /admin/users/<id>, got ${created.status} → ${createdLoc}`);
+}
+const opId = opIdMatch[1];
+ok(`created operator ${opEmail} (id ${opId})`);
+
+// Two-role split: the new operator can view submissions but is bounced away from /admin/users.
+const opSignIn = await fetch(`${BASE}/login`, {
+	method: 'POST',
+	redirect: 'manual',
+	headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'text/html', origin },
+	body: new URLSearchParams({ email: opEmail, password: opPassword })
+});
+if (opSignIn.status !== 303) die(`operator sign-in: expected 303, got ${opSignIn.status}`);
+const opCookie = opSignIn.headers
+	.getSetCookie()
+	.map((c) => c.split(';', 1)[0])
+	.join('; ');
+const opRoster = await fetch(`${BASE}/admin/users`, {
+	headers: { cookie: opCookie },
+	redirect: 'manual'
+});
+if (opRoster.status !== 303 || opRoster.headers.get('location') !== '/admin') {
+	die(
+		`operator /admin/users: expected 303 → /admin, got ${opRoster.status} → ${opRoster.headers.get('location')}`
+	);
+}
+const opSubmissions = await fetch(`${BASE}/admin`, {
+	headers: { cookie: opCookie },
+	redirect: 'manual'
+});
+if (opSubmissions.status !== 200) {
+	die(
+		`operator /admin: expected 200 (operators may view submissions), got ${opSubmissions.status}`
+	);
+}
+ok('a plain operator can view submissions but is redirected away from /admin/users');
+
+// reset password → 200 re-render with the confirmation.
+const reset = await post(`/admin/users/${opId}?/resetPassword`, {
+	newPassword: 'smoke-new-pw-456'
+});
+if (reset.status !== 200 || !(await reset.text()).includes('Password reset.')) {
+	die(`reset password: expected 200 + confirmation, got ${reset.status}`);
+}
+ok('reset the operator password');
+
+// force logout everywhere → 200 re-render with the confirmation.
+const forced = await post(`/admin/users/${opId}?/forceLogout`, {});
+if (forced.status !== 200 || !(await forced.text()).includes('All sessions revoked.')) {
+	die(`force logout: expected 200 + confirmation, got ${forced.status}`);
+}
+ok('forced logout across all operator sessions');
+
+// disable → the detail page now offers "Enable account".
+const disabled = await post(`/admin/users/${opId}?/disable`, {});
+if (disabled.status !== 200 || !(await disabled.text()).includes('Enable account')) {
+	die(`disable: expected 200 + enable control, got ${disabled.status}`);
+}
+ok('disabled the operator account');
+
+// enable → the detail page offers "Disable account" again.
+const enabled = await post(`/admin/users/${opId}?/enable`, {});
+if (enabled.status !== 200 || !(await enabled.text()).includes('Disable account')) {
+	die(`enable: expected 200 + disable control, got ${enabled.status}`);
+}
+ok('re-enabled the operator account');
+
+// delete (confirm checkbox) → 303 back to the roster; then it's gone.
+const deleted = await post(`/admin/users/${opId}?/delete`, { confirm: 'on' });
+if (deleted.status !== 303 || deleted.headers.get('location') !== '/admin/users') {
+	die(
+		`delete: expected 303 → /admin/users, got ${deleted.status} → ${deleted.headers.get('location')}`
+	);
+}
+const afterDelete = await fetch(`${BASE}/admin/users`, { headers: { cookie }, redirect: 'manual' });
+if ((await afterDelete.text()).includes(opEmail))
+	die('delete: operator still appears in the roster');
+ok('deleted the operator and it no longer appears in the roster');
+
 // 3. Sign out via /logout — the navbar's global sign-out target (a native form POST). Clears the
 // session cookies and lands on the home page (303 → /). This is the /admin sign-out button's twin
 // (same `auth.api.signOut`), but reachable from any page.
