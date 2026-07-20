@@ -2,7 +2,7 @@
 // allowlist, the self/owner action guard, and a stable APIError → UI-code mapper. Kept out of the
 // route files so both pages stay DRY and the guard logic can't drift between them.
 import { APIError } from 'better-auth/api';
-import { parseAdminIds } from '$lib/server/admin-access';
+import { isRosterAdmin, parseAdminIds } from '$lib/server/admin-access';
 import { readEnv } from '$lib/server/env';
 
 // Triage view, not an archive — cap the roster read (pagination is a later follow-up).
@@ -11,6 +11,18 @@ export const USERS_LIMIT = 200;
 /** Owner ids from the ADMIN_USER_IDS allowlist. Must be called inside a request (reads env). */
 export function ownerIds(): string[] {
 	return parseAdminIds(readEnv('ADMIN_USER_IDS'));
+}
+
+/**
+ * Authorize a roster form action and return the acting admin (or `null` → the action must fail 403).
+ * SvelteKit does NOT run the layout `load` guards before a form action (only on the re-render
+ * after), so each action must gate itself — a bare `locals.user!.id` would otherwise 500 on a
+ * no-session POST. The Better Auth admin endpoints re-check authoritatively too; this is the fast,
+ * explicit gate, and it lets `guardTarget` trust the returned `id`. Reads env, so call it before the
+ * first `await`.
+ */
+export function rosterAdmin(locals: App.Locals): NonNullable<App.Locals['user']> | null {
+	return isRosterAdmin(locals.user, readEnv('ADMIN_USER_IDS')) ? locals.user! : null;
 }
 
 /**

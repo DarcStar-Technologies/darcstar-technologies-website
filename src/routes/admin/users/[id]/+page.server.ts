@@ -1,6 +1,6 @@
 import { error, fail, redirect, type Actions } from '@sveltejs/kit';
 import { getAuth } from '$lib/server/auth';
-import { ownerIds, guardTarget, adminErrorCode } from '$lib/server/admin-users';
+import { ownerIds, guardTarget, rosterAdmin, adminErrorCode } from '$lib/server/admin-users';
 import type { PageServerLoad } from './$types';
 
 // Single-operator management (admin-only). Everything the roster can do to one account:
@@ -9,8 +9,11 @@ import type { PageServerLoad } from './$types';
 // (ADMIN_USER_IDS) accounts — see guardTarget in admin-users.ts.
 
 export const load: PageServerLoad = async ({ params, request, locals }) => {
-	// getAuth() reads platform.env via getRequestEvent(), so resolve it before the first await.
+	// getAuth() + ownerIds() read platform.env via getRequestEvent(), so resolve them (and the acting
+	// user's id) before the first await — env can read back empty once the async context is left.
 	const auth = getAuth();
+	const owners = ownerIds();
+	const meId = locals.user!.id;
 
 	let target;
 	try {
@@ -25,24 +28,27 @@ export const load: PageServerLoad = async ({ params, request, locals }) => {
 		headers: request.headers
 	});
 
-	const owners = ownerIds();
 	return {
 		target,
 		sessions,
-		isSelf: params.id === locals.user!.id,
+		isSelf: params.id === meId,
 		isOwner: owners.includes(params.id),
 		// The account can be role-changed / disabled / reset / force-logged-out / deleted only when
 		// it's neither yours nor an owner's. Drives which controls the detail page renders.
-		manageable: params.id !== locals.user!.id && !owners.includes(params.id)
+		manageable: params.id !== meId && !owners.includes(params.id)
 	};
 };
 
-// `[id]` guarantees params.id at runtime, but contextual typing through the `Actions` Record
+// Every action authorizes itself with `rosterAdmin(locals)` — SvelteKit does NOT run the layout
+// guard before a form action (only on the re-render), so the route guard alone wouldn't protect
+// these. `[id]` guarantees params.id at runtime, but contextual typing through the `Actions` Record
 // doesn't narrow it (unlike `load`), so it types as `string | undefined` — assert it per action.
+// (Both `rosterAdmin` and `guardTarget` read env, so they run before the first await.)
 export const actions: Actions = {
 	// Edit name + email. Allowed on any account (non-destructive) — email is the sign-in identity.
-	updateDetails: async ({ params, request }) => {
+	updateDetails: async ({ params, request, locals }) => {
 		const userId = params.id!;
+		if (!rosterAdmin(locals)) return fail(403, { scope: 'details', error: 'forbidden' });
 		const auth = getAuth();
 		const data = await request.formData();
 		const name = String(data.get('name') ?? '').trim();
@@ -63,7 +69,9 @@ export const actions: Actions = {
 	// Promote to admin / demote to operator. Blocked on self + owner.
 	setRole: async ({ params, request, locals }) => {
 		const userId = params.id!;
-		const blocked = guardTarget(userId, locals.user!.id);
+		const me = rosterAdmin(locals);
+		if (!me) return fail(403, { scope: 'role', error: 'forbidden' });
+		const blocked = guardTarget(userId, me.id);
 		if (blocked) return fail(403, { scope: 'role', error: blocked });
 		const auth = getAuth();
 		const data = await request.formData();
@@ -79,7 +87,9 @@ export const actions: Actions = {
 	// Set a new password (the admin shares it out-of-band). Blocked on self + owner.
 	resetPassword: async ({ params, request, locals }) => {
 		const userId = params.id!;
-		const blocked = guardTarget(userId, locals.user!.id);
+		const me = rosterAdmin(locals);
+		if (!me) return fail(403, { scope: 'password', error: 'forbidden' });
+		const blocked = guardTarget(userId, me.id);
 		if (blocked) return fail(403, { scope: 'password', error: blocked });
 		const auth = getAuth();
 		const data = await request.formData();
@@ -99,7 +109,9 @@ export const actions: Actions = {
 	// Revoke every session — the "force logout everywhere" kill switch. Blocked on self + owner.
 	forceLogout: async ({ params, request, locals }) => {
 		const userId = params.id!;
-		const blocked = guardTarget(userId, locals.user!.id);
+		const me = rosterAdmin(locals);
+		if (!me) return fail(403, { scope: 'session', error: 'forbidden' });
+		const blocked = guardTarget(userId, me.id);
 		if (blocked) return fail(403, { scope: 'session', error: blocked });
 		const auth = getAuth();
 		try {
@@ -117,7 +129,9 @@ export const actions: Actions = {
 	// owner (the plugin also blocks self-ban).
 	disable: async ({ params, request, locals }) => {
 		const userId = params.id!;
-		const blocked = guardTarget(userId, locals.user!.id);
+		const me = rosterAdmin(locals);
+		if (!me) return fail(403, { scope: 'status', error: 'forbidden' });
+		const blocked = guardTarget(userId, me.id);
 		if (blocked) return fail(403, { scope: 'status', error: blocked });
 		const auth = getAuth();
 		try {
@@ -128,9 +142,11 @@ export const actions: Actions = {
 		return { scope: 'status', ok: true };
 	},
 
-	// Lift a disable. Safe to run on anyone (only restores access), so it's unguarded.
-	enable: async ({ params, request }) => {
+	// Lift a disable. Safe to run on anyone (only restores access), so it skips the self/owner guard
+	// — but still admin-only.
+	enable: async ({ params, request, locals }) => {
 		const userId = params.id!;
+		if (!rosterAdmin(locals)) return fail(403, { scope: 'status', error: 'forbidden' });
 		const auth = getAuth();
 		try {
 			await auth.api.unbanUser({ body: { userId }, headers: request.headers });
@@ -141,12 +157,16 @@ export const actions: Actions = {
 	},
 
 	// Permanent hard delete (cascades sessions/accounts). Blocked on self + owner (the plugin also
-	// blocks self-remove). Redirects back to the roster.
+	// blocks self-remove) and gated by the "I understand" checkbox. Redirects back to the roster.
 	delete: async ({ params, request, locals }) => {
 		const userId = params.id!;
-		const blocked = guardTarget(userId, locals.user!.id);
+		const me = rosterAdmin(locals);
+		if (!me) return fail(403, { scope: 'delete', error: 'forbidden' });
+		const blocked = guardTarget(userId, me.id);
 		if (blocked) return fail(403, { scope: 'delete', error: blocked });
 		const auth = getAuth();
+		const data = await request.formData();
+		if (data.get('confirm') !== 'on') return fail(400, { scope: 'delete', error: 'generic' });
 		try {
 			await auth.api.removeUser({ body: { userId }, headers: request.headers });
 		} catch (err) {
