@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
+	import { page } from '$app/state';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 	import { loginDialog } from '$lib/login-dialog.svelte';
@@ -14,6 +15,12 @@
 		{ id: 'home', label: m.nav_home(), href: localizeHref('/') },
 		{ id: 'about', label: m.nav_about(), href: localizeHref('/about') }
 	]);
+
+	// Site-wide sign-in state from the root `+layout.server.ts` load (`page.data.user` — email or
+	// null). Signed in → the nav shows Admin + Sign out; signed out → the "Sign in" link/dialog.
+	// `invalidateAll` on sign-in and the native /logout redirect both re-run that load, so this
+	// flips reactively.
+	const user = $derived(page.data.user);
 
 	let open = $state(false);
 	let stuck = $state(false);
@@ -64,6 +71,21 @@
 	</a>
 {/snippet}
 
+<!-- Signed-in controls (replace the login link when `user` is set): a link to the gated admin
+     dashboard, and a Sign-out button. Sign-out is a real form POST to /logout so it works without
+     JS; a native full-page navigation also re-runs the layout load, flipping the nav back. -->
+{#snippet adminLink(className: string)}
+	<a href={localizeHref('/admin')} onclick={() => (open = false)} class={className}>
+		{m.nav_admin()}
+	</a>
+{/snippet}
+
+{#snippet signoutForm(className: string)}
+	<form method="post" action={localizeHref('/logout')} onsubmit={() => (open = false)}>
+		<button type="submit" class={className}>{m.nav_signout()}</button>
+	</form>
+{/snippet}
+
 <!-- Sticky-detection sentinel: out of flow at the document top (no layout shift), it
      scrolls out of view as the header sticks, flipping `stuck` → the shadow-on-scroll. -->
 <div
@@ -98,11 +120,24 @@
 							)}
 						</li>
 					{/each}
-					<li>
-						{@render loginLink(
-							'rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500'
-						)}
-					</li>
+					{#if user}
+						<li>
+							{@render adminLink(
+								'rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500'
+							)}
+						</li>
+						<li>
+							{@render signoutForm(
+								'rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500'
+							)}
+						</li>
+					{:else}
+						<li>
+							{@render loginLink(
+								'rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500'
+							)}
+						</li>
+					{/if}
 				</ul>
 
 				<!-- Mobile menu toggle -->
@@ -140,11 +175,24 @@
 						)}
 					</li>
 				{/each}
-				<li>
-					{@render loginLink(
-						'block rounded px-3 py-2 text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary'
-					)}
-				</li>
+				{#if user}
+					<li>
+						{@render adminLink(
+							'block rounded px-3 py-2 text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary'
+						)}
+					</li>
+					<li>
+						{@render signoutForm(
+							'block w-full rounded px-3 py-2 text-left text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary'
+						)}
+					</li>
+				{:else}
+					<li>
+						{@render loginLink(
+							'block rounded px-3 py-2 text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary'
+						)}
+					</li>
+				{/if}
 			</ul>
 		{/if}
 	</nav>

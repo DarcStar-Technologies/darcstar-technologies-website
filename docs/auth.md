@@ -18,11 +18,15 @@ create an operator account is the provisioning script (below). This doc maps wha
     Cloudflare isolate churn; adds the **`rate_limit`** table (schema-affecting → mirrored in the
     CLI config). Only requests through Better Auth's **router** are limited, which is why the login
     action forwards to `auth.handler()` rather than calling `auth.api.signInEmail` directly.
-- **`src/hooks.server.ts`** — `handleBetterAuth` populates `locals.user`/`locals.session` for the
-  paths that read it — `/api/auth/*`, **`/admin`**, and **`/login`** (matched on the de-localized
-  path, since URLs localize as `/es/*`) — and mounts the auth API via `svelteKitHandler` for
-  `/api/auth/*` only. Every other path early-returns, so ordinary page views still pay no session
-  lookup (the #48 win). It runs after `handleParaglide` in the `sequence(...)`.
+- **`src/hooks.server.ts`** — `handleBetterAuth` populates `locals.user`/`locals.session` and
+  mounts the auth API via `svelteKitHandler` for `/api/auth/*` only. It resolves the session on the
+  auth-owned prefixes (`/api/auth/*`, **`/admin`**, **`/login`** — matched on the de-localized path,
+  since URLs localize as `/es/*`) **or on any request that carries a Better Auth session cookie**
+  (`getSessionCookie(event.request)` — a header-only read, no DB, no auth instance). That cookie
+  gate is what lets the navbar reflect sign-in state site-wide (see below) while **anonymous
+  visitors — no cookie — still pay no session lookup** (the #48 win, preserved for the traffic that
+  matters). Cookie presence only _gates_ the lookup; the real `getSession` still validates, so a
+  forged cookie grants nothing. It runs after `handleParaglide` in the `sequence(...)`.
 - **`src/lib/server/db/auth.schema.ts`** — the `user`/`session`/`account`/`verification` **and
   `rate_limit`** tables, **generated** by `pnpm run auth:schema` from **`src/lib/server/auth-cli.ts`**
   (a standalone config the Better Auth CLI can load without SvelteKit's virtual modules). Keep
@@ -77,6 +81,26 @@ The gated surface #48 fenced off:
   stays disabled, so this is the **only** way to create an operator: it builds a throwaway Better
   Auth instance (same Turso DB + schema, sign-up **enabled**) and calls `signUpEmail`, writing the
   `user`/`account` rows with Better Auth's own password hashing. See [deployment.md](deployment.md).
+
+## Auth-aware UI
+
+The navbar reflects sign-in state so it never shows "Sign in" to a signed-in operator:
+
+- **`src/routes/+layout.server.ts`** — a root layout `load` that exposes a **minimal** snapshot,
+  `{ user: locals.user ? { email } : null }`, to every page as `page.data.user` (typed in
+  `app.d.ts` as `App.PageData.user`). Email only — the full `User` stays server-only. This is what
+  makes the cookie-gated session lookup in `hooks.server.ts` visible to the client.
+- **`Header.svelte`** — reads `page.data.user` (`$app/state`). Signed out → the "Sign in"
+  link/dialog (unchanged). Signed in → an **Admin** link (→ `/admin`) plus a **Sign out** control,
+  in both the desktop and mobile lists. The state flips reactively: `LoginForm`'s `invalidateAll`
+  on sign-in and the native `/logout` redirect both re-run the layout `load`.
+- **`src/routes/logout/+server.ts`** — a global sign-out endpoint so an operator can sign out from
+  any page. The navbar posts a native `<form method="post" action="/logout">` (no JS required);
+  `POST` clears the session (`auth.api.signOut`, same as `/admin`'s action) → 303 `/`; a stray
+  `GET` → 303 `/`. SvelteKit's CSRF origin-check protects the POST.
+
+Covered by the `pnpm smoke:signin` happy-path (below), which now also asserts the home navbar shows
+the signed-in controls with a session cookie and only "Sign in" without one.
 
 Guarded by an e2e (`src/routes/admin/page.svelte.e2e.ts`): unauthenticated `/admin` → `/login`
 (DB-free — a no-cookie `getSession` returns null without a query). The happy path (sign-in →
