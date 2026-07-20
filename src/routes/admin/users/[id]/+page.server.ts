@@ -1,4 +1,5 @@
 import { error, fail, redirect, type Actions } from '@sveltejs/kit';
+import { APIError } from 'better-auth/api';
 import { getAuth } from '$lib/server/auth';
 import { ownerIds, guardTarget, rosterAdmin, adminErrorCode } from '$lib/server/admin-users';
 import type { PageServerLoad } from './$types';
@@ -18,9 +19,11 @@ export const load: PageServerLoad = async ({ params, request, locals }) => {
 	let target;
 	try {
 		target = await auth.api.getUser({ query: { id: params.id }, headers: request.headers });
-	} catch {
-		// getUser throws NOT_FOUND for an unknown id (also covers a malformed id).
-		error(404, 'Operator not found');
+	} catch (err) {
+		// A genuinely-missing id is a 404; anything else (a DB outage, etc.) should surface as 500,
+		// not be mislabeled "not found".
+		if (err instanceof APIError && err.statusCode === 404) error(404, 'Operator not found');
+		throw err;
 	}
 
 	const { sessions } = await auth.api.listUserSessions({
@@ -30,7 +33,14 @@ export const load: PageServerLoad = async ({ params, request, locals }) => {
 
 	return {
 		target,
-		sessions,
+		// Project to only the fields the page renders — listUserSessions returns the raw session rows,
+		// which include the session `token`; never ship an operator's session tokens to the client.
+		sessions: sessions.map((s) => ({
+			id: s.id,
+			createdAt: s.createdAt,
+			expiresAt: s.expiresAt,
+			ipAddress: s.ipAddress ?? null
+		})),
 		isSelf: params.id === meId,
 		isOwner: owners.includes(params.id),
 		// The account can be role-changed / disabled / reset / force-logged-out / deleted only when
