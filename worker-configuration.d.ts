@@ -10,6 +10,7 @@ interface __BaseEnv_Env {
 	GITHUB_CLIENT_ID: string;
 	GITHUB_CLIENT_SECRET: string;
 	RESEND_API_KEY: string;
+	ADMIN_USER_IDS: string;
 }
 declare namespace Cloudflare {
 	interface Env extends __BaseEnv_Env {}
@@ -19,7 +20,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "DATABASE_URL" | "DATABASE_AUTH_TOKEN" | "ORIGIN" | "BETTER_AUTH_SECRET" | "GITHUB_CLIENT_ID" | "GITHUB_CLIENT_SECRET" | "RESEND_API_KEY">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "DATABASE_URL" | "DATABASE_AUTH_TOKEN" | "ORIGIN" | "BETTER_AUTH_SECRET" | "GITHUB_CLIENT_ID" | "GITHUB_CLIENT_SECRET" | "RESEND_API_KEY" | "ADMIN_USER_IDS">> {}
 }
 
 // Begin runtime types

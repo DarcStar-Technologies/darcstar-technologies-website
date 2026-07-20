@@ -1,9 +1,11 @@
 import { betterAuth } from 'better-auth/minimal';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { admin } from 'better-auth/plugins';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { getRequestEvent } from '$app/server';
 import { getDb } from '$lib/server/db';
 import { emailAndPassword, rateLimit } from '$lib/server/auth-options';
+import { parseAdminIds } from '$lib/server/admin-access';
 import { readEnv } from '$lib/server/env';
 
 function createAuth() {
@@ -25,6 +27,16 @@ function createAuth() {
 		emailAndPassword, // #48: sign-up disabled — see auth-options.ts
 		rateLimit, // #69: DB-backed limiter on the now-public auth endpoints — see auth-options.ts
 		plugins: [
+			// Operator-roster management (list/create/update/delete/reset-password/force-logout +
+			// ban). `adminUserIds` is the owner bootstrap: those ids are treated as admins before any
+			// role check (has-permission.mjs), so the owner can't be locked out with a null role.
+			// Behavioral/env-dependent, so it lives here, not in auth-options.ts — but the plugin is
+			// SCHEMA-affecting (adds user.role/banned/… + session.impersonatedBy), so it's mirrored
+			// (bare) into auth-cli.ts. New accounts default to `user` (a plain operator).
+			admin({
+				adminUserIds: parseAdminIds(readEnv('ADMIN_USER_IDS')),
+				defaultRole: 'user'
+			}),
 			sveltekitCookies(getRequestEvent) // make sure this is the last plugin in the array
 		]
 	});

@@ -4,8 +4,6 @@
 	// (+layout.server.ts); rows come newest-first from +page.server.ts. Same CosmicBackdrop +
 	// frosted-glass aesthetic as the rest of the site.
 	import Seo from '$lib/components/Seo.svelte';
-	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
-	import { enhance } from '$app/forms';
 	import { m } from '$lib/paraglide/messages.js';
 	import { interestLabel } from '$lib/contact-interest-labels';
 	import type { Interest } from '$lib/contact-interests';
@@ -26,26 +24,10 @@
 
 <Seo title={m.admin_page_title()} description={m.admin_page_description()} noindex />
 
-<CosmicBackdrop />
-
 <section class="space-y-8">
-	<header class="flex flex-wrap items-start justify-between gap-4">
-		<div>
-			<p class="eyebrow text-xs tracking-[0.25em]">{m.admin_eyebrow()}</p>
-			<h1 class="mt-2 text-3xl font-medium tracking-tight text-white">{m.admin_heading()}</h1>
-			<p class="mt-2 text-sm text-body">{m.admin_lead()}</p>
-		</div>
-		<div class="flex flex-col items-end gap-2 text-right">
-			<span class="text-xs text-faint">{m.admin_signed_in_as({ email: data.user.email })}</span>
-			<form method="post" action="?/signout" use:enhance>
-				<button
-					type="submit"
-					class="glass-btn rounded-full px-4 py-2 text-xs font-medium text-white"
-				>
-					{m.admin_signout()}
-				</button>
-			</form>
-		</div>
+	<header>
+		<h1 class="text-3xl font-medium tracking-tight text-white">{m.admin_heading()}</h1>
+		<p class="mt-2 text-sm text-body">{m.admin_lead()}</p>
 	</header>
 
 	<div class="glass-card p-4 sm:p-6">
