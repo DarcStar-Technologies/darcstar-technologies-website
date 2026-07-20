@@ -23,3 +23,24 @@ export const rateLimit = {
 	enabled: true,
 	storage: 'database' as const
 };
+
+// Cookie-cache the session. Since #87 exposed sign-in state site-wide, a signed-in operator's every
+// page view resolves the session via `getSession` in `hooks.server.ts` — which, by default, is a DB
+// round-trip per view. With `cookieCache`, Better Auth writes a **signed** (HMAC) snapshot of the
+// session+user into a short-lived `session_data` cookie; within `maxAge` seconds `getSession` serves
+// from that cookie (signature verify only, no DB) and never queries. The session TOKEN is already a
+// signed cookie, so a forged token is rejected before any DB read regardless — this is purely a
+// read-load optimization, not a security control. Behavioral, **not schema-affecting** (a cookie,
+// no table), so — unlike `rateLimit` — it stays OUT of the CLI config (auth-cli.ts).
+//
+// Caveat: a session is trusted from the cookie for up to `maxAge`, so **server-side** revocation
+// (deleting a `session` row out-of-band) lags that long. Sign-out is unaffected — it clears the
+// `session_data` cookie immediately — and session EXPIRY is still honoured (the snapshot carries the
+// session's own `expiresAt`). 5 min is a safe window for a single-operator admin area with no
+// "revoke other sessions" feature.
+export const session = {
+	cookieCache: {
+		enabled: true,
+		maxAge: 300 // seconds
+	}
+};

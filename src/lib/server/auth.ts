@@ -4,7 +4,7 @@ import { admin } from 'better-auth/plugins';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { getRequestEvent } from '$app/server';
 import { getDb } from '$lib/server/db';
-import { emailAndPassword, rateLimit } from '$lib/server/auth-options';
+import { emailAndPassword, rateLimit, session } from '$lib/server/auth-options';
 import { parseAdminIds } from '$lib/server/admin-access';
 import { readEnv } from '$lib/server/env';
 
@@ -26,6 +26,7 @@ function createAuth() {
 		database: drizzleAdapter(getDb(), { provider: 'sqlite' }),
 		emailAndPassword, // #48: sign-up disabled — see auth-options.ts
 		rateLimit, // #69: DB-backed limiter on the now-public auth endpoints — see auth-options.ts
+		session, // cookie-cache the session so signed-in page views skip the DB — see auth-options.ts
 		plugins: [
 			// Operator-roster management (list/create/update/delete/reset-password/force-logout +
 			// ban). `adminUserIds` is the owner bootstrap: those ids are treated as admins before any
