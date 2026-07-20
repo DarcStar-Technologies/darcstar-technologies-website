@@ -159,6 +159,12 @@ html {
 		inset 0 -1px 0 rgb(0 0 0 / 0.3);
 }
 
+/* The frosted panel is ALWAYS a rounded card in the UI (every `glass-panel` pairs with
+   `rounded-2xl`), so bundle the two: use `glass-card` and add only the per-site padding/width. */
+@utility glass-card {
+	@apply rounded-2xl glass-panel;
+}
+
 /* Glinting-light sheen — a single light PLANE. ONE viewport overlay carrying a soft
    diagonal band that sweeps the screen, clip-path'd to the frosted-glass windows so
    every surface shows the same beam at its true screen position — one coherent light

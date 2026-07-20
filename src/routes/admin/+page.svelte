@@ -48,7 +48,7 @@
 		</div>
 	</header>
 
-	<div class="glass-panel rounded-2xl p-4 sm:p-6">
+	<div class="glass-card p-4 sm:p-6">
 		{#if data.submissions.length === 0}
 			<p class="px-2 py-12 text-center text-sm text-faint">{m.admin_empty()}</p>
 		{:else}

@@ -36,9 +36,7 @@
 			class="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4"
 		>
 			<Dialog.Content
-				class="glass-panel relative my-8 w-full {widthClass[
-					maxWidth
-				]} rounded-2xl p-6 text-left sm:p-8"
+				class="glass-card relative my-8 w-full {widthClass[maxWidth]} p-6 text-left sm:p-8"
 			>
 				<Dialog.CloseTrigger
 					class="glass-btn absolute top-4 right-4 flex size-9 items-center justify-center rounded-full text-body hover:text-white"

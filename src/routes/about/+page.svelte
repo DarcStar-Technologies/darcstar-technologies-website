@@ -36,9 +36,7 @@
 		     when absent — which is why the hero panel must sit below this slot). -->
 		<div id="helix-slot" class="h-6 min-[360px]:h-[min(25vw,19rem)]"></div>
 
-		<div
-			class="glass-panel mx-auto w-full max-w-3xl rounded-2xl px-8 py-10 text-center sm:px-10 sm:py-12"
-		>
+		<div class="glass-card mx-auto w-full max-w-3xl px-8 py-10 text-center sm:px-10 sm:py-12">
 			<h1 class="text-4xl font-medium tracking-tight text-balance text-white sm:text-5xl">
 				<span class="charge-flow">{m.about_heading_emphasis()}</span>
 				{m.about_heading_tail()}
@@ -49,7 +47,7 @@
 
 	<div class="mx-auto max-w-3xl space-y-14">
 		<!-- Mission -->
-		<section class="glass-panel rounded-2xl p-8 sm:p-10">
+		<section class="glass-card p-8 sm:p-10">
 			<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
 				{m.about_mission_heading()}
 			</h2>
@@ -58,7 +56,7 @@
 		</section>
 
 		<!-- Principles -->
-		<section class="glass-panel overflow-hidden rounded-2xl">
+		<section class="glass-card overflow-hidden">
 			<div class="p-8 sm:p-10">
 				<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
 					{m.about_principles_heading()}
@@ -75,7 +73,7 @@
 		</section>
 
 		<!-- At a glance -->
-		<section class="glass-panel rounded-2xl p-8 sm:p-10">
+		<section class="glass-card p-8 sm:p-10">
 			<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
 				{m.about_facts_heading()}
 			</h2>
@@ -106,7 +104,7 @@
 		</section>
 
 		<!-- CTA -->
-		<section class="glass-panel rounded-2xl px-8 py-12 text-center">
+		<section class="glass-card px-8 py-12 text-center">
 			<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
 				{m.about_cta_heading()}
 			</h2>

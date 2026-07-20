@@ -24,7 +24,7 @@
 <CosmicBackdrop />
 
 <section class="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-	<div class="glass-panel mx-auto w-full max-w-md rounded-2xl px-8 py-12 sm:px-10">
+	<div class="glass-card mx-auto w-full max-w-md px-8 py-12 sm:px-10">
 		<p class="charge-flow text-7xl font-semibold tracking-tight sm:text-8xl">{page.status}</p>
 		<h1 class="mt-5 text-2xl font-medium tracking-tight text-balance text-white sm:text-3xl">
 			{heading}

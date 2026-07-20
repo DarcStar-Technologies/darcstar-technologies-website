@@ -12,7 +12,7 @@
 	import GlassDialog from './GlassDialog.svelte';
 	import GlassSelect from './GlassSelect.svelte';
 	import ContactFields from './ContactFields.svelte';
-	import IconCheck from './IconCheck.svelte';
+	import ContactSuccess from './ContactSuccess.svelte';
 
 	// This global modal is mounted on EVERY page (via +layout.svelte) — including
 	// /contact, which renders its own <form> bound to the same `submitContact` remote
@@ -53,22 +53,13 @@
 	closeLabel={m.contact_close()}
 >
 	{#if showSuccess}
-		<div class="py-4 text-center">
-			<div
-				class="mx-auto flex size-12 items-center justify-center rounded-full bg-success-500/15 text-success-400"
-			>
-				<IconCheck />
-			</div>
-			<Dialog.Title class="mt-4 text-2xl font-medium tracking-tight text-white">
-				{m.contact_success_title()}
-			</Dialog.Title>
-			<Dialog.Description class="mx-auto mt-2 max-w-sm text-sm text-body">
-				{m.contact_success_body()}
-			</Dialog.Description>
-			<Dialog.CloseTrigger class="glass-btn btn-pill mt-6">
-				{m.contact_close()}
-			</Dialog.CloseTrigger>
-		</div>
+		<ContactSuccess dialog title={m.contact_success_title()} body={m.contact_success_body()}>
+			{#snippet action()}
+				<Dialog.CloseTrigger class="glass-btn btn-pill mt-6">
+					{m.contact_close()}
+				</Dialog.CloseTrigger>
+			{/snippet}
+		</ContactSuccess>
 	{:else}
 		<Dialog.Title class="text-2xl font-medium tracking-tight text-white">
 			{m.contact_dialog_title()}
