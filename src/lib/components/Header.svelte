@@ -5,6 +5,7 @@
 	import { loginDialog } from '$lib/login-dialog.svelte';
 	import Wordmark from './Wordmark.svelte';
 	import Icon from './Icon.svelte';
+	import IconClose from './IconClose.svelte';
 
 	// Nav links — plain localized path links (About now points at the real /about page,
 	// issue #61; the old `/#about` footer-anchor workaround is retired). `$derived` so
@@ -114,9 +115,7 @@
 					onclick={() => (open = !open)}
 				>
 					{#if open}
-						<Icon class="size-6">
-							<path d="M18 6 6 18M6 6l12 12" />
-						</Icon>
+						<IconClose class="size-6" />
 					{:else}
 						<Icon class="size-6">
 							<path d="M3 6h18M3 12h18M3 18h18" />

@@ -22,7 +22,7 @@
 	// control (a native <select>, since the modal's GlassSelect is JS-only). `fieldClass` is
 	// re-exported so that <select> matches the fields exactly.
 	import ContactFields, { fieldClass } from '$lib/components/ContactFields.svelte';
-	import Icon from '$lib/components/Icon.svelte';
+	import IconCheck from '$lib/components/IconCheck.svelte';
 </script>
 
 <Seo title={m.contact_page_title()} description={m.contact_page_description()} />
@@ -36,9 +36,7 @@
 				<div
 					class="mx-auto flex size-12 items-center justify-center rounded-full bg-success-500/15 text-success-400"
 				>
-					<Icon class="size-6">
-						<path d="M20 6 9 17l-5-5" />
-					</Icon>
+					<IconCheck class="size-6" />
 				</div>
 				<h1 class="mt-4 text-2xl font-medium tracking-tight text-white">
 					{m.contact_success_title()}
