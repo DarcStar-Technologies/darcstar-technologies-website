@@ -21,7 +21,7 @@
 			>
 				<Dialog.CloseTrigger
 					class="glass-btn absolute top-4 right-4 flex size-9 items-center justify-center rounded-full text-body hover:text-white"
-					aria-label={m.contact_close()}
+					aria-label={m.login_close()}
 				>
 					<Icon class="size-4">
 						<path d="M18 6 6 18M6 6l12 12" />
@@ -33,11 +33,13 @@
 				</Dialog.Title>
 				<Dialog.Description class="mt-2 text-sm text-body">{m.login_lead()}</Dialog.Description>
 
-				<!-- Keyed on `open` so the form (and any typed password) resets each time the dialog is
-				     reopened, rather than lingering in the DOM while the modal is mounted-but-hidden. -->
-				{#key loginDialog.open}
+				<!-- Only mount the form while the dialog is open: Skeleton keeps Dialog.Content in the
+				     DOM when closed, so an always-rendered LoginForm would leave a hidden password
+				     field on every page (and a duplicate on /login). Mounting on open also gives a
+				     fresh form each time — no previously-typed password lingering. -->
+				{#if loginDialog.open}
 					<LoginForm onSuccess={() => loginDialog.close()} />
-				{/key}
+				{/if}
 			</Dialog.Content>
 		</Dialog.Positioner>
 	</Portal>

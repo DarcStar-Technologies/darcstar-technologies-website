@@ -47,7 +47,12 @@
 {#snippet loginLink(className: string)}
 	<a
 		href={localizeHref('/login')}
+		data-sveltekit-preload-data="off"
 		onclick={(e) => {
+			// Honour modified clicks (⌘/Ctrl/Shift/Alt) — let the browser follow the href (e.g.
+			// open /login in a new tab) rather than the dialog. A plain left-click with JS opens
+			// the frosted dialog; with no JS the click falls through to the href.
+			if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 			e.preventDefault();
 			open = false;
 			loginDialog.show();

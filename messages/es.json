@@ -144,6 +144,7 @@
 	"login_field_password_placeholder": "Your password",
 	"login_submit": "Sign in",
 	"login_submitting": "Signing in…",
+	"login_close": "Close",
 	"login_error": "Incorrect email or password.",
 	"login_error_ratelimit": "Too many attempts. Please wait a moment and try again.",
 

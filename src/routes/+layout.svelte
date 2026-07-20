@@ -19,9 +19,11 @@
 	// scrim while it's up).
 	let sheen: ReturnType<typeof createSheenSync> | undefined;
 	$effect(() => {
-		// Read both so the effect re-runs when either dialog toggles.
-		const modalOpen = contactDialog.open || loginDialog.open;
-		sheen?.refresh(modalOpen);
+		// Read both up front (not a short-circuiting `||`) so the effect tracks BOTH dialogs and
+		// re-clips whenever either one toggles.
+		const contactOpen = contactDialog.open;
+		const loginOpen = loginDialog.open;
+		sheen?.refresh(contactOpen || loginOpen);
 	});
 
 	// The sheen plane persists across client-side navigation (it's in this layout), but each
