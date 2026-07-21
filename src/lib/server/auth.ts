@@ -21,7 +21,12 @@ function createAuth() {
 		//   form is matched against the hostname, so no scheme)
 		trustedOrigins: [
 			'https://darcstar-technologies-website.darcstar.workers.dev',
-			'*-darcstar-technologies-website.darcstar.workers.dev'
+			'*-darcstar-technologies-website.darcstar.workers.dev',
+			// Preview env Worker (wrangler.jsonc `[env.preview]`, non-prod branch deploys → the
+			// DEV DB): its own bare workers.dev host + per-version preview URLs. The `*-…website`
+			// pattern above does NOT cover these (they end in `-preview.…`), so list them too.
+			'https://darcstar-technologies-website-preview.darcstar.workers.dev',
+			'*-darcstar-technologies-website-preview.darcstar.workers.dev'
 		],
 		database: drizzleAdapter(getDb(), { provider: 'sqlite' }),
 		emailAndPassword, // #48: sign-up disabled — see auth-options.ts

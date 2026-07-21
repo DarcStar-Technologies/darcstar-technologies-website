@@ -16,6 +16,27 @@
 	},
 	"workers_dev": true,
 	"preview_urls": true,
+	// Non-production branches deploy here (set Workers Builds' non-prod deploy command to
+	// `npx wrangler versions upload --env preview`), so Cloudflare preview URLs run as a SEPARATE
+	// Worker — `darcstar-technologies-website-preview` — with its OWN secrets pointing at the DEV
+	// Turso DB, never prod's. Each Worker carries its own `DATABASE_URL`/`DATABASE_AUTH_TOKEN`, so
+	// `getDb()` needs no environment logic; isolation is purely at the secret layer. `vars` and
+	// `assets` are NON-inheritable in wrangler (top-level values don't carry into a named env), so
+	// they're redeclared here; the rest (main, compat, workers_dev, preview_urls) is inherited.
+	// Provision this Worker's secrets with `wrangler secret put <NAME> --env preview` — see
+	// docs/deployment.md.
+	"env": {
+		"preview": {
+			"name": "darcstar-technologies-website-preview",
+			"vars": {
+				"ORIGIN": "https://darcstar-technologies-website-preview.darcstar.workers.dev"
+			},
+			"assets": {
+				"binding": "ASSETS",
+				"directory": ".svelte-kit/cloudflare"
+			}
+		}
+	},
 	"observability": {
 		"enabled": false,
 		"head_sampling_rate": 1,

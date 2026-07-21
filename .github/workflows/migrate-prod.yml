@@ -1,0 +1,53 @@
+name: migrate-prod
+
+# Apply the drizzle migration trail to the PRODUCTION Turso DB on merge to main. The `drizzle` check
+# (drizzle.yml) already gates PRs so the trail stays in sync with the schema; this is the APPLY step —
+# it runs `pnpm db:migrate` against prod right after the merge, in parallel with the Cloudflare
+# Workers Build that deploys the code. Keep schema changes additive/forward-only (expand-then-
+# contract) so the brief window where new code may serve just before/after the migration lands is safe.
+#
+# Prod creds come from repo secrets PROD_DATABASE_URL / PROD_DATABASE_AUTH_TOKEN (Settings → Secrets
+# and variables → Actions), kept SEPARATE from the dev DB that the preview Worker + local dev use.
+# Until those secrets are set the apply step no-ops (guarded below), so merging this workflow never
+# red-Xes main before the one-time setup in docs/deployment.md is done.
+#
+# NOTE: an existing DB built with `db:push` has no drizzle history, so it MUST be baselined once
+# (`pnpm db:baseline`) before the first real migrate here — otherwise `0000` replays against tables
+# that already exist and fails. See docs/deployment.md → "Environments & databases".
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Never run two prod migrations at once; queue instead of cancel (a half-applied migration is worse
+# than a delayed one).
+concurrency:
+  group: migrate-prod
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: migrate prod db
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # action-setup reads the pnpm version from package.json `packageManager`.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply migrations to the prod Turso DB
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          DATABASE_AUTH_TOKEN: ${{ secrets.PROD_DATABASE_AUTH_TOKEN }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::warning::PROD_DATABASE_URL not set — skipping prod migration. Add repo secrets PROD_DATABASE_URL and PROD_DATABASE_AUTH_TOKEN to enable (see docs/deployment.md)."
+            exit 0
+          fi
+          pnpm db:migrate
