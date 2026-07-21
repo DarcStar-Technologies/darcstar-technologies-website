@@ -43,7 +43,7 @@ Runbook to split the currently-shared DB. Order matters so the live site never b
    DATABASE_URL=<dev-url> DATABASE_AUTH_TOKEN=<dev-token> pnpm db:push
    ```
    Provision a dev operator: `ADMIN_EMAIL=… ADMIN_PASSWORD=… pnpm admin:create` (prints the id for the preview Worker's `ADMIN_USER_IDS`).
-4. **GitHub Actions secrets** (Settings → Secrets and variables → Actions): add `PROD_DATABASE_URL`, `PROD_DATABASE_AUTH_TOKEN` (prod Turso), plus `CLOUDFLARE_API_TOKEN` (a token with **Workers Scripts: Edit**) and `CLOUDFLARE_ACCOUNT_ID` — `deploy-prod` migrates **then** deploys with these. Until all four exist, the deploy job is skipped (never red-Xes `main`; Workers Builds keeps deploying prod meanwhile).
+4. **GitHub Actions secrets** (Settings → Secrets and variables → Actions): add `PROD_DATABASE_URL`, `PROD_DATABASE_AUTH_TOKEN` (prod Turso), plus `CLOUDFLARE_API_TOKEN` (use the **"Edit Cloudflare Workers"** API-token template so it covers Workers Scripts edit + `workers.dev` subdomain + assets upload) and `CLOUDFLARE_ACCOUNT_ID` — `deploy-prod` migrates **then** deploys with these. Until all four exist, the deploy job is skipped (never red-Xes `main`; Workers Builds keeps deploying prod meanwhile).
 5. **Create + provision the preview Worker.** Its secrets are its own. The first `wrangler deploy --env preview` needs build output, so `pnpm build` first (or skip it and let Workers Builds create the Worker on the first preview build in step 6):
    ```sh
    pnpm build                                             # produces .svelte-kit/cloudflare/_worker.js
@@ -57,7 +57,7 @@ Runbook to split the currently-shared DB. Order matters so the live site never b
    `ORIGIN` is a plain var already set for the env in `wrangler.jsonc` — no secret needed.
 6. **⚠️ Reconfigure Workers Builds** (dash → Worker → Settings → Builds) — this is the activation gate, and it lives in the Cloudflare dashboard, not the repo, so **merging the PR changes nothing until you do it**:
    - **Non-production** deploy command → `npx wrangler versions upload --env preview`, so preview branches deploy to the dev-DB Worker. Until this, previews keep deploying as versions of the _prod_ Worker (→ prod DB), defeating the split.
-   - **Turn off automatic production deployments** (the `main` branch) so the `deploy-prod` Action is the **sole** prod deployer — otherwise both deploy and the migrate-before-deploy guarantee is lost. Do this **after** step 4's secrets exist (so the Action is ready to take over); a brief overlap where both deploy is harmless, a gap where neither does is not.
+   - **Turn off automatic production deployments** (the `main` branch) so the `deploy-prod` Action is the **sole** prod deployer — otherwise both deploy and the migrate-before-deploy guarantee is lost. Do this **after** step 4's secrets exist (so the Action is ready to take over), and **promptly**: while both deploy, Workers Builds ships prod with no migration gate, briefly re-introducing the pre-split race (tolerable only because prod changes stay additive/expand-then-contract). A gap where _neither_ deploys is worse than a brief overlap, so add secrets first, then disable — but don't leave the overlap running.
 7. **Prod stays as-is** if you kept the current DB as prod — its `DATABASE_*` secrets are already correct, nothing to change. (Fresh prod DB instead? `wrangler secret put DATABASE_URL` / `DATABASE_AUTH_TOKEN` on the prod Worker to repoint it, then `pnpm admin:create` against it.)
 
 After this: merging to `main` runs `deploy-prod` — it migrates the prod DB and **then** deploys, so a failed migration **blocks that push's deploy** (prod keeps serving the prior version, and a non-baselined DB fails loudly here instead of shipping broken). Opening a PR still gives a preview URL backed by the dev DB. Keep schema changes additive/forward-only (expand-then-contract) so an in-flight deploy tolerates the just-migrated schema.
@@ -75,11 +75,11 @@ Non-public values are set with `wrangler secret put <NAME>` (not in `wrangler.js
 Schema is defined in code (`src/lib/server/db/schema.ts`, which re-exports the Better-Auth-generated `auth.schema.ts`). How it's applied depends on the environment (prod and dev are **separate** DBs — see [Environments & databases](#environments--databases)):
 
 - **Dev DB** — `pnpm db:push` (default). `drizzle-kit push` diffs the schema straight against the DB and applies it (needs a TTY). Used for local + preview; disposable, so additive-or-not is fine.
-- **Prod DB** — the **`migrate-prod` GitHub Action** runs `pnpm db:migrate` on push to `main`, applying the versioned `drizzle/` trail with the `PROD_DATABASE_*` secrets. Never `db:push` prod. An existing prod DB built by `db:push` must be baselined once (`pnpm db:baseline`) so the first migrate is forward-only rather than replaying `0000` — see the runbook above.
+- **Prod DB** — the **`deploy-prod` GitHub Action** runs `pnpm db:migrate` **then** `wrangler deploy` on push to `main`, applying the versioned `drizzle/` trail with the `PROD_DATABASE_*` secrets; a failed migration **blocks the deploy** (migrate-before-deploy). Never `db:push` prod. An existing prod DB built by `db:push` must be baselined once (`pnpm db:baseline`) so the first migrate is forward-only rather than replaying `0000` — see the runbook above.
 
 The versioned trail (`generate` → `migrate`) is what prod applies, so it **can't be allowed to drift** from the schema: the **`drizzle` CI check** (`.github/workflows/drizzle.yml`) regenerates migrations from the schema and fails if `drizzle/` isn't committed in sync — a required PR check, so it blocks merge to `main` until you run `pnpm db:generate` and commit. A `db:generate` **pre-commit hook** gives the same feedback locally. `generate` is offline (no DB), so the check needs no credentials. `0000_groovy_scarlet_witch` is the baseline snapshot.
 
-Keep prod changes additive/forward-only (expand-then-contract) so the change is safe to land in the deploy↔migration window.
+Keep prod changes additive/forward-only (expand-then-contract): a rolling deploy briefly runs old and new code against the just-migrated schema, and it keeps the transition window (before Workers Builds' prod auto-deploy is disabled) safe.
 
 ## Admin area (#69, #89)
 

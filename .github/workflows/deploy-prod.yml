@@ -11,8 +11,8 @@ name: deploy-prod
 # deployer — otherwise both would deploy and the ordering guarantee is lost. See docs/deployment.md.
 #
 # Required repo secrets (Settings → Secrets and variables → Actions): PROD_DATABASE_URL,
-# PROD_DATABASE_AUTH_TOKEN (prod Turso), CLOUDFLARE_API_TOKEN (Workers Scripts:Edit),
-# CLOUDFLARE_ACCOUNT_ID. Until ALL are set the deploy job is skipped (the gate below), so merging
+# PROD_DATABASE_AUTH_TOKEN (prod Turso), CLOUDFLARE_API_TOKEN (use the "Edit Cloudflare Workers"
+# token template), CLOUDFLARE_ACCOUNT_ID. Until ALL are set the deploy job is skipped (the gate below), so merging
 # this workflow never red-Xes main and Workers Builds keeps deploying prod until you complete setup.
 #
 # NOTE: an existing prod DB built with db:push must be baselined once (`pnpm db:baseline`) before the
