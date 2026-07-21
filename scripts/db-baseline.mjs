@@ -41,18 +41,28 @@ if (entries.length === 0) {
 
 const client = createClient({ url, authToken });
 
-// Guard: baseline is ONLY for an existing db:push DB. It records migrations as applied WITHOUT
-// running them, so doing it on a fresh/empty DB would make `db:migrate` skip `0000` forever and
-// leave the app with no tables. If the DB has no application tables, refuse and point at db:migrate
-// (which builds a fresh DB from `0000` cleanly). Excludes SQLite internals + the bookkeeping table.
-const appTables = await client.execute(
-	"SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != '__drizzle_migrations'"
-);
-if (appTables.rows.length === 0) {
+// Read each migration's SQL once (tiny files): derive the tables it declares + its content hash.
+const migrations = entries.map((e) => {
+	const sql = readFileSync(join(drizzleDir, `${e.tag}.sql`), 'utf8');
+	const tables = [
+		...sql.matchAll(/create table\s+(?:if not exists\s+)?[`"]?([A-Za-z0-9_]+)[`"]?/gi)
+	].map((m) => m[1]);
+	return { tag: e.tag, when: e.when, hash: createHash('sha256').update(sql).digest('hex'), tables };
+});
+
+// Guard: baseline is ONLY for an existing db:push DB. Recording migrations as applied WITHOUT running
+// them on a fresh/empty DB would make `db:migrate` skip `0000` forever, leaving the app schema-less.
+// Verify the trail's OWN tables are actually present — a POSITIVE check, more robust than a blocklist
+// of SQLite/Turso internals (Turso keeps `_cf_*` / `libsql_*` tables an empty DB would still have). If
+// none of them exist, refuse and point at db:migrate (which builds a fresh DB from `0000` cleanly).
+const expected = new Set(migrations.flatMap((m) => m.tables));
+const present = await client.execute("SELECT name FROM sqlite_master WHERE type = 'table'");
+const presentNames = new Set(present.rows.map((r) => String(r.name)));
+if (expected.size > 0 && ![...expected].some((t) => presentNames.has(t))) {
 	console.error(
-		'Refusing to baseline: this DB has no application tables. Baseline is for an EXISTING\n' +
-			'`db:push` DB — recording migrations as applied on an empty DB would make `db:migrate`\n' +
-			'skip `0000` permanently. A fresh DB should be built with `pnpm db:migrate` instead.'
+		"Refusing to baseline: none of the migration trail's tables exist in this DB.\n" +
+			'Baseline is for an EXISTING `db:push` DB — recording migrations as applied on an empty\n' +
+			'DB would make `db:migrate` skip `0000` permanently. Build a fresh DB with `pnpm db:migrate`.'
 	);
 	await client.close();
 	process.exit(1);
@@ -69,16 +79,14 @@ const last = await client.execute(
 const lastApplied = last.rows.length ? Number(last.rows[0].created_at) : -1;
 
 let inserted = 0;
-for (const e of entries) {
-	if (Number(e.when) <= lastApplied) continue; // already recorded
-	const sql = readFileSync(join(drizzleDir, `${e.tag}.sql`), 'utf8');
-	const hash = createHash('sha256').update(sql).digest('hex');
+for (const m of migrations) {
+	if (Number(m.when) <= lastApplied) continue; // already recorded
 	await client.execute({
 		sql: 'INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)',
-		args: [hash, e.when]
+		args: [m.hash, m.when]
 	});
 	inserted++;
-	console.log(`  baselined ${e.tag} (when=${e.when})`);
+	console.log(`  baselined ${m.tag} (when=${m.when})`);
 }
 
 console.log(
