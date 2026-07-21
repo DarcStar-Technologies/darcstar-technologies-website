@@ -64,9 +64,17 @@ function printAdminIdHint(id: string): void {
 	console.log(`    prod     → wrangler secret put ADMIN_USER_IDS   (value: ${id})`);
 }
 
+// signUpEmail writes the `user`/`account` rows but this throwaway instance has no admin plugin, so
+// the row lands with a null role. Set `admin` directly (this script provisions the super-user owner,
+// #95) so the DB role is truthful, not just the ADMIN_USER_IDS allowlist.
+async function makeAdmin(id: string): Promise<void> {
+	await db.update(schema.user).set({ role: 'admin' }).where(eq(schema.user.id, id));
+}
+
 try {
 	const res = await auth.api.signUpEmail({ body: { name, email, password } });
-	console.log(`✓ Admin created: ${res.user.email} (id ${res.user.id})`);
+	await makeAdmin(res.user.id);
+	console.log(`✓ Admin created: ${res.user.email} (id ${res.user.id}, role admin)`);
 	printAdminIdHint(res.user.id);
 } catch (err) {
 	const msg = err instanceof Error ? err.message : String(err);
@@ -79,7 +87,8 @@ try {
 			.where(eq(schema.user.email, email))
 			.limit(1);
 		if (row) {
-			console.log(`✓ An account already exists for ${email} (id ${row.id}).`);
+			await makeAdmin(row.id); // idempotent — ensure the existing owner carries the admin role
+			console.log(`✓ An account already exists for ${email} (id ${row.id}, role admin).`);
 			printAdminIdHint(row.id);
 			process.exit(0);
 		}

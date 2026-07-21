@@ -36,6 +36,14 @@ function createAuth() {
 			// (bare) into auth-cli.ts. New accounts default to `user` (a plain operator).
 			admin({
 				adminUserIds: parseAdminIds(readEnv('ADMIN_USER_IDS')),
+				// Only the `admin` role may call the admin API (roster management). Made explicit now that
+				// `operator` (staff — reads/manages messages, not the roster) and `user` (dormant end-user,
+				// #96) exist: neither is an admin role. This is the plugin default, but pinning it guards
+				// against a future default change. Behavioral (not schema-affecting) → stays out of auth-cli.ts.
+				adminRoles: ['admin'],
+				// Applies only to public sign-up (disabled, #48) — i.e. future end-user registration (#96),
+				// so end-users default to `user`. Roster-created staff pass an explicit role, so this never
+				// makes an operator; the bootstrap script (create-admin.ts) sets `admin` directly.
 				defaultRole: 'user'
 			}),
 			sveltekitCookies(getRequestEvent) // make sure this is the last plugin in the array

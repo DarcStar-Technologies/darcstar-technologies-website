@@ -143,11 +143,14 @@
 						>{m.admin_users_field_role_label()}</span
 					>
 					<select name="role" class={fieldClass}>
-						<option value="user" selected={target.role !== 'admin'}
+						<option value="operator" selected={target.role !== 'admin' && target.role !== 'user'}
 							>{m.admin_users_role_operator()}</option
 						>
 						<option value="admin" selected={target.role === 'admin'}
 							>{m.admin_users_role_admin()}</option
+						>
+						<option value="user" selected={target.role === 'user'}
+							>{m.admin_users_role_user()}</option
 						>
 					</select>
 				</label>
