@@ -11,8 +11,10 @@ import type { LayoutServerLoad } from './$types';
 // Return a minimal `user` (email only), never the whole `User` — `locals.user` stays server-only.
 // `user: null` (not `undefined`) → explicit "signed out".
 export const load: LayoutServerLoad = ({ locals }) => {
+	// Guard the `readEnv` behind the sign-in check: an anonymous view (the common case, #48) does no
+	// session lookup, so it shouldn't do an env read to compute an isStaff that's trivially false.
 	return {
 		user: locals.user ? { email: locals.user.email } : null,
-		isStaff: isStaff(locals.user, readEnv('ADMIN_USER_IDS'))
+		isStaff: locals.user ? isStaff(locals.user, readEnv('ADMIN_USER_IDS')) : false
 	};
 };

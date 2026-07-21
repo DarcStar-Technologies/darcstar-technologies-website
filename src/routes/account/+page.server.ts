@@ -12,6 +12,11 @@ import type { PageServerLoad } from './$types';
 // identity AND the key the message-ownership backfill links on (contact-ownership.ts), so changing
 // it belongs to staff via /admin/users, not to self-service.
 
+// Cap the read, mirroring the admin views (pagination is a later follow-up). A single account's own
+// message count is small in practice; the cap is just a safety bound. Not exported — SvelteKit only
+// allows its own reserved exports (+ `_`-prefixed) from a +page.server.
+const MESSAGES_LIMIT = 200;
+
 export const load: PageServerLoad = async ({ locals }) => {
 	// Present via the /account session hook + layout guard; scope the query to this user only.
 	const userId = locals.user!.id;
@@ -19,14 +24,14 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const messages = await db
 		.select({
 			id: contactSubmission.id,
-			company: contactSubmission.company,
 			interest: contactSubmission.interest,
 			message: contactSubmission.message,
 			createdAt: contactSubmission.createdAt
 		})
 		.from(contactSubmission)
 		.where(eq(contactSubmission.userId, userId))
-		.orderBy(desc(contactSubmission.createdAt));
+		.orderBy(desc(contactSubmission.createdAt))
+		.limit(MESSAGES_LIMIT);
 	return { messages };
 };
 
@@ -44,10 +49,14 @@ export const actions: Actions = {
 		if (!name) return fail(400, { scope: 'profile', error: 'missing', name: '' });
 		try {
 			await auth.api.updateUser({ body: { name }, headers: request.headers });
-		} catch {
+		} catch (err) {
+			console.error('account updateName failed', err);
 			return fail(400, { scope: 'profile', error: 'generic', name });
 		}
-		return { scope: 'profile', ok: true };
+		// Echo the saved name back so the field shows it immediately: `locals.user` was resolved by
+		// the hook BEFORE this action ran, so the same-request re-render's load still sees the old
+		// name — without this, the field would revert to the pre-save value despite the success banner.
+		return { scope: 'profile', ok: true, name };
 	},
 
 	// Change password. Better Auth verifies `currentPassword` and (with revokeOtherSessions) kills
