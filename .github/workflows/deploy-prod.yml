@@ -1,0 +1,85 @@
+name: deploy-prod
+
+# Migrate the PROD Turso DB and THEN deploy the Worker, in one ordered job, on merge to main. Doing
+# both here (instead of letting Cloudflare Workers Builds auto-deploy in parallel) guarantees
+# migrate-BEFORE-deploy: a failed migration blocks the deploy, so prod never ships code against a DB
+# the migration didn't reach. The `drizzle` PR check (drizzle.yml) still gates that the trail is in
+# sync before merge; this is the ordered APPLY + SHIP step.
+#
+# Workers Builds keeps handling PREVIEW branches only (wrangler versions upload --env preview → the
+# dev DB). For prod, disable Workers Builds' production auto-deploy so this workflow is the sole
+# deployer — otherwise both would deploy and the ordering guarantee is lost. See docs/deployment.md.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions): PROD_DATABASE_URL,
+# PROD_DATABASE_AUTH_TOKEN (prod Turso), CLOUDFLARE_API_TOKEN (use the "Edit Cloudflare Workers"
+# token template), CLOUDFLARE_ACCOUNT_ID. Until ALL are set the deploy job is skipped (the gate below), so merging
+# this workflow never red-Xes main and Workers Builds keeps deploying prod until you complete setup.
+#
+# NOTE: an existing prod DB built with db:push must be baselined once (`pnpm db:baseline`) before the
+# first real migrate — otherwise `0000` replays against existing tables and FAILS, which (by design
+# now) also blocks the deploy until you baseline. See docs/deployment.md → "Environments & databases".
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Serialize prod runs; queue rather than cancel (a half-applied migration is worse than a delay).
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: check prod secrets
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          DATABASE_AUTH_TOKEN: ${{ secrets.PROD_DATABASE_AUTH_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$DATABASE_AUTH_TOKEN" ] || [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::warning::Prod secrets not all set (PROD_DATABASE_URL, PROD_DATABASE_AUTH_TOKEN, CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID) — skipping prod migrate+deploy. Cloudflare Workers Builds still deploys prod until you complete setup (see docs/deployment.md)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    name: migrate + deploy prod
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # action-setup reads the pnpm version from package.json `packageManager`.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Build first so a build error fails BEFORE any DB change (never leaves prod migrated-but-not-built).
+      - name: Build
+        run: pnpm build
+      # Migrate BEFORE deploy. If this fails, the deploy step below does not run — prod keeps serving the
+      # old code, and old code + (unchanged) old schema stay consistent.
+      - name: Migrate the prod Turso DB
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          DATABASE_AUTH_TOKEN: ${{ secrets.PROD_DATABASE_AUTH_TOKEN }}
+        run: pnpm db:migrate
+      # Deploy only after a successful migration. Targets the top-level (prod) config; secrets already
+      # live on the Worker and persist across deploys, so only the CF API creds are needed here.
+      - name: Deploy to Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm exec wrangler deploy

@@ -8,24 +8,78 @@ SvelteKit via `@sveltejs/adapter-cloudflare`, deployed to **Cloudflare Pages**. 
 - The `wrangler-types` pre-commit hook enforces this, but is **scoped to commits that touch `wrangler.jsonc`** — it no longer fires on every commit. The committed `worker-configuration.d.ts` is the **build-independent** snapshot (no `mainModule` block, which only appears after `vite build`), so `pnpm gen` on a clean checkout reproduces it byte-for-byte and unrelated commits don't trip the hook (issue #67).
 - `pnpm preview` serves the built worker through Wrangler — a real Workers runtime, not `vite preview`. See [commands.md](commands.md).
 
+## Environments & databases
+
+Two Cloudflare Workers, **one per environment**, each with its own secrets → its own Turso DB. Nothing is shared, so integration testing never touches production data.
+
+| Environment    | Worker                                                    | Deploys from                                                                    | Serves                          | `DATABASE_*` →           |
+| -------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------- | ------------------------ |
+| **Production** | `darcstar-technologies-website`                           | `main` (GitHub Actions `deploy-prod` → migrate, then `wrangler deploy`)         | `darcstar.tech` + `workers.dev` | **prod** DB              |
+| **Preview**    | `darcstar-technologies-website-preview` (`[env.preview]`) | any non-prod branch (Workers Builds → `wrangler versions upload --env preview`) | `*-…-preview.…workers.dev`      | **dev** DB               |
+| **Local**      | `pnpm dev` / `pnpm preview`                               | your checkout                                                                   | `localhost`                     | **dev** DB (from `.env`) |
+
+Because each Worker holds its own `DATABASE_URL` / `DATABASE_AUTH_TOKEN` secret, `getDb()` (and the app) needs **no** environment branching — isolation is entirely at the secret layer. A Cloudflare preview URL is a _version_ of a Worker and inherits that Worker's secrets; that's exactly why previews deploy to the separate `[env.preview]` Worker instead of as versions of production (which would hand them prod's secrets). The preview Worker's `workers.dev` hosts are trusted in `auth.ts` `trustedOrigins`.
+
+Schema reaches each DB differently:
+
+- **Dev DB** — apply with `pnpm db:push` (the default; local + preview iterate fast). Disposable: if it drifts, recreate and re-`push`.
+- **Prod DB** — applied by the **`deploy-prod` GitHub Action** (`.github/workflows/deploy-prod.yml`) on every push to `main`: it runs `pnpm db:migrate` with the `PROD_DATABASE_*` repo secrets and **then** `wrangler deploy`s the Worker, so a failed migration **blocks the deploy** — migrate-before-deploy, no race. **Never `db:push` prod.** Keep changes additive/forward-only (expand-then-contract).
+
+### First-time setup (one-off)
+
+Runbook to split the currently-shared DB. Order matters so the live site never breaks:
+
+1. **Pick which DB is prod.** Recommended: **keep the current shared DB as PROD** — it already holds the real operator + submissions, so there's zero cutover and no data loss — and create a _fresh_ dev DB. Alternative: spin up a fresh prod DB and copy real rows over (more work; only worth it for a pristine prod).
+2. **Baseline prod** — only when prod is an existing `db:push` DB (the recommended path). It records the current migrations as already-applied so migrate-on-merge is forward-only instead of replaying `0000` against existing tables:
+   ```sh
+   DATABASE_URL=<prod-url> DATABASE_AUTH_TOKEN=<prod-token> pnpm db:baseline
+   ```
+   A _fresh_ prod DB skips this — its first `db:migrate` builds from `0000` cleanly.
+3. **Create the dev DB** and apply the schema, then point local `.env` at it:
+   ```sh
+   turso db create darcstar-dev          # your naming
+   turso db tokens create darcstar-dev   # → DATABASE_AUTH_TOKEN
+   turso db show darcstar-dev --url      # → DATABASE_URL
+   DATABASE_URL=<dev-url> DATABASE_AUTH_TOKEN=<dev-token> pnpm db:push
+   ```
+   Provision a dev operator: `ADMIN_EMAIL=… ADMIN_PASSWORD=… pnpm admin:create` (prints the id for the preview Worker's `ADMIN_USER_IDS`).
+4. **GitHub Actions secrets** (Settings → Secrets and variables → Actions): add `PROD_DATABASE_URL`, `PROD_DATABASE_AUTH_TOKEN` (prod Turso), plus `CLOUDFLARE_API_TOKEN` (use the **"Edit Cloudflare Workers"** API-token template so it covers Workers Scripts edit + `workers.dev` subdomain + assets upload) and `CLOUDFLARE_ACCOUNT_ID` — `deploy-prod` migrates **then** deploys with these. Until all four exist, the deploy job is skipped (never red-Xes `main`; Workers Builds keeps deploying prod meanwhile).
+5. **Create + provision the preview Worker.** Its secrets are its own. The first `wrangler deploy --env preview` needs build output, so `pnpm build` first (or skip it and let Workers Builds create the Worker on the first preview build in step 6):
+   ```sh
+   pnpm build                                             # produces .svelte-kit/cloudflare/_worker.js
+   wrangler deploy --env preview                          # first deploy creates the Worker
+   wrangler secret put DATABASE_URL --env preview         # dev DB
+   wrangler secret put DATABASE_AUTH_TOKEN --env preview  # dev DB
+   wrangler secret put BETTER_AUTH_SECRET --env preview   # its own secret
+   wrangler secret put ADMIN_USER_IDS --env preview       # the dev operator's id
+   # RESEND_API_KEY optional — omit to disable contact email on preview (submissions still persist)
+   ```
+   `ORIGIN` is a plain var already set for the env in `wrangler.jsonc` — no secret needed.
+6. **⚠️ Reconfigure Workers Builds** (dash → Worker → Settings → Builds) — this is the activation gate, and it lives in the Cloudflare dashboard, not the repo, so **merging the PR changes nothing until you do it**:
+   - **Non-production** deploy command → `npx wrangler versions upload --env preview`, so preview branches deploy to the dev-DB Worker. Until this, previews keep deploying as versions of the _prod_ Worker (→ prod DB), defeating the split.
+   - **Turn off automatic production deployments** (the `main` branch) so the `deploy-prod` Action is the **sole** prod deployer — otherwise both deploy and the migrate-before-deploy guarantee is lost. Do this **after** step 4's secrets exist (so the Action is ready to take over), and **promptly**: while both deploy, Workers Builds ships prod with no migration gate, briefly re-introducing the pre-split race (tolerable only because prod changes stay additive/expand-then-contract). A gap where _neither_ deploys is worse than a brief overlap, so add secrets first, then disable — but don't leave the overlap running.
+7. **Prod stays as-is** if you kept the current DB as prod — its `DATABASE_*` secrets are already correct, nothing to change. (Fresh prod DB instead? `wrangler secret put DATABASE_URL` / `DATABASE_AUTH_TOKEN` on the prod Worker to repoint it, then `pnpm admin:create` against it.)
+
+After this: merging to `main` runs `deploy-prod` — it migrates the prod DB and **then** deploys, so a failed migration **blocks that push's deploy** (prod keeps serving the prior version, and a non-baselined DB fails loudly here instead of shipping broken). Opening a PR still gives a preview URL backed by the dev DB. Keep schema changes additive/forward-only (expand-then-contract) so an in-flight deploy tolerates the just-migrated schema.
+
 ## Secrets
 
-Non-public values are set with `wrangler secret put <NAME>` (not in `wrangler.jsonc`), mirrored in local `.env`:
+Non-public values are set with `wrangler secret put <NAME>` (not in `wrangler.jsonc`), mirrored in local `.env`. Secrets are **per-Worker**: set prod's on the production Worker (`wrangler secret put <NAME>`) and the preview Worker's with `--env preview`. `DATABASE_*` deliberately differ between them (prod DB vs dev DB) — see [Environments & databases](#environments--databases).
 
-- `DATABASE_URL`, `DATABASE_AUTH_TOKEN` — Turso.
+- `DATABASE_URL`, `DATABASE_AUTH_TOKEN` — Turso (prod Worker → prod DB; preview Worker + local `.env` → dev DB). Prod creds are ALSO GitHub Actions secrets `PROD_DATABASE_URL` / `PROD_DATABASE_AUTH_TOKEN` for migrate-on-merge.
 - `BETTER_AUTH_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` — auth.
 - `RESEND_API_KEY` — contact lead notifications (issue #52). **Also requires** verifying `darcstar.tech` as a sending domain in Resend (add the DKIM/SPF DNS records to Cloudflare). Until both are done, submissions still persist — the email send skips (no key) or logs its failure; it never fails the submission. See [contact.md](contact.md).
 
 ## Database schema → Turso
 
-Schema is defined in code (`src/lib/server/db/schema.ts`, which re-exports the Better-Auth-generated `auth.schema.ts`). Two ways to apply it, and **`pnpm db:push` is the default** for this setup:
+Schema is defined in code (`src/lib/server/db/schema.ts`, which re-exports the Better-Auth-generated `auth.schema.ts`). How it's applied depends on the environment (prod and dev are **separate** DBs — see [Environments & databases](#environments--databases)):
 
-- **`pnpm db:push`** (default) — `drizzle-kit push` diffs the schema straight against the DB and applies it. Simple and fine here because local dev and prod share **one** Turso DB, so it's pushed once (needs a TTY). Additive changes are safe.
-- **`pnpm db:generate` → `pnpm db:migrate`** (versioned trail) — `generate` writes a SQL migration into `drizzle/` (the baseline is `0000_groovy_scarlet_witch`, a full snapshot of the current schema); `migrate` applies pending ones. Use it when you want a recorded, reviewable migration; otherwise `db:push` stays the default.
+- **Dev DB** — `pnpm db:push` (default). `drizzle-kit push` diffs the schema straight against the DB and applies it (needs a TTY). Used for local + preview; disposable, so additive-or-not is fine.
+- **Prod DB** — the **`deploy-prod` GitHub Action** runs `pnpm db:migrate` **then** `wrangler deploy` on push to `main`, applying the versioned `drizzle/` trail with the `PROD_DATABASE_*` secrets; a failed migration **blocks the deploy** (migrate-before-deploy). Never `db:push` prod. An existing prod DB built by `db:push` must be baselined once (`pnpm db:baseline`) so the first migrate is forward-only rather than replaying `0000` — see the runbook above.
 
-The trail **can't silently drift**, so `db:push` and the migrations stay consistent: the **`drizzle` CI check** (`.github/workflows/drizzle.yml`) regenerates migrations from the schema and fails if `drizzle/` isn't committed in sync — a required PR check, so it blocks merge to `main` (which triggers the prod deploy) until you run `pnpm db:generate` and commit. A `db:generate` **pre-commit hook** gives the same feedback locally. `generate` is offline (no DB), so the check needs no credentials.
+The versioned trail (`generate` → `migrate`) is what prod applies, so it **can't be allowed to drift** from the schema: the **`drizzle` CI check** (`.github/workflows/drizzle.yml`) regenerates migrations from the schema and fails if `drizzle/` isn't committed in sync — a required PR check, so it blocks merge to `main` until you run `pnpm db:generate` and commit. A `db:generate` **pre-commit hook** gives the same feedback locally. `generate` is offline (no DB), so the check needs no credentials. `0000_groovy_scarlet_witch` is the baseline snapshot.
 
-Either way the change must land **before** the deploy serves the feature that needs it.
+Keep prod changes additive/forward-only (expand-then-contract): a rolling deploy briefly runs old and new code against the just-migrated schema, and it keeps the transition window (before Workers Builds' prod auto-deploy is disabled) safe.
 
 ## Admin area (#69, #89)
 
@@ -38,6 +92,6 @@ The gated `/admin` area (submissions triage + operator-roster management) needs 
    ADMIN_EMAIL=you@darcstar.tech ADMIN_PASSWORD='a-strong-password' pnpm admin:create
    ```
 
-   `ADMIN_NAME` is optional. It reads `DATABASE_URL` / `DATABASE_AUTH_TOKEN` from `.env` and writes to whichever Turso DB those point at — so run it against the prod `.env` to provision the production operator. Re-running for an existing email prints that account's id (to allowlist below) instead of failing.
+   `ADMIN_NAME` is optional. It writes to whichever Turso DB `DATABASE_URL` / `DATABASE_AUTH_TOKEN` point at. Now that prod and dev are **separate** DBs (see [Environments & databases](#environments--databases)), `.env` points at **dev** — so `pnpm admin:create` bare provisions the _dev_ operator; pass the **prod** creds inline to provision the production one (`DATABASE_URL=<prod> DATABASE_AUTH_TOKEN=<prod> ADMIN_EMAIL=… ADMIN_PASSWORD=… pnpm admin:create`). Re-running for an existing email prints that account's id (to allowlist below) instead of failing.
 
 3. **Allowlist the owner (#89)** — set **`ADMIN_USER_IDS`** to the operator's user id (comma-separated for several) so they're treated as a **roster admin** who can manage users, even with a null role. It's a runtime var: `wrangler secret put ADMIN_USER_IDS` for prod, plus a line in `.env` locally (then `pnpm gen`). Without it, an operator whose DB `role` isn't `admin` can sign in but can't reach `/admin/users`. `pnpm admin:create` prints the id to use. Once one admin exists, further operators are managed from `/admin/users`.
