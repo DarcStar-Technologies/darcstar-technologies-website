@@ -17,6 +17,8 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.test
+# direnv loader — dev-local; keep uncommitted so git worktrees fall through to the repo-root .envrc
+.envrc
 
 # Vite
 vite.config.js.timestamp-*
