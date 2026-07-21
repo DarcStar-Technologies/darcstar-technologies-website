@@ -22,9 +22,10 @@ const handleParaglide: Handle = ({ event, resolve }) =>
 // Better Auth's default basePath — the entire auth API + session cookies live under it.
 const AUTH_API_PREFIX = '/api/auth';
 // Paths whose server `load` functions unconditionally read `locals.user`: Better Auth's own API,
-// plus the #69 gated area (`/admin`) and the login page (which redirects an already-signed-in
-// operator away). Requests here always resolve the session, even if the cookie is somehow absent.
-const SESSION_PREFIXES = [AUTH_API_PREFIX, '/admin', '/login'];
+// the #69 gated area (`/admin`), the login page (which redirects an already-signed-in operator
+// away), and the #96 end-user portal (`/account`, gated to signed-in accounts). Requests here always
+// resolve the session, even if the cookie is somehow absent.
+const SESSION_PREFIXES = [AUTH_API_PREFIX, '/admin', '/login', '/account'];
 
 const handleBetterAuth: Handle = async ({ event, resolve }) => {
 	// Match on the DE-LOCALIZED path: the site localizes URLs as `/es/*` (paraglide `url`

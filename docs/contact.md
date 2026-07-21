@@ -38,7 +38,9 @@ The global `ContactDialog` (rendered once in the layout) keeps its own copy of t
 
 ## Database
 
-`contact_submission` (`id`, `name`, `email`, `company?`, `interest?`, `message`, `ip_hash?`, `user_agent?`, `created_at`). Applied to Turso with **`pnpm db:push`** (the default apply path; a versioned `drizzle/` migration trail also exists — see [deployment.md](deployment.md)). The deployed Worker and local dev share the one Turso DB, so the table only needs pushing once. Leads also arrive by email on submit (see Lead notification above); the gated **`/admin`** view (#69, see [auth.md](auth.md)) is the in-app triage surface, with `pnpm db:studio` as the full archive.
+`contact_submission` (`id`, `name`, `email`, `company?`, `interest?`, `message`, `ip_hash?`, `user_agent?`, `user_id?`, `created_at`). Applied to Turso with **`pnpm db:push`** (the default apply path; a versioned `drizzle/` migration trail also exists — see [deployment.md](deployment.md)). The deployed Worker and local dev share the one Turso DB, so the table only needs pushing once. Leads also arrive by email on submit (see Lead notification above); the gated **`/admin`** view (#69, see [auth.md](auth.md)) is the in-app triage surface, with `pnpm db:studio` as the full archive.
+
+`user_id` (#96) is a nullable FK to `user(id)` (`onDelete: 'set null'`, indexed) linking a submission to an account so an end-user can see their own messages at **`/account`**. Anonymous leads (the common case) and every pre-#96 row stay null; it's set on a signed-in submit, at admin account-create, or on self-registered email verification — all via `linkSubmissionsToUser` (see [auth.md](auth.md) → "End-user account portal").
 
 ## Tests
 
@@ -52,4 +54,4 @@ The happy-path submit (validation → Turso) is exercised manually rather than i
 
 ## Follow-ups (filed separately)
 
-Cloudflare Turnstile (#53, stronger than the honeypot). ✅ Lead notification on submit (#52), the `info@` role alias (#54), the `/contact` no-JS fallback page (#55), and the gated `/admin` submissions view (#69, see [auth.md](auth.md)) shipped.
+Cloudflare Turnstile (#53, stronger than the honeypot — landing with #96 PR 2). ✅ Lead notification on submit (#52), the `info@` role alias (#54), the `/contact` no-JS fallback page (#55), the gated `/admin` submissions view (#69), and message ownership → the `/account` end-user portal (#96 PR 1, see [auth.md](auth.md)) shipped.

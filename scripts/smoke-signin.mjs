@@ -87,7 +87,7 @@ ok('/ navbar shows the signed-in controls when authenticated');
 // columns (`pnpm db:push` after this change).
 const rosterView = await fetch(`${BASE}/admin/users`, { headers: { cookie }, redirect: 'manual' });
 if (rosterView.status !== 200) die(`/admin/users (owner): expected 200, got ${rosterView.status}`);
-if (!(await rosterView.text()).includes('Operators')) {
+if (!(await rosterView.text()).includes('Users')) {
 	die('/admin/users (owner): 200 but the roster did not render');
 }
 ok('/admin/users renders the roster for an admin');
