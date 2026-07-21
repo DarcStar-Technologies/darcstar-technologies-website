@@ -42,6 +42,10 @@ export const submitContact = form<ContactInput, { success: true }>(
 		// but thread an explicit locale (hidden field) here once Spanish is real.
 		const platform = event.platform;
 		const locale = getLocale();
+		// If a signed-in visitor submits, tie the row to their account (#96) so it shows under
+		// /account. `locals.user` is populated by hooks.server.ts whenever a session cookie is present
+		// (the common anonymous lead carries none → stays null). Read before the first await.
+		const userId = event.locals.user?.id ?? null;
 
 		// Honeypot: humans never fill the hidden `website` field; bots do. Silently
 		// accept (don't persist, don't reveal the trap).
@@ -74,7 +78,8 @@ export const submitContact = form<ContactInput, { success: true }>(
 			interest: cleaned.interest,
 			message: cleaned.message,
 			ipHash,
-			userAgent
+			userAgent,
+			userId
 		});
 
 		// Fire-and-forget notifications (issue #52 lead + #92 submitter ack). The row is

@@ -17,10 +17,12 @@
 	]);
 
 	// Site-wide sign-in state from the root `+layout.server.ts` load (`page.data.user` — email or
-	// null). Signed in → the nav shows Admin + Sign out; signed out → the "Sign in" link/dialog.
-	// `invalidateAll` on sign-in and the native /logout redirect both re-run that load, so this
-	// flips reactively.
+	// null). Signed in → the nav shows a dashboard link + Sign out; signed out → the "Sign in"
+	// link/dialog. `isStaff` (also root-set) picks the dashboard link: Admin for staff, Account for
+	// an end-user (#96). `invalidateAll` on sign-in and the native /logout redirect both re-run that
+	// load, so this flips reactively.
 	const user = $derived(page.data.user);
+	const isStaff = $derived(page.data.isStaff ?? false);
 
 	let open = $state(false);
 	let stuck = $state(false);
@@ -71,12 +73,20 @@
 	</a>
 {/snippet}
 
-<!-- Signed-in controls (replace the login link when `user` is set): a link to the gated admin
-     dashboard, and a Sign-out button. Sign-out is a real form POST to /logout so it works without
-     JS; a native full-page navigation also re-runs the layout load, flipping the nav back. -->
+<!-- Signed-in controls (replace the login link when `user` is set): a destination link + a Sign-out
+     button. Staff (admin/operator) get the gated admin dashboard; an end-user (#96) gets their own
+     /account portal — `isStaff` from the root layout picks which. Sign-out is a real form POST
+     to /logout so it works without JS; a native full-page navigation re-runs the layout load,
+     flipping the nav back. -->
 {#snippet adminLink(className: string)}
 	<a href={localizeHref('/admin')} onclick={() => (open = false)} class={className}>
 		{m.nav_admin()}
+	</a>
+{/snippet}
+
+{#snippet accountLink(className: string)}
+	<a href={localizeHref('/account')} onclick={() => (open = false)} class={className}>
+		{m.nav_account()}
 	</a>
 {/snippet}
 
@@ -122,7 +132,7 @@
 					{/each}
 					{#if user}
 						<li>
-							{@render adminLink(
+							{@render (isStaff ? adminLink : accountLink)(
 								'rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500'
 							)}
 						</li>
@@ -177,7 +187,7 @@
 				{/each}
 				{#if user}
 					<li>
-						{@render adminLink(
+						{@render (isStaff ? adminLink : accountLink)(
 							'block rounded px-3 py-2 text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary'
 						)}
 					</li>

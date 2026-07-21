@@ -1,6 +1,8 @@
 import { fail, redirect, type Actions } from '@sveltejs/kit';
 import { getAuth } from '$lib/server/auth';
+import { getDb } from '$lib/server/db';
 import { apiRole, coerceRole } from '$lib/server/admin-access';
+import { linkSubmissionsToUser } from '$lib/server/contact-ownership';
 import { USERS_LIMIT, ownerIds, rosterAdmin, adminErrorCode } from '$lib/server/admin-users';
 import type { PageServerLoad } from './$types';
 
@@ -35,7 +37,10 @@ export const actions: Actions = {
 	create: async ({ request, locals }) => {
 		// Form actions skip the layout guard, so authorize here (before the first await).
 		if (!rosterAdmin(locals)) return fail(403, { create: { error: 'forbidden' as const } });
+		// Resolve request-scoped handles before the first await (env reads back empty once the async
+		// context is left); `db` is for the post-create submission backfill below.
 		const auth = getAuth();
+		const db = getDb();
 		const data = await request.formData();
 		const email = String(data.get('email') ?? '').trim();
 		const name = String(data.get('name') ?? '').trim();
@@ -57,7 +62,16 @@ export const actions: Actions = {
 		} catch (err) {
 			return fail(400, { create: { values, error: adminErrorCode(err) } });
 		}
-		// Land on the new operator's detail page. Outside the try — redirect() throws to signal.
+		// Claim any existing anonymous submissions from this email for the new account (#96): the
+		// admin, by typing the email, vouches for the email→person mapping (self-registrants instead
+		// earn this by verifying the email — see auth.ts afterEmailVerification). Best-effort: a link
+		// failure must not fail an already-created account, so log and continue to the redirect.
+		try {
+			await linkSubmissionsToUser(db, created.user.id, email);
+		} catch (err) {
+			console.error('linking submissions to new account failed', err);
+		}
+		// Land on the new user's detail page. Outside the try — redirect() throws to signal.
 		redirect(303, `/admin/users/${created.user.id}`);
 	}
 };

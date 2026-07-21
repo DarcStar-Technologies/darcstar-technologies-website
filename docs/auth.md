@@ -172,13 +172,16 @@ lifecycle (create → non-admin guard → reset → force-logout → disable →
 The navbar reflects sign-in state so it never shows "Sign in" to a signed-in operator:
 
 - **`src/routes/+layout.server.ts`** — a root layout `load` that exposes a **minimal** snapshot,
-  `{ user: locals.user ? { email } : null }`, to every page as `page.data.user` (typed in
-  `app.d.ts` as `App.PageData.user`). Email only — the full `User` stays server-only. This is what
-  makes the cookie-gated session lookup in `hooks.server.ts` visible to the client.
-- **`Header.svelte`** — reads `page.data.user` (`$app/state`). Signed out → the "Sign in"
-  link/dialog (unchanged). Signed in → an **Admin** link (→ `/admin`) plus a **Sign out** control,
-  in both the desktop and mobile lists. The state flips reactively: `LoginForm`'s `invalidateAll`
-  on sign-in and the native `/logout` redirect both re-run the layout `load`.
+  `{ user: locals.user ? { email } : null, isStaff }`, to every page (typed in `app.d.ts` as
+  `App.PageData`). Email only — the full `User` stays server-only. `isStaff` (from
+  `admin-access.ts`) is a **separate** key, not nested in `user`, so the admin/account layouts that
+  override `user` with their own page data can't shadow it. This is what makes the cookie-gated
+  session lookup in `hooks.server.ts` visible to the client.
+- **`Header.svelte`** — reads `page.data.user` + `page.data.isStaff` (`$app/state`). Signed out →
+  the "Sign in" link/dialog (unchanged). Signed in → a **dashboard** link + a **Sign out** control,
+  in both the desktop and mobile lists; `isStaff` picks the dashboard link — **Admin** (→ `/admin`)
+  for staff, **Account** (→ `/account`, #96) for an end-user. The state flips reactively:
+  `LoginForm`'s `invalidateAll` on sign-in and the native `/logout` redirect both re-run the load.
 - **`src/routes/logout/+server.ts`** — a global sign-out endpoint so an operator can sign out from
   any page. The navbar posts a native `<form method="post" action="/logout">` (no JS required);
   `POST` clears the session (`auth.api.signOut`, same as `/admin`'s action) → 303 `/`; a stray
@@ -193,10 +196,37 @@ list → sign-out → guard) is a manual smoke, **`pnpm smoke:signin`** (`script
 run against any built server (`pnpm preview`) — it signs in through the `/login` form action, which
 works on any origin/port. It writes a session, so — like the contact happy-path — it's out of CI.
 
+## End-user account portal (`/account`, #96)
+
+Activates the dormant `user` role — a self-service surface for **end-users** (leads), entirely
+separate from the staff `/admin` UI. **PR 1 (this):** message ownership + the portal. **PR 2:**
+public sign-up + email verification + Turnstile (below, "Still deferred" → in progress).
+
+- **Message ownership.** `contact_submission` gains a nullable `userId` FK (`onDelete: 'set null'`
+  — a deleted account leaves the lead as an anonymous row). It's set at three trustworthy moments,
+  all via `linkSubmissionsToUser(db, userId, email)` (`src/lib/server/contact-ownership.ts`, a
+  case-insensitive `UPDATE … WHERE lower(email)=? AND user_id IS NULL`): (1) a **signed-in submit**
+  (`contact.remote.ts` reads `locals.user`), (2) **admin creates an account** (the roster `create`
+  action — the admin vouches for the email; best-effort, never fails the create), and (3) — PR 2 —
+  **self-registered email verification** proves ownership. See [contact](contact.md).
+- **`/account`** (`src/routes/account/`) — gated by `+layout.server.ts` to **any signed-in account**
+  (no `isStaff` check: end-users are exactly who `/admin` bounces; staff can visit too, it just
+  shows their own data). The layout is added to `SESSION_PREFIXES` in `hooks.server.ts`. The page
+  lists **only this account's** messages (`WHERE user_id = locals.user.id` — the load-bearing
+  isolation property) and offers self-service `updateName` / `changePassword` form actions, which
+  call Better Auth's session-scoped `auth.api.updateUser` / `auth.api.changePassword` (act on the
+  current session's user, never a `userId` param). **Email is immutable here** — it's the sign-in
+  identity and the backfill key; staff change it via `/admin/users`. Each action self-authorizes on
+  `locals.user` (form actions skip the layout guard).
+- Guarded by an e2e (`src/routes/account/page.svelte.e2e.ts`): unauthenticated `/account` → `/login`
+  (DB-free). `linkSubmissionsToUser` is unit-tested (`contact-ownership.spec.ts`, in-memory libsql).
+
 ## Still deferred
 
-**Cloudflare Turnstile (#53)** on the auth endpoints (stronger than rate limiting alone), and
-pagination for the submissions **and roster** lists (both capped at 200, newest-first). Public
-sign-up stays disabled; GitHub OAuth is configured in the CLI but not enabled in `auth.ts`.
-Owner-vs-admin protection at the endpoint level (a promoted admin can still target an owner via the
+**Public sign-up + email verification + Cloudflare Turnstile (#96 PR 2 / #53)** — re-opening the
+#48 lockdown behind email verification (the safe backfill trigger) and a Turnstile captcha scoped to
+`/sign-up/email`; **enabling `requireEmailVerification` must first mark existing staff accounts
+verified** or it locks them out. Also: pagination for the submissions **and roster** lists (both
+capped at 200, newest-first); GitHub OAuth is configured in the CLI but not enabled in `auth.ts`;
+owner-vs-admin protection at the endpoint level (a promoted admin can still target an owner via the
 raw admin API) is out of scope — admins are trusted; see "User management".
