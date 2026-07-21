@@ -41,6 +41,23 @@ if (entries.length === 0) {
 
 const client = createClient({ url, authToken });
 
+// Guard: baseline is ONLY for an existing db:push DB. It records migrations as applied WITHOUT
+// running them, so doing it on a fresh/empty DB would make `db:migrate` skip `0000` forever and
+// leave the app with no tables. If the DB has no application tables, refuse and point at db:migrate
+// (which builds a fresh DB from `0000` cleanly). Excludes SQLite internals + the bookkeeping table.
+const appTables = await client.execute(
+	"SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != '__drizzle_migrations'"
+);
+if (appTables.rows.length === 0) {
+	console.error(
+		'Refusing to baseline: this DB has no application tables. Baseline is for an EXISTING\n' +
+			'`db:push` DB — recording migrations as applied on an empty DB would make `db:migrate`\n' +
+			'skip `0000` permanently. A fresh DB should be built with `pnpm db:migrate` instead.'
+	);
+	await client.close();
+	process.exit(1);
+}
+
 // Mirror drizzle's own bookkeeping DDL exactly (id SERIAL PRIMARY KEY / hash / created_at).
 await client.execute(
 	'CREATE TABLE IF NOT EXISTS __drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric)'
@@ -69,4 +86,4 @@ console.log(
 		? 'Already baselined — nothing to do.'
 		: `Baselined ${inserted} migration(s). \`pnpm db:migrate\` will now apply only newer ones.`
 );
-process.exit(0);
+await client.close();

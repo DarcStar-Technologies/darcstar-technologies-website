@@ -46,8 +46,8 @@ jobs:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
           DATABASE_AUTH_TOKEN: ${{ secrets.PROD_DATABASE_AUTH_TOKEN }}
         run: |
-          if [ -z "$DATABASE_URL" ]; then
-            echo "::warning::PROD_DATABASE_URL not set — skipping prod migration. Add repo secrets PROD_DATABASE_URL and PROD_DATABASE_AUTH_TOKEN to enable (see docs/deployment.md)."
+          if [ -z "$DATABASE_URL" ] || [ -z "$DATABASE_AUTH_TOKEN" ]; then
+            echo "::warning::PROD_DATABASE_URL / PROD_DATABASE_AUTH_TOKEN not both set — skipping prod migration. Add BOTH repo secrets to enable (see docs/deployment.md)."
             exit 0
           fi
           pnpm db:migrate

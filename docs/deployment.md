@@ -44,9 +44,10 @@ Runbook to split the currently-shared DB. Order matters so the live site never b
    ```
    Provision a dev operator: `ADMIN_EMAIL=… ADMIN_PASSWORD=… pnpm admin:create` (prints the id for the preview Worker's `ADMIN_USER_IDS`).
 4. **GitHub Actions secrets** (Settings → Secrets and variables → Actions): add `PROD_DATABASE_URL` and `PROD_DATABASE_AUTH_TOKEN` (the prod creds). Until these exist, the `migrate-prod` job no-ops (never red-Xes `main`).
-5. **Create + provision the preview Worker.** Its secrets are its own:
+5. **Create + provision the preview Worker.** Its secrets are its own. The first `wrangler deploy --env preview` needs build output, so `pnpm build` first (or skip it and let Workers Builds create the Worker on the first preview build in step 6):
    ```sh
-   wrangler deploy --env preview                          # first deploy creates the Worker (or let Workers Builds do it)
+   pnpm build                                             # produces .svelte-kit/cloudflare/_worker.js
+   wrangler deploy --env preview                          # first deploy creates the Worker
    wrangler secret put DATABASE_URL --env preview         # dev DB
    wrangler secret put DATABASE_AUTH_TOKEN --env preview  # dev DB
    wrangler secret put BETTER_AUTH_SECRET --env preview   # its own secret
@@ -54,10 +55,10 @@ Runbook to split the currently-shared DB. Order matters so the live site never b
    # RESEND_API_KEY optional — omit to disable contact email on preview (submissions still persist)
    ```
    `ORIGIN` is a plain var already set for the env in `wrangler.jsonc` — no secret needed.
-6. **Point Workers Builds' non-production deploy command** at the preview env (dash → Worker → Settings → Builds): `npx wrangler versions upload --env preview`. Leave the production-branch command as `npx wrangler deploy`.
+6. **⚠️ Point Workers Builds' non-production deploy command at the preview env** (dash → Worker → Settings → Builds): `npx wrangler versions upload --env preview`. Leave the production-branch command as `npx wrangler deploy`. **This is the activation gate:** that command lives in the Cloudflare dashboard, not the repo, so **merging the PR changes nothing about where previews deploy until you do this.** Until then, non-prod branches keep deploying as versions of the _prod_ Worker and keep using prod's secrets → prod DB — silently defeating the split.
 7. **Prod stays as-is** if you kept the current DB as prod — its `DATABASE_*` secrets are already correct, nothing to change. (Fresh prod DB instead? `wrangler secret put DATABASE_URL` / `DATABASE_AUTH_TOKEN` on the prod Worker to repoint it, then `pnpm admin:create` against it.)
 
-After this: merging to `main` migrates + deploys prod; opening a PR gives a preview URL backed by the dev DB.
+After this: merging to `main` migrates + deploys prod; opening a PR gives a preview URL backed by the dev DB. **Note:** the migrate Action and the Cloudflare deploy run independently — a failed prod migration surfaces only as a red `migrate-prod` check and does **not** stop that push's deploy, so keep schema changes additive/forward-only and watch the check after a schema merge.
 
 ## Secrets
 
