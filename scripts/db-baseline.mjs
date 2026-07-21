@@ -42,10 +42,11 @@ if (entries.length === 0) {
 const client = createClient({ url, authToken });
 
 // Read each migration's SQL once (tiny files): derive the tables it declares + its content hash.
+// The regex tolerates any whitespace and backtick/quote/bare identifiers (drizzle emits backticks).
 const migrations = entries.map((e) => {
 	const sql = readFileSync(join(drizzleDir, `${e.tag}.sql`), 'utf8');
 	const tables = [
-		...sql.matchAll(/create table\s+(?:if not exists\s+)?[`"]?([A-Za-z0-9_]+)[`"]?/gi)
+		...sql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?[`"']?([A-Za-z0-9_]+)[`"']?/gi)
 	].map((m) => m[1]);
 	return { tag: e.tag, when: e.when, hash: createHash('sha256').update(sql).digest('hex'), tables };
 });
@@ -53,12 +54,22 @@ const migrations = entries.map((e) => {
 // Guard: baseline is ONLY for an existing db:push DB. Recording migrations as applied WITHOUT running
 // them on a fresh/empty DB would make `db:migrate` skip `0000` forever, leaving the app schema-less.
 // Verify the trail's OWN tables are actually present — a POSITIVE check, more robust than a blocklist
-// of SQLite/Turso internals (Turso keeps `_cf_*` / `libsql_*` tables an empty DB would still have). If
-// none of them exist, refuse and point at db:migrate (which builds a fresh DB from `0000` cleanly).
+// of SQLite/Turso internals (Turso keeps `_cf_*` / `libsql_*` tables an empty DB would still have).
 const expected = new Set(migrations.flatMap((m) => m.tables));
+// Fail SAFE: if there are migrations but we couldn't parse a single table name (an unexpected SQL
+// shape), refuse rather than silently skip the check below and baseline a possibly-empty DB.
+if (expected.size === 0) {
+	console.error(
+		'Refusing to baseline: could not parse any table names from the migration trail, so this DB\n' +
+			"can't be confirmed to already hold the schema. Inspect drizzle/*.sql, or if the DB is fresh\n" +
+			'build it with `pnpm db:migrate` instead.'
+	);
+	await client.close();
+	process.exit(1);
+}
 const present = await client.execute("SELECT name FROM sqlite_master WHERE type = 'table'");
 const presentNames = new Set(present.rows.map((r) => String(r.name)));
-if (expected.size > 0 && ![...expected].some((t) => presentNames.has(t))) {
+if (![...expected].some((t) => presentNames.has(t))) {
 	console.error(
 		"Refusing to baseline: none of the migration trail's tables exist in this DB.\n" +
 			'Baseline is for an EXISTING `db:push` DB — recording migrations as applied on an empty\n' +
