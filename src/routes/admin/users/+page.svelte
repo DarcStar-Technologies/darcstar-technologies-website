@@ -31,7 +31,10 @@
 	}
 
 	function roleLabel(role: string | null | undefined): string {
-		return role === 'admin' ? m.admin_users_role_admin() : m.admin_users_role_operator();
+		if (role === 'admin') return m.admin_users_role_admin();
+		if (role === 'operator') return m.admin_users_role_operator();
+		if (role === 'user') return m.admin_users_role_user();
+		return '—'; // no role assigned (not staff — can't reach /admin)
 	}
 </script>
 
@@ -110,11 +113,16 @@
 						>{m.admin_users_create_role_label()}</span
 					>
 					<select name="role" class={fieldClass}>
-						<option value="user" selected={createValues.role !== 'admin'}
+						<option
+							value="operator"
+							selected={createValues.role !== 'admin' && createValues.role !== 'user'}
 							>{m.admin_users_role_operator()}</option
 						>
 						<option value="admin" selected={createValues.role === 'admin'}
 							>{m.admin_users_role_admin()}</option
+						>
+						<option value="user" selected={createValues.role === 'user'}
+							>{m.admin_users_role_user()}</option
 						>
 					</select>
 				</label>

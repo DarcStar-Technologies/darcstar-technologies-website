@@ -7,9 +7,9 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { interestLabel } from '$lib/contact-interest-labels';
 	import type { Interest } from '$lib/contact-interests';
-	import type { PageData } from './$types';
+	import type { PageData, ActionData } from './$types';
 
-	let { data }: { data: PageData } = $props();
+	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	// Stored interest is a raw slug (or null). Map to its localized label; fall back to the raw
 	// value if a legacy/unknown slug ever appears, and to an em-dash when absent.
@@ -29,6 +29,10 @@
 		<h1 class="text-3xl font-medium tracking-tight text-white">{m.admin_heading()}</h1>
 		<p class="mt-2 text-sm text-body">{m.admin_lead()}</p>
 	</header>
+
+	{#if form && 'error' in form}
+		<p class="text-sm text-error-400" role="alert">{m.admin_delete_error()}</p>
+	{/if}
 
 	<div class="glass-card p-4 sm:p-6">
 		{#if data.submissions.length === 0}
@@ -52,6 +56,9 @@
 							<th class="px-3 py-2 font-medium">{m.admin_col_company()}</th>
 							<th class="px-3 py-2 font-medium">{m.admin_col_interest()}</th>
 							<th class="px-3 py-2 font-medium">{m.admin_col_message()}</th>
+							<th class="px-3 py-2 text-right font-medium">
+								<span class="sr-only">{m.admin_col_actions()}</span>
+							</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-hairline">
@@ -69,6 +76,25 @@
 								<td class="px-3 py-3 whitespace-nowrap text-body">{labelFor(sub.interest)}</td>
 								<td class="max-w-sm px-3 py-3 text-body">
 									<span class="block break-words whitespace-pre-wrap">{sub.message}</span>
+								</td>
+								<td class="px-3 py-3 text-right align-top">
+									<!-- Two-step confirm, no JS: the <summary> reveals the actual delete button; clicking
+									     the summary again cancels. Avoids a one-click misclick without needing confirm(). -->
+									<details class="inline-block text-right">
+										<summary
+											class="inline-flex cursor-pointer list-none items-center rounded px-2 py-1 text-xs font-medium text-error-400 transition-colors [&::-webkit-details-marker]:hidden hover:bg-error-500/10 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none"
+											>{m.admin_delete()}</summary
+										>
+										<form method="post" action="?/delete" class="mt-1.5">
+											<input type="hidden" name="id" value={sub.id} />
+											<button
+												type="submit"
+												class="rounded bg-error-500/20 px-2 py-1 text-xs font-medium text-error-200 transition-colors hover:bg-error-500/30 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none"
+												aria-label={m.admin_delete_sr({ name: sub.name })}
+												>{m.admin_delete_confirm()}</button
+											>
+										</form>
+									</details>
 								</td>
 							</tr>
 						{/each}

@@ -1,6 +1,7 @@
 import { error, fail, redirect, type Actions } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
 import { getAuth } from '$lib/server/auth';
+import { apiRole, coerceRole } from '$lib/server/admin-access';
 import { ownerIds, guardTarget, rosterAdmin, adminErrorCode } from '$lib/server/admin-users';
 import type { PageServerLoad } from './$types';
 
@@ -76,7 +77,7 @@ export const actions: Actions = {
 		return { scope: 'details', ok: true };
 	},
 
-	// Promote to admin / demote to operator. Blocked on self + owner.
+	// Change role (admin / operator / user). Blocked on self + owner.
 	setRole: async ({ params, request, locals }) => {
 		const userId = params.id!;
 		const me = rosterAdmin(locals);
@@ -85,9 +86,9 @@ export const actions: Actions = {
 		if (blocked) return fail(403, { scope: 'role', error: blocked });
 		const auth = getAuth();
 		const data = await request.formData();
-		const role = data.get('role') === 'admin' ? 'admin' : 'user';
+		const role = coerceRole(data.get('role'), 'operator');
 		try {
-			await auth.api.setRole({ body: { userId, role }, headers: request.headers });
+			await auth.api.setRole({ body: { userId, role: apiRole(role) }, headers: request.headers });
 		} catch (err) {
 			return fail(400, { scope: 'role', error: adminErrorCode(err) });
 		}

@@ -26,3 +26,42 @@ export function isRosterAdmin(
 	if (user.role === 'admin') return true;
 	return parseAdminIds(adminUserIdsCsv).includes(user.id);
 }
+
+// The three assignable account roles (#95):
+//   admin    — super user: manage the roster AND read/manage all messages.
+//   operator — staff: read + manage (delete) all messages, but not the roster.
+//   user     — end-user: their own account/data only; NO admin access (dormant until #96).
+// Better Auth treats `role` as a free string (no access-control config), so this list is the single
+// place that constrains what the roster can write. Env-free, so it's unit-tested here.
+export const ROLES = ['admin', 'operator', 'user'] as const;
+export type Role = (typeof ROLES)[number];
+
+/** Coerce a form-submitted role to a valid Role, falling back when it's missing/unknown. */
+export function coerceRole(value: unknown, fallback: Role = 'operator'): Role {
+	return (ROLES as readonly string[]).includes(value as string) ? (value as Role) : fallback;
+}
+
+/**
+ * Better Auth types its admin-API `role` param as the plugin's default union (`'admin' | 'user'`)
+ * because we don't register access-control roles — yet it stores whatever string it's given. Cast a
+ * validated Role through for `createUser`/`setRole`. Safe: authorization is enforced by our own
+ * `isStaff`/`isRosterAdmin` gates plus the plugin's `adminRoles: ['admin']`, not by these labels.
+ */
+export function apiRole(role: Role): 'admin' | 'user' {
+	return role as 'admin' | 'user';
+}
+
+/**
+ * May this signed-in account reach the gated admin area (`/admin` — the message-triage view)? True
+ * for STAFF: an `admin` (via the `admin` role OR the ADMIN_USER_IDS owner bootstrap) or an
+ * `operator`. A `user` (end-user) or a role-less account is signed in but NOT staff, so it's bounced.
+ * `isRosterAdmin` further narrows to who may manage the roster (`/admin/users`).
+ */
+export function isStaff(
+	user: { id: string; role?: string | null } | null | undefined,
+	adminUserIdsCsv: string | undefined
+): boolean {
+	if (!user) return false;
+	if (user.role === 'operator') return true;
+	return isRosterAdmin(user, adminUserIdsCsv);
+}

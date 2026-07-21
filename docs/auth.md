@@ -111,26 +111,37 @@ The gated surface #48 fenced off:
 
 ## User management (roster)
 
-The **Better Auth `admin` plugin** makes `/admin` a two-role area and adds roster management under
-**`/admin/users`**: list, view, create, edit (name/email), change role, reset password, force
+The **Better Auth `admin` plugin** makes `/admin` a role-gated staff area and adds roster management
+under **`/admin/users`**: list, view, create, edit (name/email), change role, reset password, force
 logout across all sessions, reversibly disable/enable, and hard-delete.
 
-- **Two roles.** `admin` manages the roster **and** views submissions; a plain operator (`user`
-  role) signs in and views submissions but **cannot** manage users. New accounts default to `user`
-  (the UI labels it "Operator"). Roles use the plugin defaults — no custom access-control statements.
+- **Three roles (#95).** `admin` = super user: manages the roster **and** reads/deletes all messages.
+  `operator` = staff: reads **and deletes** submissions (the `/admin` triage view), but **cannot**
+  manage the roster. `user` = end-user: their own account/data only, **no** `/admin` access — dormant
+  until the portal (#96). `/admin` is gated by **`isStaff`** (admin **or** operator), not mere
+  authentication, so a `user`/role-less account is bounced home; `/admin/users` stays
+  `isRosterAdmin`-only. Roster-created accounts **default to `operator`**; `defaultRole: 'user'`
+  applies only to (disabled) public sign-up, i.e. future end-user registration. Roles are plugin-
+  default free strings (no access-control statements), so **`admin-access.ts`** is the single place
+  that constrains + gates them — `ROLES`/`coerceRole` (validate what the roster writes), `isStaff`
+  (the `/admin` gate), `apiRole` (Better Auth types the API `role` as `'admin'|'user'`, so cast our
+  validated `Role` through — authorization is our gates + `adminRoles`, not these labels).
 - **Owner bootstrap — `ADMIN_USER_IDS`.** A comma-separated env allowlist of user ids treated as
   admins **before** any role check (`plugins/admin/has-permission.mjs`), so the owner can never be
   locked out even with a null/`user` role. It's a runtime Worker var (read via `readEnv`): set it in
   `.env` locally (`pnpm gen` types it into `Env`) and `wrangler secret put ADMIN_USER_IDS` in prod;
-  `pnpm admin:create` prints an existing account's id to copy in. `parseAdminIds` +
+  `pnpm admin:create` prints an existing account's id to copy in — and now also sets that account's
+  DB `role = 'admin'` (#95), so admin status is visible in the data, with the allowlist as break-glass. `parseAdminIds` +
   `isRosterAdmin(user, csv)` (`admin-access.ts`) = `role === 'admin' || id ∈ allowlist`, and gate
   both the nav tab and the `/admin/users` route.
-- **Behavioral vs schema split.** The plugin's options (`adminUserIds`, `defaultRole`) are
-  env-dependent → `auth.ts` only; its static schema is mirrored as a bare `admin()` in `auth-cli.ts`
-  (see "What's wired"). `pnpm db:push` adds the nullable columns (additive, safe).
-- **Routes.** `/admin` and `/admin/users` share `admin/+layout.svelte`.
-  `admin/users/+layout.server.ts` guards the section (non-admin → `/admin`). `/admin/users` lists +
-  creates (→ the new operator's detail page); `/admin/users/[id]` manages one account. All actions
+- **Behavioral vs schema split.** The plugin's options (`adminUserIds`, `adminRoles`, `defaultRole`)
+  are behavioral/env-dependent → `auth.ts` only; its static schema is mirrored as a bare `admin()` in
+  `auth-cli.ts` (see "What's wired"). `pnpm db:push` adds the nullable columns (additive, safe).
+- **Routes.** `/admin` and `/admin/users` share `admin/+layout.svelte`. The `/admin` submissions view
+  has a **`delete` form action** (staff-only via `isStaff`) to remove a lead (#95) — a per-row no-JS
+  POST. `admin/users/+layout.server.ts` guards the roster section (non-admin → `/admin`).
+  `/admin/users` lists + creates (→ the new operator's detail page); `/admin/users/[id]` manages one
+  account. All actions
   are **no-JS server form actions** → `auth.api.*` (`createUser`, `adminUpdateUser`, `setRole`,
   `setUserPassword`, `revokeUserSessions`, `banUser`/`unbanUser`, `removeUser`). `createUser` is an
   admin op, so it works despite `disableSignUp`. Delete is gated by a required "I understand"

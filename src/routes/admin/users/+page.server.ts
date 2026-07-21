@@ -1,5 +1,6 @@
 import { fail, redirect, type Actions } from '@sveltejs/kit';
 import { getAuth } from '$lib/server/auth';
+import { apiRole, coerceRole } from '$lib/server/admin-access';
 import { USERS_LIMIT, ownerIds, rosterAdmin, adminErrorCode } from '$lib/server/admin-users';
 import type { PageServerLoad } from './$types';
 
@@ -27,8 +28,9 @@ export const load: PageServerLoad = async ({ request, locals }) => {
 };
 
 export const actions: Actions = {
-	// Create an operator. This is an admin endpoint, so it bypasses the public-sign-up lockout
-	// (#48). New accounts default to the `user` role (a plain operator); an admin can promote later.
+	// Create a staff operator. This is an admin endpoint, so it bypasses the public-sign-up lockout
+	// (#48). New accounts default to `operator` (read + manage messages); the picker can also make an
+	// `admin`, and an admin can change the role later (#95).
 	create: async ({ request, locals }) => {
 		// Form actions skip the layout guard, so authorize here (before the first await).
 		if (!rosterAdmin(locals)) return fail(403, { create: { error: 'forbidden' as const } });
@@ -37,7 +39,7 @@ export const actions: Actions = {
 		const email = String(data.get('email') ?? '').trim();
 		const name = String(data.get('name') ?? '').trim();
 		const password = String(data.get('password') ?? '');
-		const role = data.get('role') === 'admin' ? 'admin' : 'user';
+		const role = coerceRole(data.get('role'), 'operator');
 		const values = { email, name, role };
 
 		if (!email || !name) return fail(400, { create: { values, error: 'missing' as const } });
@@ -48,7 +50,7 @@ export const actions: Actions = {
 		let created;
 		try {
 			created = await auth.api.createUser({
-				body: { email, name, password, role },
+				body: { email, name, password, role: apiRole(role) },
 				headers: request.headers
 			});
 		} catch (err) {
