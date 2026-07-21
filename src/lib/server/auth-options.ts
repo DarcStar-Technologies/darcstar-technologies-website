@@ -33,11 +33,14 @@ export const rateLimit = {
 // read-load optimization, not a security control. Behavioral, **not schema-affecting** (a cookie,
 // no table), so — unlike `rateLimit` — it stays OUT of the CLI config (auth-cli.ts).
 //
-// Caveat: a session is trusted from the cookie for up to `maxAge`, so **server-side** revocation
-// (deleting a `session` row out-of-band) lags that long. Sign-out is unaffected — it clears the
-// `session_data` cookie immediately — and session EXPIRY is still honoured (the snapshot carries the
-// session's own `expiresAt`). 5 min is a safe window for a single-operator admin area with no
-// "revoke other sessions" feature.
+// Revocation: `hooks.server.ts` resolves the session AUTHORITATIVELY (passes `disableCookieCache`)
+// on the auth-owned surfaces (`/admin`, `/login`, `/api/auth/*`), so the roster's force-logout /
+// disable (#89) — which delete the target's `session` row — take effect on the target's very next
+// request there, NOT up to `maxAge` later. The cookie-cache only fronts the site-wide navbar on
+// ordinary pages, where a stale "signed in" snapshot (≤ `maxAge`) is cosmetic. Sign-out clears
+// `session_data` immediately, and session EXPIRY is always honoured (the snapshot carries its own
+// `expiresAt`). To make navbar staleness immediate too you'd drop/shrink the cache (a per-view DB
+// read); not worth it for a cosmetic reflection.
 export const session = {
 	cookieCache: {
 		enabled: true,

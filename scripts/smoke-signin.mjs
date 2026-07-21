@@ -172,6 +172,20 @@ if (forced.status !== 200 || !(await forced.text()).includes('All sessions revok
 }
 ok('forced logout across all operator sessions');
 
+// Immediate revocation: the operator's OWN cookie is now dead at /admin on the very next request —
+// the hook resolves /admin authoritatively (bypasses the session_data cookie-cache), so a
+// force-logout doesn't linger behind the cache's maxAge.
+const opAfterLogout = await fetch(`${BASE}/admin`, {
+	headers: { cookie: opCookie },
+	redirect: 'manual'
+});
+if (opAfterLogout.status !== 303 || opAfterLogout.headers.get('location') !== '/login') {
+	die(
+		`force logout not immediate: operator /admin expected 303 → /login, got ${opAfterLogout.status} → ${opAfterLogout.headers.get('location')}`
+	);
+}
+ok('force logout is immediate — the revoked operator is bounced from /admin at once');
+
 // disable → the detail page now offers "Enable account".
 const disabled = await post(`/admin/users/${opId}?/disable`, {});
 if (disabled.status !== 200 || !(await disabled.text()).includes('Enable account')) {

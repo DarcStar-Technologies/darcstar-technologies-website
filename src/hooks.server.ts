@@ -37,13 +37,21 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
 	// anonymous visitors (no cookie = the common case) still skip the lookup entirely — the #48 win,
 	// preserved for the traffic that matters. Cookie presence only GATES the lookup; the real
 	// getSession below still validates, so a forged cookie grants nothing (locals.user stays unset).
-	const needsSession =
-		SESSION_PREFIXES.some((p) => path === p || path.startsWith(p + '/')) ||
-		getSessionCookie(event.request) !== null;
+	const isAuthOwnedPath = SESSION_PREFIXES.some((p) => path === p || path.startsWith(p + '/'));
+	const needsSession = isAuthOwnedPath || getSessionCookie(event.request) !== null;
 	if (!needsSession) return resolve(event);
 
 	const auth = getAuth();
-	const session = await auth.api.getSession({ headers: event.request.headers });
+	const session = await auth.api.getSession({
+		headers: event.request.headers,
+		// Resolve AUTHORITATIVELY (a DB read, bypassing the session_data cookie-cache) on the auth-owned
+		// surfaces (/admin, /login, /api/auth/*): an admin's roster force-logout / disable deletes the
+		// target's session server-side, and this makes that bite on the target's very NEXT request here
+		// — instead of lingering up to `cookieCache.maxAge` (see auth-options.ts). Cookie-only requests
+		// (the site-wide navbar reflection on ordinary pages) keep the cached path — the #88 perf win,
+		// where a stale "signed in" snapshot is only cosmetic (clicking through to /admin re-checks).
+		query: isAuthOwnedPath ? { disableCookieCache: true } : undefined
+	});
 
 	if (session) {
 		event.locals.session = session.session;
