@@ -23,7 +23,7 @@ export const load: PageServerLoad = async ({ params, request, locals }) => {
 	} catch (err) {
 		// A genuinely-missing id is a 404; anything else (a DB outage, etc.) should surface as 500,
 		// not be mislabeled "not found".
-		if (err instanceof APIError && err.statusCode === 404) error(404, 'Operator not found');
+		if (err instanceof APIError && err.statusCode === 404) error(404, 'User not found');
 		throw err;
 	}
 
@@ -86,7 +86,7 @@ export const actions: Actions = {
 		if (blocked) return fail(403, { scope: 'role', error: blocked });
 		const auth = getAuth();
 		const data = await request.formData();
-		const role = coerceRole(data.get('role'), 'operator');
+		const role = coerceRole(data.get('role'), 'user');
 		try {
 			await auth.api.setRole({ body: { userId, role: apiRole(role) }, headers: request.headers });
 		} catch (err) {

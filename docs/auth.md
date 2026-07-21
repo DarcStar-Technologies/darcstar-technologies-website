@@ -120,8 +120,10 @@ logout across all sessions, reversibly disable/enable, and hard-delete.
   manage the roster. `user` = end-user: their own account/data only, **no** `/admin` access — dormant
   until the portal (#96). `/admin` is gated by **`isStaff`** (admin **or** operator), not mere
   authentication, so a `user`/role-less account is bounced home; `/admin/users` stays
-  `isRosterAdmin`-only. Roster-created accounts **default to `operator`**; `defaultRole: 'user'`
-  applies only to (disabled) public sign-up, i.e. future end-user registration. Roles are plugin-
+  `isRosterAdmin`-only. Roster-created accounts **default to `user`** (least privilege — no `/admin`
+  until promoted to `operator`/`admin`), matching `defaultRole: 'user'` (which otherwise applies only
+  to disabled public sign-up). The `/admin/users` page is worded as general **user** management, not
+  "operators". Roles are plugin-
   default free strings (no access-control statements), so **`admin-access.ts`** is the single place
   that constrains + gates them — `ROLES`/`coerceRole` (validate what the roster writes), `isStaff`
   (the `/admin` gate), `apiRole` (Better Auth types the API `role` as `'admin'|'user'`, so cast our
