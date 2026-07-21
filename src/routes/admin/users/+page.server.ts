@@ -28,9 +28,10 @@ export const load: PageServerLoad = async ({ request, locals }) => {
 };
 
 export const actions: Actions = {
-	// Create a staff operator. This is an admin endpoint, so it bypasses the public-sign-up lockout
-	// (#48). New accounts default to `operator` (read + manage messages); the picker can also make an
-	// `admin`, and an admin can change the role later (#95).
+	// Create a user account. This is an admin endpoint, so it bypasses the public-sign-up lockout
+	// (#48). New accounts default to the least-privileged `user` role (own account only, no /admin
+	// access); the picker promotes to `operator` (message triage) or `admin` (full), and the role
+	// stays editable later (#95).
 	create: async ({ request, locals }) => {
 		// Form actions skip the layout guard, so authorize here (before the first await).
 		if (!rosterAdmin(locals)) return fail(403, { create: { error: 'forbidden' as const } });
@@ -39,7 +40,7 @@ export const actions: Actions = {
 		const email = String(data.get('email') ?? '').trim();
 		const name = String(data.get('name') ?? '').trim();
 		const password = String(data.get('password') ?? '');
-		const role = coerceRole(data.get('role'), 'operator');
+		const role = coerceRole(data.get('role'), 'user');
 		const values = { email, name, role };
 
 		if (!email || !name) return fail(400, { create: { values, error: 'missing' as const } });

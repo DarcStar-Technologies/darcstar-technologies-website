@@ -46,7 +46,7 @@
 		<p class="mt-2 text-sm text-body">{m.admin_users_lead()}</p>
 	</header>
 
-	<!-- Create operator -->
+	<!-- Create user -->
 	<div class="glass-card p-4 sm:p-6">
 		<h2 class="text-lg font-medium text-white">{m.admin_users_create_heading()}</h2>
 		<p class="mt-1 text-sm text-faint">{m.admin_users_create_lead()}</p>
@@ -114,15 +114,15 @@
 					>
 					<select name="role" class={fieldClass}>
 						<option
-							value="operator"
-							selected={createValues.role !== 'admin' && createValues.role !== 'user'}
+							value="user"
+							selected={createValues.role !== 'admin' && createValues.role !== 'operator'}
+							>{m.admin_users_role_user()}</option
+						>
+						<option value="operator" selected={createValues.role === 'operator'}
 							>{m.admin_users_role_operator()}</option
 						>
 						<option value="admin" selected={createValues.role === 'admin'}
 							>{m.admin_users_role_admin()}</option
-						>
-						<option value="user" selected={createValues.role === 'user'}
-							>{m.admin_users_role_user()}</option
 						>
 					</select>
 				</label>
