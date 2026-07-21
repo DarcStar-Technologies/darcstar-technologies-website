@@ -25,9 +25,12 @@ operators from the roster UI. This doc maps what's wired and why.
     seconds `getSession` serves from that cookie (signature verify only) instead of querying the DB.
     This matters because #87 made every signed-in page view resolve the session in the hook — without
     the cache that's a DB round-trip per view. **Behavioral, not schema-affecting** (a cookie, no
-    table), so it stays OUT of the CLI config. Sign-out clears `session_data` (verified), so a
-    signed-out user can't linger on a stale snapshot; the one lag is **server-side** revocation
-    (deleting a `session` row out-of-band), trusted up to `maxAge` — fine for a single-operator area.
+    table), so it stays OUT of the CLI config. Sign-out clears `session_data` (verified). The cache
+    is **bypassed on the auth-owned surfaces** — the hook resolves the session **authoritatively** (a
+    DB read) for `/admin`, `/login`, `/api/auth/*` — so an admin's roster **force-logout / disable is
+    immediate** (it cuts the target's next `/admin` request, not up to `maxAge` later). The cache only
+    serves the site-wide **navbar** reflection on ordinary pages, where a stale "signed in" snapshot
+    (≤ `maxAge`) is merely cosmetic — clicking through to `/admin` re-checks.
 - **`src/hooks.server.ts`** — `handleBetterAuth` populates `locals.user`/`locals.session` and
   mounts the auth API via `svelteKitHandler` for `/api/auth/*` only. It resolves the session on the
   auth-owned prefixes (`/api/auth/*`, **`/admin`**, **`/login`** — matched on the de-localized path,
@@ -37,9 +40,11 @@ operators from the roster UI. This doc maps what's wired and why.
   visitors — no cookie — still pay no session lookup** (the #48 win, preserved for the traffic that
   matters). Cookie presence only _gates_ the lookup; the real `getSession` still validates, so a
   forged cookie grants nothing (the `session_token` is a signed cookie — a bad signature is rejected
-  before any DB read). For a signed-in operator, that `getSession` is served from the `session_data`
-  **cookie-cache** (no DB) within its `maxAge` — see `session` in auth-options.ts. It runs after
-  `handleParaglide` in the `sequence(...)`.
+  before any DB read). On an ordinary page view (the navbar reflection) that `getSession` is served
+  from the `session_data` **cookie-cache** (no DB) within its `maxAge`; on the auth-owned paths
+  (`/admin`, `/login`, `/api/auth/*`) it passes **`disableCookieCache`** for a fresh DB read, so a
+  revoked/disabled operator is cut off there immediately — see `session` in auth-options.ts. It runs
+  after `handleParaglide` in the `sequence(...)`.
 - **`src/lib/server/db/auth.schema.ts`** — the `user`/`session`/`account`/`verification` **and
   `rate_limit`** tables, **generated** by `pnpm run auth:schema` from **`src/lib/server/auth-cli.ts`**
   (a standalone config the Better Auth CLI can load without SvelteKit's virtual modules). Keep
@@ -132,7 +137,10 @@ logout across all sessions, reversibly disable/enable, and hard-delete.
   checkbox (no JS `confirm()` — worker globals aren't typed for svelte-check).
 - **Authorization is authoritative.** Every admin endpoint runs `adminMiddleware` →
   `getAuthoritativeSessionFromCtx` (`disableCookieCache: true`), so a demoted operator loses
-  management powers immediately at the endpoint — the route guard/nav is defense-in-depth only.
+  management powers immediately at the endpoint — the route guard/nav is defense-in-depth only. The
+  `/admin` **page** guard is fresh too: the hook resolves `/admin`'s session with `disableCookieCache`
+  (see `hooks.server.ts`), so a **force-logout / disable takes effect on the target's next request**
+  rather than lingering behind the `session_data` cookie-cache.
 - **Guardrails + a known limit.** `guardTarget` blocks role/password/session/disable/delete against
   **your own** account or an **owner** (`ADMIN_USER_IDS`) account; the plugin also blocks
   self-ban/self-remove. This is a UI foot-gun guard, **not** a hard boundary — the admin API has no
