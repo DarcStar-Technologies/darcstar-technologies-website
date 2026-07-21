@@ -8,8 +8,9 @@ import { and, eq, gt } from 'drizzle-orm';
 import { getDb } from '$lib/server/db';
 import { contactSubmission } from '$lib/server/db/schema';
 import { hashIp, validateContact } from '$lib/server/contact';
-import { sendLeadNotification } from '$lib/server/contact-notify';
+import { sendContactEmails } from '$lib/server/contact-notify';
 import { m } from '$lib/paraglide/messages.js';
+import { getLocale } from '$lib/paraglide/runtime';
 
 // Abuse throttle: at most THROTTLE_MAX submissions per hashed IP per window.
 const THROTTLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -35,8 +36,12 @@ export const submitContact = form<ContactInput, { success: true }>(
 		const ip = event.getClientAddress();
 		const userAgent = event.request.headers.get('user-agent') ?? null;
 		// Captured before the first await (workerd platform is request-scoped) for the
-		// lead-notification send scheduled after the insert.
+		// notification sends scheduled after the insert. `locale` localizes the submitter
+		// ack; note the remote POST may not carry the URL locale, so this can resolve to
+		// the base locale — harmless while `es` is untranslated (it falls back to `en`),
+		// but thread an explicit locale (hidden field) here once Spanish is real.
 		const platform = event.platform;
+		const locale = getLocale();
 
 		// Honeypot: humans never fill the hidden `website` field; bots do. Silently
 		// accept (don't persist, don't reveal the trap).
@@ -72,15 +77,17 @@ export const submitContact = form<ContactInput, { success: true }>(
 			userAgent
 		});
 
-		// Fire-and-forget lead notification (issue #52). The row is already persisted,
-		// so a send failure must NOT fail the submission — we log and move on. On
-		// workerd, ctx.waitUntil keeps the Worker alive until the send resolves after
-		// the response is returned; without a key (unconfigured) or ctx (vite dev) we
-		// simply skip. Never awaited — the visitor's response doesn't wait on email.
+		// Fire-and-forget notifications (issue #52 lead + #92 submitter ack). The row is
+		// already persisted, so a send failure must NOT fail the submission — we log and
+		// move on. On workerd, ctx.waitUntil keeps the Worker alive until the sends
+		// resolve after the response is returned; without a key (unconfigured) or ctx
+		// (vite dev) we simply skip. Never awaited — the visitor's response doesn't wait
+		// on email. Only reached on the genuine-insert path (past the honeypot + throttle),
+		// so the ack can't be turned into an outbound-spam amplifier beyond the IP throttle.
 		const resendKey = platform?.env?.RESEND_API_KEY;
 		if (resendKey) {
-			const send = sendLeadNotification(resendKey, cleaned).catch((err) =>
-				console.error('contact lead notification failed', err)
+			const send = sendContactEmails(resendKey, cleaned, locale).catch((err) =>
+				console.error('contact notifications failed', err)
 			);
 			if (platform?.ctx) platform.ctx.waitUntil(send);
 		}
