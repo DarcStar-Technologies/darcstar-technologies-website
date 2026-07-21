@@ -14,7 +14,7 @@ Two Cloudflare Workers, **one per environment**, each with its own secrets → i
 
 | Environment    | Worker                                                    | Deploys from                                                                    | Serves                          | `DATABASE_*` →           |
 | -------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------- | ------------------------ |
-| **Production** | `darcstar-technologies-website`                           | `main` (Workers Builds → `wrangler deploy`)                                     | `darcstar.tech` + `workers.dev` | **prod** DB              |
+| **Production** | `darcstar-technologies-website`                           | `main` (GitHub Actions `deploy-prod` → migrate, then `wrangler deploy`)         | `darcstar.tech` + `workers.dev` | **prod** DB              |
 | **Preview**    | `darcstar-technologies-website-preview` (`[env.preview]`) | any non-prod branch (Workers Builds → `wrangler versions upload --env preview`) | `*-…-preview.…workers.dev`      | **dev** DB               |
 | **Local**      | `pnpm dev` / `pnpm preview`                               | your checkout                                                                   | `localhost`                     | **dev** DB (from `.env`) |
 
@@ -23,7 +23,7 @@ Because each Worker holds its own `DATABASE_URL` / `DATABASE_AUTH_TOKEN` secret,
 Schema reaches each DB differently:
 
 - **Dev DB** — apply with `pnpm db:push` (the default; local + preview iterate fast). Disposable: if it drifts, recreate and re-`push`.
-- **Prod DB** — applied by the **`migrate-prod` GitHub Action** (`.github/workflows/migrate-prod.yml`) on every push to `main`: it runs `pnpm db:migrate` with the `PROD_DATABASE_*` repo secrets, in parallel with the Cloudflare deploy. **Never `db:push` prod.** Keep changes additive/forward-only (expand-then-contract) so the deploy↔migration race is safe.
+- **Prod DB** — applied by the **`deploy-prod` GitHub Action** (`.github/workflows/deploy-prod.yml`) on every push to `main`: it runs `pnpm db:migrate` with the `PROD_DATABASE_*` repo secrets and **then** `wrangler deploy`s the Worker, so a failed migration **blocks the deploy** — migrate-before-deploy, no race. **Never `db:push` prod.** Keep changes additive/forward-only (expand-then-contract).
 
 ### First-time setup (one-off)
 
@@ -43,7 +43,7 @@ Runbook to split the currently-shared DB. Order matters so the live site never b
    DATABASE_URL=<dev-url> DATABASE_AUTH_TOKEN=<dev-token> pnpm db:push
    ```
    Provision a dev operator: `ADMIN_EMAIL=… ADMIN_PASSWORD=… pnpm admin:create` (prints the id for the preview Worker's `ADMIN_USER_IDS`).
-4. **GitHub Actions secrets** (Settings → Secrets and variables → Actions): add `PROD_DATABASE_URL` and `PROD_DATABASE_AUTH_TOKEN` (the prod creds). Until these exist, the `migrate-prod` job no-ops (never red-Xes `main`).
+4. **GitHub Actions secrets** (Settings → Secrets and variables → Actions): add `PROD_DATABASE_URL`, `PROD_DATABASE_AUTH_TOKEN` (prod Turso), plus `CLOUDFLARE_API_TOKEN` (a token with **Workers Scripts: Edit**) and `CLOUDFLARE_ACCOUNT_ID` — `deploy-prod` migrates **then** deploys with these. Until all four exist, the deploy job is skipped (never red-Xes `main`; Workers Builds keeps deploying prod meanwhile).
 5. **Create + provision the preview Worker.** Its secrets are its own. The first `wrangler deploy --env preview` needs build output, so `pnpm build` first (or skip it and let Workers Builds create the Worker on the first preview build in step 6):
    ```sh
    pnpm build                                             # produces .svelte-kit/cloudflare/_worker.js
@@ -55,10 +55,12 @@ Runbook to split the currently-shared DB. Order matters so the live site never b
    # RESEND_API_KEY optional — omit to disable contact email on preview (submissions still persist)
    ```
    `ORIGIN` is a plain var already set for the env in `wrangler.jsonc` — no secret needed.
-6. **⚠️ Point Workers Builds' non-production deploy command at the preview env** (dash → Worker → Settings → Builds): `npx wrangler versions upload --env preview`. Leave the production-branch command as `npx wrangler deploy`. **This is the activation gate:** that command lives in the Cloudflare dashboard, not the repo, so **merging the PR changes nothing about where previews deploy until you do this.** Until then, non-prod branches keep deploying as versions of the _prod_ Worker and keep using prod's secrets → prod DB — silently defeating the split.
+6. **⚠️ Reconfigure Workers Builds** (dash → Worker → Settings → Builds) — this is the activation gate, and it lives in the Cloudflare dashboard, not the repo, so **merging the PR changes nothing until you do it**:
+   - **Non-production** deploy command → `npx wrangler versions upload --env preview`, so preview branches deploy to the dev-DB Worker. Until this, previews keep deploying as versions of the _prod_ Worker (→ prod DB), defeating the split.
+   - **Turn off automatic production deployments** (the `main` branch) so the `deploy-prod` Action is the **sole** prod deployer — otherwise both deploy and the migrate-before-deploy guarantee is lost. Do this **after** step 4's secrets exist (so the Action is ready to take over); a brief overlap where both deploy is harmless, a gap where neither does is not.
 7. **Prod stays as-is** if you kept the current DB as prod — its `DATABASE_*` secrets are already correct, nothing to change. (Fresh prod DB instead? `wrangler secret put DATABASE_URL` / `DATABASE_AUTH_TOKEN` on the prod Worker to repoint it, then `pnpm admin:create` against it.)
 
-After this: merging to `main` migrates + deploys prod; opening a PR gives a preview URL backed by the dev DB. **Note:** the migrate Action and the Cloudflare deploy run independently — a failed prod migration surfaces only as a red `migrate-prod` check and does **not** stop that push's deploy, so keep schema changes additive/forward-only and watch the check after a schema merge.
+After this: merging to `main` runs `deploy-prod` — it migrates the prod DB and **then** deploys, so a failed migration **blocks that push's deploy** (prod keeps serving the prior version, and a non-baselined DB fails loudly here instead of shipping broken). Opening a PR still gives a preview URL backed by the dev DB. Keep schema changes additive/forward-only (expand-then-contract) so an in-flight deploy tolerates the just-migrated schema.
 
 ## Secrets
 
