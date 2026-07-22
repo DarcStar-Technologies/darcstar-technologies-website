@@ -52,9 +52,11 @@
 		<ErrorBanner>
 			{error === 'ratelimited'
 				? m.login_error_ratelimit()
-				: error === 'generic'
-					? m.login_error_generic()
-					: m.login_error()}
+				: error === 'unverified'
+					? m.login_error_unverified()
+					: error === 'generic'
+						? m.login_error_generic()
+						: m.login_error()}
 		</ErrorBanner>
 	{/if}
 

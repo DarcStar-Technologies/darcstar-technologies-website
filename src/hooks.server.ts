@@ -60,9 +60,9 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
 	}
 
 	// Only Better Auth's own endpoints are mounted through its handler; every other route (the admin
-	// area, login, or any cookie-bearing page view) is an ordinary SvelteKit route that just reads
-	// the `locals` populated above. Sign-up stays disabled in auth.ts (#48); the auth surface can
-	// still only touch its own namespace.
+	// area, login, sign-up, or any cookie-bearing page view) is an ordinary SvelteKit route that just
+	// reads the `locals` populated above. Public sign-up is now open but gated (Turnstile +
+	// requireEmailVerification, #96 PR2); the auth surface still only touches its own namespace.
 	if (path === AUTH_API_PREFIX || path.startsWith(AUTH_API_PREFIX + '/')) {
 		return svelteKitHandler({ event, resolve, auth, building });
 	}

@@ -1,9 +1,12 @@
 # Auth — Better Auth (email/password, admin-only)
 
 Better Auth gates an **internal admin area** at `/admin` (#69) — contact-submission triage plus
-operator-roster management (`/admin/users`). Email/password sign-in exists; **public sign-up stays
-disabled** (#48) — the FIRST operator is made by the provisioning script (below), and further
-operators from the roster UI. This doc maps what's wired and why.
+operator-roster management (`/admin/users`) — **and** an end-user portal at `/account` (#96).
+Email/password sign-in exists, and **public sign-up is open but gated** (#96 PR 2, reversing the #48
+lockdown): a `/signup` form behind **Cloudflare Turnstile** that creates an **unverified** account,
+which `requireEmailVerification` keeps out of sign-in until the email is confirmed. The FIRST
+operator is still made by the provisioning script (public sign-up only ever mints a least-privileged
+`user`); further operators come from the roster UI. This doc maps what's wired and why.
 
 ## What's wired
 
@@ -15,11 +18,19 @@ operators from the roster UI. This doc maps what's wired and why.
   hosts.
 - **`src/lib/server/auth-options.ts`** — the env-free options shared by `auth.ts`, the CLI config,
   and unit tests (so they can't drift and tests import them without `$app/server`/the DB client):
-  - `emailAndPassword` — `enabled` but **`disableSignUp: true`** (#48).
-  - `rateLimit` — `{ enabled: true, storage: 'database' }` (#69). DB-backed so counters survive
-    Cloudflare isolate churn; adds the **`rate_limit`** table (schema-affecting → mirrored in the
-    CLI config). Only requests through Better Auth's **router** are limited, which is why the login
-    action forwards to `auth.handler()` rather than calling `auth.api.signInEmail` directly.
+  - `emailAndPassword` — `enabled`, **`disableSignUp: false`** + **`requireEmailVerification: true`**
+    (#96 PR 2; both behavioral, so shared with the CLI config without adding a table).
+  - `rateLimit` — `{ enabled: true, storage: 'database', customRules: { '/sign-up/email': { window:
+3600, max: 3 } } }` (#69, #96). DB-backed so counters survive Cloudflare isolate churn; adds the
+    **`rate_limit`** table (schema-affecting → mirrored in the CLI config). The `customRules` cap
+    tightens the reopened sign-up past the defaults (3/hour/IP). Only requests through Better Auth's
+    **router** are limited, which is why the login/signup actions forward to `auth.handler()` rather
+    than calling `auth.api.*` directly.
+  - `emailVerification` (env-bound → in `auth.ts`, not `auth-options.ts`) — `sendOnSignUp`,
+    `autoSignInAfterVerification`, `expiresIn: 3600`, a `sendVerificationEmail` that Resends the link
+    (`verification-email.ts`), and an `afterEmailVerification` that runs the ownership backfill
+    (`linkSubmissionsToUser`) once ownership is proven. Plus the **`captcha`** plugin
+    (`cloudflare-turnstile`, `endpoints: ['/sign-up/email']`) — see "Public sign-up" below.
   - `session` — `{ cookieCache: { enabled: true, maxAge: 300 } }`. Better Auth writes a **signed**
     (HMAC) snapshot of the session+user into a short-lived `session_data` cookie; within `maxAge`
     seconds `getSession` serves from that cookie (signature verify only) instead of querying the DB.
@@ -49,8 +60,10 @@ operators from the roster UI. This doc maps what's wired and why.
   `rate_limit`** tables, **generated** by `pnpm run auth:schema` from **`src/lib/server/auth-cli.ts`**
   (a standalone config the Better Auth CLI can load without SvelteKit's virtual modules). Keep
   `auth-cli.ts` in sync with `auth.ts` for **schema-affecting** options only (adapter provider,
-  methods, table-adding plugins, `rateLimit.storage: 'database'`) — `disableSignUp` is behavioral,
-  so it stays out of the CLI config. The `admin` plugin is schema-affecting (adds
+  methods, table-adding plugins, `rateLimit.storage: 'database'`) — `disableSignUp`,
+  `requireEmailVerification`, `emailVerification`, and the `captcha` plugin are all behavioral (the
+  `verification` table + `user.emailVerified` already exist), so they stay out of the CLI config. The
+  `admin` plugin is schema-affecting (adds
   `user.role/banned/ban_reason/ban_expires` + `session.impersonated_by`), so a **bare `admin()`**
   is mirrored into `auth-cli.ts`; its behavioral options stay in `auth.ts`. Tables reach Turso via
   **`pnpm db:push`** (the default apply path; a versioned `drizzle/` migration trail also exists —
@@ -59,26 +72,56 @@ operators from the roster UI. This doc maps what's wired and why.
 - **Secrets** — `BETTER_AUTH_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` via
   `wrangler secret` + local `.env`. See [deployment.md](deployment.md).
 
-## The #48 lockdown
+## Public sign-up, verification & Turnstile (#96 PR 2)
 
-`hooks.server.ts` ran the auth middleware on **every** request and exposed the full
-`/api/auth/*` surface — including `POST /api/auth/sign-up/email` — with no UI, no rate limiting,
-and nothing consuming the session. Anyone hitting the sign-up endpoint could create rows in the
-production `user` table. Two-part fix:
+Originally (#48) public sign-up was closed (`disableSignUp: true`) because `POST /api/auth/sign-up/email`
+was reachable with no UI, no rate limiting, and nothing consuming the session — anyone could create
+rows in the production `user` table. That lockdown is now **reopened, scoped** behind three controls,
+so the sign-up surface can't be abused:
 
-1. **`disableSignUp: true`** — public account creation is closed. Better Auth rejects sign-up
-   with **400** ("Email and password sign up is not enabled") **before any DB write**. Sign-in
-   stays enabled so a first admin, provisioned out-of-band, can log in once #69 exists.
-2. **Middleware confined to `/api/auth/*`** — kills the per-page-view session lookup and shrinks
-   the reachable surface to the auth namespace.
+1. **Cloudflare Turnstile** on `POST /sign-up/email` — the `captcha` plugin (`auth.ts`, provider
+   `cloudflare-turnstile`) validates the challenge in its `onRequest`, before any DB write. `endpoints`
+   is pinned to **`['/sign-up/email']`**: the plugin's defaults also guard `/sign-in/email` +
+   `/request-password-reset`, which have no widget and would break the no-JS `/login`. Registered only
+   when `TURNSTILE_SECRET_KEY` is set (dev without keys signs up challenge-free — graceful, like the
+   Resend skip). The `/signup` action forwards the widget token as the `x-captcha-response` header.
+2. **`requireEmailVerification: true`** — a sign-up creates an **unverified** account and does NOT sign
+   the visitor in (no session token); Better Auth rejects sign-**in** for any unverified user with
+   **403 `EMAIL_NOT_VERIFIED`** until they click the emailed link. On verify, `autoSignInAfterVerification`
+   drops them into `/account`, and `afterEmailVerification` runs the ownership backfill.
+3. **Tighter rate limit** — `rateLimit.customRules['/sign-up/email'] = { window: 3600, max: 3 }`.
 
-Guarded by a hermetic unit test (`src/lib/server/auth.spec.ts`, server project): it feeds the
-shared `emailAndPassword` config (`auth-options.ts`) to a throwaway in-memory Better Auth instance
-and asserts sign-up is rejected ("sign up is not enabled"), with a positive control proving
-`disableSignUp` is what does it. **Not an e2e:** Better Auth's `isAuthPath()` drops any request
-whose origin ≠ the configured `baseURL`/`ORIGIN`, and the e2e preview serves on `localhost:4173`
-while `ORIGIN` is the production host — so `/api/auth/*` **404s in the preview before any auth
-logic runs**, making an endpoint-level e2e meaningless there.
+**Staff-lockout guard (load-bearing):** `requireEmailVerification` blocks sign-in for **every**
+`email_verified = 0` user, and all pre-#96 staff were created unverified. Three things keep the roster
+in: (a) migration **`drizzle/0003_verify_existing_users`** flips existing rows to verified — it runs on
+prod through the deploy-prod migrate-**before**-deploy step, so staff are verified before this code goes
+live; (b) roster `createUser` now passes `data: { emailVerified: true }`; (c) `scripts/create-admin.ts`
+sets `emailVerified: true`. Verify no staff account is left unverified before merge → deploy. **Caveat:**
+`db:push` (the dev-DB apply path) does NOT run `drizzle/*.sql`, so a dev DB that already holds unverified
+staff needs the backfill run once by hand (`pnpm db:migrate`, or a one-off `UPDATE user SET
+email_verified = 1`) — otherwise local staff sign-in 403s. Prod is covered by the deploy-prod migrate.
+
+An unverified account that later returns to `/login` isn't a dead-end: the sign-in 403s but
+`emailVerification.sendOnSignIn` re-mails a fresh link, and the `/login` action surfaces a distinct
+"verify your email" message (safe — the 403 fires only after the password check passes, so a wrong
+password still returns the generic error and can't enumerate accounts).
+
+The routes mirror `/login`: `/signup` (`src/routes/signup/`) is a form action forwarding a clean
+sub-request to `getAuth().handler()` (so it rides the rate limiter + captcha), showing a **"check your
+email"** panel on success (duplicate emails return the same generic 200 — better-auth genericizes them
+under `requireEmailVerification`, so the form can't enumerate accounts). **Sign-up requires JS** — the
+Turnstile widget (rendered via an `{@attach}`, the repo's DOM pattern) has no no-JS path; this is the one
+accepted deviation from the no-JS `/login`/`/contact`.
+
+Hermetic unit test (`src/lib/server/auth.spec.ts`, server project): it feeds the shared
+`emailAndPassword` config (`auth-options.ts`) to a throwaway in-memory instance and asserts sign-up now
+succeeds (unverified, no token) **and** that unverified sign-in is rejected, with a control (verification
+off) proving `requireEmailVerification` is what blocks it. The email builder is unit-tested
+(`verification-email.spec.ts`); anon `/signup` renders is an e2e (`signup/page.svelte.e2e.ts`). **Not an
+endpoint e2e:** Better Auth's `isAuthPath()` drops any request whose origin ≠ `ORIGIN`, and the preview
+serves on `localhost:4173`, so `/api/auth/*` 404s there before any auth logic runs. **Turnstile keys** —
+create a widget in the Cloudflare dashboard for darcstar.tech (public site key + secret); set
+`TURNSTILE_SECRET_KEY` via `wrangler secret put` (+ `--env preview`) and `TURNSTILE_SITE_KEY` per env.
 
 ## The admin area (#69)
 
@@ -103,14 +146,16 @@ The gated surface #48 fenced off:
   newest-first). This replaces `pnpm db:studio` for triaging leads. Pages are `noindex` (a `Seo`
   prop).
 - **First-admin provisioning** — `scripts/create-admin.ts` (`pnpm admin:create`). Public sign-up
-  stays disabled, so this is the **only** way to create the FIRST operator: it builds a throwaway
-  Better Auth instance (same Turso DB + schema, sign-up **enabled**) and calls `signUpEmail`,
-  writing the `user`/`account` rows with Better Auth's own password hashing. It's **idempotent**: if
-  the email already exists it **resets that account's password** to `ADMIN_PASSWORD`, re-asserts the
-  `admin` role, and prints the id (to allowlist in `ADMIN_USER_IDS`) — so a re-run doubles as a
-  password reset for the owner. (Since the #94 DB split it targets the **dev** DB by default —
-  `.env` — so pass prod `DATABASE_*` inline to provision prod.) See
-  [deployment.md](deployment.md). Once an admin exists, further operators are created from the UI.
+  only ever mints an unverified `user`, so this is still the **only** way to create the FIRST
+  operator: it builds a throwaway Better Auth instance (same Turso DB + schema) and calls
+  `signUpEmail`, writing the `user`/`account` rows with Better Auth's own password hashing, then
+  promotes the row to `role: 'admin'` **and `emailVerified: true`** (so `requireEmailVerification`
+  doesn't lock the owner out). It's **idempotent**: if the email already exists it **resets that
+  account's password** to `ADMIN_PASSWORD`, re-asserts the `admin` role + verified flag, and prints
+  the id (to allowlist in `ADMIN_USER_IDS`) — so a re-run doubles as a password reset for the owner.
+  (Since the #94 DB split it targets the **dev** DB by default — `.env` — so pass prod `DATABASE_*`
+  inline to provision prod.) See [deployment.md](deployment.md). Once an admin exists, further
+  operators are created from the UI.
 
 ## User management (roster)
 
@@ -149,8 +194,10 @@ logout across all sessions, reversibly disable/enable, and hard-delete.
   account. All actions
   are **no-JS server form actions** → `auth.api.*` (`createUser`, `adminUpdateUser`, `setRole`,
   `setUserPassword`, `revokeUserSessions`, `banUser`/`unbanUser`, `removeUser`). `createUser` is an
-  admin op, so it works despite `disableSignUp`. Delete is gated by a required "I understand"
-  checkbox (no JS `confirm()` — worker globals aren't typed for svelte-check).
+  admin op (it bypasses the public sign-up captcha/verification path) and passes
+  `data: { emailVerified: true }` so the vouched account can sign in immediately (#96 PR 2). Delete is
+  gated by a required "I understand" checkbox (no JS `confirm()` — worker globals aren't typed for
+  svelte-check).
 - **Authorization is authoritative.** Every admin endpoint runs `adminMiddleware` →
   `getAuthoritativeSessionFromCtx` (`disableCookieCache: true`), so a demoted operator loses
   management powers immediately at the endpoint — the route guard/nav is defense-in-depth only. The
@@ -165,7 +212,7 @@ logout across all sessions, reversibly disable/enable, and hard-delete.
   by a role mistake.
 
 Tested hermetically (`src/lib/server/admin.spec.ts` — non-admin 403, owner/role admin allowed,
-`createUser` despite `disableSignUp`; `admin-access.spec.ts` — the allowlist/role logic), a DB-free
+`createUser` as an admin op; `admin-access.spec.ts` — the allowlist/role logic), a DB-free
 guard e2e (`admin/users/page.svelte.e2e.ts` — unauth `/admin/users` → `/login`), and the full
 lifecycle (create → non-admin guard → reset → force-logout → disable → enable → delete) in
 `pnpm smoke:signin`.
@@ -202,16 +249,19 @@ works on any origin/port. It writes a session, so — like the contact happy-pat
 ## End-user account portal (`/account`, #96)
 
 Activates the dormant `user` role — a self-service surface for **end-users** (leads), entirely
-separate from the staff `/admin` UI. **PR 1 (this):** message ownership + the portal. **PR 2:**
-public sign-up + email verification + Turnstile (below, "Still deferred" → in progress).
+separate from the staff `/admin` UI. **PR 1:** message ownership + the portal. **PR 2:** public
+sign-up + email verification + Turnstile (see "Public sign-up, verification & Turnstile" above). A
+signed-in end-user who lands on `/admin` (e.g. via a `/login` success, which 303s to `/admin`) is
+bounced to `/account`, so self-registered users reach their portal rather than the marketing home.
 
 - **Message ownership.** `contact_submission` gains a nullable `userId` FK (`onDelete: 'set null'`
   — a deleted account leaves the lead as an anonymous row). It's set at three trustworthy moments,
   all via `linkSubmissionsToUser(db, userId, email)` (`src/lib/server/contact-ownership.ts`, a
   case-insensitive `UPDATE … WHERE lower(email)=? AND user_id IS NULL`): (1) a **signed-in submit**
   (`contact.remote.ts` reads `locals.user`), (2) **admin creates an account** (the roster `create`
-  action — the admin vouches for the email; best-effort, never fails the create), and (3) — PR 2 —
-  **self-registered email verification** proves ownership. See [contact](contact.md).
+  action — the admin vouches for the email; best-effort, never fails the create), and (3)
+  **self-registered email verification** (`auth.ts` `afterEmailVerification`, #96 PR 2) — ownership is
+  proven, so the backfill runs. See [contact](contact.md).
 - **`/account`** (`src/routes/account/`) — gated by `+layout.server.ts` to **any signed-in account**
   (no `isStaff` check: end-users are exactly who `/admin` bounces; staff can visit too, it just
   shows their own data). The layout is added to `SESSION_PREFIXES` in `hooks.server.ts`. The page
@@ -248,7 +298,8 @@ in `wrangler.jsonc`).
   it is intentionally **not** in `auth.schema.ts` and **not** mirrored in `auth-cli.ts`; the `hooks`
   option is behavioral (adds no table), so it too stays out of the CLI config. Columns: `email`,
   `userId` (nullable FK, `set null`), `success`, `reason` (`invalid_credentials`/`banned`/
-  `rate_limited`/raw code), `status`, `ipAddress`, `userAgent`, `createdAt`; indexed by `createdAt`,
+  `email_not_verified`/`rate_limited`/raw code — `email_not_verified` distinguishes the new #96 PR 2
+  403 from a ban), `status`, `ipAddress`, `userAgent`, `createdAt`; indexed by `createdAt`,
   `(email, createdAt)`, `(ipAddress, createdAt)`, `userId`. Migration `drizzle/0002_*`.
 - **Never breaks or slows sign-in.** The log line is emitted synchronously; the row is persisted by
   `persistLoginAudit` (`src/lib/server/login-audit-store.ts`) via `platform.ctx.waitUntil` (runs after
@@ -262,10 +313,8 @@ in `wrangler.jsonc`).
 
 ## Still deferred
 
-**Public sign-up + email verification + Cloudflare Turnstile (#96 PR 2 / #53)** — re-opening the
-#48 lockdown behind email verification (the safe backfill trigger) and a Turnstile captcha scoped to
-`/sign-up/email`; **enabling `requireEmailVerification` must first mark existing staff accounts
-verified** or it locks them out. Also: pagination for the submissions **and roster** lists (both
-capped at 200, newest-first); GitHub OAuth is configured in the CLI but not enabled in `auth.ts`;
-owner-vs-admin protection at the endpoint level (a promoted admin can still target an owner via the
-raw admin API) is out of scope — admins are trusted; see "User management".
+Pagination for the submissions **and roster** lists (both capped at 200, newest-first); GitHub OAuth
+is configured in the CLI but not enabled in `auth.ts`; owner-vs-admin protection at the endpoint level
+(a promoted admin can still target an owner via the raw admin API) is out of scope — admins are
+trusted; see "User management". Sign-up UI copy (like all `es` strings) mirrors `en` untranslated
+(#18); email-change self-service in `/account` stays deferred (email is the sign-in + backfill key).

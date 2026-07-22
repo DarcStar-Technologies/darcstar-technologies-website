@@ -114,7 +114,10 @@ const created = await post('/admin/users?/create', {
 	name: 'Smoke Operator',
 	email: opEmail,
 	password: opPassword,
-	role: 'user'
+	// `operator` (staff): the assertions below require /admin access (200) but NOT roster access.
+	// A `user` (end-user) would be bounced from /admin entirely — a latent mismatch since the 3-role
+	// split (#95/#98) that this section always intended as an operator.
+	role: 'operator'
 });
 const createdLoc = created.headers.get('location') || '';
 const opIdMatch = createdLoc.match(/\/admin\/users\/([^/?#]+)/);

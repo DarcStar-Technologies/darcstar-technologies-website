@@ -43,6 +43,9 @@ function normalizeReason(code: string | undefined, status: number | null): strin
 	const c = (code ?? '').toUpperCase();
 	if (c.includes('PASSWORD') || c === 'INVALID_EMAIL_OR_PASSWORD' || status === 401)
 		return 'invalid_credentials';
+	// #96 (PR2): requireEmailVerification rejects an unverified sign-in with 403 EMAIL_NOT_VERIFIED —
+	// distinct from a ban. Check it BEFORE the `status === 403` banned catch so it isn't mislabeled.
+	if (c.includes('NOT_VERIFIED')) return 'email_not_verified';
 	if (c.includes('BANNED') || status === 403) return 'banned';
 	if (status === 429) return 'rate_limited';
 	return code ? code.toLowerCase() : 'error';

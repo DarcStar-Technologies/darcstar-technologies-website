@@ -8,16 +8,14 @@
 //      its copy lives in Paraglide messages and is localized to the request locale.
 //
 // The row is already persisted before either send, so a failure is logged, never
-// surfaced to the visitor. Provider: Resend (https://resend.com) — a plain HTTPS API
-// reachable from workerd via `fetch`, so no npm SDK (keeps the Worker lean and the
-// payload builders pure/unit-testable).
+// surfaced to the visitor. The wire primitives (OutboundEmail/escapeHtml/postEmail) live in
+// email.ts, shared with the sign-up verification sender (verification-email.ts).
 import type { CleanedContact } from './contact';
 import type { Interest } from '$lib/contact-interests';
 import type { Locale } from '$lib/paraglide/runtime';
 import { CONTACT_EMAIL, SITE_NAME } from '$lib/site';
 import { m } from '$lib/paraglide/messages.js';
-
-const RESEND_ENDPOINT = 'https://api.resend.com/emails';
+import { type OutboundEmail, escapeHtml, postEmail } from './email';
 
 // Both messages send FROM the Resend-verified role alias (single-sourced from
 // site.ts). They differ in `to`/`replyTo`: the lead lands in info@ with Reply-To set
@@ -69,27 +67,6 @@ function interestMessage(slug: Interest, locale: Locale): string {
 		case 'other':
 			return m.contact_interest_other({}, o);
 	}
-}
-
-// Escape the HTML-significant chars so visitor content can't break out of — or inject
-// markup into — an HTML body. The text/plain part needs no escaping.
-function escapeHtml(value: string): string {
-	return value
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&#39;');
-}
-
-export interface OutboundEmail {
-	from: string;
-	to: string;
-	replyTo: string;
-	subject: string;
-	text: string;
-	html: string;
-	headers?: Record<string, string>;
 }
 
 /** Render a submission into the internal lead email. Pure — unit-tested. */
@@ -184,32 +161,6 @@ export function buildAckEmail(sub: CleanedContact, locale: Locale): OutboundEmai
 		html,
 		headers: AUTO_REPLY_HEADERS
 	};
-}
-
-/**
- * POST one email to Resend. Throws on a non-2xx response so the caller can log it.
- */
-async function postEmail(apiKey: string, email: OutboundEmail): Promise<void> {
-	const res = await fetch(RESEND_ENDPOINT, {
-		method: 'POST',
-		headers: {
-			Authorization: `Bearer ${apiKey}`,
-			'Content-Type': 'application/json'
-		},
-		body: JSON.stringify({
-			from: email.from,
-			to: email.to,
-			reply_to: email.replyTo,
-			subject: email.subject,
-			text: email.text,
-			html: email.html,
-			...(email.headers ? { headers: email.headers } : {})
-		})
-	});
-	if (!res.ok) {
-		const detail = await res.text().catch(() => '');
-		throw new Error(`Resend responded ${res.status}${detail ? `: ${detail}` : ''}`);
-	}
 }
 
 /**

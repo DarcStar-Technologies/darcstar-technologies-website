@@ -6,6 +6,7 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import LoginForm from '$lib/components/LoginForm.svelte';
+	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 	import type { ActionData } from './$types';
 
@@ -22,5 +23,12 @@
 		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">{m.login_heading()}</h1>
 		<p class="mt-2 text-sm text-body">{m.login_lead()}</p>
 		<LoginForm {form} />
+		<p class="mt-6 text-sm text-body">
+			{m.login_need_account_prompt()}
+			<a
+				class="font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline"
+				href={localizeHref('/signup')}>{m.login_need_account_link()}</a
+			>
+		</p>
 	</div>
 </section>
