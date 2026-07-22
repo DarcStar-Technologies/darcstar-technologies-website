@@ -46,4 +46,42 @@ export const contactSubmission = sqliteTable(
 	]
 );
 
+// Login audit — one row per sign-in ATTEMPT (success and failure). Rows are written by the Better
+// Auth `hooks.after` middleware (src/lib/server/auth-audit.ts, persisted via login-audit-store.ts),
+// which is the single chokepoint for every sign-in — the `/login` form action AND a direct
+// `POST /api/auth/sign-in/email`. Rate-limit 429s are the one case the endpoint hook can't see (the
+// router rejects them before dispatch), so the login action records those itself.
+//
+// This is an APP-owned table (like `contact_submission`), NOT a Better Auth plugin table — so it is
+// intentionally NOT in auth.schema.ts and is NOT mirrored in auth-cli.ts.
+//
+// `ipAddress` is the RAW client IP (unlike `contact_submission.ip_hash`): the point is to track a
+// credential-stuffing source, and it's consistent with Better Auth's own `session.ip_address`.
+// `reason` is a coarse machine string on failure (`invalid_credentials` / `banned` / `rate_limited` /
+// a raw Better Auth error code), null on success. `userId` is resolved only on a successful sign-in.
+export const loginAudit = sqliteTable(
+	'login_audit',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		email: text('email'),
+		userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+		success: integer('success', { mode: 'boolean' }).notNull(),
+		reason: text('reason'),
+		status: integer('status'),
+		ipAddress: text('ip_address'),
+		userAgent: text('user_agent'),
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+			.notNull()
+	},
+	(table) => [
+		index('login_audit_created_idx').on(table.createdAt),
+		index('login_audit_email_created_idx').on(table.email, table.createdAt),
+		index('login_audit_ip_created_idx').on(table.ipAddress, table.createdAt),
+		index('login_audit_user_idx').on(table.userId)
+	]
+);
+
 export * from './auth.schema';

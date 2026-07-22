@@ -6,6 +6,8 @@ import { getRequestEvent } from '$app/server';
 import { getDb } from '$lib/server/db';
 import { emailAndPassword, rateLimit, session } from '$lib/server/auth-options';
 import { parseAdminIds } from '$lib/server/admin-access';
+import { createLoginAuditHook } from '$lib/server/auth-audit';
+import { persistLoginAudit } from '$lib/server/login-audit-store';
 import { readEnv } from '$lib/server/env';
 
 function createAuth() {
@@ -32,6 +34,14 @@ function createAuth() {
 		emailAndPassword, // #48: sign-up disabled — see auth-options.ts
 		rateLimit, // #69: DB-backed limiter on the now-public auth endpoints — see auth-options.ts
 		session, // cookie-cache the session so signed-in page views skip the DB — see auth-options.ts
+		// Login audit: record every sign-in attempt (success + failure) to `login_audit` + a server
+		// log line. Fires for the /login form AND direct /api/auth/sign-in/email. Behavioral (adds no
+		// table — the app-owned `login_audit` lives in db/schema.ts), so it's NOT mirrored in
+		// auth-cli.ts. See auth-audit.ts / login-audit-store.ts. Rate-limit 429s are recorded by the
+		// login action instead (the router rejects them before this hook runs).
+		hooks: {
+			after: createLoginAuditHook(persistLoginAudit)
+		},
 		plugins: [
 			// Operator-roster management (list/create/update/delete/reset-password/force-logout +
 			// ban). `adminUserIds` is the owner bootstrap: those ids are treated as admins before any

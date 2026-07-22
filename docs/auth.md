@@ -221,6 +221,42 @@ public sign-up + email verification + Turnstile (below, "Still deferred" → in 
 - Guarded by an e2e (`src/routes/account/page.svelte.e2e.ts`): unauthenticated `/account` → `/login`
   (DB-free). `linkSubmissionsToUser` is unit-tested (`contact-ownership.spec.ts`, in-memory libsql).
 
+## Login audit
+
+Every sign-in **attempt** — success and failure — is recorded, so failed logins are trackable (who's
+targeted, from where, and whether a run eventually succeeded). Two channels: a durable DB row **and** a
+structured server-side log line (Cloudflare Workers Logs — `observability.logs` is enabled + persisted
+in `wrangler.jsonc`).
+
+- **Capture point — a Better Auth `hooks.after` middleware** (`src/lib/server/auth-audit.ts`,
+  `createLoginAuditHook`). Registered in `auth.ts` (`hooks: { after: … }`). It fires for **both** the
+  `/login` form action (which calls `auth.handler()`) and a direct `POST /api/auth/sign-in/email`, so
+  it's the single chokepoint. Gated to `ctx.path === '/sign-in/email'`. Outcome comes from
+  `ctx.context.returned`: an **`APIError`** on failure (`isAPIError` → `.statusCode`/`.body.code`) or
+  the result object on success (`ctx.context.newSession.user.id` links the account). Client IP via
+  `getIp` (raw — consistent with `session.ip_address`), UA from the headers. It **never reads/logs the
+  password**, and **returns `undefined`** so the response — and the anti-enumeration generic error — is
+  untouched; the audit is server-side only.
+- **The one gap: rate-limit 429s.** Better Auth's limiter rejects in the router's `onRequest`, _before_
+  endpoint dispatch, so a 429 never reaches the after-hook. The `/login` action's existing
+  `res.status === 429` branch records those itself (it holds the email + client IP). Direct-API calls
+  aren't rate-limited, so there's no gap and no double-count.
+- **Storage — `login_audit`, an APP-owned table** (`db/schema.ts`, alongside `contact_submission`), so
+  it is intentionally **not** in `auth.schema.ts` and **not** mirrored in `auth-cli.ts`; the `hooks`
+  option is behavioral (adds no table), so it too stays out of the CLI config. Columns: `email`,
+  `userId` (nullable FK, `set null`), `success`, `reason` (`invalid_credentials`/`banned`/
+  `rate_limited`/raw code), `status`, `ipAddress`, `userAgent`, `createdAt`; indexed by `createdAt`,
+  `(email, createdAt)`, `(ipAddress, createdAt)`, `userId`. Migration `drizzle/0002_*`.
+- **Never breaks or slows sign-in.** The log line is emitted synchronously; the row is persisted by
+  `persistLoginAudit` (`src/lib/server/login-audit-store.ts`) via `platform.ctx.waitUntil` (runs after
+  the response on workerd; a floating promise in dev), wrapped in try/catch → a DB failure logs and is
+  swallowed. The env-bound store is kept separate from the pure hook so `auth-audit.spec.ts` can wire
+  the real hook onto an in-memory Better Auth instance (like `auth.spec.ts`) and assert it records
+  failure + success with the right email/IP/userId — no DB, no env.
+- **View — `/admin/audit`** (`src/routes/admin/audit/`), a read-only, staff-gated table (newest-first,
+  capped at 200) beside the submissions triage; the `/admin` layout guard is the only gate needed (no
+  actions). _(Visible to all staff; narrow to `data.isAdmin` if you want roster-admins only.)_
+
 ## Still deferred
 
 **Public sign-up + email verification + Cloudflare Turnstile (#96 PR 2 / #53)** — re-opening the
