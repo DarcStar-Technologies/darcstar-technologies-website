@@ -105,8 +105,11 @@ The gated surface #48 fenced off:
 - **First-admin provisioning** — `scripts/create-admin.ts` (`pnpm admin:create`). Public sign-up
   stays disabled, so this is the **only** way to create the FIRST operator: it builds a throwaway
   Better Auth instance (same Turso DB + schema, sign-up **enabled**) and calls `signUpEmail`,
-  writing the `user`/`account` rows with Better Auth's own password hashing. If the email already
-  exists it prints that account's id (to allowlist in `ADMIN_USER_IDS`) instead of failing. See
+  writing the `user`/`account` rows with Better Auth's own password hashing. It's **idempotent**: if
+  the email already exists it **resets that account's password** to `ADMIN_PASSWORD`, re-asserts the
+  `admin` role, and prints the id (to allowlist in `ADMIN_USER_IDS`) — so a re-run doubles as a
+  password reset for the owner. (Since the #94 DB split it targets the **dev** DB by default —
+  `.env` — so pass prod `DATABASE_*` inline to provision prod.) See
   [deployment.md](deployment.md). Once an admin exists, further operators are created from the UI.
 
 ## User management (roster)
