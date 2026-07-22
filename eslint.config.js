@@ -18,6 +18,10 @@ export default defineConfig(
 		// is a scaffold shim whose sole content is a necessary triple-slash reference.
 		// (src/lib/paraglide.svelte.ts is deliberately NOT ignored — it's hand-authored app code.)
 		ignores: [
+			// Claude Code's local dir (settings, gh-user, git worktrees) — nothing here is tracked, and
+			// a nested worktree's own tsconfig collides with the root's (tsconfigRootDir ambiguity),
+			// breaking `pnpm lint` locally. Not covered by the root .gitignore, so list it explicitly.
+			'.claude/**',
 			'src/lib/paraglide/**',
 			'worker-configuration.d.ts',
 			'vitest.shims.d.ts',
