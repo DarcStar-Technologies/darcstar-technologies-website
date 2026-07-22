@@ -251,13 +251,16 @@ if (guard.status !== 303 || guard.headers.get('location') !== '/login') {
 ok('/admin redirects to /login when unauthenticated');
 
 // 5. The flip side of 2b: an anonymous home request skips the session lookup entirely (no cookie)
-// and the navbar shows the plain "Sign in" affordance — no signed-in controls.
+// and the navbar shows the anonymous affordances ("Sign in" + "Sign up", #96) — no signed-in controls.
 const homeAnon = await fetch(`${BASE}/`, { redirect: 'manual' });
 const homeAnonHtml = await homeAnon.text();
 if (homeAnon.status !== 200) die(`/ (anon): expected 200, got ${homeAnon.status}`);
 if (homeAnonHtml.includes('action="/logout"')) {
 	die('/ (anon): the navbar rendered signed-in controls for an unauthenticated visitor');
 }
-ok('/ navbar shows only "Sign in" when unauthenticated');
+if (!homeAnonHtml.includes('href="/signup"')) {
+	die('/ (anon): the navbar did not render the "Sign up" link for an unauthenticated visitor');
+}
+ok('/ navbar shows the anonymous "Sign in" + "Sign up" affordances when unauthenticated');
 
 console.log('\n✓ sign-in smoke test passed');

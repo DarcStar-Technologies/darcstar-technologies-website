@@ -71,6 +71,16 @@
 	</a>
 {/snippet}
 
+<!-- Sign-up link: a plain /signup anchor for anonymous visitors (issue #96). Unlike the login link
+     it never opens a dialog — /signup is a full page (Turnstile has no no-JS path), so a normal
+     navigation is correct with or without JS. Sits beside "Sign in" so sign-up is reachable from the
+     nav, not only via the login dialog's prompt. -->
+{#snippet signupLink(className: string)}
+	<a href={localizeHref('/signup')} onclick={() => (open = false)} class={className}>
+		{m.nav_signup()}
+	</a>
+{/snippet}
+
 <!-- Signed-in controls (replace the login link when `user` is set): a destination link + a Sign-out
      button. Staff (admin/operator) get the gated admin dashboard; an end-user (#96) gets their own
      /account portal — `isStaff` from the root layout picks which. Sign-out is a real form POST
@@ -145,6 +155,11 @@
 								'rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500'
 							)}
 						</li>
+						<li>
+							{@render signupLink(
+								'rounded px-3 py-2 text-sm font-medium text-primary-500 transition-colors hover:text-primary-400'
+							)}
+						</li>
 					{/if}
 				</ul>
 
@@ -198,6 +213,11 @@
 					<li>
 						{@render loginLink(
 							'block rounded px-3 py-2 text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary'
+						)}
+					</li>
+					<li>
+						{@render signupLink(
+							'block rounded px-3 py-2 text-base font-medium text-primary-500 transition-colors hover:preset-tonal-primary'
 						)}
 					</li>
 				{/if}
