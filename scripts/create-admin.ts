@@ -6,17 +6,27 @@
 // the `user` + `account` rows are written with Better Auth's own password hashing (exactly what the
 // app's `signInEmail` later verifies). Importing the real schema (not a copy) keeps it from drifting.
 //
-// The deployed Worker and local dev share ONE Turso DB, so pointing this at the prod .env
-// provisions the production operator. Run (credentials passed inline, never committed):
+// Since #94, prod and dev are SEPARATE Turso DBs (one per Worker). This reads DATABASE_* from
+// `.env`, which points at the DEV DB — so by default it provisions the DEV/preview operator, NOT
+// production. To provision PROD, pass the prod DB creds inline (DATABASE_URL=<prod-url>
+// DATABASE_AUTH_TOKEN=<prod-token> … pnpm admin:create).
+//
+// Re-running is safe and IDEMPOTENT: if the account already exists it RESETS the password to
+// ADMIN_PASSWORD and (re)asserts the admin role — so this doubles as a password reset for the owner.
+// (A prior version only stamped the role and left the OLD password in place, which looked like a
+// success but meant the password you just passed never took — the classic "created but can't log
+// in".) Run (credentials passed inline, never committed):
 //
 //   ADMIN_EMAIL=you@darcstar.tech ADMIN_PASSWORD='a-strong-password' pnpm admin:create
 //
 // DATABASE_URL / DATABASE_AUTH_TOKEN (+ optional ORIGIN / BETTER_AUTH_SECRET) come from .env.
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { hashPassword } from 'better-auth/crypto';
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
-import { eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { and, eq } from 'drizzle-orm';
 import * as schema from '../src/lib/server/db/schema';
 
 // Load DB credentials from .env; inline ADMIN_* / ambient env still win (loadEnvFile only fills
@@ -71,6 +81,36 @@ async function makeAdmin(id: string): Promise<void> {
 	await db.update(schema.user).set({ role: 'admin' }).where(eq(schema.user.id, id));
 }
 
+// Set (or reset) the account's email/password credential to `plain`. Better Auth stores the
+// password on the `account` row for the `credential` provider (accountId === userId), hashed with
+// the SAME default scrypt the running app verifies with — so we hash via `better-auth/crypto` and
+// write it directly. We can't go through `signUpEmail` here (the account already exists, so it just
+// rejects and never touches the password) nor `setUserPassword` (an admin-plugin API this throwaway
+// instance doesn't mount). UPDATE the credential row if present, else INSERT one (covers a user row
+// that somehow has no credential account). This is what makes a re-run a genuine password reset.
+async function setCredentialPassword(userId: string, plain: string): Promise<void> {
+	const hash = await hashPassword(plain);
+	const [existing] = await db
+		.select({ id: schema.account.id })
+		.from(schema.account)
+		.where(and(eq(schema.account.userId, userId), eq(schema.account.providerId, 'credential')))
+		.limit(1);
+	if (existing) {
+		await db
+			.update(schema.account)
+			.set({ password: hash, updatedAt: new Date() })
+			.where(eq(schema.account.id, existing.id));
+	} else {
+		await db.insert(schema.account).values({
+			id: randomUUID(),
+			accountId: userId,
+			providerId: 'credential',
+			userId,
+			password: hash
+		});
+	}
+}
+
 try {
 	const res = await auth.api.signUpEmail({ body: { name, email, password } });
 	await makeAdmin(res.user.id);
@@ -78,8 +118,9 @@ try {
 	printAdminIdHint(res.user.id);
 } catch (err) {
 	const msg = err instanceof Error ? err.message : String(err);
-	// An existing account isn't a failure here — the operator usually runs this to DISCOVER the id
-	// to allowlist. Look it up, print it with the hint, and exit 0.
+	// An existing account isn't a failure — a re-run is how you rotate the owner's password (or
+	// recover from a forgotten one) and (re)assert admin. Look up the id, RESET the password to
+	// ADMIN_PASSWORD, ensure the admin role, print the id + hint, and exit 0.
 	if (/exist/i.test(msg)) {
 		const [row] = await db
 			.select({ id: schema.user.id })
@@ -88,7 +129,10 @@ try {
 			.limit(1);
 		if (row) {
 			await makeAdmin(row.id); // idempotent — ensure the existing owner carries the admin role
-			console.log(`✓ An account already exists for ${email} (id ${row.id}, role admin).`);
+			await setCredentialPassword(row.id, password); // reset the password to ADMIN_PASSWORD
+			console.log(
+				`✓ Account already existed for ${email} — password reset (id ${row.id}, role admin).`
+			);
 			printAdminIdHint(row.id);
 			process.exit(0);
 		}
