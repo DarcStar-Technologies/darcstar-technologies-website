@@ -3,15 +3,22 @@
 // `clip-path` set to the union of the frosted-glass windows so the beam only shows ON
 // the glass — one coherent light source across every surface.
 //
-// Cost: the beam sweep is compositor-only (transform). The work here is reading the
-// glass rects and rebuilding the clip-path; because the plane is viewport-fixed the
-// windows move with scroll, so it runs on scroll (rAF-batched), resize, and whenever
-// the caller calls `refresh()` (the contact modal opening/closing). Measured: this adds
-// no per-frame Paint — only a small getBoundingClientRect pass per scroll frame.
+// Cost: the beam sweep is compositor-only (transform). The per-frame work (scroll) is just one
+// getBoundingClientRect read per glass window to rebuild the clip-path — the glass SET and each
+// window's (static) corner radius are resolved once in `reobserve()` (init, resize, modal-toggle,
+// navigation), NOT per frame, so the scroll hot path never re-queries the DOM or calls
+// getComputedStyle. Because the plane is viewport-fixed the windows move with scroll, so apply
+// runs on scroll (rAF-batched), on resize, on the ResizeObserver, and on `refresh()`.
 
-// Every frosted surface. `.glass-field` (recessed inputs) is intentionally excluded —
-// light glints off raised glass, not the wells.
-const GLASS = '.glass-nav, .glass-panel, .glass-btn';
+// Every RAISED frosted surface, matched STRUCTURALLY rather than by an enumerated class list:
+// any element whose class carries a `glass-*` variant (glass-nav, glass-card, glass-btn, and any
+// future one) — all built on the shared `glass` base utility (see layout.css). This is why the
+// light can't silently miss a surface again: the earlier list named `.glass-panel`, but panels
+// are authored as `.glass-card` (a utility only `@apply`s styles — it never puts its own name on
+// the element), so `.glass-panel` matched nothing, the panels were never lit, and a growing modal
+// panel never re-clipped → the button ghost. Recessed wells (`.glass-field`) and floating menus
+// (`.glass-menu`) are excluded — light glints off raised glass, not wells or dropdowns.
+const GLASS = '[class*="glass-"]:not(.glass-field):not(.glass-menu)';
 const DIALOG = '[data-scope="dialog"]';
 
 /** Rounded-rectangle SVG subpath for a rect, radius clamped to fit. */
@@ -43,19 +50,18 @@ function glassElements(modalOpen: boolean): HTMLElement[] {
 export function createSheenSync(plane: HTMLElement) {
 	let modalOpen = false;
 
+	// The current clip set: each glass window + its (static) corner radius. Rebuilt only when the
+	// set can change — `reobserve()` on init/resize/modal-toggle/navigation — so the per-scroll-frame
+	// apply() re-reads only getBoundingClientRect, never re-querying the DOM or calling getComputedStyle.
+	let clipped: { el: HTMLElement; radius: number }[] = [];
+
 	function apply() {
-		const els = glassElements(modalOpen);
-		if (els.length === 0) {
+		if (clipped.length === 0) {
 			plane.style.clipPath = "path('M0 0Z')";
 			return;
 		}
-		const d = els
-			.map((el) =>
-				roundedRect(
-					el.getBoundingClientRect(),
-					parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0
-				)
-			)
+		const d = clipped
+			.map(({ el, radius }) => roundedRect(el.getBoundingClientRect(), radius))
 			.join('');
 		plane.style.clipPath = `path('${d}')`;
 	}
@@ -67,9 +73,37 @@ export function createSheenSync(plane: HTMLElement) {
 		raf = requestAnimationFrame(apply);
 	};
 
-	schedule();
+	// Re-clip when a clipped surface changes SIZE without a scroll/resize firing — the case
+	// that produced the ghost: a login/contact error banner appears inside a glass panel and
+	// grows it in place (on the /login card AND the modal's Content), or a scrollbar toggles
+	// and reflows the full-width glass. Nothing here fires window scroll/resize, so without
+	// this the beam stays clipped to the panels' old rects — a mis-aligned ghost across every
+	// surface. Observe the current glass set (catches a single panel growing, incl. the fixed
+	// modal) plus documentElement (catches page reflow that shifts glass without resizing it).
+	const sizeObserver = new ResizeObserver(schedule);
+	function reobserve() {
+		// Rebuild the clip set + re-attach the observer. Called only when the set can change (init,
+		// resize, refresh, retry) — NOT from the per-frame `apply()`: ResizeObserver delivers an
+		// initial callback on observe(), so re-observing inside apply() would loop (observe →
+		// callback → schedule → apply → observe …). Corner radius is read once here (a static px
+		// value for our rounded-* utilities), keeping getComputedStyle off the scroll hot path.
+		sizeObserver.disconnect();
+		sizeObserver.observe(document.documentElement);
+		clipped = glassElements(modalOpen).map((el) => {
+			sizeObserver.observe(el);
+			return { el, radius: parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0 };
+		});
+	}
+	const sync = () => {
+		reobserve();
+		schedule();
+	};
+
+	sync();
 	window.addEventListener('scroll', schedule, { passive: true });
-	window.addEventListener('resize', schedule, { passive: true });
+	// Resize can change the set (breakpoints) or a responsive corner radius, so rebuild the cache
+	// (sync), not just re-clip. Scroll — the hot path — stays cache-only (schedule).
+	window.addEventListener('resize', sync, { passive: true });
 
 	return {
 		/**
@@ -81,18 +115,19 @@ export function createSheenSync(plane: HTMLElement) {
 		 */
 		refresh(nextModalOpen: boolean) {
 			modalOpen = nextModalOpen;
-			schedule();
+			sync();
 			// The new glass mounts a tick after this call (the portalled dialog after `open`
-			// flips; the next route's panels after navigation), so re-clip once more shortly
-			// after — the immediate pass can run before that glass is in the DOM.
+			// flips; the next route's panels after navigation), so re-observe + re-clip once more
+			// shortly after — the immediate pass can run before that glass is in the DOM.
 			clearTimeout(retry);
-			retry = setTimeout(schedule, 120);
+			retry = setTimeout(sync, 120);
 		},
 		destroy() {
 			cancelAnimationFrame(raf);
 			clearTimeout(retry);
+			sizeObserver.disconnect();
 			window.removeEventListener('scroll', schedule);
-			window.removeEventListener('resize', schedule);
+			window.removeEventListener('resize', sync);
 		}
 	};
 }
