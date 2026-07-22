@@ -134,25 +134,25 @@
 						<li>
 							{@render navLink(
 								link,
-								'rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500'
+								'rounded px-3 py-2 text-sm font-medium text-primary-500 transition-colors hover:text-primary-400'
 							)}
 						</li>
 					{/each}
 					{#if user}
 						<li>
 							{@render (isStaff ? adminLink : accountLink)(
-								'rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500'
+								'rounded px-3 py-2 text-sm font-medium text-primary-500 transition-colors hover:text-primary-400'
 							)}
 						</li>
 						<li>
 							{@render signoutForm(
-								'rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500'
+								'rounded px-3 py-2 text-sm font-medium text-primary-500 transition-colors hover:text-primary-400'
 							)}
 						</li>
 					{:else}
 						<li>
 							{@render loginLink(
-								'rounded px-3 py-2 text-sm font-medium text-surface-700-300 transition-colors hover:text-primary-500'
+								'rounded px-3 py-2 text-sm font-medium text-primary-500 transition-colors hover:text-primary-400'
 							)}
 						</li>
 						<li>
@@ -194,25 +194,25 @@
 					<li>
 						{@render navLink(
 							link,
-							'block rounded px-3 py-2 text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary'
+							'block rounded px-3 py-2 text-base font-medium text-primary-500 transition-colors hover:preset-tonal-primary'
 						)}
 					</li>
 				{/each}
 				{#if user}
 					<li>
 						{@render (isStaff ? adminLink : accountLink)(
-							'block rounded px-3 py-2 text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary'
+							'block rounded px-3 py-2 text-base font-medium text-primary-500 transition-colors hover:preset-tonal-primary'
 						)}
 					</li>
 					<li>
 						{@render signoutForm(
-							'block w-full rounded px-3 py-2 text-left text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary'
+							'block w-full rounded px-3 py-2 text-left text-base font-medium text-primary-500 transition-colors hover:preset-tonal-primary'
 						)}
 					</li>
 				{:else}
 					<li>
 						{@render loginLink(
-							'block rounded px-3 py-2 text-base font-medium text-surface-700-300 transition-colors hover:preset-tonal-primary'
+							'block rounded px-3 py-2 text-base font-medium text-primary-500 transition-colors hover:preset-tonal-primary'
 						)}
 					</li>
 					<li>
