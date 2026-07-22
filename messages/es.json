@@ -1,7 +1,6 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
 
-	"nav_home": "Home",
 	"nav_about": "About",
 	"nav_login": "Sign in",
 	"nav_admin": "Admin",

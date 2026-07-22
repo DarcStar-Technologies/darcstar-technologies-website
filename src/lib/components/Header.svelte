@@ -8,13 +8,11 @@
 	import Icon from './Icon.svelte';
 	import IconClose from './IconClose.svelte';
 
-	// Nav links — plain localized path links (About now points at the real /about page,
-	// issue #61; the old `/#about` footer-anchor workaround is retired). `$derived` so
-	// hrefs + labels track the active locale; `id` is a stable {#each} key across switches.
-	const links = $derived([
-		{ id: 'home', label: m.nav_home(), href: localizeHref('/') },
-		{ id: 'about', label: m.nav_about(), href: localizeHref('/about') }
-	]);
+	// Nav links — plain localized path links. No "Home" item: the Wordmark logo already links to
+	// `/`, so a separate Home link was redundant (issues #11/#8). About points at the real /about
+	// page (issue #61; the old `/#about` footer-anchor workaround is retired). `$derived` so hrefs +
+	// labels track the active locale; `id` is a stable {#each} key across switches.
+	const links = $derived([{ id: 'about', label: m.nav_about(), href: localizeHref('/about') }]);
 
 	// Site-wide sign-in state from the root `+layout.server.ts` load (`page.data.user` — email or
 	// null). Signed in → the nav shows a dashboard link + Sign out; signed out → the "Sign in"

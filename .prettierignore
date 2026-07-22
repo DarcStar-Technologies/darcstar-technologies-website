@@ -22,5 +22,6 @@ bun.lockb
 /project.inlang/.meta.json
 /project.inlang/README.md
 
-# Per-developer local config (gitignored).
-/.claude/settings.local.json
+# Claude Code's local dir — settings, gh-user, and git worktrees (nothing here is tracked). Ignoring
+# the whole dir also stops a nested worktree's files from tripping `pnpm format` on stale content.
+/.claude/
