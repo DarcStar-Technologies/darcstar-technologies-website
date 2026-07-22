@@ -99,6 +99,18 @@ export function createSheenSync(plane: HTMLElement) {
 		schedule();
 	};
 
+	// While a modal is open, its glass (the Dialog.Content) is PORTALLED and mounts a tick — or, on
+	// a slow device/large bundle, more — after `open` flips. The 120ms `retry` below usually catches
+	// it, but a later mount would leave the sizeObserver unattached to the Content, so a subsequent
+	// error banner growing it wouldn't re-clip → the button ghost recurs (issue #109). This
+	// MutationObserver re-syncs whenever a node is added/removed under documentElement, so the
+	// sizeObserver attaches the instant the Content exists (however late, and wherever the dialog's
+	// Portal mounts it) and the error-banner insertion is caught directly too. It runs ONLY while a
+	// modal is open (see `refresh`) — the background is static then, so it fires rarely — and watches
+	// childList/subtree only, never attributes, so apply()'s clip-path write (a style attr on the
+	// plane) can't retrigger it.
+	const domObserver = new MutationObserver(sync);
+
 	sync();
 	window.addEventListener('scroll', schedule, { passive: true });
 	// Resize can change the set (breakpoints) or a responsive corner radius, so rebuild the cache
@@ -115,6 +127,12 @@ export function createSheenSync(plane: HTMLElement) {
 		 */
 		refresh(nextModalOpen: boolean) {
 			modalOpen = nextModalOpen;
+			// Watch the whole document (documentElement — agnostic to where the dialog's Portal mounts,
+			// rather than assuming <body>) for the dialog's possibly-late mount, but ONLY while a modal
+			// is up: a persistent site-wide subtree observer would re-sync on every unrelated DOM change.
+			if (nextModalOpen)
+				domObserver.observe(document.documentElement, { childList: true, subtree: true });
+			else domObserver.disconnect();
 			sync();
 			// The new glass mounts a tick after this call (the portalled dialog after `open`
 			// flips; the next route's panels after navigation), so re-observe + re-clip once more
@@ -126,6 +144,7 @@ export function createSheenSync(plane: HTMLElement) {
 			cancelAnimationFrame(raf);
 			clearTimeout(retry);
 			sizeObserver.disconnect();
+			domObserver.disconnect();
 			window.removeEventListener('scroll', schedule);
 			window.removeEventListener('resize', sync);
 		}
