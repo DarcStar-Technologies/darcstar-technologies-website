@@ -1,5 +1,7 @@
 import { fail, redirect, type Actions, type Cookies } from '@sveltejs/kit';
 import { getAuth } from '$lib/server/auth';
+import { logLoginAttempt } from '$lib/server/auth-audit';
+import { persistLoginAudit } from '$lib/server/login-audit-store';
 import type { PageServerLoad } from './$types';
 
 // Admin login (#69). Sign-in is a server form action, so it works WITHOUT JS — a native POST signs
@@ -82,7 +84,24 @@ export const actions: Actions = {
 			})
 		);
 
-		if (res.status === 429) return fail(429, { email, error: 'ratelimited' as const });
+		if (res.status === 429) {
+			// Rate-limit hits are the one sign-in outcome the Better Auth after-hook can't see: the
+			// router rejects them in onRequest, before endpoint dispatch, so record them here where we
+			// still hold the email + client IP. Every other outcome (bad creds / banned / success) flows
+			// through the hook (auth-audit.ts), so this is the only place 429s are audited — no dupes.
+			const record = {
+				email,
+				userId: null,
+				success: false,
+				reason: 'rate_limited',
+				status: 429,
+				ipAddress: clientIp,
+				userAgent: request.headers.get('user-agent') ?? null
+			};
+			logLoginAttempt(record);
+			persistLoginAudit(record);
+			return fail(429, { email, error: 'ratelimited' as const });
+		}
 		if (!res.ok) return fail(400, { email, error: 'invalid' as const });
 
 		// Outside any try: redirect() throws its own control-flow signal. The cookies set above ride

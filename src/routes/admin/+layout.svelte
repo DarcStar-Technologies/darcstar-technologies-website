@@ -12,8 +12,10 @@
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
-	// Locale-agnostic active-tab check (paths localize to /es/admin/...).
+	// Locale-agnostic active-tab checks (paths localize to /es/admin/...).
 	const onUsers = $derived(page.url.pathname.includes('/admin/users'));
+	const onAudit = $derived(page.url.pathname.includes('/admin/audit'));
+	const onSubmissions = $derived(!onUsers && !onAudit);
 
 	const tabBase =
 		'rounded-full px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500';
@@ -29,8 +31,13 @@
 		<nav class="flex items-center gap-1" aria-label={m.admin_nav_label()}>
 			<a
 				href={localizeHref('/admin')}
-				aria-current={onUsers ? undefined : 'page'}
-				class="{tabBase} {onUsers ? tabIdle : tabActive}">{m.admin_nav_submissions()}</a
+				aria-current={onSubmissions ? 'page' : undefined}
+				class="{tabBase} {onSubmissions ? tabActive : tabIdle}">{m.admin_nav_submissions()}</a
+			>
+			<a
+				href={localizeHref('/admin/audit')}
+				aria-current={onAudit ? 'page' : undefined}
+				class="{tabBase} {onAudit ? tabActive : tabIdle}">{m.admin_nav_audit()}</a
 			>
 			{#if data.isAdmin}
 				<a

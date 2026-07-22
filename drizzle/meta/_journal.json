@@ -15,6 +15,13 @@
       "when": 1784640744849,
       "tag": "0001_easy_paper_doll",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784738953508,
+      "tag": "0002_fair_chronomancer",
+      "breakpoints": true
     }
   ]
 }
