@@ -2,14 +2,25 @@
 // tests without pulling in $app/server or a DB client. auth.ts spreads these into the live
 // instance; auth.spec.ts feeds them to a throwaway in-memory instance to assert the behaviour.
 
-// #48: there's no sign-up UI, no rate limiting, and no route reads locals.user yet, so an open
-// POST /api/auth/sign-up/email would let anyone create accounts in the production DB. Keep
-// public sign-up closed until the gated area (#69) + rate limiting land — better-auth rejects a
-// disabled sign-up with 400 before any DB write. `enabled` stays true so sign-IN keeps working
-// for an admin provisioned out-of-band later.
+// #96 (PR 2): public sign-up is now OPEN — but scoped. The original #48 lockdown (`disableSignUp`)
+// closed it until the gated area + rate limiting existed; both do now, and two controls gate the
+// reopened surface: Cloudflare Turnstile on POST /sign-up/email (auth.ts `captcha` plugin) and
+// `requireEmailVerification` below. So a bot must pass a challenge AND control the mailbox before the
+// account is usable.
+//
+// `requireEmailVerification: true` blocks sign-IN for ANY `emailVerified: false` user (better-auth
+// throws 403 EMAIL_NOT_VERIFIED — see sign-in.mjs). Existing staff were all created unverified, so
+// they'd be locked out; the drizzle `0003_verify_existing_users` migration flips them to verified
+// before this deploys, and both roster-create (admin/users) and `pnpm admin:create` now set
+// `emailVerified: true` so new staff stay signed-in-able. See docs/auth.md.
+//
+// Behavioral only (neither key affects the generated schema — the `verification` table + the
+// `user.emailVerified` column already exist), so this stays shared with the CLI config without
+// mirroring a table.
 export const emailAndPassword = {
 	enabled: true,
-	disableSignUp: true
+	disableSignUp: false,
+	requireEmailVerification: true
 };
 
 // #69: the admin login (`/login`) makes sign-in publicly reachable for the first time, so
@@ -21,7 +32,14 @@ export const emailAndPassword = {
 // config (auth-cli.ts) — sharing this one export keeps the two from drifting, same as above.
 export const rateLimit = {
 	enabled: true,
-	storage: 'database' as const
+	storage: 'database' as const,
+	// #96 (PR 2): public sign-up is a new abuse surface. Tighten it past Better Auth's defaults —
+	// at most 3 attempts per hour per IP on POST /sign-up/email — so a Turnstile-solving bot still
+	// can't mint accounts in bulk. Behavioral (no schema impact); shared with the CLI config, which
+	// ignores limits at generation time.
+	customRules: {
+		'/sign-up/email': { window: 3600, max: 3 }
+	}
 };
 
 // Cookie-cache the session. Since #87 exposed sign-in state site-wide, a signed-in operator's every

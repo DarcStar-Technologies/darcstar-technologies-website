@@ -1,0 +1,13 @@
+-- #96 (PR 2): staff-lockout guard. Enabling `emailAndPassword.requireEmailVerification`
+-- (auth-options.ts) makes Better Auth reject sign-in for ANY user whose `email_verified` is 0.
+-- Every account that exists at this point was provisioned out-of-band — the bootstrap owner
+-- (scripts/create-admin.ts) and roster-created operators/users (admin/users) — i.e. admin-vouched,
+-- never a self-registrant, so all are legitimately verified. Flip them so the reopened
+-- requireEmailVerification doesn't lock the current roster out of /admin.
+--
+-- This is a DATA migration (a `--custom` empty migration, so `drizzle-kit generate` leaves it be —
+-- the schema is unchanged, the drift gate stays green). It runs on prod through the deploy-prod
+-- migrate-before-deploy step, so existing staff are verified BEFORE the new code goes live. Scoped
+-- to `email_verified = 0` so it's a no-op on re-run / on already-verified rows; new self-registered
+-- accounts (created AFTER this migration) start unverified and go through the email flow normally.
+UPDATE `user` SET `email_verified` = 1 WHERE `email_verified` = 0;

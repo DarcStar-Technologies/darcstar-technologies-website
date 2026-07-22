@@ -1,10 +1,11 @@
 // Provision the first admin operator (#69).
 //
-// Public sign-up is disabled in the running app (auth-options.ts, #48), so operator accounts can't
-// be created through it. This one-off script builds a throwaway Better Auth instance — the SAME
-// Turso DB and SAME drizzle schema as the app, but with sign-up ENABLED — and calls signUpEmail, so
-// the `user` + `account` rows are written with Better Auth's own password hashing (exactly what the
-// app's `signInEmail` later verifies). Importing the real schema (not a copy) keeps it from drifting.
+// Public sign-up exists (#96 PR2) but only ever mints an unverified, least-privileged `user`
+// account — it can't create the admin/owner. This one-off script is still how you bootstrap the
+// first admin: it builds a throwaway Better Auth instance — the SAME Turso DB and SAME drizzle schema
+// as the app — and calls signUpEmail, so the `user` + `account` rows are written with Better Auth's
+// own password hashing (exactly what the app's `signInEmail` later verifies), then promotes the row
+// to `admin` + `emailVerified` (see makeAdmin). Importing the real schema (not a copy) avoids drift.
 //
 // Since #94, prod and dev are SEPARATE Turso DBs (one per Worker). This reads DATABASE_* from
 // `.env`, which points at the DEV DB — so by default it provisions the DEV/preview operator, NOT
@@ -62,7 +63,8 @@ const auth = betterAuth({
 	baseURL: process.env.ORIGIN || 'http://localhost',
 	secret: process.env.BETTER_AUTH_SECRET || 'provisioning-script-secret-not-used-for-sessions',
 	database: drizzleAdapter(db, { provider: 'sqlite' }),
-	// Sign-up ENABLED here ONLY — the live app keeps it disabled (auth-options.ts, #48).
+	// Plain sign-up, no verification gate: the live app requires a verified email to sign IN
+	// (auth-options.ts), but this provisions the owner out-of-band, so makeAdmin marks it verified.
 	emailAndPassword: { enabled: true }
 });
 
@@ -76,9 +78,14 @@ function printAdminIdHint(id: string): void {
 
 // signUpEmail writes the `user`/`account` rows but this throwaway instance has no admin plugin, so
 // the row lands with a null role. Set `admin` directly (this script provisions the super-user owner,
-// #95) so the DB role is truthful, not just the ADMIN_USER_IDS allowlist.
+// #95) so the DB role is truthful, not just the ADMIN_USER_IDS allowlist. Also mark the account
+// `emailVerified` (#96 PR2): the live app requires a verified email to sign in, and this owner is
+// provisioned out-of-band (no inbox round-trip), so verify it here or it couldn't sign in.
 async function makeAdmin(id: string): Promise<void> {
-	await db.update(schema.user).set({ role: 'admin' }).where(eq(schema.user.id, id));
+	await db
+		.update(schema.user)
+		.set({ role: 'admin', emailVerified: true })
+		.where(eq(schema.user.id, id));
 }
 
 // Set (or reset) the account's email/password credential to `plain`. Better Auth stores the

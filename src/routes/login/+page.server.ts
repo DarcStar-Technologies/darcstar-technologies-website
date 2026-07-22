@@ -102,7 +102,20 @@ export const actions: Actions = {
 			persistLoginAudit(record);
 			return fail(429, { email, error: 'ratelimited' as const });
 		}
-		if (!res.ok) return fail(400, { email, error: 'invalid' as const });
+		if (!res.ok) {
+			// A 403 EMAIL_NOT_VERIFIED (#96 PR2) is the ONE non-success we surface distinctly: it fires
+			// only AFTER the password check passes (sign-in.mjs), so revealing it leaks nothing to a
+			// password-less enumerator — a wrong password / unknown account still returns the generic
+			// 'invalid' below. `sendOnSignIn` (auth.ts) has just re-mailed a fresh verification link, so
+			// the message points the user at their inbox. Other 403s (e.g. banned) stay generic.
+			if (res.status === 403) {
+				const body = (await res.json().catch(() => null)) as { code?: string } | null;
+				if (body?.code === 'EMAIL_NOT_VERIFIED') {
+					return fail(403, { email, error: 'unverified' as const });
+				}
+			}
+			return fail(400, { email, error: 'invalid' as const });
+		}
 
 		// Outside any try: redirect() throws its own control-flow signal. The cookies set above ride
 		// along on the 303 response.

@@ -56,7 +56,10 @@ export const actions: Actions = {
 		let created;
 		try {
 			created = await auth.api.createUser({
-				body: { email, name, password, role: apiRole(role) },
+				// `emailVerified: true` (#96 PR2): roster-created accounts are admin-vouched, so mark them
+				// verified — otherwise `requireEmailVerification` (auth-options.ts) would 403 them at
+				// sign-in. `data` carries extra user fields straight onto the row (better-auth admin plugin).
+				body: { email, name, password, role: apiRole(role), data: { emailVerified: true } },
 				headers: request.headers
 			});
 		} catch (err) {
