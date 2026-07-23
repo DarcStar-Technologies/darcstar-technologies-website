@@ -14,6 +14,7 @@
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import ContactSuccess from '$lib/components/ContactSuccess.svelte';
+	import GlassSelect from '$lib/components/GlassSelect.svelte';
 	import { fieldClass } from '$lib/components/ContactFields.svelte';
 	import { joinWaitlist } from '$lib/waitlist.remote';
 	import { WAITLIST_ROLES } from '$lib/waitlist-roles';
@@ -85,27 +86,6 @@
 	</label>
 {/snippet}
 
-<!-- One optional <select>, styled to match the glass fields (the CSS chevron affordance in
-     layout.css renders without JS). Empty first option = "not selected". -->
-{#snippet selectField(
-	labelText: string,
-	remoteField: typeof joinWaitlist.fields.role,
-	options: { value: string; label: string }[]
-)}
-	<label class="block">
-		<span class="mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-body">
-			{labelText}
-			<span class="font-normal text-faint">{m.waitlist_optional()}</span>
-		</span>
-		<select {...remoteField.as('select')} class={fieldClass}>
-			<option value="">{m.waitlist_select_placeholder()}</option>
-			{#each options as opt (opt.value)}
-				<option value={opt.value}>{opt.label}</option>
-			{/each}
-		</select>
-	</label>
-{/snippet}
-
 <section class="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:py-16">
 	<div class="glass-card mx-auto w-full max-w-lg p-6 text-left sm:p-8">
 		{#if joinWaitlist.result?.success}
@@ -174,16 +154,22 @@
 							autocomplete: 'organization',
 							optional: true
 						})}
-						{@render selectField(
-							m.waitlist_field_role_label(),
-							joinWaitlist.fields.role,
-							roleOptions
-						)}
-						{@render selectField(
-							m.waitlist_field_company_size_label(),
-							joinWaitlist.fields.companySize,
-							sizeOptions
-						)}
+						<GlassSelect
+							id="waitlist-role"
+							label={m.waitlist_field_role_label()}
+							badge={m.waitlist_optional()}
+							placeholder={m.waitlist_select_placeholder()}
+							options={roleOptions}
+							field={joinWaitlist.fields.role}
+						/>
+						<GlassSelect
+							id="waitlist-company-size"
+							label={m.waitlist_field_company_size_label()}
+							badge={m.waitlist_optional()}
+							placeholder={m.waitlist_select_placeholder()}
+							options={sizeOptions}
+							field={joinWaitlist.fields.companySize}
+						/>
 						{@render textField(m.waitlist_field_interest_label(), joinWaitlist.fields.interest, {
 							placeholder: m.waitlist_field_interest_placeholder(),
 							optional: true,
@@ -194,11 +180,14 @@
 								<option value={suggestion}></option>
 							{/each}
 						</datalist>
-						{@render selectField(
-							m.waitlist_field_hear_about_label(),
-							joinWaitlist.fields.hearAbout,
-							hearOptions
-						)}
+						<GlassSelect
+							id="waitlist-hear-about"
+							label={m.waitlist_field_hear_about_label()}
+							badge={m.waitlist_optional()}
+							placeholder={m.waitlist_select_placeholder()}
+							options={hearOptions}
+							field={joinWaitlist.fields.hearAbout}
+						/>
 						{@render textField(m.waitlist_field_phone_label(), joinWaitlist.fields.phone, {
 							placeholder: m.waitlist_field_phone_placeholder(),
 							autocomplete: 'tel',
