@@ -30,5 +30,12 @@
 				href={localizeHref('/signup')}>{m.login_need_account_link()}</a
 			>
 		</p>
+		<p class="mt-3 text-sm text-body">
+			{m.login_forgot_prompt()}
+			<a
+				class="font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline"
+				href={localizeHref('/forgot-password')}>{m.login_forgot_link()}</a
+			>
+		</p>
 	</div>
 </section>

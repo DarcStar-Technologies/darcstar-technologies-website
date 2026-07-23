@@ -39,5 +39,16 @@
 				onclick={() => loginDialog.close()}>{m.login_need_account_link()}</a
 			>
 		</p>
+		<!-- Forgot-password prompt — same chrome the /login page owns; the dialog needs its own copy
+		     (LoginForm carries only the fields). Close the dialog on click so it can't linger over
+		     /forgot-password after client-side navigation. -->
+		<p class="mt-3 text-sm text-body">
+			{m.login_forgot_prompt()}
+			<a
+				class="font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline"
+				href={localizeHref('/forgot-password')}
+				onclick={() => loginDialog.close()}>{m.login_forgot_link()}</a
+			>
+		</p>
 	{/if}
 </GlassDialog>

@@ -169,3 +169,91 @@ describe('auth public sign-up + email verification (#96 PR2)', () => {
 		expect(sent).toEqual([]); // ...but nothing re-sent to an already-verified address
 	});
 });
+
+// A throwaway instance wired with a RECORDING `sendResetPassword` — this both ENABLES the
+// request-password-reset endpoint (better-auth 400s "reset password isn't enabled" without the
+// callback) and lets a test assert which addresses actually triggered a send, and capture the reset
+// token. `requireEmailVerification` is left OFF here so a test can sign in to prove the NEW password
+// works — the reset flow itself doesn't depend on verification.
+function buildAuthWithResetSink(sink: { email: string; token: string }[]) {
+	return betterAuth({
+		baseURL: 'http://localhost',
+		secret: 'test-secret-value-at-least-32-characters-long',
+		database: memoryAdapter({ user: [], session: [], account: [], verification: [] }),
+		emailAndPassword: {
+			enabled: true,
+			sendResetPassword: async ({ user, token }) => {
+				sink.push({ email: user.email, token });
+			}
+		}
+	});
+}
+
+describe('auth password reset (self-service)', () => {
+	// Anti-enumeration: a reset request must be indistinguishable whether or not the address has an
+	// account (better-auth simulates the token path for unknown emails — password.mjs). This pins the
+	// identical response AND that a mail fires only for the real account, so the /forgot-password form
+	// (which always shows a generic "check your email") can't be used to enumerate registered emails.
+	test('request: identical response for absent vs existing, mails only the real account', async () => {
+		const sent: { email: string; token: string }[] = [];
+		const auth = buildAuthWithResetSink(sent);
+		await auth.api.signUpEmail({
+			body: { name: 'u', email: 'reset@example.com', password: PASSWORD }
+		});
+		sent.length = 0;
+
+		const absent = await auth.api.requestPasswordReset({ body: { email: 'nobody@example.com' } });
+		const existing = await auth.api.requestPasswordReset({ body: { email: 'reset@example.com' } });
+		expect(absent.status).toBe(true);
+		expect(existing.status).toBe(true);
+		expect(sent.map((e) => e.email)).toEqual(['reset@example.com']);
+	});
+
+	test('reset: a valid token sets the new password (old one stops working); a bad token is rejected', async () => {
+		const sent: { email: string; token: string }[] = [];
+		const auth = buildAuthWithResetSink(sent);
+		await auth.api.signUpEmail({
+			body: { name: 'u', email: 'chpw@example.com', password: PASSWORD }
+		});
+		await auth.api.requestPasswordReset({ body: { email: 'chpw@example.com' } });
+		const token = sent.at(-1)?.token;
+		expect(token).toBeTruthy();
+
+		const NEW_PASSWORD = 'a-brand-new-password';
+		const res = await auth.api.resetPassword({
+			body: { newPassword: NEW_PASSWORD, token: token as string }
+		});
+		expect(res.status).toBe(true);
+
+		// The new password now signs in; the old one no longer does.
+		const signIn = await auth.api.signInEmail({
+			body: { email: 'chpw@example.com', password: NEW_PASSWORD }
+		});
+		expect(signIn.user.email).toBe('chpw@example.com');
+		await expect(
+			auth.api.signInEmail({ body: { email: 'chpw@example.com', password: PASSWORD } })
+		).rejects.toThrow();
+
+		// The now-consumed token can't be reused, and a bogus token is rejected too.
+		await expect(
+			auth.api.resetPassword({ body: { newPassword: NEW_PASSWORD, token: token as string } })
+		).rejects.toThrow(/token/i);
+		await expect(
+			auth.api.resetPassword({ body: { newPassword: NEW_PASSWORD, token: 'not-a-real-token' } })
+		).rejects.toThrow(/token/i);
+	});
+
+	test('control: request-password-reset requires the sendResetPassword callback (our config wires it)', async () => {
+		// Without the callback the endpoint is disabled — proving our real config (auth.ts) is what
+		// enables reset, not an incidental default.
+		const auth = betterAuth({
+			baseURL: 'http://localhost',
+			secret: 'test-secret-value-at-least-32-characters-long',
+			database: memoryAdapter({ user: [], session: [], account: [], verification: [] }),
+			emailAndPassword: { enabled: true }
+		});
+		await expect(
+			auth.api.requestPasswordReset({ body: { email: 'x@example.com' } })
+		).rejects.toThrow();
+	});
+});

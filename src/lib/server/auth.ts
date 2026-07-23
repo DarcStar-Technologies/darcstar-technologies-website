@@ -10,6 +10,7 @@ import { createLoginAuditHook } from '$lib/server/auth-audit';
 import { persistLoginAudit } from '$lib/server/login-audit-store';
 import { linkSubmissionsToUser } from '$lib/server/contact-ownership';
 import { sendVerificationEmail as sendVerificationMessage } from '$lib/server/verification-email';
+import { sendPasswordResetEmail as sendPasswordResetMessage } from '$lib/server/password-reset-email';
 import { baseLocale } from '$lib/paraglide/runtime';
 import { readEnv } from '$lib/server/env';
 
@@ -53,7 +54,31 @@ function createAuth() {
 			'*-darcstar-technologies-website-preview.darcstar.workers.dev'
 		],
 		database: drizzleAdapter(getDb(), { provider: 'sqlite' }),
-		emailAndPassword, // #96 PR2: public sign-up re-opened behind verification+captcha — see auth-options.ts
+		// #96 PR2: public sign-up re-opened behind verification+captcha — base config in auth-options.ts.
+		// Augmented here with the env-bound password-reset sender (needs the Resend key), like
+		// emailVerification below. `revokeSessionsOnPasswordReset` signs out all OTHER sessions on a
+		// reset — recovering a compromised account must not leave an attacker signed in.
+		emailAndPassword: {
+			...emailAndPassword,
+			resetPasswordTokenExpiresIn: 3600, // 1 hour — matches the verification token + the email copy
+			revokeSessionsOnPasswordReset: true,
+			sendResetPassword: async ({ user, url }) => {
+				if (!resendKey) {
+					// Graceful dev skip (no Resend), like the verification email: the token is still minted +
+					// persisted, so log the reset link for a local dev to click. Never runs in prod (the key
+					// is always set), so the token URL isn't logged there.
+					console.warn(
+						`[auth] password-reset email skipped (no RESEND_API_KEY) — reset link: ${url}`
+					);
+					return;
+				}
+				await sendPasswordResetMessage(
+					resendKey,
+					{ to: user.email, name: user.name, url },
+					baseLocale
+				);
+			}
+		},
 		rateLimit, // #69: DB-backed limiter on the now-public auth endpoints — see auth-options.ts
 		session, // cookie-cache the session so signed-in page views skip the DB — see auth-options.ts
 		// #96 (PR 2): verify the email before an account is usable (requireEmailVerification lives in
