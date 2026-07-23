@@ -1,0 +1,7 @@
+# Security headers for responses served by the Workers static-assets layer (DAR-45).
+# Assets (/_app/*, robots.txt, …) are served BEFORE the worker runs, so they never pass
+# through hooks.server.ts — this file is their only header path. Keep in sync with
+# handleSecurityHeaders (src/hooks.server.ts). See docs/security-headers.md.
+/*
+  X-Content-Type-Options: nosniff
+  Strict-Transport-Security: max-age=31536000; includeSubDomains

@@ -8,6 +8,29 @@ import { deLocalizeUrl, getTextDirection } from '$lib/paraglide/runtime';
 import { paraglideMiddleware } from '$lib/paraglide/server';
 import { preloadFilter } from '$lib/server/preload';
 
+// Security response headers (DAR-45) on every worker response — SSR'd pages, the Better Auth API,
+// and remote-function endpoints alike. The Content-Security-Policy is NOT set here: it comes from
+// SvelteKit's `csp` config (vite.config.ts), which has to own it so the inline hydration bootstrap
+// gets its per-response nonce. Static assets (/_app/*, robots.txt) never reach the worker — the
+// Workers assets layer serves them and applies the root `_headers` file instead; keep them in sync.
+// See docs/security-headers.md.
+const handleSecurityHeaders: Handle = async ({ event, resolve }) => {
+	const response = await resolve(event);
+	const { headers } = response;
+	// Browsers ignore HSTS over plain HTTP, so localhost dev/preview is unaffected.
+	headers.set('strict-transport-security', 'max-age=31536000; includeSubDomains');
+	headers.set('x-content-type-options', 'nosniff');
+	headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+	// Deny the powerful-feature APIs nothing on the site uses (Turnstile's iframe needs none of them).
+	headers.set(
+		'permissions-policy',
+		'accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=()'
+	);
+	// Legacy fallback for the CSP frame-ancestors 'none' directive (pre-CSP2 browsers).
+	headers.set('x-frame-options', 'DENY');
+	return response;
+};
+
 const handleParaglide: Handle = ({ event, resolve }) =>
 	paraglideMiddleware(event.request, ({ request, locale }) => {
 		event.request = request;
@@ -75,4 +98,4 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
 	return resolve(event);
 };
 
-export const handle: Handle = sequence(handleParaglide, handleBetterAuth);
+export const handle: Handle = sequence(handleSecurityHeaders, handleParaglide, handleBetterAuth);
