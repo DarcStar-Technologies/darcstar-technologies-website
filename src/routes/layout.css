@@ -412,7 +412,13 @@ select.glass-field {
 	background-clip: text;
 	-webkit-text-fill-color: transparent;
 	color: transparent;
-	animation: charge-flow 7.35s linear infinite;
+	/* steps(), not linear (DAR-50): gradient text can only animate by moving its BACKGROUND —
+	   a paint-side property that can never ride the compositor like transform/opacity — so a
+	   linear timing repainted every span ("Technologies" in the header, on every page) at
+	   display refresh rate, forever. Stepping the 120px cycle 49× repaints ~7×/s instead
+	   (~90% less paint work); each 2.45px hop is a sliver of the 40px stop blend, so the
+	   shimmer still reads as continuous drift. */
+	animation: charge-flow 7.35s steps(49) infinite;
 }
 @keyframes charge-flow {
 	to {

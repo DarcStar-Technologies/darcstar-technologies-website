@@ -6,6 +6,7 @@ import { getSessionCookie } from 'better-auth/cookies';
 import type { Handle } from '@sveltejs/kit';
 import { deLocalizeUrl, getTextDirection } from '$lib/paraglide/runtime';
 import { paraglideMiddleware } from '$lib/paraglide/server';
+import { preloadFilter } from '$lib/server/preload';
 
 const handleParaglide: Handle = ({ event, resolve }) =>
 	paraglideMiddleware(event.request, ({ request, locale }) => {
@@ -15,7 +16,12 @@ const handleParaglide: Handle = ({ event, resolve }) =>
 			transformPageChunk: ({ html }) =>
 				html
 					.replace('%paraglide.lang%', locale)
-					.replace('%paraglide.dir%', getTextDirection(locale))
+					.replace('%paraglide.dir%', getTextDirection(locale)),
+			// Preload the three latin brand faces alongside SvelteKit's default css/js (DAR-50).
+			// This handle is the ONLY place a preload filter takes effect: sequence() is
+			// first-option-wins for resolve options. Filter + rationale live in
+			// $lib/server/preload.ts; the latin-only boundary is pinned by its spec.
+			preload: preloadFilter
 		});
 	});
 
