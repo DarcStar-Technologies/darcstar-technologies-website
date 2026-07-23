@@ -324,6 +324,7 @@
 	"account_page_description": "Manage your DarcStar Technologies account.",
 	"account_heading": "Your account",
 	"account_lead": "Manage your profile and review the messages you've sent us.",
+	"account_welcome_verified": "Your email is verified — welcome to DarcStar Technologies.",
 	"account_section_profile": "Profile",
 	"account_email_locked": "Signed in as {email}. Need to change your email? Contact us and we'll update it.",
 	"account_field_name_label": "Display name",

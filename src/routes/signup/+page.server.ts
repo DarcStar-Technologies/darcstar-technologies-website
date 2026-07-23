@@ -80,7 +80,8 @@ export const actions: Actions = {
 				method: 'POST',
 				headers,
 				// callbackURL is where /verify-email lands the freshly-verified (auto-signed-in) user.
-				body: JSON.stringify({ name, email, password, callbackURL: '/account' })
+				// `?welcome=1` triggers the one-time "email verified" banner on /account (#106).
+				body: JSON.stringify({ name, email, password, callbackURL: '/account?welcome=1' })
 			})
 		);
 
@@ -122,8 +123,9 @@ export const actions: Actions = {
 			new Request(new URL('/api/auth/send-verification-email', url.origin), {
 				method: 'POST',
 				headers: clientIpHeaders(getClientAddress),
-				// Match the sign-up callback so the fresh link also lands the verified user on /account.
-				body: JSON.stringify({ email, callbackURL: '/account' })
+				// Match the sign-up callback so the fresh link also lands the verified user on
+				// /account with the same one-time welcome banner (#106).
+				body: JSON.stringify({ email, callbackURL: '/account?welcome=1' })
 			})
 		);
 

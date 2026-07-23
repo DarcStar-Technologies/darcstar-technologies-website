@@ -161,8 +161,9 @@ export const actions: Actions = {
 			new Request(new URL('/api/auth/send-verification-email', url.origin), {
 				method: 'POST',
 				headers,
-				// callbackURL lands the freshly-verified (auto-signed-in) user on their portal.
-				body: JSON.stringify({ email, callbackURL: '/account' })
+				// callbackURL lands the freshly-verified (auto-signed-in) user on their portal, with
+				// the one-time "email verified" welcome banner (#106).
+				body: JSON.stringify({ email, callbackURL: '/account?welcome=1' })
 			})
 		);
 
