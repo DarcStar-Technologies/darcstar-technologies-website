@@ -53,7 +53,10 @@
 	// which is what social scrapers hit and what OG/canonical URLs must be.
 	const origin = $derived(page.url.origin);
 	const canonical = $derived(origin + (path ?? page.url.pathname));
-	const imageUrl = $derived(origin + image);
+	// Root-relative images (the default fingerprinted brand card) absolutize against the serving
+	// origin; an already-absolute URL (e.g. a Sanity CDN card for a /news or /research detail page)
+	// is used verbatim.
+	const imageUrl = $derived(/^https?:\/\//i.test(image) ? image : origin + image);
 	const locale = $derived(getLocale());
 	const ogLocale = $derived(OG_LOCALE[locale] ?? 'en_US');
 	// Only advertise alternates that are genuinely translated (none but the base

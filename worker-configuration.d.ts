@@ -13,6 +13,7 @@ interface __BaseEnv_Env {
 	ADMIN_USER_IDS: string;
 	TURNSTILE_SITE_KEY: string;
 	TURNSTILE_SECRET_KEY: string;
+	SANITY_VIEWER_TOKEN: string;
 }
 declare namespace Cloudflare {
 	interface PreviewEnv {
@@ -27,6 +28,7 @@ declare namespace Cloudflare {
 		ADMIN_USER_IDS: string;
 		TURNSTILE_SITE_KEY: string;
 		TURNSTILE_SECRET_KEY: string;
+		SANITY_VIEWER_TOKEN: string;
 	}
 	interface Env extends __BaseEnv_Env {}
 }
@@ -35,7 +37,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "DATABASE_URL" | "DATABASE_AUTH_TOKEN" | "ORIGIN" | "BETTER_AUTH_SECRET" | "GITHUB_CLIENT_ID" | "GITHUB_CLIENT_SECRET" | "RESEND_API_KEY" | "ADMIN_USER_IDS" | "TURNSTILE_SITE_KEY" | "TURNSTILE_SECRET_KEY">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "DATABASE_URL" | "DATABASE_AUTH_TOKEN" | "ORIGIN" | "BETTER_AUTH_SECRET" | "GITHUB_CLIENT_ID" | "GITHUB_CLIENT_SECRET" | "RESEND_API_KEY" | "ADMIN_USER_IDS" | "TURNSTILE_SITE_KEY" | "TURNSTILE_SECRET_KEY" | "SANITY_VIEWER_TOKEN">> {}
 }
 
 // Begin runtime types
