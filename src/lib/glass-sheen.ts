@@ -103,13 +103,45 @@ export function createSheenSync(plane: HTMLElement) {
 	// a slow device/large bundle, more — after `open` flips. The 120ms `retry` below usually catches
 	// it, but a later mount would leave the sizeObserver unattached to the Content, so a subsequent
 	// error banner growing it wouldn't re-clip → the button ghost recurs (issue #109). This
-	// MutationObserver re-syncs whenever a node is added/removed under documentElement, so the
-	// sizeObserver attaches the instant the Content exists (however late, and wherever the dialog's
-	// Portal mounts it) and the error-banner insertion is caught directly too. It runs ONLY while a
-	// modal is open (see `refresh`) — the background is static then, so it fires rarely — and watches
-	// childList/subtree only, never attributes, so apply()'s clip-path write (a style attr on the
-	// plane) can't retrigger it.
-	const domObserver = new MutationObserver(sync);
+	// MutationObserver re-syncs when the dialog's own DOM changes, so the sizeObserver attaches the
+	// instant the Content exists (however late, and wherever the dialog's Portal mounts it) and the
+	// error-banner insertion is caught directly too. It runs ONLY while a modal is open (see
+	// `refresh`) and watches childList/subtree only, never attributes, so apply()'s clip-path write
+	// (a style attr on the plane) can't retrigger it.
+	//
+	// It observes documentElement (agnostic to where the Portal mounts) but FILTERS to mutations that
+	// add/remove the dialog itself or a node inside it: `sync` → `reobserve()` is a whole-document
+	// querySelectorAll + per-element getComputedStyle, so letting unrelated background churn (a future
+	// live-updating list, or BackToTop toggling if background scroll isn't locked) re-run it on every
+	// mutation for the modal's lifetime would undo the per-frame caching win from #108 (issue #117).
+	// Background mutations don't touch `[data-scope="dialog"]` glass, so `touchesDialog` skips them;
+	// only the dialog's mount and its own inner insertions (the error banner) re-sync.
+	//
+	// The check is two-tier so background churn stays cheap: `closest` (an ancestor walk) catches the
+	// dialog itself and anything nested in it — the error banner — and is all that's needed once the
+	// dialog's glass is mounted. The `querySelector` subtree scan is only there to spot the Content
+	// under a non-`data-scope` Portal wrapper AT MOUNT (MutationObserver reports the added subtree's
+	// root, not its descendants). It's gated on `clipped.length === 0` (no dialog glass clipped yet →
+	// still mounting; `clipped` holds dialog glass ONLY while a modal is open), so after the Content is
+	// mounted + clipped, background subtrees pay only the cheap `closest`. Keying the gate on `clipped`
+	// rather than a first-match flag keeps the scan active if a non-glass part (the backdrop) happens
+	// to mount in an earlier batch than the Content.
+	const touchesDialog = (nodes: NodeList) => {
+		for (let i = 0; i < nodes.length; i++) {
+			const node = nodes[i];
+			if (!(node instanceof Element)) continue; // text nodes have neither closest nor querySelector
+			if (node.closest(DIALOG)) return true; // the dialog itself, or the error banner nested in it
+			if (clipped.length === 0 && node.querySelector(DIALOG)) return true; // pre-mount: Content under a wrapper
+		}
+		return false;
+	};
+	const domObserver = new MutationObserver((records) => {
+		for (const rec of records)
+			if (touchesDialog(rec.addedNodes) || touchesDialog(rec.removedNodes)) {
+				sync();
+				return; // one reobserve per batch is enough — it rebuilds the whole clip set
+			}
+	});
 
 	sync();
 	window.addEventListener('scroll', schedule, { passive: true });
