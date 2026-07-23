@@ -13,13 +13,12 @@
 	<figure class="not-prose my-6 overflow-hidden rounded-xl border border-hairline">
 		{#if value.filename}
 			<figcaption
-				class="border-b border-hairline bg-black/20 px-4 py-2 font-mono text-xs text-muted"
+				class="border-b border-hairline bg-white/5 px-4 py-2 font-mono text-xs text-muted"
 			>
 				{value.filename}
 			</figcaption>
 		{/if}
-		<pre class="overflow-x-auto bg-black/20 p-4 font-mono text-sm text-body"><code
-				>{value.code}</code
+		<pre class="overflow-x-auto bg-white/5 p-4 font-mono text-sm text-body"><code>{value.code}</code
 			></pre>
 	</figure>
 {/if}

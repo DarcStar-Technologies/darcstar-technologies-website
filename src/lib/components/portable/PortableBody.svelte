@@ -18,8 +18,10 @@
 </script>
 
 {#if value && value.length > 0}
+	<!-- Tailwind Typography, remapped onto the site's design tokens (prose-invert's default greys
+	     don't match text-body/text-white/border-hairline). -->
 	<div
-		class="prose prose-invert max-w-none prose-headings:font-medium prose-headings:tracking-tight prose-headings:text-white prose-a:text-primary-500 prose-strong:text-white"
+		class="prose prose-invert max-w-none prose-headings:font-medium prose-headings:tracking-tight prose-headings:text-white prose-p:text-body prose-li:text-body prose-strong:text-white prose-a:text-primary-500 prose-code:font-mono prose-code:text-white prose-blockquote:border-hairline prose-blockquote:text-emphasis prose-hr:border-hairline"
 	>
 		<PortableText value={value as unknown as InputValue} {components} onMissingComponent={false} />
 	</div>

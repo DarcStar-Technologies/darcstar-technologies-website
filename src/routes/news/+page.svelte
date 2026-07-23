@@ -39,7 +39,7 @@
 										width={448}
 										height={280}
 										alt={post.coverImage.alt ?? ''}
-										class="h-44 w-full object-cover transition-transform duration-300 group-hover:scale-105 sm:h-full"
+										class="h-44 w-full object-cover sm:h-full"
 									/>
 								</div>
 							{/if}
