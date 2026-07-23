@@ -20,26 +20,30 @@
 		// mobile — and the first resize()+draw (viewport-sized gradient fills + starfield)
 		// is the heaviest one-off canvas work. One rAF splits it into its own short task.
 		// Nothing visible changes: the canvas is blank either way until this runs.
+		//
+		// `reduce` MUST be read here, synchronously — not inside the rAF callback or init.
+		// Attachments run inside an effect, so this read registers the media query as a
+		// reactive dependency: an OS reduce-motion toggle re-runs the attachment (cleanup,
+		// then a fresh init in the new mode). A read inside the rAF callback is untracked
+		// and would freeze the preference at its mount-time value until a full remount.
+		const reduce = prefersReducedMotion.current;
 		let cleanup: (() => void) | undefined;
-		let initRaf = requestAnimationFrame(() => {
-			initRaf = 0;
-			cleanup = init(canvas);
+		const raf = requestAnimationFrame(() => {
+			cleanup = init(canvas, reduce);
 		});
 		return () => {
-			cancelAnimationFrame(initRaf);
+			cancelAnimationFrame(raf);
 			cleanup?.();
 		};
 	}
 
-	function init(canvas: HTMLCanvasElement) {
+	function init(canvas: HTMLCanvasElement, reduce: boolean) {
 		const ctx = canvas.getContext('2d');
 		if (!ctx) return;
 		// Give `c` a non-null DECLARED type: the guard above only narrows within this
 		// scope, and the nested draw/resize/loop function declarations would otherwise
 		// widen it back to `| null`. Binding to a typed const fixes that once.
 		const c: CanvasRenderingContext2D = ctx;
-
-		const reduce = prefersReducedMotion.current;
 
 		// Palette = the darcstar brand triad, read straight from the theme tokens so
 		// the canvas never duplicates the hexes (single source of truth:
@@ -133,6 +137,10 @@
 		function renderBackground() {
 			bg.width = canvas.width;
 			bg.height = canvas.height;
+			// staticFrame derives from bg — mark it stale BEFORE the context guard, so even a
+			// degraded (!bgc) resize re-arms the rebuild and the frozen frame can't keep stale
+			// dimensions. renderStaticFrame clears it unconditionally for the same reason.
+			staticFrameDirty = true;
 			if (!bgc) return;
 
 			// bg = black + the three nebula glows.
@@ -155,15 +163,18 @@
 			// Vignette gradient tracks the helix centre; only a resize moves it. Painted
 			// on top of the helix in draw().
 			vignette = makeVignette(c);
-
-			// staticFrame derives from the bg just rebuilt — mark it stale and let the
-			// scrolled-away path rebuild it on demand (see the staticFrame comment above).
-			staticFrameDirty = true;
 		}
 
 		// staticFrame = bg + frozen (steady) stars + vignette — the helix-less backdrop
 		// the scrolled-away path restores the helix strip from each frame.
 		function renderStaticFrame() {
+			// Clear the flag UNCONDITIONALLY, before the context guard: a canvas whose 2d
+			// context failed never gets one later, so bailing with the flag still set would
+			// re-run this — including the width/height assignment, a full backing-store
+			// realloc — on every drawHelixOnly frame, on exactly the memory-strained devices
+			// where sfc is most likely to be null. Cleared-but-blank degrades to the old
+			// uniform-blank output.
+			staticFrameDirty = false;
 			staticFrame.width = canvas.width;
 			staticFrame.height = canvas.height;
 			if (!sfc) return;
@@ -173,7 +184,6 @@
 			drawStars(sfc, (st) => st.base);
 			sfc.fillStyle = makeVignette(sfc);
 			sfc.fillRect(0, 0, w, h);
-			staticFrameDirty = false;
 		}
 
 		function resize() {
@@ -328,6 +338,10 @@
 		// viewport, and only panels overlapping the band re-blur.
 		function drawHelixOnly(t: number) {
 			lastT = t;
+			// Lazy rebuild costs ~one extra draw()'s worth on this single tick — inside the
+			// 24fps frame budget. If a low-end-device profile ever shows a hitch here, build
+			// from the IntersectionObserver callback that sets freezePending instead, so the
+			// compose and the freeze blit land on separate ticks.
 			if (staticFrameDirty) renderStaticFrame();
 			if (freezePending) {
 				// First frame after leaving the hero: lay down one clean frozen full frame
@@ -386,7 +400,13 @@
 		// turning, but frozen stars + a strip-only repaint stop the glass panels from
 		// re-blurring the whole canvas every frame.
 		let heroVisible = true;
-		let modalOpen = false;
+		// Seed from the dialog's CURRENT state, not false: the $effect bridge below fired
+		// before this deferred init assigned setModalOpen (a plain let — assigning it can't
+		// re-fire the effect), so a backdrop mounting under an already-open modal (client-side
+		// nav with the dialog up; nothing closes it on navigate) would otherwise start
+		// unpaused. The read is untracked here (we're in a rAF callback) — deliberately: init
+		// must not become reactive; the $effect pushes every later toggle via setModalOpen.
+		let modalOpen = contactDialog.open;
 		function runnable() {
 			return !reduce && !document.hidden && !modalOpen;
 		}
