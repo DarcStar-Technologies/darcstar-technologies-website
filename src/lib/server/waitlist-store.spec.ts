@@ -69,6 +69,8 @@ describe('upsertWaitlist', () => {
 		expect(r.isNew).toBe(false);
 		const all = await rows();
 		expect(all).toHaveLength(1);
+		expect(all[0].email).toBe('ada@example.com'); // stored lowercase
+		expect(all[0].company).toBe('Acme'); // the mixed-case resubmit still ENRICHED the row
 	});
 
 	it('enriches: fills newly-provided fields, never erases existing ones', async () => {

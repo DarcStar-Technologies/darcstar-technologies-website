@@ -27,6 +27,11 @@ function keepExisting(next: string | null, column: string) {
  * conflict (the unique index is on `lower(email)`), so two concurrent first-signups can't both be
  * treated as new. `onConflictDoNothing()` takes no target — `waitlist` has a single unique
  * constraint, and the functional lower(email) index wouldn't match an `(email)` target anyway.
+ *
+ * Email is lowercased HERE, not just in the validator: the conflict check matches case-insensitively
+ * (functional index), so the enrich UPDATE must key the same way or it would detect the conflict yet
+ * silently update zero rows. Normalizing at the store boundary keeps both halves consistent and makes
+ * the store self-defending regardless of how the caller normalized (the point of the lower(email) index).
  */
 export async function upsertWaitlist(
 	db: Db,
@@ -34,10 +39,11 @@ export async function upsertWaitlist(
 	ipHash: string,
 	userAgent: string | null
 ): Promise<{ isNew: boolean }> {
+	const email = sub.email.toLowerCase();
 	const inserted = await db
 		.insert(waitlist)
 		.values({
-			email: sub.email,
+			email,
 			name: sub.name,
 			company: sub.company,
 			role: sub.role,
@@ -53,7 +59,8 @@ export async function upsertWaitlist(
 
 	if (inserted.length > 0) return { isNew: true };
 
-	// Already on the list — enrich in place, bump updated_at (same clock as the DB default).
+	// Already on the list — enrich in place, bump updated_at (same clock as the DB default). Keyed on
+	// the same normalized email as the insert, so the row the conflict matched is the row we update.
 	await db
 		.update(waitlist)
 		.set({
@@ -66,7 +73,7 @@ export async function upsertWaitlist(
 			phone: keepExisting(sub.phone, 'phone'),
 			updatedAt: sql`(cast(unixepoch('subsecond') * 1000 as integer))`
 		})
-		.where(eq(waitlist.email, sub.email));
+		.where(eq(waitlist.email, email));
 
 	return { isNew: false };
 }
