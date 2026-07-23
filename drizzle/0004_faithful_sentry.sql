@@ -14,6 +14,7 @@ CREATE TABLE `waitlist` (
 	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `waitlist_email_idx` ON `waitlist` (`email`);--> statement-breakpoint
+CREATE UNIQUE INDEX `waitlist_email_idx` ON `waitlist` (lower("email"));--> statement-breakpoint
 CREATE INDEX `waitlist_ip_created_idx` ON `waitlist` (`ip_hash`,`created_at`);--> statement-breakpoint
-CREATE INDEX `waitlist_created_idx` ON `waitlist` (`created_at`);
+CREATE INDEX `waitlist_created_idx` ON `waitlist` (`created_at`);--> statement-breakpoint
+CREATE INDEX `waitlist_interest_idx` ON `waitlist` (`interest`);

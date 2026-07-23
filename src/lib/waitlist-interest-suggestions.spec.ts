@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeInterestSuggestions, WAITLIST_INTEREST_SEED } from './waitlist-interest-suggestions';
+import { mergeInterestSuggestions } from './waitlist-interest-suggestions';
 
 describe('mergeInterestSuggestions', () => {
 	it('puts curated seeds first, then novel observed values', () => {
@@ -17,9 +17,10 @@ describe('mergeInterestSuggestions', () => {
 	});
 
 	it('caps the total number of suggestions and keeps seeds at the front', () => {
+		const seed = ['Robotics', 'Markets'];
 		const observed = Array.from({ length: 100 }, (_, i) => `interest ${i}`);
-		const out = mergeInterestSuggestions(WAITLIST_INTEREST_SEED, observed);
+		const out = mergeInterestSuggestions(seed, observed);
 		expect(out.length).toBeLessThanOrEqual(30);
-		expect(out[0]).toBe(WAITLIST_INTEREST_SEED[0]);
+		expect(out[0]).toBe('Robotics');
 	});
 });

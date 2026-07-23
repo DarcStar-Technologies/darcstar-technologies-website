@@ -1,10 +1,8 @@
 import { isNotNull, sql } from 'drizzle-orm';
 import { getDb } from '$lib/server/db';
 import { waitlist } from '$lib/server/db/schema';
-import {
-	WAITLIST_INTEREST_SEED,
-	mergeInterestSuggestions
-} from '$lib/waitlist-interest-suggestions';
+import { mergeInterestSuggestions } from '$lib/waitlist-interest-suggestions';
+import { waitlistInterestSeed } from '$lib/waitlist-interest-seed-labels';
 import type { PageServerLoad } from './$types';
 
 // The <datalist> for the free-text "interest" field GROWS from real submissions. Privacy guard: only
@@ -26,5 +24,7 @@ export const load: PageServerLoad = async () => {
 		.orderBy(sql`count(*) desc`)
 		.limit(SUGGESTION_DB_LIMIT);
 	const observed = rows.map((r) => r.interest).filter((s): s is string => Boolean(s));
-	return { interestSuggestions: mergeInterestSuggestions(WAITLIST_INTEREST_SEED, observed) };
+	// Resolve the curated seed for the request locale (getLocale is set for this request), then merge.
+	const seed = waitlistInterestSeed.map((label) => label());
+	return { interestSuggestions: mergeInterestSuggestions(seed, observed) };
 };

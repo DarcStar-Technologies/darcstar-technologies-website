@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "5f48ffce-081a-4d01-bcf7-20573dbe29bc",
+  "id": "cdbf4a04-0a9a-4e86-ac98-061d5c341cd6",
   "prevId": "4b6a19be-773d-4d83-b67f-76e6a7c76a32",
   "tables": {
     "contact_submission": {
@@ -367,7 +367,7 @@
         "waitlist_email_idx": {
           "name": "waitlist_email_idx",
           "columns": [
-            "email"
+            "lower(\"email\")"
           ],
           "isUnique": true
         },
@@ -383,6 +383,13 @@
           "name": "waitlist_created_idx",
           "columns": [
             "created_at"
+          ],
+          "isUnique": false
+        },
+        "waitlist_interest_idx": {
+          "name": "waitlist_interest_idx",
+          "columns": [
+            "interest"
           ],
           "isUnique": false
         }
@@ -835,6 +842,14 @@
     "columns": {}
   },
   "internal": {
-    "indexes": {}
+    "indexes": {
+      "waitlist_email_idx": {
+        "columns": {
+          "lower(\"email\")": {
+            "isExpression": true
+          }
+        }
+      }
+    }
   }
 }

@@ -1,20 +1,7 @@
 // Waitlist "interest" is FREE TEXT, not an enum (issue-tracked decision) — the form offers a
 // <datalist> of suggestions to guide input without constraining it, and the set GROWS from real
-// submissions over time. This module owns the curated SEED plus the pure merge that folds in
-// DB-observed values.
-//
-// The seeds are brand-relevant example interests, treated as DATA (proper-noun-like, single source),
-// rendered via `{expr}` in the datalist so the no-raw-text rule is satisfied without a Paraglide key
-// per suggestion — a good fit since the DB-derived half can't be localized anyway, and `es` (still an
-// untranslated placeholder) falls back to `en`. Same "identical across locales" rationale as site.ts.
-export const WAITLIST_INTEREST_SEED = [
-	'Robotics & control',
-	'Autonomous systems',
-	'Financial markets',
-	'Formal methods & verification',
-	'Safety-critical software',
-	'Partnership'
-] as const;
+// submissions over time. This module owns the pure merge that folds the curated seed (localizable
+// Paraglide accessors — see waitlist-interest-seed-labels.ts) together with DB-observed values.
 
 // Overall cap on datalist entries — a suggestion list, not an archive.
 const MAX_SUGGESTIONS = 30;

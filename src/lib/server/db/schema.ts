@@ -90,11 +90,15 @@ export const loginAudit = sqliteTable(
 // truncated SHA-256, never the raw IP; the (ip_hash, created_at) index backs the throttle lookback).
 //
 // Differences from `contact_submission`:
-//   - `email` is UNIQUE (normalized lowercase). A re-submit UPSERTs (see waitlist.remote.ts) —
-//     enriching the existing row rather than piling up duplicate leads. Hence `updated_at`.
+//   - `email` is UNIQUE, case-insensitively — the unique index is on `lower(email)`, so a
+//     mixed-case duplicate can't slip in even if some future writer forgets to normalize (the
+//     validator lowercases on write too, so stored values are already lowercase). A re-signup is an
+//     insert-or-enrich (see waitlist-store.ts) rather than piling up duplicate leads. Hence
+//     `updated_at`.
 //   - Only `email` is required; every other field is optional lead enrichment (progressive
 //     disclosure on the form). `role`/`company_size`/`hear_about` are validated slugs; `interest`
-//     is deliberately FREE TEXT (a growing list, not an enum) and `phone` is free text.
+//     is deliberately FREE TEXT (a growing list, not an enum) and `phone` is free text. The
+//     `interest` index backs the /waitlist datalist's frequency query (group by interest).
 //   - No `user_id`: a waitlist is pre-account lead capture, so rows are not linked to accounts.
 export const waitlist = sqliteTable(
 	'waitlist',
@@ -120,9 +124,14 @@ export const waitlist = sqliteTable(
 			.notNull()
 	},
 	(table) => [
-		uniqueIndex('waitlist_email_idx').on(table.email),
+		// Functional unique index on lower(email) → case-insensitive dedupe at the DB layer,
+		// independent of the writer normalizing. The insert path uses onConflictDoNothing() with no
+		// explicit target (this is the only unique constraint), so it catches this conflict.
+		uniqueIndex('waitlist_email_idx').on(sql`lower(${table.email})`),
 		index('waitlist_ip_created_idx').on(table.ipHash, table.createdAt),
-		index('waitlist_created_idx').on(table.createdAt)
+		index('waitlist_created_idx').on(table.createdAt),
+		// Backs the /waitlist datalist frequency query (group by interest having count >= n).
+		index('waitlist_interest_idx').on(table.interest)
 	]
 );
 

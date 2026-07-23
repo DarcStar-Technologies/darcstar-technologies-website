@@ -1,13 +1,15 @@
 // Waitlist signup — a SvelteKit remote `form` function, spread onto the /waitlist page's <form> so it
 // progressively enhances with JS and degrades to a native POST without. Lives in $lib (allowed);
 // remote functions may sit anywhere under src EXCEPT $lib/server. Mirrors submitContact
-// (contact.remote.ts); the key difference is the email-unique UPSERT below.
+// (contact.remote.ts); the key differences are the email-unique insert-or-enrich (waitlist-store.ts)
+// and gating the notification emails on a genuine new signup.
 import { form, getRequestEvent } from '$app/server';
 import { invalid } from '@sveltejs/kit';
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { and, eq, gt } from 'drizzle-orm';
 import { getDb } from '$lib/server/db';
 import { waitlist } from '$lib/server/db/schema';
 import { validateWaitlist } from '$lib/server/waitlist';
+import { upsertWaitlist } from '$lib/server/waitlist-store';
 import { hashIp } from '$lib/server/contact'; // shared truncated-SHA-256 IP hash (same throttle model)
 import { sendWaitlistEmails } from '$lib/server/waitlist-notify';
 import { m } from '$lib/paraglide/messages.js';
@@ -63,46 +65,23 @@ export const joinWaitlist = form<WaitlistInput, { success: true }>(
 			.where(and(eq(waitlist.ipHash, ipHash), gt(waitlist.createdAt, since)));
 		if (recent.length >= THROTTLE_MAX) invalid(m.waitlist_error_ratelimit());
 
-		// UPSERT on the unique (lowercased) email: a re-signup ENRICHES the existing row instead of piling
-		// up duplicate leads. `coalesce(excluded.x, x)` = prefer the newly-submitted value, else keep the
-		// existing one — so a resubmit updates fields it fills and never erases ones it leaves blank
-		// (the validator nulls empty fields). The same success response either way keeps this from being
-		// an email-enumeration oracle. `updated_at` is bumped with the same clock as the DB default.
-		await db
-			.insert(waitlist)
-			.values({
-				email: cleaned.email,
-				name: cleaned.name,
-				company: cleaned.company,
-				role: cleaned.role,
-				companySize: cleaned.companySize,
-				interest: cleaned.interest,
-				hearAbout: cleaned.hearAbout,
-				phone: cleaned.phone,
-				ipHash,
-				userAgent
-			})
-			.onConflictDoUpdate({
-				target: waitlist.email,
-				set: {
-					name: sql`coalesce(excluded.name, name)`,
-					company: sql`coalesce(excluded.company, company)`,
-					role: sql`coalesce(excluded.role, role)`,
-					companySize: sql`coalesce(excluded.company_size, company_size)`,
-					interest: sql`coalesce(excluded.interest, interest)`,
-					hearAbout: sql`coalesce(excluded.hear_about, hear_about)`,
-					phone: sql`coalesce(excluded.phone, phone)`,
-					updatedAt: sql`(cast(unixepoch('subsecond') * 1000 as integer))`
-				}
-			});
+		// Insert this email, or enrich the existing row (case-insensitive unique on lower(email)). The
+		// same success response either way keeps this from being an email-enumeration oracle.
+		// `isNew` is true only on a GENUINE first signup — see waitlist-store.ts.
+		const { isNew } = await upsertWaitlist(db, cleaned, ipHash, userAgent);
 
-		// Fire-and-forget notifications (lead + signer ack), same pattern as the contact form: the row is
-		// already persisted, so a send failure must NOT fail the signup — log and move on. ctx.waitUntil
-		// keeps the Worker alive until the sends resolve after the response; without a key (unconfigured)
-		// or ctx (vite dev) we skip. Never awaited. Only reached past the honeypot + throttle, so the ack
-		// can't be turned into an outbound-spam amplifier beyond the IP throttle.
+		// Fire-and-forget notifications (lead + signer ack), same pattern as the contact form: the row
+		// is already persisted, so a send failure must NOT fail the signup — log and move on.
+		// ctx.waitUntil keeps the Worker alive until the sends resolve after the response; without a key
+		// (unconfigured) or ctx (vite dev) we skip. Never awaited.
+		//
+		// Gated on `isNew`: a re-signup of an existing email must NOT re-mail. This is also the anti-
+		// abuse boundary — the row-count throttle above can't see same-email replays (they enrich, not
+		// insert, so they add no row), so without this gate the ack would be an unthrottled mailbomb
+		// aimed at any address a script submits, plus a flood into info@. New emails still hit the
+		// throttle (each is a fresh row), so distinct-email floods stay capped.
 		const resendKey = platform?.env?.RESEND_API_KEY;
-		if (resendKey) {
+		if (isNew && resendKey) {
 			const send = sendWaitlistEmails(resendKey, cleaned, locale).catch((err) =>
 				console.error('waitlist notifications failed', err)
 			);
