@@ -121,5 +121,49 @@ export const actions: Actions = {
 		// along on the 303 response.
 		forwardSetCookies(cookies, res);
 		redirect(303, '/admin');
+	},
+
+	// #115: resend the verification link from the login form's "verify your email" state. A user who
+	// tries to sign in with an UNVERIFIED account sees the distinct 'unverified' message above (and
+	// `sendOnSignIn` has already re-mailed once); this gives them an explicit way to request another —
+	// without re-entering their password. Forwards to Better Auth's POST /send-verification-email,
+	// which is ALREADY anti-enumerating: a constant-time floor + an identical `{ status: true }`
+	// whether the address is unverified / verified / absent, mailing only a real unverified account
+	// (see signup/+page.server.ts + the auth.spec.ts pins). We keep the client outcome uniform to
+	// match: any non-429 → the same neutral confirmation, never revealing whether the address exists.
+	// Outside the captcha scope, so no widget/token needed. Not audited (it isn't a sign-in attempt);
+	// shares the '/send-verification-email' rate-limit rule (auth-options.ts).
+	resend: async ({ request, url, locals, getClientAddress }) => {
+		if (locals.user) redirect(303, '/admin');
+		// getAuth() reads platform.env via getRequestEvent(); resolve it before the first await.
+		const auth = getAuth();
+
+		const data = await request.formData();
+		const email = String(data.get('email') ?? '').trim();
+		// No email to resend to (empty field) — return the same neutral confirmation (the correct
+		// non-enumerating answer), don't 500.
+		if (!email) return { resent: 'sent' as const };
+
+		// Forward the client IP so the rate limiter keys per-IP (same rationale as the sign-in path).
+		const headers = new Headers({ 'content-type': 'application/json' });
+		try {
+			const ip = getClientAddress();
+			if (ip) headers.set('x-forwarded-for', ip);
+		} catch {
+			// adapter couldn't resolve an address
+		}
+
+		const res = await auth.handler(
+			new Request(new URL('/api/auth/send-verification-email', url.origin), {
+				method: 'POST',
+				headers,
+				// callbackURL lands the freshly-verified (auto-signed-in) user on their portal.
+				body: JSON.stringify({ email, callbackURL: '/account' })
+			})
+		);
+
+		if (res.status === 429) return fail(429, { resent: 'ratelimited' as const });
+		// Every other outcome → the same neutral confirmation (status never leaks existence).
+		return { resent: 'sent' as const };
 	}
 };

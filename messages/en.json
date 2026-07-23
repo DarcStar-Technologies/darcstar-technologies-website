@@ -158,6 +158,10 @@
 	"login_error_ratelimit": "Too many attempts. Please wait a moment and try again.",
 	"login_error_generic": "Something went wrong signing in. Please try again.",
 	"login_error_unverified": "Please verify your email before signing in. Check your inbox for the verification link.",
+	"login_resend_prompt": "Didn't get the email?",
+	"login_resend_button": "Resend verification email",
+	"login_resend_sending": "Sending…",
+	"login_resend_sent": "If that email still needs verifying, a fresh link is on its way. Check your inbox and spam folder.",
 
 	"admin_page_title": "Submissions — DarcStar Technologies",
 	"admin_page_description": "Contact-form submissions for DarcStar Technologies staff.",

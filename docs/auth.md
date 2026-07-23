@@ -106,7 +106,13 @@ email_verified = 1`) — otherwise local staff sign-in 403s. Prod is covered by 
 An unverified account that later returns to `/login` isn't a dead-end: the sign-in 403s but
 `emailVerification.sendOnSignIn` re-mails a fresh link, and the `/login` action surfaces a distinct
 "verify your email" message (safe — the 403 fires only after the password check passes, so a wrong
-password still returns the generic error and can't enumerate accounts).
+password still returns the generic error and can't enumerate accounts). That "verify your email" state
+also shows an explicit **"Resend verification email"** control (`LoginForm.svelte`, shared by the
+`/login` page and the navbar `LoginDialog`) → a sibling `resend` action (`login/+page.server.ts`)
+forwarding to the same `/send-verification-email` endpoint described below, so a user who never got the
+auto-remailed link has a visible way to request another without re-entering their password. It works
+no-JS on the `/login` page; in the JS dialog the enhance callback keeps the result local (no
+`applyAction`) so the dialog stays open and the sign-in state is untouched.
 
 **Resend from the "check your email" panel (#115).** The `/login` recovery above needs the password.
 The other dead-end has none: an unverified account that signs up **again** hits better-auth's
