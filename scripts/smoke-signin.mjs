@@ -37,7 +37,7 @@ if (!email || !password) {
 // 1. Sign in via the /login form action — the no-JS path. `origin` satisfies SvelteKit's CSRF
 // check; `accept: text/html` gets the native 303 redirect (a `*/*` accept would instead get the
 // enhanced JSON action response).
-const signIn = await fetch(`${BASE}/login`, {
+const signIn = await fetch(`${BASE}/login?/signin`, {
 	method: 'POST',
 	redirect: 'manual',
 	headers: {
@@ -128,7 +128,7 @@ const opId = opIdMatch[1];
 ok(`created operator ${opEmail} (id ${opId})`);
 
 // Two-role split: the new operator can view submissions but is bounced away from /admin/users.
-const opSignIn = await fetch(`${BASE}/login`, {
+const opSignIn = await fetch(`${BASE}/login?/signin`, {
 	method: 'POST',
 	redirect: 'manual',
 	headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'text/html', origin },

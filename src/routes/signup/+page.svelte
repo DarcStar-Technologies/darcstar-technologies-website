@@ -151,6 +151,7 @@
 
 			<form
 				method="post"
+				action="?/signup"
 				class="mt-6 space-y-4"
 				use:enhance={({ formData, cancel }) => {
 					// Guard: with a widget present, don't submit an unsolved challenge (empty token).

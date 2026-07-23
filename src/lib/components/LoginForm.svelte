@@ -40,12 +40,15 @@
 	// still shows its confirmation after a native POST.
 	let clientResend = $state<'sent' | 'ratelimited' | null>(null);
 	const resendFeedback = $derived(clientResend ?? form?.resent ?? null);
+	// Both forms target NAMED /login actions (the page has no `default` — see login/+page.server.ts).
+	// Absolute `/login?/…` so the navbar dialog, rendered over any route, still hits /login's actions.
+	const signinAction = $derived(`${localizeHref('/login')}?/signin`);
 	const resendAction = $derived(`${localizeHref('/login')}?/resend`);
 </script>
 
 <form
 	method="post"
-	action={localizeHref('/login')}
+	action={signinAction}
 	class="mt-6 space-y-4"
 	use:enhance={() => {
 		submitting = true;

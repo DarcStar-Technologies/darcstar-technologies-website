@@ -44,8 +44,12 @@ function forwardSetCookies(cookies: Cookies, res: Response): void {
 	}
 }
 
+// NOTE: every action here MUST be named (no `default`). SvelteKit forbids a `default` action
+// coexisting with named actions — `check_named_default_separate` 500s EVERY POST to the page,
+// not just the default one (regression fixed after #121 added `resend` beside `default`). The
+// shared LoginForm posts to `?/signin`; `scripts/smoke-signin.mjs` posts there too.
 export const actions: Actions = {
-	default: async ({ request, cookies, url, locals, getClientAddress }) => {
+	signin: async ({ request, cookies, url, locals, getClientAddress }) => {
 		if (locals.user) redirect(303, '/admin');
 		// getAuth() reads platform.env via getRequestEvent(); resolve it before the first await.
 		const auth = getAuth();
