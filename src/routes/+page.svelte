@@ -2,6 +2,7 @@
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import Seo from '$lib/components/Seo.svelte';
 	import { m } from '$lib/paraglide/messages.js';
+	import { localizeHref } from '$lib/paraglide/runtime';
 	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import Icon from '$lib/components/Icon.svelte';
@@ -110,6 +111,7 @@
 			</p>
 			<div class="mt-9 flex flex-wrap justify-center gap-3">
 				<a href="#gide" class="glass-btn btn-pill">{m.hero_cta_explore()}</a>
+				<a href={localizeHref('/waitlist')} class="glass-btn btn-pill">{m.hero_cta_waitlist()}</a>
 				<button
 					type="button"
 					aria-haspopup="dialog"

@@ -15,7 +15,8 @@
 	// Locale-agnostic active-tab checks (paths localize to /es/admin/...).
 	const onUsers = $derived(page.url.pathname.includes('/admin/users'));
 	const onAudit = $derived(page.url.pathname.includes('/admin/audit'));
-	const onSubmissions = $derived(!onUsers && !onAudit);
+	const onWaitlist = $derived(page.url.pathname.includes('/admin/waitlist'));
+	const onSubmissions = $derived(!onUsers && !onAudit && !onWaitlist);
 
 	const tabBase =
 		'rounded-full px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500';
@@ -33,6 +34,11 @@
 				href={localizeHref('/admin')}
 				aria-current={onSubmissions ? 'page' : undefined}
 				class="{tabBase} {onSubmissions ? tabActive : tabIdle}">{m.admin_nav_submissions()}</a
+			>
+			<a
+				href={localizeHref('/admin/waitlist')}
+				aria-current={onWaitlist ? 'page' : undefined}
+				class="{tabBase} {onWaitlist ? tabActive : tabIdle}">{m.admin_nav_waitlist()}</a
 			>
 			<a
 				href={localizeHref('/admin/audit')}

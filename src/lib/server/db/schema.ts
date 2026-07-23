@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { user } from './auth.schema';
 
 export const task = sqliteTable('task', {
@@ -81,6 +81,48 @@ export const loginAudit = sqliteTable(
 		index('login_audit_email_created_idx').on(table.email, table.createdAt),
 		index('login_audit_ip_created_idx').on(table.ipAddress, table.createdAt),
 		index('login_audit_user_idx').on(table.userId)
+	]
+);
+
+// Waitlist signups (issue-tracked feature) — early-access lead capture, a lighter-touch sibling of
+// `contact_submission`. Written by the `joinWaitlist` remote function (src/lib/waitlist.remote.ts)
+// after honeypot + validation + throttle, mirroring the contact flow (`ip_hash` is the same
+// truncated SHA-256, never the raw IP; the (ip_hash, created_at) index backs the throttle lookback).
+//
+// Differences from `contact_submission`:
+//   - `email` is UNIQUE (normalized lowercase). A re-submit UPSERTs (see waitlist.remote.ts) —
+//     enriching the existing row rather than piling up duplicate leads. Hence `updated_at`.
+//   - Only `email` is required; every other field is optional lead enrichment (progressive
+//     disclosure on the form). `role`/`company_size`/`hear_about` are validated slugs; `interest`
+//     is deliberately FREE TEXT (a growing list, not an enum) and `phone` is free text.
+//   - No `user_id`: a waitlist is pre-account lead capture, so rows are not linked to accounts.
+export const waitlist = sqliteTable(
+	'waitlist',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		email: text('email').notNull(),
+		name: text('name'),
+		company: text('company'),
+		role: text('role'),
+		companySize: text('company_size'),
+		interest: text('interest'),
+		hearAbout: text('hear_about'),
+		phone: text('phone'),
+		ipHash: text('ip_hash'),
+		userAgent: text('user_agent'),
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+			.notNull(),
+		updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+			.notNull()
+	},
+	(table) => [
+		uniqueIndex('waitlist_email_idx').on(table.email),
+		index('waitlist_ip_created_idx').on(table.ipHash, table.createdAt),
+		index('waitlist_created_idx').on(table.createdAt)
 	]
 );
 
