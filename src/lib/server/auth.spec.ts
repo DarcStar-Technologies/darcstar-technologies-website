@@ -26,6 +26,27 @@ function buildAuth(opts: typeof emailAndPassword) {
 
 const PASSWORD = 'a-long-enough-password';
 
+// A throwaway instance wired with a RECORDING `sendVerificationEmail`. Two reasons: it (a) enables the
+// `/send-verification-email` endpoint (better-auth 400s "not enabled" without the callback) so the
+// #115 resend affordance can be exercised, and (b) lets a test assert exactly WHICH addresses actually
+// triggered a send. `sendOnSignUp` records the sign-up mail too (tests clear the sink before probing).
+// Uses the same shared `emailAndPassword` (requireEmailVerification: true) as prod — accounts start
+// unverified, which is the regime the resend path serves.
+function buildAuthWithVerifySink(sink: { email: string; url: string }[]) {
+	return betterAuth({
+		baseURL: 'http://localhost',
+		secret: 'test-secret-value-at-least-32-characters-long',
+		database: memoryAdapter({ user: [], session: [], account: [], verification: [] }),
+		emailAndPassword,
+		emailVerification: {
+			sendOnSignUp: true,
+			sendVerificationEmail: async ({ user, url }) => {
+				sink.push({ email: user.email, url });
+			}
+		}
+	});
+}
+
 describe('auth public sign-up + email verification (#96 PR2)', () => {
 	test('our config allows sign-up, but leaves the account unverified and not signed in', async () => {
 		const res = await buildAuth(emailAndPassword).api.signUpEmail({
@@ -104,5 +125,47 @@ describe('auth public sign-up + email verification (#96 PR2)', () => {
 			body: { email: 'control@example.com', password: PASSWORD }
 		});
 		expect(res.user.email).toBe('control@example.com');
+	});
+
+	// #115 resend-verification affordance. The signup "check your email" panel forwards to
+	// POST /send-verification-email, which MUST stay non-enumerating: an attacker probing addresses
+	// can't be allowed to tell "unverified account exists" from "no account / already verified". These
+	// pin better-auth's guarantee (email-verification.mjs) — identical `{ status: true }` for every
+	// case, with a real mail sent ONLY to an existing unverified account — so an upgrade can't regress it.
+	test('resend: identical response for absent vs unverified, and mails only the real unverified account', async () => {
+		const sent: { email: string; url: string }[] = [];
+		const auth = buildAuthWithVerifySink(sent);
+		await auth.api.signUpEmail({
+			body: { name: 'u', email: 'unverified@example.com', password: PASSWORD }
+		});
+		sent.length = 0; // drop the sign-up mail so the sink shows only what the resends triggered
+
+		// Probe an address with no account, then the real unverified one (different case, to prove the
+		// match is by normalized email). The client-visible response must be indistinguishable.
+		const absent = await auth.api.sendVerificationEmail({ body: { email: 'nobody@example.com' } });
+		const existing = await auth.api.sendVerificationEmail({
+			body: { email: 'UNVERIFIED@example.com' }
+		});
+		expect(absent.status).toBe(true);
+		expect(existing.status).toBe(true);
+		// ...but only the existing, unverified account actually received a link.
+		expect(sent.map((e) => e.email)).toEqual(['unverified@example.com']);
+	});
+
+	test('resend: an already-verified account gets the same generic response but no new mail', async () => {
+		const sent: { email: string; url: string }[] = [];
+		const auth = buildAuthWithVerifySink(sent);
+		await auth.api.signUpEmail({
+			body: { name: 'v', email: 'verified@example.com', password: PASSWORD }
+		});
+		// Verify the account using the token from the sign-up mail, then isolate the resend.
+		const token = new URL(sent[0].url).searchParams.get('token');
+		expect(token).toBeTruthy();
+		await auth.api.verifyEmail({ query: { token: token as string } });
+		sent.length = 0;
+
+		const res = await auth.api.sendVerificationEmail({ body: { email: 'verified@example.com' } });
+		expect(res.status).toBe(true); // same response as the unverified/absent cases above
+		expect(sent).toEqual([]); // ...but nothing re-sent to an already-verified address
 	});
 });

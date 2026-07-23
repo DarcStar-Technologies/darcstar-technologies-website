@@ -38,7 +38,14 @@ export const rateLimit = {
 	// can't mint accounts in bulk. Behavioral (no schema impact); shared with the CLI config, which
 	// ignores limits at generation time.
 	customRules: {
-		'/sign-up/email': { window: 3600, max: 3 }
+		'/sign-up/email': { window: 3600, max: 3 },
+		// #115: the resend-verification affordance (signup "check your email" panel → POST
+		// /send-verification-email) is an email-SEND trigger, so it's an abuse surface too — bound it
+		// per IP. A touch looser than sign-up (5 vs 3/hour): resending is a legitimate repeat action (a
+		// dropped/spam-filed link), whereas creating accounts is not. The endpoint itself is already
+		// anti-enumerating + constant-time (better-auth email-verification.mjs) and only actually mails
+		// an unverified, existing account; this caps how often it can be poked regardless.
+		'/send-verification-email': { window: 3600, max: 5 }
 	}
 };
 
