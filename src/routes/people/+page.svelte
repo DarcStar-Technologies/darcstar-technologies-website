@@ -16,7 +16,12 @@
 <CosmicBackdrop />
 
 <div class="space-y-14">
-	<PageHero eyebrow={m.people_eyebrow()} heading={m.people_heading()} lead={m.people_lead()} />
+	<PageHero
+		eyebrow={m.people_eyebrow()}
+		heading={m.people_heading()}
+		emphasis={m.people_heading_emphasis()}
+		lead={m.people_lead()}
+	/>
 
 	<div class="mx-auto w-full max-w-4xl">
 		{#if data.people.length === 0}

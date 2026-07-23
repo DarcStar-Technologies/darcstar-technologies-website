@@ -23,6 +23,7 @@
 	<PageHero
 		eyebrow={m.research_eyebrow()}
 		heading={m.research_heading()}
+		emphasis={m.research_heading_emphasis()}
 		lead={m.research_lead()}
 	/>
 

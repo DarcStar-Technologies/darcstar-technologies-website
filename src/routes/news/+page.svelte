@@ -19,7 +19,12 @@
 <CosmicBackdrop />
 
 <div class="space-y-14">
-	<PageHero eyebrow={m.news_eyebrow()} heading={m.news_heading()} lead={m.news_lead()} />
+	<PageHero
+		eyebrow={m.news_eyebrow()}
+		heading={m.news_heading()}
+		emphasis={m.news_heading_emphasis()}
+		lead={m.news_lead()}
+	/>
 
 	<div class="mx-auto w-full max-w-3xl">
 		{#if data.posts.length === 0}
