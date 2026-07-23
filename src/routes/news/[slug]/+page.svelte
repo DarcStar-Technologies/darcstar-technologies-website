@@ -19,10 +19,18 @@
 
 	const seoTitle = $derived(post.seo?.metaTitle ?? m.content_doc_title({ title: post.title }));
 	const seoDescription = $derived(post.seo?.metaDescription ?? post.excerpt ?? undefined);
-	const seoImage = $derived(ogImageUrl(post.seo?.ogImage ?? post.coverImage));
+	// Try the explicit seo.ogImage first, then the coverImage — via `ogImageUrl` (not `??` on the
+	// fields), so an ogImage object that exists but has no asset doesn't shadow a usable coverImage.
+	const seoImage = $derived(ogImageUrl(post.seo?.ogImage) ?? ogImageUrl(post.coverImage));
 </script>
 
-<Seo title={seoTitle} description={seoDescription} type="article" image={seoImage} />
+<Seo
+	title={seoTitle}
+	description={seoDescription}
+	type="article"
+	image={seoImage}
+	imageAlt={seoImage ? post.title : undefined}
+/>
 
 <CosmicBackdrop />
 
@@ -54,7 +62,7 @@
 			{/if}
 		</div>
 
-		{#if post.coverImage}
+		{#if post.coverImage?.asset}
 			<SanityImage
 				image={post.coverImage}
 				width={896}

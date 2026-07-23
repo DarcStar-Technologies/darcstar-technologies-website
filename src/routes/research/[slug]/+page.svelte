@@ -21,7 +21,13 @@
 	const seoImage = $derived(ogImageUrl(paper.seo?.ogImage));
 </script>
 
-<Seo title={seoTitle} description={seoDescription} type="article" image={seoImage} />
+<Seo
+	title={seoTitle}
+	description={seoDescription}
+	type="article"
+	image={seoImage}
+	imageAlt={seoImage ? paper.title : undefined}
+/>
 
 <CosmicBackdrop />
 

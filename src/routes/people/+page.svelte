@@ -25,7 +25,7 @@
 			<ul class="grid gap-6 sm:grid-cols-2">
 				{#each data.people as person (person._id)}
 					<li class="glass-card flex flex-col items-center p-8 text-center">
-						{#if person.image}
+						{#if person.image?.asset}
 							<SanityImage
 								image={person.image}
 								width={192}

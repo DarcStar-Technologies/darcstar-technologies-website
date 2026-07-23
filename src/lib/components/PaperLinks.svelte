@@ -14,11 +14,14 @@
 	let { arxivId, doi, codeUrl, url, pdfUrl }: Props = $props();
 
 	type Link = { label: string; href: string };
+	// `arxivId`/`doi` are bare identifiers per the schema (e.g. "2406.03482", "10.1000/xyz"), but an
+	// editor may paste a full URL instead — if so, use it as-is rather than double-prefixing it.
+	const idUrl = (base: string, id: string) => (/^https?:\/\//i.test(id) ? id : base + id.trim());
 	const links = $derived.by(() => {
 		const out: Link[] = [];
 		if (arxivId)
-			out.push({ label: m.research_link_arxiv(), href: `https://arxiv.org/abs/${arxivId}` });
-		if (doi) out.push({ label: m.research_link_doi(), href: `https://doi.org/${doi}` });
+			out.push({ label: m.research_link_arxiv(), href: idUrl('https://arxiv.org/abs/', arxivId) });
+		if (doi) out.push({ label: m.research_link_doi(), href: idUrl('https://doi.org/', doi) });
 		if (pdfUrl) out.push({ label: m.research_link_pdf(), href: pdfUrl });
 		if (codeUrl) out.push({ label: m.research_link_code(), href: codeUrl });
 		if (url) out.push({ label: m.research_link_url(), href: url });

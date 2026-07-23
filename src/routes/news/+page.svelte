@@ -32,7 +32,7 @@
 							href={localizeHref(`/news/${post.slug}`)}
 							class="glass-card group flex flex-col overflow-hidden transition-colors hover:border-primary-500/40 sm:flex-row"
 						>
-							{#if post.coverImage}
+							{#if post.coverImage?.asset}
 								<div class="shrink-0 overflow-hidden sm:w-56">
 									<SanityImage
 										image={post.coverImage}
