@@ -23,3 +23,7 @@ let instance: ReturnType<typeof createDb> | undefined;
 export function getDb() {
 	return (instance ??= createDb());
 }
+
+/** The Drizzle client type — for helpers (e.g. waitlist-store.ts) that take a `db` so they stay
+ *  testable against an in-memory client without importing the request-scoped singleton. */
+export type Db = ReturnType<typeof getDb>;

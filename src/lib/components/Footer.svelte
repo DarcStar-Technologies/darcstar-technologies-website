@@ -19,7 +19,8 @@
 	// modal (issue #11); the footer email icon below stays a direct mailto.
 	const nav = $derived([
 		{ label: m.footer_nav_home(), href: localizeHref('/') },
-		{ label: m.footer_nav_gide(), href: `${localizeHref('/')}#gide` }
+		{ label: m.footer_nav_gide(), href: `${localizeHref('/')}#gide` },
+		{ label: m.footer_nav_waitlist(), href: localizeHref('/waitlist') }
 	]);
 </script>
 
