@@ -5,14 +5,16 @@ import { persistLoginAudit } from '$lib/server/login-audit-store';
 import { ACCOUNT_WELCOME_CALLBACK } from '$lib/account-welcome';
 import type { PageServerLoad } from './$types';
 
-// Admin login (#69). Sign-in is a server form action, so it works WITHOUT JS — a native POST signs
-// in and 303-redirects to /admin (progressively enhanced with use:enhance in LoginForm). It routes
-// through Better Auth's HANDLER rather than a direct `auth.api.signInEmail` call: rate limiting
-// lives in Better Auth's router (its onRequest), so a direct api call would skip the router and the
-// limiter with it. `hooks.server.ts` populates locals.user for /login.
+// Login (#69) — one sign-in surface for staff AND end-users (#96). Sign-in is a server form
+// action, so it works WITHOUT JS — a native POST signs in and 303-redirects to /admin, the single
+// post-login hub: staff land there, and the /admin guard bounces non-staff on to /account
+// (admin/+layout.server.ts), which is what keeps end-users out of admin routes. It routes through
+// Better Auth's HANDLER rather than a direct `auth.api.signInEmail` call: rate limiting lives in
+// Better Auth's router (its onRequest), so a direct api call would skip the router and the limiter
+// with it. `hooks.server.ts` populates locals.user for /login.
 
 export const load: PageServerLoad = ({ locals }) => {
-	// An operator who is already signed in never needs the form — send them to the admin.
+	// A signed-in visitor never needs the form — send them to /admin (non-staff bounce to /account).
 	if (locals.user) redirect(303, '/admin');
 	return {};
 };

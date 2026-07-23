@@ -1,5 +1,5 @@
 <script lang="ts">
-	// Standalone admin login page (#69) — the no-JS fallback the navbar "Sign in" link points at,
+	// Standalone login page (#69) — the no-JS fallback the navbar "Sign in" link points at,
 	// and a shareable URL. Utility-page layout (a centred glass-panel), matching /contact. The form
 	// is the shared LoginForm (the same one the navbar's LoginDialog renders) — a real form action,
 	// so it works without JS; `form` carries the action result back for the no-JS re-render.

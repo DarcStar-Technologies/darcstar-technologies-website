@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The admin sign-in form (#69) — shared by the standalone /login page and the navbar login
+	// The sign-in form (#69) — shared by the standalone /login page and the navbar login
 	// dialog (LoginDialog) so the two can't drift. It's a real SvelteKit form action
 	// (action="/login"), so it works WITHOUT JS (native POST → sign-in → 303 to /admin) and
 	// progressively enhances with use:enhance. The action routes through Better Auth's handler →
