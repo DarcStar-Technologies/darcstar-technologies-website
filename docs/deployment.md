@@ -69,6 +69,8 @@ Non-public values are set with `wrangler secret put <NAME>` (not in `wrangler.js
 - `DATABASE_URL`, `DATABASE_AUTH_TOKEN` — Turso (prod Worker → prod DB; preview Worker + local `.env` → dev DB). Prod creds are ALSO GitHub Actions secrets `PROD_DATABASE_URL` / `PROD_DATABASE_AUTH_TOKEN` for migrate-on-merge.
 - `BETTER_AUTH_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` — auth.
 - `RESEND_API_KEY` — contact lead notifications (issue #52). **Also requires** verifying `darcstar.tech` as a sending domain in Resend (add the DKIM/SPF DNS records to Cloudflare). Until both are done, submissions still persist — the email send skips (no key) or logs its failure; it never fails the submission. See [contact.md](contact.md).
+- `TURNSTILE_SECRET_KEY` — Cloudflare Turnstile secret for public sign-up (#96). Public `TURNSTILE_SITE_KEY` lives here too (read via `readEnv`). See [auth.md](auth.md).
+- `SANITY_VIEWER_TOKEN` — Sanity **read** token for the CMS content feed (DAR-14). The `production` dataset gates document reads behind document-level access control (anonymous reads see only `siteSettings`), so `/news`, `/research`, `/people` need it. Read server-side only (`$lib/server/sanity.ts`). Absent → those pages fall back to empty states (never a 500). Create a Viewer token in Sanity Manage → project `8v6ikhvv` → API → Tokens. See [sanity.md](sanity.md).
 
 ## Database schema → Turso
 

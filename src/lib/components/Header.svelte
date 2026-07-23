@@ -12,7 +12,12 @@
 	// `/`, so a separate Home link was redundant (issues #11/#8). About points at the real /about
 	// page (issue #61; the old `/#about` footer-anchor workaround is retired). `$derived` so hrefs +
 	// labels track the active locale; `id` is a stable {#each} key across switches.
-	const links = $derived([{ id: 'about', label: m.nav_about(), href: localizeHref('/about') }]);
+	const links = $derived([
+		{ id: 'about', label: m.nav_about(), href: localizeHref('/about') },
+		{ id: 'news', label: m.nav_news(), href: localizeHref('/news') },
+		{ id: 'research', label: m.nav_research(), href: localizeHref('/research') },
+		{ id: 'people', label: m.nav_people(), href: localizeHref('/people') }
+	]);
 
 	// Site-wide sign-in state from the root `+layout.server.ts` load (`page.data.user` — email or
 	// null). Signed in → the nav shows a dashboard link + Sign out; signed out → the "Sign in"
