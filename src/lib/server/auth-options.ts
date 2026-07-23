@@ -45,7 +45,14 @@ export const rateLimit = {
 		// dropped/spam-filed link), whereas creating accounts is not. The endpoint itself is already
 		// anti-enumerating + constant-time (better-auth email-verification.mjs) and only actually mails
 		// an unverified, existing account; this caps how often it can be poked regardless.
-		'/send-verification-email': { window: 3600, max: 5 }
+		'/send-verification-email': { window: 3600, max: 5 },
+		// Password reset: `/request-password-reset` is an email-SEND trigger (abuse surface) — cap it
+		// like sign-up (3/hour/IP). It's already anti-enumerating + constant-time (better-auth
+		// password.mjs simulates the token path for unknown emails). `/reset-password` consumes a
+		// single-use, unguessable token, so its risk is low; a modest cap (10/hour/IP) just bounds
+		// blind token-guessing without punishing a user who mistypes a new password a few times.
+		'/request-password-reset': { window: 3600, max: 3 },
+		'/reset-password': { window: 3600, max: 10 }
 	}
 };
 

@@ -146,6 +146,46 @@ serves on `localhost:4173`, so `/api/auth/*` 404s there before any auth logic ru
 create a widget in the Cloudflare dashboard for darcstar.tech (public site key + secret); set
 `TURNSTILE_SECRET_KEY` via `wrangler secret put` (+ `--env preview`) and `TURNSTILE_SITE_KEY` per env.
 
+## Password reset (self-service)
+
+Better Auth's built-in `forget-password` flow, wired to Resend and two form-action pages. **No schema
+change** — the reset token lives in the existing `verification` table (identifier `reset-password:<token>`);
+config is behavioral only, so it stays out of `auth-cli.ts`.
+
+**Config** (`auth.ts`, augmenting the shared `emailAndPassword`): `sendResetPassword` renders + Resends
+the link (`password-reset-email.ts`, mirroring `verification-email.ts`; graceful dev skip logs the link
+when there's no Resend key), `resetPasswordTokenExpiresIn: 3600` (1 hour), and
+**`revokeSessionsOnPasswordReset: true`** — a reset signs out all the user's OTHER sessions, so
+recovering a compromised account doesn't leave the attacker signed in.
+
+**Flow (two pages, each a single `default` action — never mix `default` + named, per #122):**
+
+1. **`/forgot-password`** — enter email → forwards to `POST /request-password-reset` `{ email,
+redirectTo: '/reset-password' }`. That endpoint is **anti-enumerating** (better-auth `password.mjs`
+   simulates the token path + a dummy verification lookup for an unknown email, returning an identical
+   `{ status: true }`) and sends only for a real account. The action keeps the client outcome uniform to
+   match — any non-429 → the same generic "check your email" — so the form can't enumerate registered
+   addresses. Rate-limited at **3/hour/IP** (`/request-password-reset`, an email-send trigger).
+2. Email link → **`GET /reset-password/:token?callbackURL=/reset-password`** — better-auth validates the
+   token and redirects to `/reset-password?token=…` (valid) or `?error=INVALID_TOKEN` (bad/expired/used).
+3. **`/reset-password`** — `load` reads the token/error; the form POSTs `{ newPassword, token }` (the
+   token rides a hidden field, so a no-JS re-render doesn't depend on the URL query) to
+   `POST /reset-password`. Success → a "password updated, sign in" panel (the flow is anonymous — no
+   auto-sign-in); an invalid/expired token → an "invalid link" panel pointing back to `/forgot-password`.
+   Rate-limited at 10/hour/IP.
+
+Entry point: a **"Forgot your password?"** link in the login chrome — duplicated in `login/+page.svelte`
+and `LoginDialog.svelte` (the dialog closes on click), the same pattern as the sign-up prompt. The whole
+flow is **no-JS friendly** (no Turnstile — the reset endpoints are outside the captcha scope) and works
+for staff and end-users alike.
+
+Hermetic tests (`auth.spec.ts`): request-password-reset is anti-enumerating (identical response for
+absent vs existing; a mail fires only for the real account), a valid token sets the new password (the old
+one stops working) while a consumed/bogus token is rejected, and a control proves our `sendResetPassword`
+callback is what enables the endpoint. Email builder unit-tested (`password-reset-email.spec.ts`); the
+`/forgot-password` + `/reset-password` action shapes are covered by the named-actions guard
+(`auth-named-actions.spec.ts`).
+
 ## The admin area (#69)
 
 The gated surface #48 fenced off:
