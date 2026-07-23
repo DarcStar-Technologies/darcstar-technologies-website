@@ -230,6 +230,23 @@
 					<div {@attach turnstileWidget}></div>
 				{/if}
 
+				<!-- Agreement notice (DAR-44). The trailing "." is punctuation-only, so the
+				     no-raw-text rule permits the literal. -->
+				<p class="text-xs leading-relaxed text-faint">
+					{m.signup_legal_prefix()}
+					<a
+						href={localizeHref('/terms')}
+						class="text-body underline underline-offset-2 transition-colors hover:text-primary-500"
+						>{m.signup_legal_terms_link()}</a
+					>
+					{m.signup_legal_and()}
+					<a
+						href={localizeHref('/privacy')}
+						class="text-body underline underline-offset-2 transition-colors hover:text-primary-500"
+						>{m.signup_legal_privacy_link()}</a
+					>.
+				</p>
+
 				<button type="submit" disabled={submitting} class={submitButtonClass}>
 					{submitting ? m.signup_submitting() : m.signup_submit()}
 				</button>

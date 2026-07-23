@@ -25,6 +25,7 @@
 	import type { Snippet } from 'svelte';
 	import { submitContact } from '$lib/contact.remote';
 	import { m } from '$lib/paraglide/messages.js';
+	import { localizeHref } from '$lib/paraglide/runtime';
 	import ErrorBanner from './ErrorBanner.svelte';
 
 	// `Omit<…, 'for'>` so the prop accepts BOTH the base instance (the /contact page) and a
@@ -117,6 +118,17 @@
 })}
 
 {@render error?.()}
+
+<!-- Data-handling notice (DAR-44) — lives here so the modal AND the /contact page both carry
+     it; any new data-collecting form should get the same one-liner next to its submit. -->
+<p class="text-xs leading-relaxed text-faint">
+	{m.contact_privacy_notice()}
+	<a
+		href={localizeHref('/privacy')}
+		class="text-body underline underline-offset-2 transition-colors hover:text-primary-500"
+		>{m.contact_privacy_link()}</a
+	>
+</p>
 
 <button type="submit" disabled={!!form.pending} class={submitButtonClass}>
 	{form.pending ? m.contact_submitting() : m.contact_submit()}

@@ -25,6 +25,7 @@ Non-negotiables:
 | Contact form — modal → Turso                            | [docs/contact.md](docs/contact.md)                             |
 | Auth — Better Auth (server-only, locked down)           | [docs/auth.md](docs/auth.md)                                   |
 | CMS — Sanity content feed (/news · /research · /people) | [docs/sanity.md](docs/sanity.md)                               |
+| Legal — /privacy · /terms pages + form notices          | [docs/legal.md](docs/legal.md)                                 |
 | Deployment — Cloudflare                                 | [docs/deployment.md](docs/deployment.md)                       |
 | Skeleton LLM reference (large)                          | [docs/llms/skeleton-svelte.txt](docs/llms/skeleton-svelte.txt) |
 

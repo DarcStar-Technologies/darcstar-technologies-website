@@ -196,6 +196,16 @@
 					</div>
 				</details>
 
+				<!-- Data-handling notice (DAR-44) — mirrors the contact form's (ContactFields). -->
+				<p class="text-xs leading-relaxed text-faint">
+					{m.waitlist_privacy_notice()}
+					<a
+						href={localizeHref('/privacy')}
+						class="text-body underline underline-offset-2 transition-colors hover:text-primary-500"
+						>{m.waitlist_privacy_link()}</a
+					>
+				</p>
+
 				<button
 					type="submit"
 					disabled={!!joinWaitlist.pending}
