@@ -15,7 +15,19 @@ const handleParaglide: Handle = ({ event, resolve }) =>
 			transformPageChunk: ({ html }) =>
 				html
 					.replace('%paraglide.lang%', locale)
-					.replace('%paraglide.dir%', getTextDirection(locale))
+					.replace('%paraglide.dir%', getTextDirection(locale)),
+			// Preload the three LATIN variable faces (Space Grotesk / Inter / JetBrains Mono — all
+			// three render above the fold on every page). By default fonts are discovered late —
+			// HTML → CSS fetch → style/layout → @font-face fetch — which put them in the first-paint
+			// critical path on throttled mobile (DAR-50: FCP/LCP tracked font arrival). Preloading
+			// moves them into the HTML head as <link rel="preload"> + a Link header (Cloudflare
+			// upgrades Link headers to 103 Early Hints), so they download in parallel with the CSS.
+			// ONLY latin: the other 12 subset files (latin-ext/cyrillic/greek/vietnamese) stay lazy
+			// behind their unicode-range — preloading those would waste ~300KB per view. The
+			// `-latin-wght-` test can't match them (they're `-latin-ext-wght-` etc.). css/js keeps
+			// SvelteKit's default preloading.
+			preload: ({ type, path }) =>
+				type === 'font' ? path.includes('-latin-wght-') : type === 'css' || type === 'js'
 		});
 	});
 

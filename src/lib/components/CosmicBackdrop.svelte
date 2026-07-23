@@ -15,6 +15,23 @@
 	let setModalOpen: ((open: boolean) => void) | undefined;
 
 	function backdrop(canvas: HTMLCanvasElement) {
+		// Defer init by one frame (DAR-50): this attachment runs INSIDE the root layout's
+		// hydration task — already the page's longest controllable main-thread task on
+		// mobile — and the first resize()+draw (viewport-sized gradient fills + starfield)
+		// is the heaviest one-off canvas work. One rAF splits it into its own short task.
+		// Nothing visible changes: the canvas is blank either way until this runs.
+		let cleanup: (() => void) | undefined;
+		let initRaf = requestAnimationFrame(() => {
+			initRaf = 0;
+			cleanup = init(canvas);
+		});
+		return () => {
+			cancelAnimationFrame(initRaf);
+			cleanup?.();
+		};
+	}
+
+	function init(canvas: HTMLCanvasElement) {
 		const ctx = canvas.getContext('2d');
 		if (!ctx) return;
 		// Give `c` a non-null DECLARED type: the guard above only narrows within this
@@ -80,8 +97,12 @@
 		// frame and redraw the helix there — so the canvas's dirty region, and the panels
 		// that re-blur, shrink to that band. Stars stop twinkling while scrolled because
 		// their per-frame change is what would otherwise dirty the whole canvas.
+		// Built LAZILY (staticFrameDirty → renderStaticFrame in drawHelixOnly): on first load
+		// the hero is visible and this cache is never read, so composing it eagerly was pure
+		// main-thread waste in the page's busiest window (DAR-50).
 		const staticFrame = document.createElement('canvas');
 		const sfc = staticFrame.getContext('2d');
+		let staticFrameDirty = true;
 		let freezePending = false;
 
 		function makeVignette(x: CanvasRenderingContext2D) {
@@ -112,9 +133,7 @@
 		function renderBackground() {
 			bg.width = canvas.width;
 			bg.height = canvas.height;
-			staticFrame.width = canvas.width;
-			staticFrame.height = canvas.height;
-			if (!bgc || !sfc) return;
+			if (!bgc) return;
 
 			// bg = black + the three nebula glows.
 			bgc.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -137,14 +156,24 @@
 			// on top of the helix in draw().
 			vignette = makeVignette(c);
 
-			// staticFrame = bg + frozen (steady) stars + vignette — the helix-less backdrop
-			// the scrolled-away path restores the helix strip from each frame.
+			// staticFrame derives from the bg just rebuilt — mark it stale and let the
+			// scrolled-away path rebuild it on demand (see the staticFrame comment above).
+			staticFrameDirty = true;
+		}
+
+		// staticFrame = bg + frozen (steady) stars + vignette — the helix-less backdrop
+		// the scrolled-away path restores the helix strip from each frame.
+		function renderStaticFrame() {
+			staticFrame.width = canvas.width;
+			staticFrame.height = canvas.height;
+			if (!sfc) return;
 			sfc.setTransform(1, 0, 0, 1, 0, 0);
 			sfc.drawImage(bg, 0, 0);
 			sfc.setTransform(dpr, 0, 0, dpr, 0, 0);
 			drawStars(sfc, (st) => st.base);
 			sfc.fillStyle = makeVignette(sfc);
 			sfc.fillRect(0, 0, w, h);
+			staticFrameDirty = false;
 		}
 
 		function resize() {
@@ -299,6 +328,7 @@
 		// viewport, and only panels overlapping the band re-blur.
 		function drawHelixOnly(t: number) {
 			lastT = t;
+			if (staticFrameDirty) renderStaticFrame();
 			if (freezePending) {
 				// First frame after leaving the hero: lay down one clean frozen full frame
 				// (whole starfield consistent) before switching to strip-only repaints.
