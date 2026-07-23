@@ -5,6 +5,9 @@
 	// rest of the site (backdrop is in the layout). Distinct from the staff /admin surface.
 	import Seo from '$lib/components/Seo.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
+	import { page } from '$app/state';
+	import { replaceState } from '$app/navigation';
+	import { WELCOME_FLAG, isWelcome } from '$lib/account-welcome';
 	import { m } from '$lib/paraglide/messages.js';
 	import { interestLabel } from '$lib/contact-interest-labels';
 	import type { Interest } from '$lib/contact-interests';
@@ -13,6 +16,16 @@
 
 	type FormResult = { scope?: string; error?: string; ok?: boolean; name?: string } | null;
 	let { data, form }: { data: PageData; form?: FormResult } = $props();
+
+	// One-time "email verified — welcome" banner (#106). Better Auth's verify-email flow redirects the
+	// freshly-verified, auto-signed-in user here with the welcome flag (the callbackURL the signup/resend
+	// actions pass — account-welcome.ts owns both ends). Capture the flag ONCE into state at init (so SSR
+	// and hydration agree), then strip the marker from the URL below — the banner stays for this view but
+	// a reload/back won't re-show it.
+	let showWelcome = $state(isWelcome(page.url));
+	$effect(() => {
+		if (page.url.searchParams.has(WELCOME_FLAG)) replaceState(page.url.pathname, {});
+	});
 
 	const fmt = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -59,6 +72,8 @@
 {/snippet}
 
 <section class="max-w-3xl space-y-8">
+	{#if showWelcome}{@render okBanner(m.account_welcome_verified())}{/if}
+
 	<header>
 		<h1 class="text-3xl font-medium tracking-tight text-white">{m.account_heading()}</h1>
 		<p class="mt-2 text-sm text-body">{m.account_lead()}</p>

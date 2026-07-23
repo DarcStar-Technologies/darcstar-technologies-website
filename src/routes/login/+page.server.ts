@@ -2,6 +2,7 @@ import { fail, redirect, type Actions, type Cookies } from '@sveltejs/kit';
 import { getAuth } from '$lib/server/auth';
 import { logLoginAttempt } from '$lib/server/auth-audit';
 import { persistLoginAudit } from '$lib/server/login-audit-store';
+import { ACCOUNT_WELCOME_CALLBACK } from '$lib/account-welcome';
 import type { PageServerLoad } from './$types';
 
 // Admin login (#69). Sign-in is a server form action, so it works WITHOUT JS — a native POST signs
@@ -161,8 +162,9 @@ export const actions: Actions = {
 			new Request(new URL('/api/auth/send-verification-email', url.origin), {
 				method: 'POST',
 				headers,
-				// callbackURL lands the freshly-verified (auto-signed-in) user on their portal.
-				body: JSON.stringify({ email, callbackURL: '/account' })
+				// callbackURL lands the freshly-verified (auto-signed-in) user on their portal, with
+				// the one-time "email verified" welcome banner (#106, account-welcome.ts).
+				body: JSON.stringify({ email, callbackURL: ACCOUNT_WELCOME_CALLBACK })
 			})
 		);
 
