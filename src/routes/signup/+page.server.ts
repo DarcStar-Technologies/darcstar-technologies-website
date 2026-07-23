@@ -48,8 +48,11 @@ function clientIpHeaders(getClientAddress: () => string): Headers {
 	return headers;
 }
 
+// NOTE: every action here MUST be named (no `default`). SvelteKit forbids a `default` action
+// coexisting with named actions — `check_named_default_separate` 500s EVERY POST to the page,
+// not just the default one (regression fixed after #119/#121 shipped a `resend` beside `default`).
 export const actions: Actions = {
-	default: async ({ request, url, locals, getClientAddress }) => {
+	signup: async ({ request, url, locals, getClientAddress }) => {
 		if (locals.user) redirect(303, '/account');
 		// getAuth() reads platform.env via getRequestEvent(); resolve it before the first await.
 		const auth = getAuth();
