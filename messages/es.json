@@ -208,9 +208,9 @@
 
 	"login_page_title": "Sign in — DarcStar Technologies",
 	"login_page_description": "Sign in to DarcStar Technologies.",
-	"login_eyebrow": "Admin",
+	"login_eyebrow": "Account",
 	"login_heading": "Sign in",
-	"login_lead": "Staff access to contact submissions.",
+	"login_lead": "Sign in to track the messages you send us and manage your profile.",
 	"login_field_email_label": "Email",
 	"login_field_email_placeholder": "you@darcstar.tech",
 	"login_field_password_label": "Password",
