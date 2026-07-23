@@ -21,11 +21,12 @@ operator is still made by the provisioning script (public sign-up only ever mint
   - `emailAndPassword` — `enabled`, **`disableSignUp: false`** + **`requireEmailVerification: true`**
     (#96 PR 2; both behavioral, so shared with the CLI config without adding a table).
   - `rateLimit` — `{ enabled: true, storage: 'database', customRules: { '/sign-up/email': { window:
-3600, max: 3 } } }` (#69, #96). DB-backed so counters survive Cloudflare isolate churn; adds the
-    **`rate_limit`** table (schema-affecting → mirrored in the CLI config). The `customRules` cap
-    tightens the reopened sign-up past the defaults (3/hour/IP). Only requests through Better Auth's
-    **router** are limited, which is why the login/signup actions forward to `auth.handler()` rather
-    than calling `auth.api.*` directly.
+3600, max: 3 }, '/send-verification-email': { window: 3600, max: 5 } } }` (#69, #96, #115). DB-backed
+    so counters survive Cloudflare isolate churn; adds the **`rate_limit`** table (schema-affecting →
+    mirrored in the CLI config). The `customRules` caps tighten the reopened sign-up (3/hour/IP) and
+    the #115 resend-verification trigger (5/hour/IP — a touch looser, since resending is a legitimate
+    repeat) past the defaults. Only requests through Better Auth's **router** are limited, which is why
+    the login/signup actions forward to `auth.handler()` rather than calling `auth.api.*` directly.
   - `emailVerification` (env-bound → in `auth.ts`, not `auth-options.ts`) — `sendOnSignUp`,
     `autoSignInAfterVerification`, `expiresIn: 3600`, a `sendVerificationEmail` that Resends the link
     (`verification-email.ts`), and an `afterEmailVerification` that runs the ownership backfill
@@ -89,7 +90,8 @@ so the sign-up surface can't be abused:
    the visitor in (no session token); Better Auth rejects sign-**in** for any unverified user with
    **403 `EMAIL_NOT_VERIFIED`** until they click the emailed link. On verify, `autoSignInAfterVerification`
    drops them into `/account`, and `afterEmailVerification` runs the ownership backfill.
-3. **Tighter rate limit** — `rateLimit.customRules['/sign-up/email'] = { window: 3600, max: 3 }`.
+3. **Tighter rate limit** — `rateLimit.customRules['/sign-up/email'] = { window: 3600, max: 3 }` (and
+   `['/send-verification-email'] = { window: 3600, max: 5 }` for the #115 resend affordance below).
 
 **Staff-lockout guard (load-bearing):** `requireEmailVerification` blocks sign-in for **every**
 `email_verified = 0` user, and all pre-#96 staff were created unverified. Three things keep the roster
@@ -105,6 +107,21 @@ An unverified account that later returns to `/login` isn't a dead-end: the sign-
 `emailVerification.sendOnSignIn` re-mails a fresh link, and the `/login` action surfaces a distinct
 "verify your email" message (safe — the 403 fires only after the password check passes, so a wrong
 password still returns the generic error and can't enumerate accounts).
+
+**Resend from the "check your email" panel (#115).** The `/login` recovery above needs the password.
+The other dead-end has none: an unverified account that signs up **again** hits better-auth's
+anti-enumeration path — a generic "check your email" that sends **no** mail (the duplicate never
+re-triggers a send) — and still can't sign in. So the `form?.ok` panel offers a **"Resend
+verification email"** button (`signup/+page.svelte`) posting to a `resend` action
+(`signup/+page.server.ts`) that forwards to **`POST /api/auth/send-verification-email`**. That
+endpoint is **already non-enumerating**: a 500 ms constant-time floor and an identical `{ status:
+true }` whether the address is unverified / already-verified / absent — it mails **only** an existing
+unverified account (better-auth `email-verification.mjs`). The action keeps the client outcome uniform
+to match (any non-429 → the same neutral "if it needs verifying, a link is on its way" confirmation;
+429 → "too many attempts"), and always returns `ok: true` so the panel stays put. It's **outside** the
+captcha scope (`endpoints: ['/sign-up/email']`), so **no widget/token is needed — resend works no-JS**
+(unlike sign-up itself), rate-limited at 5/hour/IP. Pinned by `auth.spec.ts` (identical response for
+absent/unverified/verified; a mail fires only for the real unverified account).
 
 The routes mirror `/login`: `/signup` (`src/routes/signup/`) is a form action forwarding a clean
 sub-request to `getAuth().handler()` (so it rides the rate limiter + captcha), showing a **"check your

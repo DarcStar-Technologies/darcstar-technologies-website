@@ -24,6 +24,11 @@
 	let clientError = $state<string | null>(null);
 	const error = $derived(clientError ?? form?.error ?? null);
 
+	// #115 resend-verification state (check-email panel). `resend` only exists on the resend action's
+	// return; guard with `in` so the discriminated `form` union narrows cleanly.
+	let resending = $state(false);
+	const resendState = $derived(form && 'resend' in form ? form.resend : null);
+
 	function errorMessage(code: string): string {
 		switch (code) {
 			case 'missing':
@@ -102,6 +107,38 @@
 			</h1>
 			<p class="mt-3 text-sm text-body">{m.signup_check_email_body({ email: form.email })}</p>
 			<p class="mt-2 text-xs text-body/70">{m.signup_check_email_hint()}</p>
+
+			<!-- Resend affordance (#115): forwards to the anti-enumerating /send-verification-email so a
+			     dropped/lost link — or a repeat sign-up whose duplicate response never mailed one — has a
+			     self-service way out. No captcha (out of the widget's scope), so it works no-JS too. -->
+			{#if resendState === 'sent'}
+				<p class="mt-4 text-sm text-success-400" role="status">{m.signup_resend_sent()}</p>
+			{:else if resendState === 'ratelimited'}
+				<p class="mt-4 text-sm text-error-400" role="alert">{m.signup_error_ratelimit()}</p>
+			{/if}
+
+			<form
+				method="post"
+				action="?/resend"
+				class="mt-2"
+				use:enhance={() => {
+					resending = true;
+					return async ({ result }) => {
+						resending = false;
+						await applyAction(result);
+					};
+				}}
+			>
+				<input type="hidden" name="email" value={form.email} />
+				<button
+					type="submit"
+					disabled={resending}
+					class="text-sm font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline disabled:opacity-60"
+				>
+					{resending ? m.signup_resend_sending() : m.signup_resend_button()}
+				</button>
+			</form>
+
 			<p class="mt-6 text-sm text-body">
 				<a
 					class="font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline"

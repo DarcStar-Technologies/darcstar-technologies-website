@@ -33,6 +33,21 @@ export const load: PageServerLoad = ({ locals }) => {
 // better-auth captcha plugin error codes (plugins/captcha/error-codes.ts) — an absent/failed challenge.
 const CAPTCHA_ERROR_CODES = new Set(['MISSING_RESPONSE', 'VERIFICATION_FAILED', 'UNKNOWN_ERROR']);
 
+// Forward the caller's IP so the rate limiter keys per-IP (default header: x-forwarded-for) instead
+// of sharing one NO_TRUSTED_IP bucket. On Cloudflare getClientAddress() is cf-connecting-ip (present
+// in prod, unspoofable); it can be null/throw on other adapters — then omit and dev falls back to a
+// localhost key. Shared by both actions.
+function clientIpHeaders(getClientAddress: () => string): Headers {
+	const headers = new Headers({ 'content-type': 'application/json' });
+	try {
+		const ip = getClientAddress();
+		if (ip) headers.set('x-forwarded-for', ip);
+	} catch {
+		// adapter couldn't resolve an address
+	}
+	return headers;
+}
+
 export const actions: Actions = {
 	default: async ({ request, url, locals, getClientAddress }) => {
 		if (locals.user) redirect(303, '/account');
@@ -54,14 +69,7 @@ export const actions: Actions = {
 		// A clean sub-request through the handler (see login/+page.server.ts for why handler, not api).
 		// Forward the client IP for the rate limiter (keyed on x-forwarded-for), and the Turnstile
 		// token as x-captcha-response — the header the captcha plugin reads.
-		const headers = new Headers({ 'content-type': 'application/json' });
-		let clientIp: string | null = null;
-		try {
-			clientIp = getClientAddress();
-		} catch {
-			// adapter couldn't resolve an address
-		}
-		if (clientIp) headers.set('x-forwarded-for', clientIp);
+		const headers = clientIpHeaders(getClientAddress);
 		if (captchaToken) headers.set('x-captcha-response', captchaToken);
 
 		const res = await auth.handler(
@@ -85,5 +93,41 @@ export const actions: Actions = {
 		const body = (await res.json().catch(() => null)) as { code?: string } | null;
 		const error = body?.code && CAPTCHA_ERROR_CODES.has(body.code) ? 'captcha' : 'generic';
 		return fail(400, { values, error });
+	},
+
+	// #115: resend the verification link. The dead-end this fixes: an unverified account that signs up
+	// AGAIN hits better-auth's anti-enumeration path (a generic "check your email" with NO email sent),
+	// and can't sign in either — so the "check your email" panel offers this. Forwards to better-auth's
+	// POST /send-verification-email, which is ALREADY anti-enumerating: constant-time (500ms floor) and
+	// an identical `{ status: true }` whether the address is unverified/verified/absent — it only mails
+	// an existing UNVERIFIED account. So we keep the client outcome uniform too: any non-429 → the same
+	// neutral "if it needs verifying, a link is on its way" confirmation, never "sent"/"no such account".
+	// It's OUTSIDE the captcha scope (endpoints: ['/sign-up/email']), so no widget/token is needed —
+	// this action works with or without JS. `ok: true` is kept in every return so the panel stays put
+	// (the page renders it on `form?.ok`) rather than flipping back to the sign-up form.
+	resend: async ({ request, url, locals, getClientAddress }) => {
+		if (locals.user) redirect(303, '/account');
+		const auth = getAuth();
+
+		const data = await request.formData();
+		const email = String(data.get('email') ?? '').trim();
+		// The hidden field is bound to form.email, so this is unreachable via the UI; a hand-crafted
+		// empty POST just gets the same neutral confirmation (the correct non-enumerating answer).
+		if (!email) return { ok: true as const, email: '', resend: 'sent' as const };
+
+		const res = await auth.handler(
+			new Request(new URL('/api/auth/send-verification-email', url.origin), {
+				method: 'POST',
+				headers: clientIpHeaders(getClientAddress),
+				// Match the sign-up callback so the fresh link also lands the verified user on /account.
+				body: JSON.stringify({ email, callbackURL: '/account' })
+			})
+		);
+
+		if (res.status === 429)
+			return fail(429, { ok: true as const, email, resend: 'ratelimited' as const });
+		// Every other outcome resolves to the same neutral confirmation — including a rare Resend/infra
+		// 500 (which only the unverified-existing branch can even reach), so status never leaks existence.
+		return { ok: true as const, email, resend: 'sent' as const };
 	}
 };
