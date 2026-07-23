@@ -1,6 +1,7 @@
 import { fail, redirect, type Actions } from '@sveltejs/kit';
 import { getAuth } from '$lib/server/auth';
 import { readEnv } from '$lib/server/env';
+import { ACCOUNT_WELCOME_CALLBACK } from '$lib/account-welcome';
 import type { PageServerLoad } from './$types';
 
 // Public sign-up (#96 PR 2). Mirrors the /login form-action pattern (login/+page.server.ts): a native
@@ -79,9 +80,9 @@ export const actions: Actions = {
 			new Request(new URL('/api/auth/sign-up/email', url.origin), {
 				method: 'POST',
 				headers,
-				// callbackURL is where /verify-email lands the freshly-verified (auto-signed-in) user.
-				// `?welcome=1` triggers the one-time "email verified" banner on /account (#106).
-				body: JSON.stringify({ name, email, password, callbackURL: '/account?welcome=1' })
+				// callbackURL is where /verify-email lands the freshly-verified (auto-signed-in) user —
+				// /account with the one-time "email verified" welcome flag (#106, account-welcome.ts).
+				body: JSON.stringify({ name, email, password, callbackURL: ACCOUNT_WELCOME_CALLBACK })
 			})
 		);
 
@@ -125,7 +126,7 @@ export const actions: Actions = {
 				headers: clientIpHeaders(getClientAddress),
 				// Match the sign-up callback so the fresh link also lands the verified user on
 				// /account with the same one-time welcome banner (#106).
-				body: JSON.stringify({ email, callbackURL: '/account?welcome=1' })
+				body: JSON.stringify({ email, callbackURL: ACCOUNT_WELCOME_CALLBACK })
 			})
 		);
 

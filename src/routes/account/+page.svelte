@@ -7,6 +7,7 @@
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
+	import { WELCOME_FLAG, isWelcome } from '$lib/account-welcome';
 	import { m } from '$lib/paraglide/messages.js';
 	import { interestLabel } from '$lib/contact-interest-labels';
 	import type { Interest } from '$lib/contact-interests';
@@ -17,12 +18,13 @@
 	let { data, form }: { data: PageData; form?: FormResult } = $props();
 
 	// One-time "email verified — welcome" banner (#106). Better Auth's verify-email flow redirects the
-	// freshly-verified, auto-signed-in user here with `?welcome=1` (the callbackURL the signup/resend
-	// actions pass). Capture the flag ONCE into state at init (so SSR and hydration agree), then strip
-	// the marker from the URL below — the banner stays for this view but a reload/back won't re-show it.
-	let showWelcome = $state(page.url.searchParams.get('welcome') === '1');
+	// freshly-verified, auto-signed-in user here with the welcome flag (the callbackURL the signup/resend
+	// actions pass — account-welcome.ts owns both ends). Capture the flag ONCE into state at init (so SSR
+	// and hydration agree), then strip the marker from the URL below — the banner stays for this view but
+	// a reload/back won't re-show it.
+	let showWelcome = $state(isWelcome(page.url));
 	$effect(() => {
-		if (page.url.searchParams.has('welcome')) replaceState(page.url.pathname, {});
+		if (page.url.searchParams.has(WELCOME_FLAG)) replaceState(page.url.pathname, {});
 	});
 
 	const fmt = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' });
