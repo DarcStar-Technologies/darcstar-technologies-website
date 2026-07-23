@@ -49,6 +49,46 @@ describe('auth public sign-up + email verification (#96 PR2)', () => {
 		).rejects.toThrow(/verif/i);
 	});
 
+	// Anti-enumeration: a sign-up for an ALREADY-registered address must be indistinguishable from a
+	// fresh one, or the form leaks which emails have accounts. better-auth gives us this for free —
+	// but ONLY because `requireEmailVerification` flips its `shouldReturnGenericDuplicateResponse`
+	// path (sign-up.mjs): the duplicate returns a generic 200 with a synthetic, non-persisted user and
+	// a null token instead of throwing USER_ALREADY_EXISTS. This test pins that behavior so a
+	// better-auth upgrade (or someone flipping the flag) can't silently reopen the enumeration leak —
+	// the signup form (signup/+page.server.ts) relies on `res.ok` staying true here. The second
+	// attempt also uses a DIFFERENT case + password to prove the dedup is by normalized email alone.
+	test('duplicate email returns a generic success, never a "user exists" leak', async () => {
+		const auth = buildAuth(emailAndPassword);
+		await auth.api.signUpEmail({
+			body: { name: 'first', email: 'dup@example.com', password: PASSWORD }
+		});
+		// Same address, different case + password — must resolve (not throw) and look like a new signup.
+		const res = await auth.api.signUpEmail({
+			body: { name: 'second', email: 'DUP@example.com', password: 'a-different-password' }
+		});
+		expect(res.token).toBeNull(); // no session minted
+		expect(res.user.email).toBe('dup@example.com'); // normalized (lowercased), synthetic
+	});
+
+	// Control: with verification OFF, the SAME duplicate DOES throw "user already exists" — proving the
+	// generic response above is bound to requireEmailVerification, not incidental. If this ever stops
+	// throwing, the anti-enumeration guarantee is no longer specifically ours to reason about.
+	test('control: a duplicate email throws when verification is not required', async () => {
+		const auth = buildAuth({
+			enabled: true,
+			disableSignUp: false,
+			requireEmailVerification: false
+		});
+		await auth.api.signUpEmail({
+			body: { name: 'first', email: 'dupctl@example.com', password: PASSWORD }
+		});
+		await expect(
+			auth.api.signUpEmail({
+				body: { name: 'second', email: 'dupctl@example.com', password: PASSWORD }
+			})
+		).rejects.toThrow(/already exists/i);
+	});
+
 	// Control: with verification NOT required, the same account can sign in immediately — proving the
 	// block above comes from requireEmailVerification, not some unrelated misconfiguration.
 	test('control: sign-in succeeds when verification is not required', async () => {
