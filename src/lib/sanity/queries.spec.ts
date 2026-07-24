@@ -27,6 +27,7 @@ describe('sanity GROQ queries', () => {
 		// boolean even when the field is absent (count(missing) is null → coalesce).
 		expect(papersQuery).toContain('darcstarAuthored');
 		expect(papersQuery).toContain('"hasCommentary": coalesce(count(commentary) > 0, false)');
+		expect(papersQuery).toContain('topics[]->');
 	});
 
 	it('paperBySlugQuery is slug-parameterised and pulls the PDF URL + commentary', () => {
@@ -34,6 +35,7 @@ describe('sanity GROQ queries', () => {
 		expect(paperBySlugQuery).toContain('"pdfUrl": pdf.asset->url');
 		expect(paperBySlugQuery).toContain('darcstarAuthored');
 		expect(paperBySlugQuery).toContain('commentary');
+		expect(paperBySlugQuery).toContain('topics[]->');
 	});
 
 	it('peopleQuery selects the team (non-external persons), name-sorted', () => {

@@ -64,8 +64,8 @@ Each is `+page.server.ts` (`getSanityClient().fetch(typedQuery)`) + `+page.svelt
 the shared `PageHero` + one `<Seo>`; chrome copy via Paraglide `m.*`, CMS data as `{expr}`).
 
 - `/news` (list) · `/news/[slug]` (Portable Text body, cover, authors, related papers)
-- `/research` (list) · `/research/[slug]` (abstract, status, external links incl. PDF, DarcStar
-  commentary)
+- `/research` (list) · `/research/[slug]` (abstract, status, research-topic tags, external links
+  incl. PDF, DarcStar commentary)
 - `/people` (team grid — `person` where `kind != "external"`; unset `kind` counts as team)
 - **Resilience:** LIST loads `try/catch` a Sanity outage → empty list + `console.warn` (never a 500);
   DETAIL loads `error(404)` on a missing slug (infra errors propagate as 500).

@@ -14,6 +14,7 @@
 	import PaperStatus from '$lib/components/PaperStatus.svelte';
 	import PaperOrigin from '$lib/components/PaperOrigin.svelte';
 	import PaperExternalDisclaimer from '$lib/components/PaperExternalDisclaimer.svelte';
+	import PaperTopics from '$lib/components/PaperTopics.svelte';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
@@ -30,9 +31,18 @@
 
 <CosmicBackdrop />
 
+<!-- Title leads (it's the card's one internal link — primary color + hover underline so it
+     unmistakably reads as one), then the status/origin/venue meta rail beneath it. -->
 {#snippet paperCard(paper: PageServerData['papers'][number])}
 	<li class="glass-card p-6 sm:p-7">
-		<div class="flex flex-wrap items-center gap-3">
+		<h3 class="text-xl font-medium tracking-tight">
+			<a
+				href={localizeHref(`/research/${paper.slug}`)}
+				class="text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline"
+				>{paper.title}</a
+			>
+		</h3>
+		<div class="mt-3 flex flex-wrap items-center gap-3">
 			<PaperStatus status={paper.status} />
 			<PaperOrigin darcstarAuthored={paper.darcstarAuthored} hasCommentary={paper.hasCommentary} />
 			{#if paper.venue || paper.publishedDate}
@@ -43,14 +53,8 @@
 				</span>
 			{/if}
 		</div>
-		<h3 class="mt-3 text-xl font-medium tracking-tight text-white">
-			<a
-				href={localizeHref(`/research/${paper.slug}`)}
-				class="transition-colors hover:text-primary-400">{paper.title}</a
-			>
-		</h3>
 		{#if paper.authors && paper.authors.length > 0}
-			<p class="mt-1 text-xs text-muted">
+			<p class="mt-2 text-xs text-muted">
 				{m.content_by()}
 				{paper.authors.map((a) => a.name).join(', ')}
 			</p>
@@ -58,6 +62,11 @@
 		<PaperExternalDisclaimer darcstarAuthored={paper.darcstarAuthored} compact />
 		{#if paper.abstract}
 			<p class="mt-3 line-clamp-3 text-sm leading-relaxed text-body">{paper.abstract}</p>
+		{/if}
+		{#if paper.topics && paper.topics.length > 0}
+			<div class="mt-3">
+				<PaperTopics topics={paper.topics} />
+			</div>
 		{/if}
 		<div class="mt-4">
 			<PaperLinks arxivId={paper.arxivId} doi={paper.doi} codeUrl={paper.codeUrl} url={paper.url} />
