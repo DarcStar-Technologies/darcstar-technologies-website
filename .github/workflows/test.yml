@@ -1,0 +1,52 @@
+name: test
+
+# Run the full local test suite in CI (DAR-49): the three vitest projects (client / server /
+# storybook — client + storybook drive real chromium via vitest browser mode) and the Playwright
+# e2e suite, whose webServer builds the Cloudflare bundle and previews it on the real Workers
+# runtime (wrangler dev). Both jobs are hermetic by design: CI has no .env, the e2e specs are
+# written DB-free, and a Sanity-token-less preview degrades to empty content lists, which the
+# specs tolerate (the same resilience posture the routes ship with).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # action-setup reads the pnpm version from package.json `packageManager`.
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The client + storybook projects run in real chromium (vitest browser mode);
+      # --with-deps also installs the runner's system libraries.
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:unit -- --run
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Not `pnpm test:e2e` — its bare `playwright install` pulls every browser engine; the
+      # config only ever launches chromium.
+      - run: pnpm exec playwright install --with-deps chromium
+      # Playwright's webServer runs `pnpm build && pnpm preview` (the real wrangler dev runtime,
+      # with the always-pass Turnstile test keys baked in — see package.json).
+      - run: pnpm exec playwright test
