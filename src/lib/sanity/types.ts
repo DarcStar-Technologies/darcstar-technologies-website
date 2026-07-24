@@ -448,9 +448,10 @@ export type PostsQueryResult = Array<{
 
 // Source: src/lib/sanity/queries.ts
 // Variable: postBySlugQuery
-// Query: *[_type == "post" && slug.current == $slug][0] {		_id,		title,		"slug": slug.current,		excerpt,		publishedAt,		coverImage,		body,		"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role, image }),		"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),		"relatedPapers": array::compact(relatedPapers[]->{ _id, title, "slug": slug.current, venue }),		seo	}
+// Query: *[_type == "post" && slug.current == $slug][0] {		_id,		_updatedAt,		title,		"slug": slug.current,		excerpt,		publishedAt,		coverImage,		body,		"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role, image }),		"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),		"relatedPapers": array::compact(relatedPapers[]->{ _id, title, "slug": slug.current, venue }),		seo	}
 export type PostBySlugQueryResult = {
 	_id: string;
+	_updatedAt: string;
 	title: string;
 	slug: string;
 	excerpt: string | null;
@@ -518,9 +519,10 @@ export type PapersQueryResult = Array<{
 
 // Source: src/lib/sanity/queries.ts
 // Variable: paperBySlugQuery
-// Query: *[_type == "paper" && slug.current == $slug][0] {		_id,		title,		"slug": slug.current,		status,		darcstarAuthored,		abstract,		commentary,		venue,		publishedDate,		url,		doi,		arxivId,		codeUrl,		"pdfUrl": pdf.asset->url,		"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role }),		"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),		seo	}
+// Query: *[_type == "paper" && slug.current == $slug][0] {		_id,		_updatedAt,		title,		"slug": slug.current,		status,		darcstarAuthored,		abstract,		commentary,		venue,		publishedDate,		url,		doi,		arxivId,		codeUrl,		"pdfUrl": pdf.asset->url,		"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role }),		"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),		seo	}
 export type PaperBySlugQueryResult = {
 	_id: string;
+	_updatedAt: string;
 	title: string;
 	slug: string;
 	status: 'draft' | 'preprint' | 'published' | 'toAppear' | null;
@@ -547,6 +549,20 @@ export type PaperBySlugQueryResult = {
 	}> | null;
 	seo: Seo | null;
 } | null;
+
+// Source: src/lib/sanity/queries.ts
+// Variable: sitemapEntriesQuery
+// Query: {	"posts": *[_type == "post" && defined(slug.current)]{ "slug": slug.current, _updatedAt },	"papers": *[_type == "paper" && defined(slug.current)]{ "slug": slug.current, _updatedAt }}
+export type SitemapEntriesQueryResult = {
+	posts: Array<{
+		slug: string;
+		_updatedAt: string;
+	}>;
+	papers: Array<{
+		slug: string;
+		_updatedAt: string;
+	}>;
+};
 
 // Source: src/lib/sanity/queries.ts
 // Variable: peopleQuery
@@ -576,9 +592,10 @@ import '@sanity/client';
 declare module '@sanity/client' {
 	interface SanityQueries {
 		'\n\t*[_type == "post" && defined(slug.current)] | order(publishedAt desc) {\n\t\t_id,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\texcerpt,\n\t\tpublishedAt,\n\t\tfeatured,\n\t\tcoverImage,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role })\n\t}\n': PostsQueryResult;
-		'\n\t*[_type == "post" && slug.current == $slug][0] {\n\t\t_id,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\texcerpt,\n\t\tpublishedAt,\n\t\tcoverImage,\n\t\tbody,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role, image }),\n\t\t"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),\n\t\t"relatedPapers": array::compact(relatedPapers[]->{ _id, title, "slug": slug.current, venue }),\n\t\tseo\n\t}\n': PostBySlugQueryResult;
+		'\n\t*[_type == "post" && slug.current == $slug][0] {\n\t\t_id,\n\t\t_updatedAt,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\texcerpt,\n\t\tpublishedAt,\n\t\tcoverImage,\n\t\tbody,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role, image }),\n\t\t"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),\n\t\t"relatedPapers": array::compact(relatedPapers[]->{ _id, title, "slug": slug.current, venue }),\n\t\tseo\n\t}\n': PostBySlugQueryResult;
 		'\n\t*[_type == "paper" && defined(slug.current)] | order(publishedDate desc) {\n\t\t_id,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\tstatus,\n\t\tdarcstarAuthored,\n\t\t"hasCommentary": coalesce(count(commentary) > 0, false),\n\t\tvenue,\n\t\tpublishedDate,\n\t\turl,\n\t\tdoi,\n\t\tarxivId,\n\t\tcodeUrl,\n\t\tabstract,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current })\n\t}\n': PapersQueryResult;
-		'\n\t*[_type == "paper" && slug.current == $slug][0] {\n\t\t_id,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\tstatus,\n\t\tdarcstarAuthored,\n\t\tabstract,\n\t\tcommentary,\n\t\tvenue,\n\t\tpublishedDate,\n\t\turl,\n\t\tdoi,\n\t\tarxivId,\n\t\tcodeUrl,\n\t\t"pdfUrl": pdf.asset->url,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role }),\n\t\t"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),\n\t\tseo\n\t}\n': PaperBySlugQueryResult;
+		'\n\t*[_type == "paper" && slug.current == $slug][0] {\n\t\t_id,\n\t\t_updatedAt,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\tstatus,\n\t\tdarcstarAuthored,\n\t\tabstract,\n\t\tcommentary,\n\t\tvenue,\n\t\tpublishedDate,\n\t\turl,\n\t\tdoi,\n\t\tarxivId,\n\t\tcodeUrl,\n\t\t"pdfUrl": pdf.asset->url,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role }),\n\t\t"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),\n\t\tseo\n\t}\n': PaperBySlugQueryResult;
+		'{\n\t"posts": *[_type == "post" && defined(slug.current)]{ "slug": slug.current, _updatedAt },\n\t"papers": *[_type == "paper" && defined(slug.current)]{ "slug": slug.current, _updatedAt }\n}': SitemapEntriesQueryResult;
 		'\n\t*[_type == "person" && kind != "external"] | order(name asc) {\n\t\t_id,\n\t\tname,\n\t\t"slug": slug.current,\n\t\trole,\n\t\timage,\n\t\tbio,\n\t\tsocialLinks[]{ label, url }\n\t}\n': PeopleQueryResult;
 	}
 }

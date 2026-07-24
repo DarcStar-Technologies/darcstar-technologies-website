@@ -32,6 +32,7 @@ export const postsQuery = defineQuery(`
 export const postBySlugQuery = defineQuery(`
 	*[_type == "post" && slug.current == $slug][0] {
 		_id,
+		_updatedAt,
 		title,
 		"slug": slug.current,
 		excerpt,
@@ -67,6 +68,7 @@ export const papersQuery = defineQuery(`
 export const paperBySlugQuery = defineQuery(`
 	*[_type == "paper" && slug.current == $slug][0] {
 		_id,
+		_updatedAt,
 		title,
 		"slug": slug.current,
 		status,
@@ -85,6 +87,14 @@ export const paperBySlugQuery = defineQuery(`
 		seo
 	}
 `);
+
+// Everything /sitemap.xml needs in ONE round trip: routable slugs + `_updatedAt` (the sitemap
+// <lastmod>) for both content types. Deliberately minimal — the endpoint runs on every crawler
+// fetch, so it shouldn't pay for bodies/authors/images it never renders.
+export const sitemapEntriesQuery = defineQuery(`{
+	"posts": *[_type == "post" && defined(slug.current)]{ "slug": slug.current, _updatedAt },
+	"papers": *[_type == "paper" && defined(slug.current)]{ "slug": slug.current, _updatedAt }
+}`);
 
 // Team = anyone NOT an external co-author. `kind != "external"` (rather than `== "internal"`) is
 // deliberate: `kind` is only explicitly set to "external" for citation-only authors, so an unset/null

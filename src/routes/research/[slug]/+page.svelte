@@ -17,6 +17,8 @@
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import { formatDate } from '$lib/sanity/date';
 	import { ogImageUrl } from '$lib/sanity/image';
+	import { breadcrumbJsonLd, scholarlyArticleJsonLd } from '$lib/jsonld';
+	import { page } from '$app/state';
 	import type { PageServerData } from './$types';
 
 	let { data }: { data: PageServerData } = $props();
@@ -32,6 +34,18 @@
 				: (paper.abstract ?? undefined))
 	);
 	const seoImage = $derived(ogImageUrl(paper.seo?.ogImage));
+
+	// ScholarlyArticle + breadcrumb JSON-LD (DAR-48) — external identities (publisher page,
+	// DOI, arXiv) ride along as sameAs; our detail page stays the mainEntityOfPage.
+	const pageUrl = $derived(page.url.origin + page.url.pathname);
+	const jsonLd = $derived([
+		scholarlyArticleJsonLd(paper, { url: pageUrl }),
+		breadcrumbJsonLd([
+			{ name: m.footer_nav_home(), url: page.url.origin + localizeHref('/') },
+			{ name: m.nav_research(), url: page.url.origin + localizeHref('/research') },
+			{ name: paper.title, url: pageUrl }
+		])
+	]);
 </script>
 
 <Seo
@@ -40,6 +54,7 @@
 	type="article"
 	image={seoImage}
 	imageAlt={seoImage ? paper.title : undefined}
+	{jsonLd}
 />
 
 <CosmicBackdrop />

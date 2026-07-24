@@ -12,6 +12,8 @@
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import { formatDate } from '$lib/sanity/date';
 	import { ogImageUrl } from '$lib/sanity/image';
+	import { articleJsonLd, breadcrumbJsonLd } from '$lib/jsonld';
+	import { page } from '$app/state';
 	import type { PageServerData } from './$types';
 
 	let { data }: { data: PageServerData } = $props();
@@ -22,6 +24,18 @@
 	// Try the explicit seo.ogImage first, then the coverImage — via `ogImageUrl` (not `??` on the
 	// fields), so an ogImage object that exists but has no asset doesn't shadow a usable coverImage.
 	const seoImage = $derived(ogImageUrl(post.seo?.ogImage) ?? ogImageUrl(post.coverImage));
+
+	// Article + breadcrumb JSON-LD (DAR-48). Same URL convention as <Seo>'s canonical: the
+	// current pathname (so a localized view self-describes) absolutized against the origin.
+	const pageUrl = $derived(page.url.origin + page.url.pathname);
+	const jsonLd = $derived([
+		articleJsonLd(post, { url: pageUrl, image: seoImage }),
+		breadcrumbJsonLd([
+			{ name: m.footer_nav_home(), url: page.url.origin + localizeHref('/') },
+			{ name: m.nav_news(), url: page.url.origin + localizeHref('/news') },
+			{ name: post.title, url: pageUrl }
+		])
+	]);
 </script>
 
 <Seo
@@ -30,6 +44,7 @@
 	type="article"
 	image={seoImage}
 	imageAlt={seoImage ? post.title : undefined}
+	{jsonLd}
 />
 
 <CosmicBackdrop />

@@ -6,12 +6,20 @@
 	import PageHero from '$lib/components/PageHero.svelte';
 	import SanityImage from '$lib/components/SanityImage.svelte';
 	import { m } from '$lib/paraglide/messages.js';
+	import { page } from '$app/state';
+	import { peopleJsonLd } from '$lib/jsonld';
 	import type { PageServerData } from './$types';
 
 	let { data }: { data: PageServerData } = $props();
 </script>
 
-<Seo title={m.people_page_title()} description={m.people_page_description()} />
+<!-- Person JSON-LD lives on this index (DAR-48): there are no per-person detail routes, so the
+     team grid IS each profile's canonical surface. Empty team → <Seo> emits no script at all. -->
+<Seo
+	title={m.people_page_title()}
+	description={m.people_page_description()}
+	jsonLd={peopleJsonLd(data.people, page.url.origin)}
+/>
 
 <CosmicBackdrop />
 

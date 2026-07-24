@@ -4,7 +4,8 @@ Every page's document head — `<title>`, meta description, canonical, and the
 Open Graph + Twitter tags that make a shared link render a rich preview — comes
 from **one component**: [`src/lib/components/Seo.svelte`](../src/lib/components/Seo.svelte).
 Background: issue #9 (links shared to investors rendered an untitled tab and a
-blank social card).
+blank social card). Discovery surfaces — `/sitemap.xml` and JSON-LD structured
+data — are DAR-48; see their sections below.
 
 ## Using it
 
@@ -25,7 +26,8 @@ Any new page must render its own `<Seo>` with page-specific copy:
 
 Props (all optional): `title`, `description`, `path` (canonical/OG path,
 defaults to the current pathname), `type` (`og:type`, default `website`),
-`image` (root-relative, defaults to the fingerprinted OG card), `imageAlt`.
+`image` (root-relative, defaults to the fingerprinted OG card), `imageAlt`,
+`noindex` (force it for gated pages), `jsonLd` (structured data — see below).
 The site-wide default title/description live at the top of the component.
 
 ## How the tags resolve
@@ -38,8 +40,11 @@ The site-wide default title/description live at the top of the component.
 - **Locale** — `og:locale` is derived from the active Paraglide locale
   (`en`→`en_US`, `es`→`es_ES`). `og:locale:alternate` is emitted **only** for
   locales in `TRANSLATED_LOCALES` (currently `[baseLocale]`), so no alternate is
-  advertised while `es` is untranslated placeholder English (issue #18). Extend
-  both `OG_LOCALE` **and** `TRANSLATED_LOCALES` when a locale actually ships.
+  advertised while `es` is untranslated placeholder English (issue #18).
+  `TRANSLATED_LOCALES` lives in [`src/lib/seo.ts`](../src/lib/seo.ts) — it is
+  shared with `/sitemap.xml`, so adding a locale there flips the OG alternates,
+  the noindex, **and** the sitemap's URL set together. Extend `OG_LOCALE`
+  (in `Seo.svelte`) at the same time.
 - **Untranslated locales are `noindex`.** `Seo.svelte` emits
   `<meta name="robots" content="noindex, follow">` for any non-base locale until
   its `messages/<locale>.json` is real (added to `TRANSLATED_LOCALES`). `hreflang`
@@ -75,6 +80,63 @@ Regenerate after any wordmark/tagline/brand change:
 ```sh
 node scripts/gen-og.mjs
 ```
+
+## /sitemap.xml (DAR-48)
+
+[`src/routes/sitemap.xml/+server.ts`](../src/routes/sitemap.xml/+server.ts)
+serves the crawlable surface in one document: the `STATIC_PATHS` marketing pages
+plus every routable Sanity post (`/news/[slug]`) and paper (`/research/[slug]`),
+fetched in one round trip by `sitemapEntriesQuery` (slug + `_updatedAt`, which
+becomes `<lastmod>`). `static/robots.txt` points crawlers at it — with the
+**production URL hardcoded**, because robots.txt is a static asset that can't
+know its serving origin (previews serving that line are harmless; they're not
+indexed).
+
+Design decisions to preserve:
+
+- **Worker-rendered, never prerendered.** The URL set changes with the CMS, and
+  prerendering would demote the route to the assets layer (see
+  [security-headers](security-headers.md) for why pages must stay SSR).
+- **Origin-relative**, like `<Seo>`'s canonical: production emits
+  `https://darcstar.tech/...`, previews self-reference.
+- **Exclusions are deliberate**: gated/noindex surfaces (`/admin`, `/account`,
+  `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/logout`) and any
+  untranslated locale tree — the sitemap loops `TRANSLATED_LOCALES`
+  ([`src/lib/seo.ts`](../src/lib/seo.ts)), the same flag that noindexes `/es`.
+  No per-person URLs: `/people` has no detail routes.
+- **A Sanity outage degrades** to a static-pages-only sitemap plus a log line
+  (same posture as the /news · /research · /people list loads) — never a 500.
+- **Adding an indexable page?** Add it to `STATIC_PATHS` _and_ to
+  `AUDITED_PAGES` in `security-headers.e2e.ts`; `seo.e2e.ts` pins the static
+  URL set and the exclusions.
+
+## JSON-LD structured data (DAR-48)
+
+Pure builders in [`src/lib/jsonld.ts`](../src/lib/jsonld.ts) (unit-tested in
+`jsonld.spec.ts`), rendered as `<script type="application/ld+json">` data
+blocks:
+
+- **`Organization`** — site-wide, emitted by the **root layout** (the one
+  deliberate layout-head entry; the "never in the layout" rule exists for
+  duplicated OG tags, which this isn't). It carries `@id`
+  `{origin}/#organization`, and every other node references it (`publisher`,
+  `worksFor`) instead of re-stating the org. Facts are the settled public ones
+  (`$lib/site.ts`): trade name only, United States, GitHub + `info@` email.
+- **Per-page nodes** go through the `<Seo jsonLd={...}>` prop (an array becomes
+  one `@graph` script; empty arrays render nothing): `Person` on `/people`
+  (the index is the profile surface), `Article` + `BreadcrumbList` on
+  `/news/[slug]`, `ScholarlyArticle` + `BreadcrumbList` on `/research/[slug]`
+  (DOI/arXiv/publisher links ride along as `sameAs`).
+- **Safety/CSP**: `jsonLdScript` escapes `<` as `\u003c`, so CMS content can't
+  break out of the tag — that's why the two `{@html}` sites carry
+  `eslint-disable-next-line svelte/no-at-html-tags` (don't add more without the
+  same serializer). JSON-LD is a non-executable data block, so the strict
+  `script-src` CSP does **not** apply (no nonce needed); the violation guard in
+  `security-headers.e2e.ts` proves that on every audited page.
+
+Validate with Google's [Rich Results Test](https://search.google.com/test/rich-results)
+or the [schema.org validator](https://validator.schema.org/) against a preview
+or production URL.
 
 ## Verifying
 
