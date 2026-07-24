@@ -27,6 +27,10 @@ describe('sanity GROQ queries', () => {
 		// boolean even when the field is absent (count(missing) is null → coalesce).
 		expect(papersQuery).toContain('darcstarAuthored');
 		expect(papersQuery).toContain('"hasCommentary": coalesce(count(commentary) > 0, false)');
+		// Full projection pinned: `description` feeds the topic tooltip on the list cards.
+		expect(papersQuery).toContain(
+			'"topics": array::compact(topics[]->{ _id, title, description })'
+		);
 	});
 
 	it('paperBySlugQuery is slug-parameterised and pulls the PDF URL + commentary', () => {
@@ -34,6 +38,10 @@ describe('sanity GROQ queries', () => {
 		expect(paperBySlugQuery).toContain('"pdfUrl": pdf.asset->url');
 		expect(paperBySlugQuery).toContain('darcstarAuthored');
 		expect(paperBySlugQuery).toContain('commentary');
+		// Full projection pinned: `description` feeds the topic tooltip on the detail page.
+		expect(paperBySlugQuery).toContain(
+			'"topics": array::compact(topics[]->{ _id, title, description })'
+		);
 	});
 
 	it('peopleQuery selects the team (non-external persons), name-sorted', () => {

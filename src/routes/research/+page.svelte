@@ -14,7 +14,9 @@
 	import PaperStatus from '$lib/components/PaperStatus.svelte';
 	import PaperOrigin from '$lib/components/PaperOrigin.svelte';
 	import PaperExternalDisclaimer from '$lib/components/PaperExternalDisclaimer.svelte';
+	import PaperTopics from '$lib/components/PaperTopics.svelte';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
+	import { inlineLinkClass } from '$lib/components/FormPrivacyNotice.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import { formatDate } from '$lib/sanity/date';
@@ -30,9 +32,14 @@
 
 <CosmicBackdrop />
 
+<!-- Title leads (it's the card's one internal link — the shared inlineLinkClass affordance so it
+     unmistakably reads as one), then the status/origin/venue meta rail beneath it. -->
 {#snippet paperCard(paper: PageServerData['papers'][number])}
 	<li class="glass-card p-6 sm:p-7">
-		<div class="flex flex-wrap items-center gap-3">
+		<h3 class="text-xl font-medium tracking-tight">
+			<a href={localizeHref(`/research/${paper.slug}`)} class={inlineLinkClass}>{paper.title}</a>
+		</h3>
+		<div class="mt-3 flex flex-wrap items-center gap-3">
 			<PaperStatus status={paper.status} />
 			<PaperOrigin darcstarAuthored={paper.darcstarAuthored} hasCommentary={paper.hasCommentary} />
 			{#if paper.venue || paper.publishedDate}
@@ -43,14 +50,8 @@
 				</span>
 			{/if}
 		</div>
-		<h3 class="mt-3 text-xl font-medium tracking-tight text-white">
-			<a
-				href={localizeHref(`/research/${paper.slug}`)}
-				class="transition-colors hover:text-primary-400">{paper.title}</a
-			>
-		</h3>
 		{#if paper.authors && paper.authors.length > 0}
-			<p class="mt-1 text-xs text-muted">
+			<p class="mt-2 text-xs text-muted">
 				{m.content_by()}
 				{paper.authors.map((a) => a.name).join(', ')}
 			</p>
@@ -59,17 +60,18 @@
 		{#if paper.abstract}
 			<p class="mt-3 line-clamp-3 text-sm leading-relaxed text-body">{paper.abstract}</p>
 		{/if}
+		<PaperTopics topics={paper.topics} class="mt-3" />
 		<div class="mt-4">
 			<PaperLinks arxivId={paper.arxivId} doi={paper.doi} codeUrl={paper.codeUrl} url={paper.url} />
 		</div>
 	</li>
 {/snippet}
 
-<!-- One origin group — heading, note, and its cards. The h2 outsizes the text-xl card titles
-     (LegalSection's scale) so the group heading visually dominates its children. -->
+<!-- One origin group — heading, note, and its cards. The h2 outsizes the text-xl card titles at
+     EVERY width (base text-2xl, no breakpoint) so the group heading always dominates its children. -->
 {#snippet paperSection(heading: string, note: string, papers: PageServerData['papers'])}
 	<section>
-		<h2 class="text-xl font-medium tracking-tight text-white sm:text-2xl">{heading}</h2>
+		<h2 class="text-2xl font-medium tracking-tight text-white">{heading}</h2>
 		<p class="mt-1 text-sm text-muted">{note}</p>
 		<ul class="mt-6 space-y-6">
 			{#each papers as paper (paper._id)}

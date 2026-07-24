@@ -64,8 +64,8 @@ Each is `+page.server.ts` (`getSanityClient().fetch(typedQuery)`) + `+page.svelt
 the shared `PageHero` + one `<Seo>`; chrome copy via Paraglide `m.*`, CMS data as `{expr}`).
 
 - `/news` (list) · `/news/[slug]` (Portable Text body, cover, authors, related papers)
-- `/research` (list) · `/research/[slug]` (abstract, status, external links incl. PDF, DarcStar
-  commentary)
+- `/research` (list) · `/research/[slug]` (abstract, status, research-topic tags, external links
+  incl. PDF, DarcStar commentary)
 - `/people` (team grid — `person` where `kind != "external"`; unset `kind` counts as team)
 - **Resilience:** LIST loads `try/catch` a Sanity outage → empty list + `console.warn` (never a 500);
   DETAIL loads `error(404)` on a missing slug (infra errors propagate as 500).
@@ -90,6 +90,22 @@ read as ours, so the rendering rail is:
 - The detail page renders `commentary` through the same `PortableBody` as post bodies (inline
   images resolve identically). The "our take on this work" note above it renders for third-party
   papers only — a first-party paper with commentary gets the section without external framing.
+
+### Paper meta-rail charge mapping
+
+The chips/pills around a paper color-code the brand triad ([styling — color-charge triad](styling.md#the-color-charge-triad--one-source-of-truth)) by MEANING, so a new chip must pick the right charge — don't grab a color ad hoc:
+
+| Charge | Meaning on the paper rail                | Component / tone                                            |
+| ------ | ---------------------------------------- | ----------------------------------------------------------- |
+| **R**  | research **topic** (what it's about)     | `PaperTopics` — `border-tertiary-500/40 text-tertiary-400`  |
+| **G**  | **DarcStar commentary** chip (list only) | `PaperOrigin` — `border-secondary-500/40`                   |
+| **B**  | **actionable / published**               | `PaperLinks` (filled = link) · `PaperStatus` published tone |
+
+Neutral (`border-hairline`) = non-semantic chrome (statuses, "Third-party", categories). All pill
+geometry comes from `PaperStatus`'s exported `pillClass`. The B charge carries two meanings, so
+the **rest fill** disambiguates: `PaperLinks` pills are filled (`bg-primary-500/10`) = clickable;
+the published status pill is outline-only = badge. Topic `description` renders as a `title`
+tooltip only (invisible on touch/keyboard — DAR-56 tracks a visible rendering).
 
 ## Configuring the dataset / project
 

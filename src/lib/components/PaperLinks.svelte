@@ -29,6 +29,9 @@
 	});
 </script>
 
+<!-- Primary (B) accent + the ↗ glyph so these read as outbound links at a glance. The REST
+     fill (bg-primary-500/10) is load-bearing: PaperStatus's "published" tone shares these
+     border/text tokens, so filled = actionable link, outline-only = status chip. -->
 {#if links.length > 0}
 	<div class="flex flex-wrap gap-2">
 		{#each links as link (link.label)}
@@ -36,9 +39,9 @@
 				href={link.href}
 				target="_blank"
 				rel="noreferrer noopener"
-				class="inline-flex items-center rounded-full border border-hairline px-3 py-1 text-xs font-medium text-body transition-colors hover:border-primary-500/40 hover:text-primary-400"
+				class="inline-flex items-center gap-1 rounded-full border border-primary-500/40 bg-primary-500/10 px-3 py-1 text-xs font-medium text-primary-400 transition-colors hover:border-primary-400 hover:bg-primary-500/20 hover:text-primary-300"
 			>
-				{link.label}
+				{link.label}<span aria-hidden="true">↗</span>
 			</a>
 		{/each}
 	</div>

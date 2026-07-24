@@ -1,6 +1,6 @@
 <script lang="ts">
 	// /research/[slug] — a single paper: helix hero with the title, then status/venue/date/authors/
-	// categories, the external links (incl. a hosted PDF), the abstract, and the DarcStar commentary
+	// topics/categories, the external links (incl. a hosted PDF), the abstract, and the DarcStar commentary
 	// (Portable Text — PortableBody resolves its inline images the same way post bodies do).
 	// `data.paper` is non-null (load 404s a missing slug). Third-party papers (DAR-52: any entry not
 	// explicitly `darcstarAuthored`) carry an origin chip + an explicit not-ours disclaimer.
@@ -8,9 +8,10 @@
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import Seo from '$lib/components/Seo.svelte';
 	import PageHero from '$lib/components/PageHero.svelte';
-	import PaperStatus from '$lib/components/PaperStatus.svelte';
+	import PaperStatus, { pillClass } from '$lib/components/PaperStatus.svelte';
 	import PaperOrigin from '$lib/components/PaperOrigin.svelte';
 	import PaperExternalDisclaimer from '$lib/components/PaperExternalDisclaimer.svelte';
+	import PaperTopics from '$lib/components/PaperTopics.svelte';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
 	import PortableBody from '$lib/components/portable/PortableBody.svelte';
 	import { m } from '$lib/paraglide/messages.js';
@@ -87,12 +88,11 @@
 					{paper.authors.map((a) => a.name).join(', ')}
 				</p>
 			{/if}
+			<PaperTopics topics={paper.topics} />
 			{#if paper.categories && paper.categories.length > 0}
 				<div class="flex flex-wrap gap-2">
 					{#each paper.categories as cat (cat._id)}
-						<span class="rounded-full border border-hairline px-3 py-1 text-xs text-body"
-							>{cat.title}</span
-						>
+						<span class="{pillClass} border-hairline text-body">{cat.title}</span>
 					{/each}
 				</div>
 			{/if}
