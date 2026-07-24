@@ -88,7 +88,10 @@
 					{paper.authors.map((a) => a.name).join(', ')}
 				</p>
 			{/if}
-			<PaperTopics topics={paper.topics} />
+			<PaperTopics
+				topics={paper.topics}
+				topicHref={(slug) => localizeHref(`/research?topic=${encodeURIComponent(slug)}`)}
+			/>
 			{#if paper.categories && paper.categories.length > 0}
 				<div class="flex flex-wrap gap-2">
 					{#each paper.categories as cat (cat._id)}

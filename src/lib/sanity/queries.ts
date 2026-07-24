@@ -62,7 +62,7 @@ export const papersQuery = defineQuery(`
 		codeUrl,
 		abstract,
 		"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),
-		"topics": array::compact(topics[]->{ _id, title, description })
+		"topics": array::compact(topics[]->{ _id, title, "slug": slug.current, description })
 	}
 `);
 
@@ -84,7 +84,7 @@ export const paperBySlugQuery = defineQuery(`
 		codeUrl,
 		"pdfUrl": pdf.asset->url,
 		"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role }),
-		"topics": array::compact(topics[]->{ _id, title, description }),
+		"topics": array::compact(topics[]->{ _id, title, "slug": slug.current, description }),
 		"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),
 		seo
 	}

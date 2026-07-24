@@ -91,6 +91,17 @@ read as ours, so the rendering rail is:
   images resolve identically). The "our take on this work" note above it renders for third-party
   papers only — a first-party paper with commentary gets the section without external framing.
 
+### /research filtering & sorting
+
+`?topic=&author=&origin=&sort=` filter (topic/author **slugs**, origin `darcstar|external`) and
+sort (`date` default · `title`) the ONE SSR papers fetch — semantics live in
+`src/lib/research-filters.ts` (unit-tested; empty/unknown params degrade safely; origin keeps the
+DAR-52 fail-safe polarity). URL params are the single source of state: the bar is a **native GET
+form** (works no-JS; Apply submits), enhanced on change to `goto` with clean URLs; the server
+load never reads the URL, so query-only navigations don't re-hit Sanity. Facet options derive
+from the fetched papers (selects only offer values that match something). Topic tags
+(`PaperTopics`'s `topicHref`) link into `?topic=`, so a tag is an entry point, not a dead end.
+
 ### Paper meta-rail charge mapping
 
 The chips/pills around a paper color-code the brand triad ([styling — color-charge triad](styling.md#the-color-charge-triad--one-source-of-truth)) by MEANING, so a new chip must pick the right charge — don't grab a color ad hoc:

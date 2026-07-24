@@ -34,7 +34,7 @@ describe('sanity GROQ queries', () => {
 		expect(papersQuery).toContain('"hasCommentary": coalesce(count(commentary) > 0, false)');
 		// Full projection pinned: `description` feeds the topic tooltip on the list cards.
 		expect(papersQuery).toContain(
-			'"topics": array::compact(topics[]->{ _id, title, description })'
+			'"topics": array::compact(topics[]->{ _id, title, "slug": slug.current, description })'
 		);
 	});
 
@@ -45,7 +45,7 @@ describe('sanity GROQ queries', () => {
 		expect(paperBySlugQuery).toContain('commentary');
 		// Full projection pinned: `description` feeds the topic tooltip on the detail page.
 		expect(paperBySlugQuery).toContain(
-			'"topics": array::compact(topics[]->{ _id, title, description })'
+			'"topics": array::compact(topics[]->{ _id, title, "slug": slug.current, description })'
 		);
 	});
 

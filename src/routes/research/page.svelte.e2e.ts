@@ -9,3 +9,17 @@ test('research page renders its hero heading and origin-honest lede', async ({ p
 	await expect(page.getByRole('heading', { level: 1 })).toContainText('Papers');
 	await expect(page.getByText('alongside the foundational third-party research')).toBeVisible();
 });
+
+// The filter bar is chrome (renders regardless of content), and URL params SSR into the
+// controls — so a filtered deep link works without JS. Facet OPTIONS are content-derived and
+// deliberately not asserted; the origin/sort sets are static.
+test('filter bar renders and SSRs the URL state into its controls', async ({ page }) => {
+	await page.goto('/research?origin=external&sort=title');
+	const main = page.getByRole('main');
+	await expect(main.getByLabel('Topic')).toBeVisible();
+	await expect(main.getByLabel('Author')).toBeVisible();
+	await expect(main.getByLabel('Origin')).toHaveValue('external');
+	await expect(main.getByLabel('Sort by')).toHaveValue('title');
+	await expect(main.getByRole('button', { name: 'Apply' })).toBeVisible();
+	await expect(main.getByRole('link', { name: 'Clear filters' })).toBeVisible();
+});
