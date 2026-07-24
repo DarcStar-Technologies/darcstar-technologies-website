@@ -102,7 +102,19 @@
 			class="mt-10 flex flex-col gap-1.5 border-t border-hairline pt-6 text-xs text-muted sm:flex-row sm:items-center sm:justify-between"
 		>
 			<p>{m.footer_copyright({ year: String(year) })}</p>
-			<p>{m.footer_location()}</p>
+			<!-- Legal links (DAR-44) share the line with the location; "·" is decoration-only
+			     (no letters), so the no-raw-text rule permits the literal. -->
+			<p class="flex flex-wrap items-center gap-x-2 gap-y-1">
+				<a href={localizeHref('/privacy')} class="transition-colors hover:text-primary-500"
+					>{m.footer_legal_privacy()}</a
+				>
+				<span aria-hidden="true">·</span>
+				<a href={localizeHref('/terms')} class="transition-colors hover:text-primary-500"
+					>{m.footer_legal_terms()}</a
+				>
+				<span aria-hidden="true">·</span>
+				<span>{m.footer_location()}</span>
+			</p>
 		</div>
 	</div>
 </footer>

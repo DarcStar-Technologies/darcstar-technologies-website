@@ -14,6 +14,7 @@
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import ContactSuccess from '$lib/components/ContactSuccess.svelte';
+	import FormPrivacyNotice from '$lib/components/FormPrivacyNotice.svelte';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
 	import { fieldClass } from '$lib/components/ContactFields.svelte';
 	import { joinWaitlist } from '$lib/waitlist.remote';
@@ -195,6 +196,13 @@
 						})}
 					</div>
 				</details>
+
+				<!-- Data-handling notice (DAR-44) — the shared FormPrivacyNotice, same as the
+				     contact form's (ContactFields). -->
+				<FormPrivacyNotice
+					notice={m.waitlist_privacy_notice()}
+					linkLabel={m.waitlist_privacy_link()}
+				/>
 
 				<button
 					type="submit"

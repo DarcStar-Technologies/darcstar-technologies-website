@@ -24,8 +24,10 @@
 	//   catch-all "something went wrong"; the page has none).
 	import type { Snippet } from 'svelte';
 	import { submitContact } from '$lib/contact.remote';
+	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import ErrorBanner from './ErrorBanner.svelte';
+	import FormPrivacyNotice from './FormPrivacyNotice.svelte';
 
 	// `Omit<…, 'for'>` so the prop accepts BOTH the base instance (the /contact page) and a
 	// keyed `.for()` instance (the modal) — a keyed instance drops `.for`, and we never call
@@ -117,6 +119,16 @@
 })}
 
 {@render error?.()}
+
+<!-- Data-handling notice (DAR-44) — lives here so the modal AND the /contact page both carry
+     it. Closing the global contact dialog on link click keeps the layout-mounted modal from
+     lingering over /privacy after the client-side navigation (the LoginDialog convention); on
+     the standalone /contact page the dialog is already closed, so it's a no-op. -->
+<FormPrivacyNotice
+	notice={m.contact_privacy_notice()}
+	linkLabel={m.contact_privacy_link()}
+	onLinkClick={() => contactDialog.close()}
+/>
 
 <button type="submit" disabled={!!form.pending} class={submitButtonClass}>
 	{form.pending ? m.contact_submitting() : m.contact_submit()}

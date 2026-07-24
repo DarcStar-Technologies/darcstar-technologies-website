@@ -13,4 +13,14 @@ test('anonymous /signup renders the sign-up form (no redirect)', async ({ page }
 	// The cross-link back to sign-in is present. Scope to its prompt paragraph — the navbar also has a
 	// "Sign in" link, so a bare getByRole('link', { name: 'Sign in' }) would be a strict-mode conflict.
 	await expect(page.getByText('Already have an account?')).toBeVisible();
+
+	// Agreement notice (DAR-44): creating an account links both legal pages.
+	await expect(page.getByRole('link', { name: 'terms of service' })).toHaveAttribute(
+		'href',
+		/\/terms$/
+	);
+	await expect(page.getByRole('link', { name: 'privacy policy' })).toHaveAttribute(
+		'href',
+		/\/privacy$/
+	);
 });

@@ -4,13 +4,13 @@
 	// same CosmicBackdrop + frosted-glass aesthetic as the homepage. Facts reuse only the
 	// settled public details (trade name, "United States", GitHub + email) — nothing invented.
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
+	import ContactLinks from '$lib/components/ContactLinks.svelte';
 	import Seo from '$lib/components/Seo.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { contactDialog } from '$lib/contact-dialog.svelte';
-	// Brand/contact identity from the single source (src/lib/site.ts). Rendered as `{expr}`
-	// mustaches below, so the real address/handle stay visible and the no-raw-text rule is
-	// satisfied.
-	import { SITE_NAME, CONTACT_EMAIL, GITHUB_URL, GITHUB_HANDLE } from '$lib/site';
+	// Brand identity from the single source (src/lib/site.ts); the contact channels render via
+	// the shared ContactLinks (same block as the legal pages' contact sections).
+	import { SITE_NAME } from '$lib/site';
 
 	// $derived so the three principles re-resolve if a locale switcher is ever added
 	// (getLocale() is $state-backed); `title` is a stable {#each} key across switches.
@@ -92,16 +92,7 @@
 
 				<dt class="eyebrow text-xs tracking-widest">{m.about_facts_contact_label()}</dt>
 				<dd class="flex flex-col gap-1.5 text-sm">
-					<a
-						href={GITHUB_URL}
-						target="_blank"
-						rel="noreferrer"
-						class="text-body transition-colors hover:text-primary-500">{GITHUB_HANDLE}</a
-					>
-					<a
-						href={`mailto:${CONTACT_EMAIL}`}
-						class="text-body transition-colors hover:text-primary-500">{CONTACT_EMAIL}</a
-					>
+					<ContactLinks />
 				</dd>
 			</dl>
 		</section>
