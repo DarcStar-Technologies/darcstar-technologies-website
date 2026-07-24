@@ -1,0 +1,21 @@
+name: setup
+description: >
+  Shared toolchain setup for every CI job: pnpm (version read from package.json
+  `packageManager` by pnpm/action-setup), Node with the pnpm store cache, and a
+  frozen-lockfile install. Run actions/checkout in the workflow first — a local
+  action can only be referenced after the repo exists on disk.
+
+  The Node version is pinned HERE, not repo-wide: no engines/.nvmrc pin exists,
+  and `.npmrc` sets engine-strict, so a package.json pin would gate every dev's
+  local install — hardcoding the CI Node in one place instead (matches local dev, 24).
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v6
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+      shell: bash

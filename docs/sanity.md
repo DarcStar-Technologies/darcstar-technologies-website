@@ -131,8 +131,8 @@ tooltip only (invisible on touch/keyboard — DAR-56 tracks a visible rendering)
 
 1. **Create the read token** — Sanity Manage → project `8v6ikhvv` → API → Tokens → a **Viewer**
    (read) token.
-2. **Local** — add `SANITY_VIEWER_TOKEN="…"` to `.env` (+ it's in `.env.example`), then `pnpm gen`
-   (`wrangler types` picks up the name so `readEnv` is typed).
+2. **Local** — add `SANITY_VIEWER_TOKEN="…"` to `.env` (+ it's in `.env.example`, which is where
+   `pnpm gen` reads the name from so `readEnv` is typed — see [deployment](deployment.md)).
 3. **Prod** — `wrangler secret put SANITY_VIEWER_TOKEN` **and** `wrangler secret put
 SANITY_VIEWER_TOKEN --env preview` (the preview Worker). No `wrangler.jsonc` change (it's a secret,
    not a var).

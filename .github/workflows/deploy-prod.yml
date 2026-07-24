@@ -59,13 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # action-setup reads the pnpm version from package.json `packageManager`.
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
       # Build first so a build error fails BEFORE any DB change (never leaves prod migrated-but-not-built).
       - name: Build
         run: pnpm build

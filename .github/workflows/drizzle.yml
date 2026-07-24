@@ -8,7 +8,7 @@ name: drizzle
 #
 # `drizzle-kit generate` is OFFLINE: it diffs the schema against drizzle/meta and emits SQL without
 # connecting, so this needs no real credentials — the placeholder DATABASE_URL/AUTH_TOKEN below only
-# satisfy drizzle.config.ts's presence guard. (Mirrors lint.yml's setup.)
+# satisfy drizzle.config.ts's presence guard.
 
 on:
   push:
@@ -24,13 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # action-setup reads the pnpm version from package.json `packageManager`.
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
       - name: Regenerate migrations from the schema
         run: pnpm db:generate
         env:

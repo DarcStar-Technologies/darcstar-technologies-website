@@ -23,13 +23,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # action-setup reads the pnpm version from package.json `packageManager`.
-      - uses: pnpm/action-setup@v6
-      # No engines/.nvmrc pin exists, and `.npmrc` sets engine-strict, so a pin would
-      # gate every dev's local install — hardcode the CI node here instead. Matches local dev (24).
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      # Shared pnpm/node/install block — incl. the CI node-version pin rationale.
+      - uses: ./.github/actions/setup
       - run: pnpm lint

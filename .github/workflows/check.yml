@@ -1,0 +1,34 @@
+name: check
+
+# Gate `pnpm check` (svelte-check) so type regressions can't land on main (DAR-49). This job runs
+# on a clean checkout with NO .env — which used to skew `wrangler types` into dropping every
+# env-var off `Env` (19 phantom errors). Generation is now deterministic (scripts/gen-types.mjs:
+# env-var names come from the committed .env.example, volatile bits are normalized), so the
+# committed worker-configuration.d.ts regenerates byte-identical anywhere. The drift guard forces
+# wrangler.jsonc / .env.example / wrangler-version changes to ship their regenerated types —
+# same posture as drizzle.yml's migration guard.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      # Regenerates worker-configuration.d.ts (deterministic), syncs .svelte-kit, runs svelte-check.
+      - run: pnpm check
+      - name: Fail if worker-configuration.d.ts drifted
+        run: |
+          if [ -n "$(git status --porcelain -- worker-configuration.d.ts)" ]; then
+            echo "::error::worker-configuration.d.ts is out of date — run 'pnpm gen' and commit the result."
+            git diff -- worker-configuration.d.ts | head -60
+            exit 1
+          fi
