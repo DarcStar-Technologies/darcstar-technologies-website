@@ -1,4 +1,6 @@
-import { baseLocale, type Locale } from '$lib/paraglide/runtime';
+// Relative (not $lib) import: seo.e2e.ts imports this module under Playwright's transform,
+// which resolves relative paths unconditionally — same reason security-headers.ts is alias-free.
+import { baseLocale, type Locale } from './paraglide/runtime';
 
 // Locales whose copy is genuinely translated. `es` is wired but still English placeholder
 // (issue #18), so it is NOT listed. This ONE flag drives every "is this locale real?" decision:

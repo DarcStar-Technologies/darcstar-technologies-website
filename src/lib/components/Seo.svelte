@@ -75,11 +75,9 @@
 	// `forceNoindex` (a page prop) also covers gated/internal pages that must never be
 	// indexed in any locale (#69: /admin, /login).
 	const noindex = $derived(forceNoindex || !TRANSLATED_LOCALES.includes(locale));
-	// Empty arrays render nothing — a page whose entity list is data-driven (e.g. /people with
-	// an empty team) shouldn't emit a hollow @graph script.
-	const jsonLdHtml = $derived(
-		jsonLd && !(Array.isArray(jsonLd) && jsonLd.length === 0) ? jsonLdScript(jsonLd) : undefined
-	);
+	// jsonLdScript returns '' for an empty entity list (e.g. /people with an empty team), and
+	// the {#if} below treats '' as falsy — so empty data renders no script at all.
+	const jsonLdHtml = $derived(jsonLd ? jsonLdScript(jsonLd) : undefined);
 </script>
 
 <svelte:head>

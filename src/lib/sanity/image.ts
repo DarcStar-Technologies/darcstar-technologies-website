@@ -14,16 +14,32 @@ export function urlFor(source: SanityImageSource) {
 	return builder.image(source).auto('format');
 }
 
+// A sized absolute CDN URL for a Sanity image FIELD (the structural shape TypeGen emits), or
+// `undefined` when the field is empty — this helper owns the one `as SanityImageSource` coercion
+// so callers never cast. It also survives a malformed doc: @sanity/image-url's parseAssetId
+// THROWS on an empty/garbage `_ref` (which a mere `?.asset` guard doesn't catch), and a broken
+// CMS ref must degrade to "no image", never 500 an SSR render. No `auto('format')` — plain
+// fixed URLs for metadata consumers (OG scrapers, JSON-LD crawlers); UI rendering wants urlFor.
+export function imageUrl(
+	image: { asset?: { _ref?: string } | null } | null | undefined,
+	width: number,
+	height?: number
+): string | undefined {
+	if (!image?.asset?._ref) return undefined;
+	try {
+		let sized = builder.image(image as unknown as SanityImageSource).width(width);
+		if (height !== undefined) sized = sized.height(height);
+		return sized.url();
+	} catch {
+		return undefined;
+	}
+}
+
 // A 1200×630 absolute CDN URL for a Sanity image field, sized for the OG/Twitter social card, or
 // `undefined` when the field is empty. Detail pages pass the result straight to <Seo image=…>, which
 // (thanks to its absolute-URL branch) uses it verbatim instead of resolving it against the origin.
 export function ogImageUrl(
 	image: { asset?: { _ref?: string } } | null | undefined
 ): string | undefined {
-	if (!image?.asset) return undefined;
-	return builder
-		.image(image as unknown as SanityImageSource)
-		.width(1200)
-		.height(630)
-		.url();
+	return imageUrl(image, 1200, 630);
 }

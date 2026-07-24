@@ -107,8 +107,11 @@ Design decisions to preserve:
 - **A Sanity outage degrades** to a static-pages-only sitemap plus a log line
   (same posture as the /news · /research · /people list loads) — never a 500.
 - **Adding an indexable page?** Add it to `STATIC_PATHS` _and_ to
-  `AUDITED_PAGES` in `security-headers.e2e.ts`; `seo.e2e.ts` pins the static
-  URL set and the exclusions.
+  `AUDITED_PAGES` in `security-headers.e2e.ts`. Forgetting the sitemap is
+  caught automatically: `seo.e2e.ts` **enumerates** `src/routes/**/+page.svelte`
+  (minus dynamic segments and the gated set) and fails if a public page is
+  missing from the served sitemap — the pinned list alone couldn't detect an
+  omission.
 
 ## JSON-LD structured data (DAR-48)
 
@@ -127,6 +130,13 @@ blocks:
   (the index is the profile surface), `Article` + `BreadcrumbList` on
   `/news/[slug]`, `ScholarlyArticle` + `BreadcrumbList` on `/research/[slug]`
   (DOI/arXiv/publisher links ride along as `sameAs`).
+- **`$lib/jsonld.ts` must stay dependency-pure** (constants + one static asset):
+  the root layout imports it, so anything it pulls in ships in **every** page's
+  initial client bundle — an earlier draft imported the Sanity URL builder here
+  and dragged `@sanity/image-url` site-wide. Image fields are pre-resolved to
+  URL strings by the page that owns them, via `imageUrl(image, w, h?)` in
+  [`$lib/sanity/image.ts`](../src/lib/sanity/image.ts) (which also degrades a
+  malformed CMS `_ref` to "no image" instead of throwing during SSR).
 - **Safety/CSP**: `jsonLdScript` escapes `<` as `\u003c`, so CMS content can't
   break out of the tag — that's why the two `{@html}` sites carry
   `eslint-disable-next-line svelte/no-at-html-tags` (don't add more without the

@@ -78,8 +78,10 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	return new Response(body, {
 		headers: {
-			// The correct XML type (nosniff is site-wide, so it must be right); an hour of shared
-			// cache keeps crawler re-fetches off Sanity without meaningfully delaying new content.
+			// The correct XML type (nosniff is site-wide, so it must be right). The max-age is
+			// CLIENT-side only: Cloudflare does not edge-cache a Worker response off Cache-Control
+			// alone (that would need the Cache API or a Cache Rule) — but Googlebot honors it
+			// between sitemap re-fetches, which is the traffic that matters here.
 			'content-type': 'application/xml; charset=utf-8',
 			'cache-control': 'public, max-age=3600'
 		}

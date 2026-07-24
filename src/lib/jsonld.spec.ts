@@ -46,6 +46,15 @@ describe('jsonLdScript', () => {
 		const parsed = parseScript(jsonLdScript({ '@type': 'Thing', name: undefined }));
 		expect('name' in parsed).toBe(false);
 	});
+
+	it('renders nothing at all for an empty node array', () => {
+		expect(jsonLdScript([])).toBe('');
+	});
+
+	it('enforces the schema.org context over a node-supplied one', () => {
+		const parsed = parseScript(jsonLdScript({ '@context': 'https://evil.example', '@type': 'X' }));
+		expect(parsed['@context']).toBe('https://schema.org');
+	});
 });
 
 describe('organizationJsonLd', () => {
@@ -69,6 +78,8 @@ describe('peopleJsonLd', () => {
 				{
 					name: 'Ada Lovelace',
 					role: 'Chief Scientist',
+					// Pre-resolved by the caller (image.ts's imageUrl) — jsonld stays builder-free.
+					image: 'https://cdn.sanity.io/images/p/d/ada-600x600.jpg',
 					socialLinks: [
 						{ label: 'GitHub', url: 'https://github.com/ada' },
 						{ label: 'broken', url: null }
@@ -80,6 +91,7 @@ describe('peopleJsonLd', () => {
 		expect(person['@type']).toBe('Person');
 		expect(person.name).toBe('Ada Lovelace');
 		expect(person.jobTitle).toBe('Chief Scientist');
+		expect(person.image).toBe('https://cdn.sanity.io/images/p/d/ada-600x600.jpg');
 		// Null link URLs are dropped rather than serialized as null.
 		expect(person.sameAs).toEqual(['https://github.com/ada']);
 		expect(person.worksFor).toEqual({ '@id': organizationId(ORIGIN) });

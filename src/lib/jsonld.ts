@@ -1,4 +1,3 @@
-import { urlFor } from '$lib/sanity/image';
 import { CONTACT_EMAIL, GITHUB_URL, SITE_NAME } from '$lib/site';
 // Fingerprint-imported like Seo.svelte's OG card: a regenerated mark gets a new hashed URL.
 // The SVG is the actual brand mark; swap for a raster square if Google ever balks at vector.
@@ -13,6 +12,11 @@ import logoAsset from '$lib/assets/favicon.svg';
 // Sanity-derived fields arrive as `T | null` (TypeGen nullability), so inputs are structural
 // least-requirements — pass the query results straight in; nullish fields serialize away
 // (JSON.stringify drops `undefined` object values).
+//
+// This module must stay DEPENDENCY-PURE (constants + a static asset only): the root layout
+// imports it, so anything it pulls in rides in every page's initial client bundle. That is why
+// image fields arrive as pre-resolved URL strings ($lib/sanity/image.ts's imageUrl, built by
+// the pages that have images) instead of this module importing the Sanity URL builder.
 
 /** Node an @id-reference points at — emitted site-wide by the root layout. */
 export function organizationId(origin: string): string {
@@ -27,9 +31,15 @@ export function organizationId(origin: string): string {
  * and CSP `script-src` doesn't apply — no nonce needed; the CSP e2e guard proves it.
  */
 export function jsonLdScript(data: object | object[]): string {
+	// A page whose entity list is data-driven (e.g. /people with an empty team) yields an empty
+	// array — render nothing at all rather than a hollow {"@graph":[]} script. Living HERE (not
+	// in a caller) covers every consumer by construction.
+	if (Array.isArray(data) && data.length === 0) return '';
 	const payload = Array.isArray(data)
 		? { '@context': 'https://schema.org', '@graph': data }
-		: { '@context': 'https://schema.org', ...data };
+		: // Node spread FIRST so the wrapper's @context always wins — the whole contract of this
+			// function is that the emitted script is schema.org-contexted.
+			{ ...data, '@context': 'https://schema.org' };
 	const json = JSON.stringify(payload).replace(/</g, '\\u003c');
 	return `<script type="application/ld+json">${json}</script>`;
 }
@@ -42,7 +52,11 @@ export function organizationJsonLd(origin: string) {
 		'@id': organizationId(origin),
 		name: SITE_NAME,
 		url: `${origin}/`,
-		logo: origin + logoAsset,
+		// URL-join, not string-concat: Vite emits the import as a root-relative path today
+		// (favicon.svg > the 4096-byte inline limit), but if the asset ever shrinks it becomes a
+		// data: URI — new URL() keeps an absolute (incl. data:) href intact instead of producing
+		// "https://origindata:image/svg+xml,…".
+		logo: new URL(logoAsset, origin).href,
 		email: CONTACT_EMAIL,
 		sameAs: [GITHUB_URL],
 		address: { '@type': 'PostalAddress', addressCountry: 'US' }
@@ -52,7 +66,9 @@ export function organizationJsonLd(origin: string) {
 interface PersonInput {
 	name: string | null;
 	role?: string | null;
-	image?: { asset?: { _ref: string } | null } | null;
+	/** Pre-resolved absolute image URL (build with image.ts's `imageUrl`) — see the
+	 * dependency-purity note at the top of this module. */
+	image?: string | null;
 	socialLinks?: { label: string | null; url: string | null }[] | null;
 }
 
@@ -67,13 +83,7 @@ export function peopleJsonLd(people: PersonInput[], origin: string) {
 			'@type': 'Person',
 			name: person.name,
 			jobTitle: person.role ?? undefined,
-			// Same cast image.ts's ogImageUrl uses: the structural input type carries the intact
-			// asset._ref the builder needs, it just isn't nominally SanityImageSource.
-			image: person.image?.asset
-				? urlFor(person.image as Parameters<typeof urlFor>[0])
-						.width(600)
-						.url()
-				: undefined,
+			image: person.image ?? undefined,
 			sameAs: nonEmpty(person.socialLinks?.map((link) => link.url).filter(isTruthy)),
 			worksFor: { '@id': organizationId(origin) }
 		}));
