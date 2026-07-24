@@ -18,6 +18,12 @@ test('/contact renders the contact form with all fields', async ({ page }) => {
 	await expect(main.getByLabel('Message', { exact: true })).toBeVisible();
 	await expect(main.getByRole('button', { name: 'Send message' })).toBeVisible();
 
+	// Data-handling notice (DAR-44) beside the submit, linking the privacy policy.
+	await expect(main.getByRole('link', { name: 'How we handle your data' })).toHaveAttribute(
+		'href',
+		/\/privacy$/
+	);
+
 	// The interest picker's chevron is a CSS-only affordance (appearance:none + a
 	// background SVG), so it renders without JS. Confirm the native control is stripped;
 	// the same CSS applies whether or not JS runs.

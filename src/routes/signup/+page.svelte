@@ -11,6 +11,7 @@
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import { fieldClass, submitButtonClass } from '$lib/components/ContactFields.svelte';
+	import { inlineLinkClass } from '$lib/components/FormPrivacyNotice.svelte';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 	import type { PageProps } from './$types';
@@ -230,21 +231,15 @@
 					<div {@attach turnstileWidget}></div>
 				{/if}
 
-				<!-- Agreement notice (DAR-44). The trailing "." is punctuation-only, so the
-				     no-raw-text rule permits the literal. -->
+				<!-- Agreement notice (DAR-44) — a two-link variant of the shared FormPrivacyNotice,
+				     on the same exported link treatment so the styles can't drift. -->
 				<p class="text-xs leading-relaxed text-faint">
 					{m.signup_legal_prefix()}
-					<a
-						href={localizeHref('/terms')}
-						class="text-body underline underline-offset-2 transition-colors hover:text-primary-500"
-						>{m.signup_legal_terms_link()}</a
-					>
+					<a href={localizeHref('/terms')} class={inlineLinkClass}>{m.signup_legal_terms_link()}</a>
 					{m.signup_legal_and()}
-					<a
-						href={localizeHref('/privacy')}
-						class="text-body underline underline-offset-2 transition-colors hover:text-primary-500"
+					<a href={localizeHref('/privacy')} class={inlineLinkClass}
 						>{m.signup_legal_privacy_link()}</a
-					>.
+					>
 				</p>
 
 				<button type="submit" disabled={submitting} class={submitButtonClass}>
