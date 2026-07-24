@@ -1,8 +1,12 @@
 # Security response headers
 
-Added for DAR-45. Every response carries CSP, HSTS, `X-Content-Type-Options`, `Referrer-Policy`,
-`Permissions-Policy`, and clickjacking protection (`frame-ancestors` + `X-Frame-Options`). The set
-is delivered from **three places** — know which one you're editing:
+Added for DAR-45. **Worker responses** (every SSR'd page, the auth API, remote functions) carry
+CSP, HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, and clickjacking
+protection (`frame-ancestors` + `X-Frame-Options`). **Static-asset responses** carry only
+`X-Content-Type-Options` + HSTS — assets don't execute in a document context, so the rest doesn't
+apply to them. The set is delivered from **three places** — know which one you're editing (shared
+values live in `src/lib/security-headers.ts`; the plaintext `_headers` is the one hand-synced
+copy):
 
 | Surface                                                         | Where it's set                                                         |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------- |
@@ -13,10 +17,24 @@ is delivered from **three places** — know which one you're editing:
 ## CSP
 
 Kit owns the CSP because its inline hydration bootstrap needs the per-response **nonce** Kit
-injects — a hook-built header can't know it. The policy is **enforced** (not report-only): every
-page is SSR'd through the real Workers runtime in e2e, and `src/routes/security-headers.e2e.ts`
-fails on any `securitypolicyviolation` event across the public pages, so a regression is caught
-before merge rather than observed in the field.
+injects — a hook-built header can't know it. The policy is **enforced** (not report-only), on the
+strength of `src/routes/security-headers.e2e.ts`, which drives the real Workers runtime and fails
+on any `securitypolicyviolation` event. Its teeth come from four mechanisms:
+
+- a violation guard over every public path (including `/es`), asserting the worker header set on
+  each — so a page that starts prerendering (served by the assets layer, CSP demoted to a
+  `<meta>` tag that can't carry `frame-ancestors`) fails the suite instead of silently degrading;
+- the **live Turnstile widget** on `/signup`: `pnpm preview` bakes Cloudflare's always-pass
+  **test** sitekey (`1x00000000000000000000AA`, `--var` in package.json), because a real sitekey
+  rejects localhost with a 400 before rendering — the test key runs the real challenge pipeline
+  anywhere, proving `script-src` live (the widget's iframe hides inside a **closed shadow root**,
+  so the e2e keys on the `cf-turnstile-response` input it injects; `frame-src` is pinned by the
+  synthetic probe);
+- **synthetic probes** that inject a script/iframe/image from each allowlisted origin — CSP blocks
+  fire at request-attempt time, before any network I/O, so this works with no Sanity token or
+  content;
+- a **negative control** that injects a non-allowlisted script and asserts the violation IS
+  captured, so the collector can't rot into a vacuous pass.
 
 Current allowlist and why:
 
@@ -34,12 +52,15 @@ Current allowlist and why:
   `default-src 'self'`, `connect-src 'self'`.
 
 **Adding a third-party origin** (script, image host, iframe, analytics): add it to the matching
-directive in `vite.config.ts` — nothing else. If you forget, the e2e violation guard fails with the
-blocked directive + URI in the diff.
+directive in `vite.config.ts` (put the origin constant in `src/lib/security-headers.ts` if app
+code also references it) and add a synthetic probe for it in `security-headers.e2e.ts`. If you
+forget the directive, the violation guard fails with the blocked directive + URI in the diff.
 
 **If a page ever prerenders**: Kit ships the CSP as a `<meta http-equiv>` tag there, which cannot
 carry `frame-ancestors` — and prerendered pages are served by the assets layer, skipping the hook
-entirely. Revisit `_headers` for that route before prerendering anything.
+entirely. The e2e suite pins this invariant structurally (every audited path asserts the worker
+header set), so prerendering an audited page fails the suite; revisit `_headers` before
+prerendering anything.
 
 ## Non-CSP headers (the hook)
 
@@ -50,9 +71,28 @@ entirely. Revisit `_headers` for that route before prerendering anything.
   Browsers ignore HSTS over plain HTTP, so localhost dev/preview is unaffected.
 - `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`.
 - `Permissions-Policy` denying the powerful-feature APIs the site doesn't use (camera, mic,
-  geolocation, …). Turnstile needs none of them. If you add a feature that does (e.g. WebAuthn →
-  `publickey-credentials-get`), grant it here explicitly.
+  geolocation, …). Turnstile needs none of them. This is a **fixed denylist** — the header has no
+  forward-compatible deny-all, so features it doesn't enumerate default to allowed; revisit the
+  list when adopting new browser APIs (e.g. WebAuthn → grant `publickey-credentials-get` here
+  explicitly).
 - `X-Frame-Options: DENY` — legacy fallback for `frame-ancestors 'none'`.
+
+### Known gaps (accepted)
+
+Two niche worker paths bypass the hook; both were weighed and accepted:
+
+- **Fatal errors inside the hook chain itself** (e.g. the session DB read throwing on `/admin`)
+  unwind past `resolve()`, so Kit's last-resort 500 page ships without these headers. Error pages
+  carry no sensitive body; not worth wrapping the hook in try/catch.
+- **Kit's 304 rebuild** copies only a fixed header whitelist (etag, cache-control, …), dropping
+  the security headers. Unreachable today: the per-response CSP nonce makes page ETags unstable,
+  so `If-None-Match` never matches — but it becomes live if a `+server.ts` ever emits a stable
+  ETag on a 200.
+
+Dev-only note: the CSP is enforced during `vite dev` too. Plain-localhost HMR is fine
+(`connect-src 'self'` covers the same-origin websocket), but `vite dev --host` or a custom
+`server.hmr` proxy can put the HMR websocket outside `'self'` and silently kill live-reload — if
+HMR dies in an exotic dev setup, that's why.
 
 ## Static assets — the `_headers` file
 

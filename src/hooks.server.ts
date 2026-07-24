@@ -7,21 +7,25 @@ import type { Handle } from '@sveltejs/kit';
 import { deLocalizeUrl, getTextDirection } from '$lib/paraglide/runtime';
 import { paraglideMiddleware } from '$lib/paraglide/server';
 import { preloadFilter } from '$lib/server/preload';
+import { HSTS_VALUE } from '$lib/security-headers';
 
-// Security response headers (DAR-45) on every worker response — SSR'd pages, the Better Auth API,
-// and remote-function endpoints alike. The Content-Security-Policy is NOT set here: it comes from
+// Security response headers (DAR-45) on worker responses — SSR'd pages, the Better Auth API, and
+// remote-function endpoints alike. The Content-Security-Policy is NOT set here: it comes from
 // SvelteKit's `csp` config (vite.config.ts), which has to own it so the inline hydration bootstrap
-// gets its per-response nonce. Static assets (/_app/*, robots.txt) never reach the worker — the
-// Workers assets layer serves them and applies the root `_headers` file instead; keep them in sync.
-// See docs/security-headers.md.
+// gets its per-response nonce. Static assets never reach the worker — the assets layer applies the
+// root `_headers` file instead. Known gaps (both niche, documented in docs/security-headers.md):
+// an exception thrown inside the hook chain itself 500s without these headers, and Kit's 304
+// rebuild would drop them (unreachable today — the CSP nonce keeps page ETags unstable).
 const handleSecurityHeaders: Handle = async ({ event, resolve }) => {
 	const response = await resolve(event);
 	const { headers } = response;
 	// Browsers ignore HSTS over plain HTTP, so localhost dev/preview is unaffected.
-	headers.set('strict-transport-security', 'max-age=31536000; includeSubDomains');
+	headers.set('strict-transport-security', HSTS_VALUE);
 	headers.set('x-content-type-options', 'nosniff');
 	headers.set('referrer-policy', 'strict-origin-when-cross-origin');
-	// Deny the powerful-feature APIs nothing on the site uses (Turnstile's iframe needs none of them).
+	// Deny the powerful-feature APIs nothing on the site uses (Turnstile's iframe needs none of
+	// them). A fixed denylist — the header has no deny-all — so revisit when adopting new
+	// browser APIs (e.g. WebAuthn would need publickey-credentials-get granted here).
 	headers.set(
 		'permissions-policy',
 		'accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=()'

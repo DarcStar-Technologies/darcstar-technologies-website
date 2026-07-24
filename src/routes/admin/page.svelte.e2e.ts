@@ -9,20 +9,19 @@ test('unauthenticated /admin redirects to the login page', async ({ page }) => {
 	await page.goto('/admin');
 
 	await expect(page).toHaveURL(/\/login$/);
-	// The login form actually rendered (not just a bare redirect target). Match visible textboxes,
-	// not bare labels: the layout keeps identically-labelled fields in the DOM inside closed
-	// dialogs (the navbar LoginDialog's Email/Password/Sign in, the ContactDialog's Email), the
-	// footer has a visible aria-label="Email" mail link, and strict mode counts hidden matches too.
+	// The login form actually rendered (not just a bare redirect target). Scope to the page's own
+	// glass-card — the one holding the h1 — because page-wide label queries strict-mode-collide
+	// with the rest of the layout: the ContactDialog keeps a hidden "Email" field in the DOM while
+	// closed, and the footer has a visible aria-label="Email" mail link. Scoping (rather than
+	// role-filtering) keeps getByLabel's real assertion: the inputs are named by an associated
+	// label, not a placeholder fallback.
 	await expect(page.getByRole('heading', { level: 1, name: 'Sign in' })).toBeVisible();
-	await expect(
-		page.getByRole('textbox', { name: 'Email', exact: true }).filter({ visible: true })
-	).toBeVisible();
-	await expect(
-		page.getByRole('textbox', { name: 'Password', exact: true }).filter({ visible: true })
-	).toBeVisible();
-	await expect(
-		page.getByRole('button', { name: 'Sign in' }).filter({ visible: true })
-	).toBeVisible();
+	const loginCard = page
+		.locator('.glass-card')
+		.filter({ has: page.getByRole('heading', { level: 1, name: 'Sign in' }) });
+	await expect(loginCard.getByLabel('Email', { exact: true })).toBeVisible();
+	await expect(loginCard.getByLabel('Password', { exact: true })).toBeVisible();
+	await expect(loginCard.getByRole('button', { name: 'Sign in' })).toBeVisible();
 });
 
 // Public sign-up stays closed (auth-options.ts #48, unit-tested in auth.spec.ts) — the login page

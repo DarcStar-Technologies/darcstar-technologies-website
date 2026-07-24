@@ -14,6 +14,7 @@
 	import { inlineLinkClass } from '$lib/components/FormPrivacyNotice.svelte';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
+	import { TURNSTILE_SCRIPT_URL } from '$lib/security-headers';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -54,7 +55,9 @@
 		reset: (id: string) => void;
 		remove: (id: string) => void;
 	};
-	const TURNSTILE_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+	// The api.js URL derives from the shared TURNSTILE_ORIGIN so the CSP allowlist
+	// (vite.config.ts) can never drift from the loader.
+	const TURNSTILE_SRC = TURNSTILE_SCRIPT_URL;
 
 	// Exposed by the attachment so a failed submit can refresh the (single-use) challenge token.
 	let resetTurnstile = $state<(() => void) | undefined>(undefined);

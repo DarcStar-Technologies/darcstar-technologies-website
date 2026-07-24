@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test';
 
 // Public sign-up (#96 PR 2) is reachable by anyone — unlike /account, an anonymous visitor is NOT
-// bounced to /login; the whole point is to let a new visitor register. The captcha widget doesn't
-// render in the preview (no TURNSTILE_SITE_KEY), so this asserts the surrounding form is served, not
-// the challenge. DB-free: rendering the page runs no query.
+// bounced to /login; the whole point is to let a new visitor register. The preview runs
+// Cloudflare's always-pass TEST sitekey (package.json), so the widget mounts, but this test
+// targets the surrounding form; the widget itself is covered by security-headers.e2e.ts. DB-free:
+// rendering the page runs no query.
 test('anonymous /signup renders the sign-up form (no redirect)', async ({ page }) => {
 	await page.goto('/signup');
 

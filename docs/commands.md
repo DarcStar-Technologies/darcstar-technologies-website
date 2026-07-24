@@ -2,7 +2,7 @@
 
 - `pnpm dev` — Vite dev server.
 - `pnpm build` — runs `wrangler types --check` then `vite build`. Output goes to `.svelte-kit/cloudflare`.
-- `pnpm preview` — serve the built output through Wrangler Pages (`wrangler pages dev`, port 4173), i.e. a real Workers runtime, not `vite preview`.
+- `pnpm preview` — serve the built worker through `wrangler dev` (port 4173), i.e. a real Workers runtime, not `vite preview`. Bakes Cloudflare's always-pass Turnstile **test** keys (`--var` in package.json) so the signup widget mounts on localhost — a real sitekey rejects localhost. → [security-headers](security-headers.md)
 - `pnpm check` — `wrangler types --check` + `svelte-kit sync` + `svelte-check` (type/diagnostic check).
 - `pnpm lint` — `prettier --check .` then `eslint .`. `pnpm format` writes Prettier fixes.
 - `pnpm gen` — `wrangler types`; regenerates `worker-configuration.d.ts` (the `Env` type consumed by `src/app.d.ts` and referenced in `tsconfig.json`). Run this after changing `wrangler.jsonc` bindings.
