@@ -20,14 +20,20 @@ describe('sanity GROQ queries', () => {
 		expect(postBySlugQuery).toContain('relatedPapers[]->');
 	});
 
-	it('papersQuery selects published papers newest-first', () => {
+	it('papersQuery selects published papers newest-first with the origin + annotation flags', () => {
 		expect(papersQuery).toContain('_type == "paper"');
 		expect(papersQuery).toContain('order(publishedDate desc)');
+		// DAR-52: the /research split renders darcstarAuthored, and hasCommentary must be a
+		// boolean even when the field is absent (count(missing) is null → coalesce).
+		expect(papersQuery).toContain('darcstarAuthored');
+		expect(papersQuery).toContain('"hasCommentary": coalesce(count(commentary) > 0, false)');
 	});
 
-	it('paperBySlugQuery is slug-parameterised and resolves the hosted PDF asset URL', () => {
+	it('paperBySlugQuery is slug-parameterised and pulls the PDF URL + commentary', () => {
 		expect(paperBySlugQuery).toContain('slug.current == $slug');
 		expect(paperBySlugQuery).toContain('"pdfUrl": pdf.asset->url');
+		expect(paperBySlugQuery).toContain('darcstarAuthored');
+		expect(paperBySlugQuery).toContain('commentary');
 	});
 
 	it('peopleQuery selects the team (non-external persons), name-sorted', () => {

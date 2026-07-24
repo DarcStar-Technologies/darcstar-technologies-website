@@ -64,10 +64,28 @@ Each is `+page.server.ts` (`getSanityClient().fetch(typedQuery)`) + `+page.svelt
 the shared `PageHero` + one `<Seo>`; chrome copy via Paraglide `m.*`, CMS data as `{expr}`).
 
 - `/news` (list) · `/news/[slug]` (Portable Text body, cover, authors, related papers)
-- `/research` (list) · `/research/[slug]` (abstract, status, external links incl. PDF)
+- `/research` (list) · `/research/[slug]` (abstract, status, external links incl. PDF, DarcStar
+  commentary)
 - `/people` (team grid — `person` where `kind != "external"`; unset `kind` counts as team)
 - **Resilience:** LIST loads `try/catch` a Sanity outage → empty list + `console.warn` (never a 500);
   DETAIL loads `error(404)` on a missing slug (infra errors propagate as 500).
+
+### /research origin split (DAR-52)
+
+The `paper` type holds two kinds of entry — first-party DarcStar work (`darcstarAuthored: true`)
+and notable third-party research we annotate (`commentary`, Portable Text; `papersQuery` exposes a
+`hasCommentary` boolean via `coalesce(count(commentary) > 0, false)`). Third-party work must never
+read as ours, so the rendering rail is:
+
+- The list splits into **"DarcStar research"** and **"Foundational reading"** sections (an empty
+  group skips its section); the hero lede covers both kinds instead of claiming everything as ours.
+- **`PaperOrigin.svelte`** (beside `PaperStatus` on list cards + detail) chips external entries
+  "Third-party" (+ "DarcStar commentary" when annotated); both surfaces also carry an explicit
+  not-authored-by-DarcStar disclaimer line. **Polarity is fail-safe:** `!darcstarAuthored` — an
+  unset/null flag renders as external, never as first-party (unit-tested in
+  `PaperOrigin.svelte.spec.ts`).
+- The detail page renders `commentary` through the same `PortableBody` as post bodies (inline
+  images resolve identically), under a note that it's DarcStar's take, not part of the paper.
 
 ## Configuring the dataset / project
 
