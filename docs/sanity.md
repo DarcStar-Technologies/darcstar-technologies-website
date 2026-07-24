@@ -80,12 +80,16 @@ read as ours, so the rendering rail is:
 - The list splits into **"DarcStar research"** and **"Foundational reading"** sections (an empty
   group skips its section); the hero lede covers both kinds instead of claiming everything as ours.
 - **`PaperOrigin.svelte`** (beside `PaperStatus` on list cards + detail) chips external entries
-  "Third-party" (+ "DarcStar commentary" when annotated); both surfaces also carry an explicit
-  not-authored-by-DarcStar disclaimer line. **Polarity is fail-safe:** `!darcstarAuthored` — an
-  unset/null flag renders as external, never as first-party (unit-tested in
-  `PaperOrigin.svelte.spec.ts`).
+  "Third-party", plus a **list-only** "DarcStar commentary" chip when annotated (`hasCommentary`;
+  the detail page renders the commentary itself instead). The explicit not-authored-by-DarcStar
+  line on both surfaces is **`PaperExternalDisclaimer.svelte`** (a block `<p>` — it can't live in
+  the chip row). **Polarity is fail-safe:** `!darcstarAuthored` — an unset/null flag renders as
+  external, never as first-party (unit-tested in both components' specs). An external paper's
+  fallback meta description also leads with the disclaimer, so social previews carry the origin
+  signal too.
 - The detail page renders `commentary` through the same `PortableBody` as post bodies (inline
-  images resolve identically), under a note that it's DarcStar's take, not part of the paper.
+  images resolve identically). The "our take on this work" note above it renders for third-party
+  papers only — a first-party paper with commentary gets the section without external framing.
 
 ## Configuring the dataset / project
 

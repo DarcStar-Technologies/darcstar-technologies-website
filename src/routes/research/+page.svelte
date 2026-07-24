@@ -13,6 +13,7 @@
 	import PageHero from '$lib/components/PageHero.svelte';
 	import PaperStatus from '$lib/components/PaperStatus.svelte';
 	import PaperOrigin from '$lib/components/PaperOrigin.svelte';
+	import PaperExternalDisclaimer from '$lib/components/PaperExternalDisclaimer.svelte';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
@@ -54,9 +55,7 @@
 				{paper.authors.map((a) => a.name).join(', ')}
 			</p>
 		{/if}
-		{#if !paper.darcstarAuthored}
-			<p class="mt-2 text-xs text-muted">{m.research_external_disclaimer()}</p>
-		{/if}
+		<PaperExternalDisclaimer darcstarAuthored={paper.darcstarAuthored} compact />
 		{#if paper.abstract}
 			<p class="mt-3 line-clamp-3 text-sm leading-relaxed text-body">{paper.abstract}</p>
 		{/if}
@@ -64,6 +63,20 @@
 			<PaperLinks arxivId={paper.arxivId} doi={paper.doi} codeUrl={paper.codeUrl} url={paper.url} />
 		</div>
 	</li>
+{/snippet}
+
+<!-- One origin group — heading, note, and its cards. The h2 outsizes the text-xl card titles
+     (LegalSection's scale) so the group heading visually dominates its children. -->
+{#snippet paperSection(heading: string, note: string, papers: PageServerData['papers'])}
+	<section>
+		<h2 class="text-xl font-medium tracking-tight text-white sm:text-2xl">{heading}</h2>
+		<p class="mt-1 text-sm text-muted">{note}</p>
+		<ul class="mt-6 space-y-6">
+			{#each papers as paper (paper._id)}
+				{@render paperCard(paper)}
+			{/each}
+		</ul>
+	</section>
 {/snippet}
 
 <div class="space-y-14">
@@ -80,31 +93,19 @@
 		{:else}
 			<div class="space-y-12">
 				{#if darcstarPapers.length > 0}
-					<section>
-						<h2 class="text-lg font-medium tracking-tight text-white">
-							{m.research_section_darcstar_heading()}
-						</h2>
-						<p class="mt-1 text-sm text-muted">{m.research_section_darcstar_note()}</p>
-						<ul class="mt-6 space-y-6">
-							{#each darcstarPapers as paper (paper._id)}
-								{@render paperCard(paper)}
-							{/each}
-						</ul>
-					</section>
+					{@render paperSection(
+						m.research_section_darcstar_heading(),
+						m.research_section_darcstar_note(),
+						darcstarPapers
+					)}
 				{/if}
 
 				{#if externalPapers.length > 0}
-					<section>
-						<h2 class="text-lg font-medium tracking-tight text-white">
-							{m.research_section_external_heading()}
-						</h2>
-						<p class="mt-1 text-sm text-muted">{m.research_section_external_note()}</p>
-						<ul class="mt-6 space-y-6">
-							{#each externalPapers as paper (paper._id)}
-								{@render paperCard(paper)}
-							{/each}
-						</ul>
-					</section>
+					{@render paperSection(
+						m.research_section_external_heading(),
+						m.research_section_external_note(),
+						externalPapers
+					)}
 				{/if}
 			</div>
 		{/if}

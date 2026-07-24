@@ -1,3 +1,11 @@
+<script module lang="ts">
+	// The pill base shared by the paper meta rail's chips — exported so PaperOrigin's chips can't
+	// drift from PaperStatus's (the ContactFields `fieldClass` convention). Callers append their
+	// border/text color tokens.
+	export const pillClass =
+		'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium';
+</script>
+
 <script lang="ts">
 	// Publication-status pill for a Sanity `paper` (draft | preprint | toAppear | published). Label
 	// comes from Paraglide; `published` gets the brand accent, the rest stay neutral. Shared by the
@@ -23,9 +31,7 @@
 </script>
 
 {#if label}
-	<span
-		class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium {tone}"
-	>
+	<span class="{pillClass} {tone}">
 		{label}
 	</span>
 {/if}

@@ -10,6 +10,7 @@
 	import PageHero from '$lib/components/PageHero.svelte';
 	import PaperStatus from '$lib/components/PaperStatus.svelte';
 	import PaperOrigin from '$lib/components/PaperOrigin.svelte';
+	import PaperExternalDisclaimer from '$lib/components/PaperExternalDisclaimer.svelte';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
 	import PortableBody from '$lib/components/portable/PortableBody.svelte';
 	import { m } from '$lib/paraglide/messages.js';
@@ -22,7 +23,14 @@
 	const paper = $derived(data.paper);
 
 	const seoTitle = $derived(paper.seo?.metaTitle ?? m.content_doc_title({ title: paper.title }));
-	const seoDescription = $derived(paper.seo?.metaDescription ?? paper.abstract ?? undefined);
+	// Third-party papers lead their fallback description with the not-ours statement — the social
+	// preview (site-suffixed title + default DarcStar OG card) otherwise carries no origin signal.
+	const seoDescription = $derived(
+		paper.seo?.metaDescription ??
+			(paper.abstract && !paper.darcstarAuthored
+				? `${m.research_external_disclaimer()} ${paper.abstract}`
+				: (paper.abstract ?? undefined))
+	);
 	const seoImage = $derived(ogImageUrl(paper.seo?.ogImage));
 </script>
 
@@ -57,9 +65,7 @@
 					</span>
 				{/if}
 			</div>
-			{#if !paper.darcstarAuthored}
-				<p class="text-sm text-muted">{m.research_external_disclaimer()}</p>
-			{/if}
+			<PaperExternalDisclaimer darcstarAuthored={paper.darcstarAuthored} />
 			{#if paper.authors && paper.authors.length > 0}
 				<p class="text-sm text-body">
 					{m.content_by()}
@@ -99,7 +105,11 @@
 				<h2 class="text-lg font-medium tracking-tight text-white">
 					{m.research_commentary_heading()}
 				</h2>
-				<p class="mt-1 text-xs text-muted">{m.research_commentary_note()}</p>
+				<!-- The note's "our take on this work" framing fits annotated THIRD-PARTY papers; a
+				     first-party paper with commentary gets the section without the external framing. -->
+				{#if !paper.darcstarAuthored}
+					<p class="mt-1 text-xs text-muted">{m.research_commentary_note()}</p>
+				{/if}
 				<div class="mt-4">
 					<PortableBody value={paper.commentary} />
 				</div>

@@ -3,9 +3,11 @@
 	// reading as ours (DAR-52). First-party entries render nothing; anything NOT explicitly
 	// `darcstarAuthored` is marked "Third-party" (null counts as external — the fail-safe
 	// direction), plus a "DarcStar commentary" chip when we've annotated the entry
-	// (`hasCommentary`, list view only). Shared by the /research list + detail so the origin
-	// never renders inconsistently. Sits beside PaperStatus and matches its chip styling.
+	// (`hasCommentary`, list view only — the detail page shows the commentary itself). Shared by
+	// the /research list + detail; PaperExternalDisclaimer carries the block-level not-ours
+	// statement that can't live in this flex-row chip rail.
 	import { m } from '$lib/paraglide/messages.js';
+	import { pillClass } from '$lib/components/PaperStatus.svelte';
 
 	let {
 		darcstarAuthored,
@@ -14,15 +16,11 @@
 </script>
 
 {#if !darcstarAuthored}
-	<span
-		class="inline-flex items-center rounded-full border border-hairline px-2.5 py-0.5 text-xs font-medium text-muted"
-	>
+	<span class="{pillClass} border-hairline text-muted">
 		{m.research_external_badge()}
 	</span>
 	{#if hasCommentary}
-		<span
-			class="inline-flex items-center rounded-full border border-secondary-500/40 px-2.5 py-0.5 text-xs font-medium text-secondary-400"
-		>
+		<span class="{pillClass} border-secondary-500/40 text-secondary-400">
 			{m.research_commentary_badge()}
 		</span>
 	{/if}
