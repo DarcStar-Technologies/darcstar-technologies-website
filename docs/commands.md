@@ -11,7 +11,7 @@
 ## Tests
 
 - `pnpm test:unit` — Vitest (watch). `pnpm test:unit -- --run` for a single pass. Filter with a path/name, e.g. `pnpm test:unit -- --run src/lib/vitest-examples/greet.spec.ts`.
-- `pnpm test:e2e` — installs browsers, then Playwright. Playwright's `webServer` runs `pnpm build && pnpm preview`, so e2e exercises the Cloudflare preview build. Test files match `**/*.e2e.{ts,js}`.
+- `pnpm test:e2e` — installs chromium (the only browser the config ever launches), then Playwright. Playwright's `webServer` runs `pnpm build && pnpm preview`, so e2e exercises the Cloudflare preview build. Test files match `**/*.e2e.{ts,js}`.
 - `pnpm test` — unit (`--run`) then e2e.
 
 Vitest is configured with **three projects** (see `vite.config.ts`), so pick the right filename convention:
@@ -22,9 +22,11 @@ Vitest is configured with **three projects** (see `vite.config.ts`), so pick the
 
 Note: `test.expect.requireAssertions` is on — every test must make at least one assertion.
 
-Both suites are **hermetic** — they run on a checkout with no `.env` (CI does exactly that): the
-e2e specs are written DB-free, and a Sanity-token-less preview degrades to empty content lists,
-which the specs tolerate. Keep new tests that way; anything needing real credentials belongs in
+Both suites are **hermetic** — no real credentials anywhere: CI runs the unit suite with no env
+at all, and the e2e job against committed placeholder values (test.yml writes them; the worker
+needs vars _present_ to construct its DB/auth clients, but the specs are written DB-free and
+never query). A Sanity-token-less preview degrades to empty content lists, which the specs
+tolerate. Keep new tests that way; anything needing real credentials belongs in
 `pnpm smoke:signin`-style scripts, not the gated suites.
 
 ## CI (required checks)
