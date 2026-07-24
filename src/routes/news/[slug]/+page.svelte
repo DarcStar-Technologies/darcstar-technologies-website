@@ -7,6 +7,7 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import PageHero from '$lib/components/PageHero.svelte';
 	import SanityImage from '$lib/components/SanityImage.svelte';
+	import PaperOrigin from '$lib/components/PaperOrigin.svelte';
 	import PortableBody from '$lib/components/portable/PortableBody.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
@@ -96,7 +97,7 @@
 				<ul class="mt-4 space-y-2">
 					{#each post.relatedPapers as paper (paper._id)}
 						{#if paper.slug}
-							<li>
+							<li class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
 								<a
 									href={localizeHref(`/research/${paper.slug}`)}
 									class="text-sm text-primary-500 transition-colors hover:text-primary-400 hover:underline"
@@ -105,6 +106,10 @@
 											· {paper.venue}</span
 										>{/if}
 								</a>
+								<PaperOrigin
+									darcstarAuthored={paper.darcstarAuthored}
+									hasCommentary={paper.hasCommentary}
+								/>
 							</li>
 						{/if}
 					{/each}

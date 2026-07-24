@@ -18,6 +18,11 @@ describe('sanity GROQ queries', () => {
 		expect(postBySlugQuery).toContain('slug.current == $slug');
 		expect(postBySlugQuery).toContain('body');
 		expect(postBySlugQuery).toContain('relatedPapers[]->');
+		// DAR-55: related papers carry the origin flag (+ hasCommentary) so a third-party paper
+		// referenced by a DarcStar post renders the "Third-party" chip, same as /research — the
+		// projection must fetch darcstarAuthored, and hasCommentary stays a boolean when absent.
+		expect(postBySlugQuery).toContain('darcstarAuthored');
+		expect(postBySlugQuery).toContain('"hasCommentary": coalesce(count(commentary) > 0, false)');
 	});
 
 	it('papersQuery selects published papers newest-first with the origin + annotation flags', () => {

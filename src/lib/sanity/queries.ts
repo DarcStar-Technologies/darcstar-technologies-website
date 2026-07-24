@@ -41,7 +41,7 @@ export const postBySlugQuery = defineQuery(`
 		body,
 		"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role, image }),
 		"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),
-		"relatedPapers": array::compact(relatedPapers[]->{ _id, title, "slug": slug.current, venue }),
+		"relatedPapers": array::compact(relatedPapers[]->{ _id, title, "slug": slug.current, venue, darcstarAuthored, "hasCommentary": coalesce(count(commentary) > 0, false) }),
 		seo
 	}
 `);
