@@ -10,7 +10,8 @@ import { getDb } from '$lib/server/db';
 import { waitlist } from '$lib/server/db/schema';
 import { validateWaitlist } from '$lib/server/waitlist';
 import { upsertWaitlist } from '$lib/server/waitlist-store';
-import { mintWaitlistToken } from '$lib/server/waitlist-token';
+import { mintWaitlistToken, mintDecoyWaitlistToken } from '$lib/server/waitlist-token';
+import { readEnv } from '$lib/server/env';
 import { hashIp } from '$lib/server/contact'; // shared truncated-SHA-256 IP hash (same throttle model)
 import { sendWaitlistEmails } from '$lib/server/waitlist-notify';
 import { m } from '$lib/paraglide/messages.js';
@@ -30,14 +31,22 @@ type WaitlistInput = {
 	hearAbout: string;
 	phone: string;
 	countryRegion: string; // v2 step 1 (DAR-60 renders it; validated slug)
-	consentUpdates: string; // v2 step 1 marketing opt-in checkbox
+	consentUpdates: boolean; // v2 step 1 marketing opt-in checkbox (typed boolean so DAR-60 can use .as('checkbox'))
 	website: string; // honeypot — must stay empty
 };
 
 // `token` is the signed continuation handle for the optional qualification steps (DAR-59): the
-// step forms post it back and the server verifies before enriching the row. It grants nothing a
-// re-submit of this form couldn't already do (enrich-by-email), so returning it to any submitter
-// adds no capability — it only pins later writes to THIS row without exposing the row id.
+// step forms post it back and the server verifies (waitlist-token.ts) before enriching the row.
+//
+// SECURITY NOTE (deliberate, and the DAR-61+ step endpoints MUST account for it): the same success
+// shape — token included — is returned for a new AND an existing email, which is what keeps this
+// from being an email-enumeration oracle. The consequence is that anyone who submits a known
+// address receives a token bound to THAT row. The step writes are therefore built to be safe under
+// that exposure: they only ever touch qualification columns (never identity), and per-field
+// keep-existing / tri-state rules bound what a holder can change. This is a LARGER surface than v1's
+// enrich-by-email (which could only fill null step-1 fields), so each step endpoint must keep that
+// bound — do not add an absolute overwrite of a sensitive field. The embedded row id is an opaque
+// UUID and authorizes nothing without the MAC.
 type WaitlistResult = { success: true; token?: string };
 
 export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
@@ -51,17 +60,22 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		const userAgent = event.request.headers.get('user-agent') ?? null;
 		const platform = event.platform;
 		const locale = getLocale();
-		// The token signing secret, read sync for the same platform.env reason. Reused from Better
-		// Auth (domain-separated inside waitlist-token.ts) so no new secret needs provisioning.
-		const tokenSecret = platform?.env?.BETTER_AUTH_SECRET ?? process.env.BETTER_AUTH_SECRET;
+		// The token signing secret, via the shared per-request resolver (sync — valid at this
+		// pre-await point). Reused from Better Auth (domain-separated inside waitlist-token.ts) so no
+		// new secret needs provisioning.
+		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 
-		// Honeypot: humans never fill the hidden `website` field; bots do. Silently accept (don't persist,
-		// don't reveal the trap) — including a DECOY token minted for a random unused id, so the response
-		// shape can't fingerprint the trap either (the decoy verifies but its updates match no row).
+		// Honeypot: humans never fill the hidden `website` field; bots do. Silently accept (don't
+		// persist, don't reveal the trap) — including a DECOY token so the response BODY matches a real
+		// success. The decoy is deterministic per email (a fresh id each submit would itself leak the
+		// trap) and addresses no real row. Note this hides only the body: the honeypot returns before
+		// the DB round-trips a real submit makes, so a timing side-channel remains.
 		if (typeof data.website === 'string' && data.website.trim() !== '') {
 			return {
 				success: true,
-				token: tokenSecret ? await mintWaitlistToken(tokenSecret, crypto.randomUUID()) : undefined
+				token: tokenSecret
+					? await mintDecoyWaitlistToken(tokenSecret, String(data.email ?? ''))
+					: undefined
 			};
 		}
 

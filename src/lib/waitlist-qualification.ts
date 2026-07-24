@@ -116,6 +116,20 @@ export const WAITLIST_PILOT_INTERESTS = [
 ] as const;
 export type WaitlistPilotInterest = (typeof WAITLIST_PILOT_INTERESTS)[number];
 
+// The "positive" pilot answers — the server-side truth of whether the follow-up contact block
+// (permission / method / phone) should have been shown. DAR-63 gates the block's RENDERING on this
+// same predicate, and the step-4A validator gates whether contact_permission is a real answer (a
+// boolean) or "never asked" (null) on it — so the two can't drift. `not-currently` and an unset
+// answer are NOT positive.
+export const WAITLIST_POSITIVE_PILOT_INTERESTS = [
+	'yes-within-3-months',
+	'yes-within-6-months',
+	'yes-within-12-months',
+	'possibly-contact-me'
+] as const;
+export const isPositivePilotInterest = (v: string | null): boolean =>
+	v !== null && (WAITLIST_POSITIVE_PILOT_INTERESTS as readonly string[]).includes(v);
+
 /** Step 4A — preferred contact method. */
 export const WAITLIST_CONTACT_METHODS = ['email', 'phone-video'] as const;
 export type WaitlistContactMethod = (typeof WAITLIST_CONTACT_METHODS)[number];

@@ -124,8 +124,13 @@ export const waitlist = sqliteTable(
 		countryRegion: text('country_region'),
 		// Marketing-updates opt-in. False for every pre-v2 row (nobody was asked); grants are
 		// monotonic in the store (an unchecked re-submit never silently revokes) — revocation is a
-		// deliberate future mechanism, not a form default.
+		// deliberate future mechanism, not a form default. IMPORTANT: this is an UNVERIFIED claim —
+		// the form is unauthenticated single-opt-in, so a third party can set it for any address. It
+		// must NOT drive a real send without double-opt-in + unsubscribe (see waitlist-store.ts).
 		consentUpdates: integer('consent_updates', { mode: 'boolean' }).default(false).notNull(),
+		// When consent was FIRST granted (provenance for a compliance review). Null = never granted;
+		// separate from updated_at, which later step writes clobber.
+		consentUpdatesAt: integer('consent_updates_at', { mode: 'timestamp_ms' }),
 		// --- v2 step 2 (DAR-61) ---
 		primaryApplication: text('primary_application'),
 		evaluationTimeline: text('evaluation_timeline'),
@@ -143,7 +148,11 @@ export const waitlist = sqliteTable(
 		// --- v2 step 4B (DAR-63) ---
 		researchPreferences: text('research_preferences', { mode: 'json' }).$type<string[]>(),
 		// Highest flow step COMPLETED (1 = signup … 4 = a branch), bumped monotonically by the step
-		// updates — the classifier/funnel's "where did they stop". Null = pre-v2 row.
+		// updates — the classifier/funnel's "where did they stop". Null = row created before the v2
+		// migration; a new signup on the still-live v1 form completed step 1 ("secure the signup"), so
+		// it correctly reads 1. Step 4 does NOT record which branch: derive it from the branch-specific
+		// columns (pilot_interest set → branch A; research_preferences set → branch B), so DAR-65/66
+		// need no extra column and no backfill.
 		qualificationStep: integer('qualification_step'),
 		ipHash: text('ip_hash'),
 		userAgent: text('user_agent'),

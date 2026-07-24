@@ -92,8 +92,17 @@ describe('validateWaitlist', () => {
 		expect(bad.cleaned.countryRegion).toBeNull();
 		// Absent checkbox is FALSE, never null — absence of the field is not consent.
 		expect(bad.cleaned.consentUpdates).toBe(false);
+		// PRESENCE is the signal: any non-empty checkbox value ('on'/'yes'/'1'/'true') is a grant, so
+		// a future form that ships a value= attribute can't silently drop the opt-in.
 		expect(validateWaitlist({ email: 'a@b.co', consentUpdates: '1' }).cleaned.consentUpdates).toBe(
-			false // only the honest checkbox shapes ('on'/'true'/true) count as a grant
+			true
+		);
+		expect(
+			validateWaitlist({ email: 'a@b.co', consentUpdates: 'yes' }).cleaned.consentUpdates
+		).toBe(true);
+		// An empty string (or non-string) is still not a grant.
+		expect(validateWaitlist({ email: 'a@b.co', consentUpdates: '' }).cleaned.consentUpdates).toBe(
+			false
 		);
 	});
 });
@@ -180,11 +189,29 @@ describe('validateWaitlistStep4A', () => {
 		expect(cleaned.phone).toBe('+1 555 0100');
 	});
 
-	it('defaults everything absent to null/false', () => {
+	// contact_permission is TRI-STATE, gated on a positive pilot answer (the only case where DAR-63
+	// renders the checkbox): true = granted, false = shown+declined, null = the question wasn't shown.
+	it('records a decline (false) when the pilot answer is positive but the box is absent', () => {
+		expect(validateWaitlistStep4A({ pilotInterest: 'possibly-contact-me' }).contactPermission).toBe(
+			false
+		);
+	});
+
+	it('emits null contact permission when pilot interest is NOT positive (question not shown)', () => {
+		// A negative pilot answer with a (spurious) ticked box must NOT record a grant OR a decline —
+		// the question was never shown, so the store keep-existings this null.
+		expect(
+			validateWaitlistStep4A({ pilotInterest: 'not-currently', contactPermission: 'on' })
+				.contactPermission
+		).toBeNull();
+		expect(validateWaitlistStep4A({}).contactPermission).toBeNull();
+	});
+
+	it('defaults everything absent to null', () => {
 		expect(validateWaitlistStep4A({})).toEqual({
 			pilotInterest: null,
 			deploymentScale: null,
-			contactPermission: false,
+			contactPermission: null,
 			contactMethod: null,
 			phone: null
 		});

@@ -40,6 +40,7 @@ beforeAll(async () => {
 			name text, company text, role text, company_size text, interest text, hear_about text, phone text,
 			country_region text,
 			consent_updates integer DEFAULT 0 NOT NULL,
+			consent_updates_at integer,
 			primary_application text, evaluation_timeline text,
 			current_approach text, economic_impact text, budget_range text, adoption_evidence text,
 			pilot_interest text, deployment_scale text, contact_permission integer, contact_method text,
@@ -121,16 +122,43 @@ describe('upsertWaitlist', () => {
 		expect(again.id).toBe(first.id); // case-insensitive match still resolves to the one row
 	});
 
-	it('starts qualification_step at 1 and keeps consent monotonic across enriches', async () => {
-		await upsertWaitlist(db, { ...base, consentUpdates: true }, 'h', null);
+	it('enriches (never loops) when the stored email is not byte-lowercase', async () => {
+		// Simulate an out-of-band row whose stored email has uppercase bytes (import/console write —
+		// the column has no lowercase constraint, only the functional unique index). A signup for the
+		// lowercase form conflicts on lower(email); the enrich must match it via lower(email), NOT an
+		// exact-equality key that would miss and spin forever (the recursion-DoS this guards against).
+		await client.execute(
+			`INSERT INTO waitlist (id, email, name) VALUES ('mixed-1', 'Ada@Example.com', 'Ada')`
+		);
+		const r = await upsertWaitlist(db, { ...base, company: 'Acme' }, 'h', null);
+		expect(r.isNew).toBe(false);
+		expect(r.id).toBe('mixed-1');
+		const all = await rows();
+		expect(all).toHaveLength(1); // no duplicate inserted
+		expect(all[0].company).toBe('Acme'); // enriched in place
+	});
+
+	it('starts qualification_step at 1 and keeps consent monotonic + timestamped across enriches', async () => {
+		// First submit WITHOUT consent — no grant, no timestamp.
+		await upsertWaitlist(db, base, 'h', null);
 		let [row] = await rows();
 		expect(row.qualificationStep).toBe(1);
-		expect(row.consentUpdates).toBe(true);
+		expect(row.consentUpdates).toBe(false);
+		expect(row.consentUpdatesAt).toBeNull();
 
-		// An unchecked box on a re-submit is "no new grant", NOT a revocation.
+		// Enrich WITH consent — grant recorded, timestamp stamped.
+		await upsertWaitlist(db, { ...base, consentUpdates: true }, 'h', null);
+		[row] = await rows();
+		expect(row.consentUpdates).toBe(true);
+		const grantedAt = row.consentUpdatesAt;
+		expect(grantedAt).not.toBeNull();
+
+		// An unchecked box on a later re-submit is "no new grant", NOT a revocation, and must not
+		// move the first-grant timestamp.
 		await upsertWaitlist(db, { ...base, consentUpdates: false }, 'h', null);
 		[row] = await rows();
 		expect(row.consentUpdates).toBe(true);
+		expect(row.consentUpdatesAt?.getTime()).toBe(grantedAt?.getTime());
 	});
 });
 
@@ -178,13 +206,13 @@ describe('applyWaitlistStep', () => {
 		expect(row.qualificationStep).toBe(3);
 	});
 
-	it('never rewinds qualification_step, and 4a records the submitted contact-permission state', async () => {
+	it('4a: boolean writes contact_permission absolutely, null keep-existings it, step never rewinds', async () => {
 		const id = await insert();
 		await applyWaitlistStep(db, id, {
 			step: '4a',
 			pilotInterest: 'yes-within-6-months',
 			deploymentScale: 'Two quadrotor cells, ~40 units',
-			contactPermission: true,
+			contactPermission: true, // a granted answer
 			contactMethod: 'email',
 			phone: null
 		});
@@ -199,20 +227,33 @@ describe('applyWaitlistStep', () => {
 			primaryApplication: null,
 			evaluationTimeline: 'within-3-months'
 		});
-		// …and re-answering 4a with the box unchecked IS a decline (this one is not keep-existing).
+		// …and a later 4a where the question WASN'T shown (validator emits contactPermission=null)
+		// must PRESERVE the standing grant — the key anti-clobber property.
 		await applyWaitlistStep(db, id, {
 			step: '4a',
 			pilotInterest: null,
 			deploymentScale: null,
-			contactPermission: false,
+			contactPermission: null,
 			contactMethod: null,
 			phone: null
 		});
 		[row] = await rows();
 		expect(row.qualificationStep).toBe(4);
 		expect(row.evaluationTimeline).toBe('within-3-months');
-		expect(row.contactPermission).toBe(false);
+		expect(row.contactPermission).toBe(true); // NOT revoked by a not-shown submit
 		expect(row.pilotInterest).toBe('yes-within-6-months'); // keep-existing survived the resubmit
+
+		// An explicit decline (false — validator saw a positive pilot + unchecked box) DOES stick.
+		await applyWaitlistStep(db, id, {
+			step: '4a',
+			pilotInterest: 'possibly-contact-me',
+			deploymentScale: null,
+			contactPermission: false,
+			contactMethod: null,
+			phone: null
+		});
+		[row] = await rows();
+		expect(row.contactPermission).toBe(false);
 	});
 
 	it('stores step-4b research preferences', async () => {

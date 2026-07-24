@@ -1,0 +1,108 @@
+# Waitlist — early-access lead capture (+ v2 qualification flow)
+
+`/waitlist` captures early-access signups: a lighter-touch sibling of the contact form. Same shell
+(CosmicBackdrop + centred `glass-card`, indexable). It submits through a SvelteKit **remote `form`**
+(`src/lib/waitlist.remote.ts`, `joinWaitlist`) so it progressively enhances with JS and degrades to
+a native POST without.
+
+Everything lives under `src/lib/waitlist*.ts` (client-safe slug lists + labels), `src/lib/server/
+waitlist*.ts` (validators, store, token, notify), the `waitlist` table (`db/schema.ts`), and the
+`/waitlist` + `/admin/waitlist` routes.
+
+## v1 form (live today)
+
+Email is the only required field; every other field is optional lead enrichment behind a `<details>`
+disclosure. Safety rails, all preserved by v2:
+
+- **Honeypot** `website` field — a non-empty value is silently accepted (never persisted, trap not
+  revealed).
+- **IP/time throttle** — at most 5 signups per hashed IP per hour (`hashIp`, the same truncated
+  SHA-256 as the contact form; the raw IP is never stored).
+- **Insert-or-enrich** on `lower(email)` (unique index) via `upsertWaitlist` — a re-signup enriches
+  the existing row (coalesce keep-existing: a provided value wins, a blank keeps what's stored)
+  rather than piling up duplicates. It returns `isNew` (a genuine first signup) and the row `id`.
+- **Emails gated on `isNew`** — a lead → `info@` and a localized signer ack, fire-and-forget via
+  `ctx.waitUntil`. Gating on `isNew` is the anti-abuse boundary: same-email replays enrich (add no
+  row), so without the gate the ack would be an unthrottled mailbomb.
+- **Anti-enumeration** — new vs. existing email return the identical success shape.
+
+## v2 progressive qualification flow (DAR-58)
+
+The v1 single form is being replaced by a short progressive flow (step 1 secures the signup; steps
+2–4 gather qualification data from people willing to continue). **DAR-59 shipped the data-model
+foundation only** — the schema columns, validators, store step-path, and the continuation token. The
+step UIs and endpoints land in DAR-60…DAR-63; the classifier + admin view in DAR-65; funnel
+analytics in DAR-66.
+
+### Qualification columns
+
+The `waitlist` table grew nullable columns for steps 1–4 (country/consent, application/role/timeline,
+approach/impact/budget/evidence, pilot details, research prefs). Slug values are validated against
+`$lib/waitlist-qualification.ts` (the single client-safe source shared by the step forms and the
+server validators). Two multi-selects (`adoption_evidence`, `research_preferences`) store JSON string
+arrays. `role` is shared between v1 and v2 slug sets — legacy v1 slugs remain as history, new writes
+use the v2 set; **a consumer that branches on `role` must canonicalize v1→v2 first** (a shared helper
+is expected before DAR-65's classifier lands).
+
+`qualification_step` is a monotonic integer high-water mark (1 = signup … 4 = a branch). Which
+step-4 **branch** completed is NOT stored — derive it from the branch-specific columns
+(`pilot_interest` set → branch A; `research_preferences` set → branch B), so DAR-65/66 need no extra
+column and no backfill.
+
+### Continuation token (`waitlist-token.ts`)
+
+Steps 2–4 are **unauthenticated** writes that enrich the row step 1 created, so step 1's response
+carries a signed, expiring token; each later step submits it back and the server verifies before
+updating. `v1.<rowId>.<exp>.<mac>` — HMAC-SHA-256, 24h TTL, over **`BETTER_AUTH_SECRET`** (reused,
+not a new secret; the `darcstar:waitlist-continuation:v1` domain prefix separates these MACs from
+anything Better Auth signs). Guarantees, all unit-pinned:
+
+- A raw row id is never accepted; the MAC binds id **and** exp (no swap/extend).
+- Verification failure is a generic `null` — callers respond identically for bad-token / row-gone,
+  so the token layer isn't a row/email-enumeration oracle.
+- Tokens are **canonical**: one `(id, exp)` → exactly one valid string (exp has no leading zeros; the
+  decoded MAC must re-encode to the received bytes). This isn't a capability boundary today — it
+  keeps a future exact-string dedup/blocklist from being bypassed by equivalent token strings.
+
+**The token is returned to ANY submitter of an existing email** (the anti-enumeration success shape),
+so it authorizes writing that row's qualification columns to whoever holds it. This is a larger
+surface than v1's enrich-by-email. The step writes are built to stay safe under that exposure:
+`applyWaitlistStep` uses an explicit **per-step column map** (mass-assignment guard — a step can only
+write its own columns, never identity, never another step's answers), and per-field keep-existing
+rules bound what a holder can change. **A step endpoint must not add an absolute overwrite of a
+sensitive field.** (The honeypot path returns a _decoy_ token — deterministic per email, addressing
+no real row — so the response body matches a real success; a timing side-channel still distinguishes
+the trap, which is accepted.)
+
+### Consent
+
+`consent_updates` is an **unverified single-opt-in claim** — the form is unauthenticated, so a third
+party can set it for any address. It's monotonic (an unchecked re-submit is "no new grant", never a
+silent revocation; revocation is a future unsubscribe mechanism) and stamped with `consent_updates_at`
+on first grant (provenance). **It must not drive a real send without double-opt-in + unsubscribe.**
+
+### `contact_permission` is tri-state
+
+`null` = the question wasn't shown (pilot interest not positive), `false` = shown and declined,
+`true` = granted. The step-4A validator emits `null` unless the pilot answer is positive (the same
+predicate, `isPositivePilotInterest`, that DAR-63 gates the checkbox's rendering on), and the store
+keep-existings a `null` — so a not-shown submit can't silently revoke a standing grant.
+
+### Wire contract for the step forms (DAR-62/63)
+
+A multi-select checkbox group **must** be named `foo[]`, not `foo`. SvelteKit's form-data conversion
+throws on a repeated plain name ("Form cannot contain duplicated keys"); only the `[]` suffix yields
+an array (arriving under key `foo`, always `string[]`; zero checks omit the key). Single checkboxes
+(consent, contact permission) are read by presence — any non-empty value is `true` — so the markup
+can carry a `value=` attribute without silently dropping the opt-in.
+
+## Admin
+
+`/admin/waitlist` is the staff triage view (gated by the `/admin` layout). Its column projection is
+v1-only today; DAR-65 adds the qualification columns, classification, and consent visibility.
+
+## Setup
+
+`RESEND_API_KEY` (shared with contact) powers the emails; `BETTER_AUTH_SECRET` (already provisioned
+for auth) signs the continuation token. No new secret. Schema changes follow the usual
+`pnpm db:generate` + committed `drizzle/` migration (drizzle CI gate).

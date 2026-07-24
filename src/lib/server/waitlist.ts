@@ -21,7 +21,8 @@ import {
 	WAITLIST_PILOT_INTERESTS,
 	WAITLIST_CONTACT_METHODS,
 	WAITLIST_RESEARCH_PREFERENCES,
-	WAITLIST_DEPLOYMENT_SCALE_MAX
+	WAITLIST_DEPLOYMENT_SCALE_MAX,
+	isPositivePilotInterest
 } from '$lib/waitlist-qualification';
 
 /** Only email surfaces an inline error — everything else is optional and coerced, never rejected. */
@@ -76,10 +77,18 @@ const slugOrNull = <T extends string>(v: unknown, list: readonly T[]): T | null 
 	return (list as readonly string[]).includes(s) ? (s as T) : null;
 };
 
-/** HTML checkbox → boolean: present-and-truthy ('on'/'true'/true) is true, anything else false. */
-const checkbox = (v: unknown): boolean => v === true || v === 'on' || v === 'true';
+// HTML checkbox → boolean. A checkbox only appears in the payload when CHECKED (unchecked boxes
+// submit nothing), so PRESENCE is the signal: any non-empty string value — the default 'on', or a
+// custom `value="yes"`/`"1"` the DAR-60/63 markup might set — reads as true; absent/blank reads as
+// false. (Anti-pattern this avoids: hard-coding an allowlist of accepted values, which silently
+// drops a real opt-in the moment the form ships a `value=` attribute the server didn't anticipate.)
+const checkbox = (v: unknown): boolean => v === true || (typeof v === 'string' && v.length > 0);
 
-/** Multi-select → allowlisted, deduped, capped array — or null when nothing valid was selected. */
+// Multi-select → allowlisted, deduped, capped array — or null when nothing valid was selected.
+// WIRE CONTRACT for the DAR-62/63 forms: name a checkbox GROUP `foo[]`, not `foo`. SvelteKit's
+// form-data conversion THROWS ("Form cannot contain duplicated keys") on a repeated plain name, and
+// only the `[]` suffix yields an array (arriving here under key `foo`, always string[] — even a
+// single check is `['x']`; zero checks omit the key → undefined, handled below).
 const slugArray = <T extends string>(v: unknown, list: readonly T[], max: number): T[] | null => {
 	const raw = Array.isArray(v) ? v : [v];
 	const seen = new Set<T>();
@@ -184,7 +193,10 @@ export function validateWaitlistStep3(data: {
 export interface CleanedWaitlistStep4A {
 	pilotInterest: string | null;
 	deploymentScale: string | null;
-	contactPermission: boolean;
+	// TRI-STATE, matching schema.ts's contact_permission: null = the question wasn't shown (pilot
+	// interest not positive), false = shown and declined, true = granted. The store keep-existings a
+	// null so a not-shown submit can't clobber a real prior answer.
+	contactPermission: boolean | null;
 	contactMethod: string | null;
 	phone: string | null;
 }
@@ -196,10 +208,16 @@ export function validateWaitlistStep4A(data: {
 	contactMethod?: unknown;
 	phone?: unknown;
 }): CleanedWaitlistStep4A {
+	const pilotInterest = slugOrNull(data.pilotInterest, WAITLIST_PILOT_INTERESTS);
+	// The contact block only exists for a positive pilot answer (DAR-63 renders it on the same
+	// predicate). Outside that, contact_permission is "never asked" (null) — NOT a decline — so a
+	// negative/absent-pilot submit preserves any standing grant instead of silently revoking it.
 	return {
-		pilotInterest: slugOrNull(data.pilotInterest, WAITLIST_PILOT_INTERESTS),
+		pilotInterest,
 		deploymentScale: optionalText(data.deploymentScale, WAITLIST_DEPLOYMENT_SCALE_MAX),
-		contactPermission: checkbox(data.contactPermission),
+		contactPermission: isPositivePilotInterest(pilotInterest)
+			? checkbox(data.contactPermission)
+			: null,
 		contactMethod: slugOrNull(data.contactMethod, WAITLIST_CONTACT_METHODS),
 		phone: optionalText(data.phone, PHONE_MAX)
 	};

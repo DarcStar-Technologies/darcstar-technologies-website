@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	mintWaitlistToken,
+	mintDecoyWaitlistToken,
 	verifyWaitlistToken,
 	WAITLIST_TOKEN_TTL_SECONDS
 } from './waitlist-token';
@@ -59,6 +60,34 @@ describe('mintWaitlistToken / verifyWaitlistToken', () => {
 		await expect(verifyWaitlistToken(SECRET, token, NOW)).resolves.toBeNull();
 	});
 
+	// Canonicalization: exactly ONE valid string per (id, exp), so a future exact-string
+	// dedup/blocklist can't be bypassed by minting equivalent-but-different token strings.
+	it('rejects a non-canonical (leading-zero) expiry even though it parses to the same number', async () => {
+		const token = await mintWaitlistToken(SECRET, ID, NOW);
+		const [v1, id, exp, mac] = token.split('.');
+		await expect(
+			verifyWaitlistToken(SECRET, `${v1}.${id}.0${exp}.${mac}`, NOW)
+		).resolves.toBeNull();
+	});
+
+	it('rejects a non-canonical MAC encoding (unused base64url padding bits varied)', async () => {
+		const token = await mintWaitlistToken(SECRET, ID, NOW);
+		const [v1, id, exp, mac] = token.split('.');
+		// The final base64url char of a 43-char (32-byte) MAC carries 4 data + 2 unused bits; find a
+		// different last char that decodes to the same bytes (would have verified pre-canonicalization)
+		// and assert it's now rejected. If none exists for this fixture the test is vacuously ok.
+		const last = mac[mac.length - 1];
+		const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+		for (const c of alphabet) {
+			if (c === last) continue;
+			const variant = `${v1}.${id}.${exp}.${mac.slice(0, -1)}${c}`;
+			const result = await verifyWaitlistToken(SECRET, variant, NOW);
+			// Every distinct last-char string must be rejected — either it changes the bytes (bad MAC)
+			// or only the padding bits (non-canonical). Neither may verify.
+			expect(result).toBeNull();
+		}
+	});
+
 	it('rejects malformed shapes without throwing (generic null — no oracle)', async () => {
 		for (const junk of [
 			null,
@@ -75,5 +104,21 @@ describe('mintWaitlistToken / verifyWaitlistToken', () => {
 		]) {
 			await expect(verifyWaitlistToken(SECRET, junk, NOW)).resolves.toBeNull();
 		}
+	});
+});
+
+describe('mintDecoyWaitlistToken', () => {
+	it('verifies structurally to a decoy_ id and is deterministic per email', async () => {
+		const a = await mintDecoyWaitlistToken(SECRET, 'bot@example.com', NOW);
+		const b = await mintDecoyWaitlistToken(SECRET, 'bot@example.com', NOW);
+		expect(a).toBe(b); // stable across resubmits — a fresh id each time would fingerprint the trap
+		const id = await verifyWaitlistToken(SECRET, a, NOW);
+		expect(id).toMatch(/^decoy_/); // a well-formed token whose id addresses no real row
+	});
+
+	it('differs by email so the decoy can’t be a fixed tell', async () => {
+		const a = await mintDecoyWaitlistToken(SECRET, 'a@example.com', NOW);
+		const b = await mintDecoyWaitlistToken(SECRET, 'b@example.com', NOW);
+		expect(a).not.toBe(b);
 	});
 });

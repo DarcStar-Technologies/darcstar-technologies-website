@@ -62,55 +62,75 @@ export async function upsertWaitlist(
 	userAgent: string | null
 ): Promise<{ isNew: boolean; id: string }> {
 	const email = sub.email.toLowerCase();
-	const inserted = await db
-		.insert(waitlist)
-		.values({
-			email,
-			name: sub.name,
-			company: sub.company,
-			role: sub.role,
-			companySize: sub.companySize,
-			interest: sub.interest,
-			hearAbout: sub.hearAbout,
-			phone: sub.phone,
-			countryRegion: sub.countryRegion,
-			consentUpdates: sub.consentUpdates,
-			qualificationStep: 1,
-			ipHash,
-			userAgent
-		})
-		.onConflictDoNothing()
-		.returning({ id: waitlist.id });
+	// Consent is an UNVERIFIED claim (this is single-opt-in from an unauthenticated form — a third
+	// party can submit anyone's address), so it must NOT drive a real send without double-opt-in +
+	// unsubscribe. We record the grant plus the moment it was first made (consent_updates_at) as the
+	// provenance a compliance review needs; updated_at is clobbered by later step writes, so consent
+	// keeps its own timestamp.
+	const grantsConsent = sub.consentUpdates;
 
-	if (inserted.length > 0) return { isNew: true, id: inserted[0].id };
+	// Bounded to two passes. Normal case: pass 1 either inserts (new) or enriches (existing). The
+	// second pass exists ONLY for a genuine delete race — the conflicting row vanished between our
+	// insert attempt and the enrich — where a fresh insert then wins. It can't spin: the enrich is
+	// keyed on lower(email) (matching the functional unique index the insert conflicts on), so a
+	// stored value in any case can't make the conflict fire yet the update miss.
+	for (let attempt = 0; attempt < 2; attempt++) {
+		const inserted = await db
+			.insert(waitlist)
+			.values({
+				email,
+				name: sub.name,
+				company: sub.company,
+				role: sub.role,
+				companySize: sub.companySize,
+				interest: sub.interest,
+				hearAbout: sub.hearAbout,
+				phone: sub.phone,
+				countryRegion: sub.countryRegion,
+				consentUpdates: sub.consentUpdates,
+				consentUpdatesAt: grantsConsent ? DB_NOW : null,
+				qualificationStep: 1,
+				ipHash,
+				userAgent
+			})
+			.onConflictDoNothing()
+			.returning({ id: waitlist.id });
 
-	// Already on the list — enrich in place, bump updated_at (same clock as the DB default). Keyed on
-	// the same normalized email as the insert, so the row the conflict matched is the row we update.
-	// Consent is MONOTONIC here: max(existing, new) — an unchecked box on a re-submit is "no new
-	// grant", not a revocation (revoking is a deliberate future mechanism, e.g. an unsubscribe link).
-	const enriched = await db
-		.update(waitlist)
-		.set({
-			name: keepExisting(sub.name, 'name'),
-			company: keepExisting(sub.company, 'company'),
-			role: keepExisting(sub.role, 'role'),
-			companySize: keepExisting(sub.companySize, 'company_size'),
-			interest: keepExisting(sub.interest, 'interest'),
-			hearAbout: keepExisting(sub.hearAbout, 'hear_about'),
-			phone: keepExisting(sub.phone, 'phone'),
-			countryRegion: keepExisting(sub.countryRegion, 'country_region'),
-			consentUpdates: sql`max(consent_updates, ${sub.consentUpdates ? 1 : 0})`,
-			qualificationStep: sql`max(coalesce(qualification_step, 1), 1)`,
-			updatedAt: DB_NOW
-		})
-		.where(eq(waitlist.email, email))
-		.returning({ id: waitlist.id });
+		if (inserted.length > 0) return { isNew: true, id: inserted[0].id };
 
-	if (enriched.length > 0) return { isNew: false, id: enriched[0].id };
+		// Already on the list — enrich in place, bump updated_at (same clock as the DB default).
+		// Consent is MONOTONIC: max(existing, new) — an unchecked box on a re-submit is "no new grant",
+		// not a revocation (revoking is a deliberate future mechanism, e.g. an unsubscribe link). The
+		// timestamp is set only on the FIRST grant (coalesce keeps an existing one).
+		const enriched = await db
+			.update(waitlist)
+			.set({
+				name: keepExisting(sub.name, 'name'),
+				company: keepExisting(sub.company, 'company'),
+				role: keepExisting(sub.role, 'role'),
+				companySize: keepExisting(sub.companySize, 'company_size'),
+				interest: keepExisting(sub.interest, 'interest'),
+				hearAbout: keepExisting(sub.hearAbout, 'hear_about'),
+				phone: keepExisting(sub.phone, 'phone'),
+				countryRegion: keepExisting(sub.countryRegion, 'country_region'),
+				consentUpdates: sql`max(consent_updates, ${grantsConsent ? 1 : 0})`,
+				consentUpdatesAt: grantsConsent
+					? sql`coalesce(consent_updates_at, ${DB_NOW})`
+					: sql`consent_updates_at`,
+				// Enrich is a step-1 action; coalesce floors a pre-v2 (null) row at 1 and never rewinds.
+				qualificationStep: sql`coalesce(qualification_step, 1)`,
+				updatedAt: DB_NOW
+			})
+			.where(sql`lower(${waitlist.email}) = ${email}`)
+			.returning({ id: waitlist.id });
 
-	// The conflicting row vanished between the insert attempt and the enrich (an admin delete
-	// racing a re-signup) — retry from the top; the fresh insert then wins.
-	return upsertWaitlist(db, sub, ipHash, userAgent);
+		if (enriched.length > 0) return { isNew: false, id: enriched[0].id };
+		// else: the row vanished between insert and enrich — loop once; the retry's insert wins.
+	}
+
+	// Both passes conflicted-then-missed: not a transient race but a real invariant violation
+	// (a unique index that doesn't match its own lower(email) key). Fail loudly rather than spin.
+	throw new Error('upsertWaitlist did not converge: insert conflicted but enrich matched no row');
 }
 
 /** One optional step's validated payload, tagged so the SET clause is a closed per-step map. */
@@ -159,9 +179,11 @@ export async function applyWaitlistStep(
 			set = {
 				pilotInterest: keepExisting(data.pilotInterest, 'pilot_interest'),
 				deploymentScale: keepExisting(data.deploymentScale, 'deployment_scale'),
-				// Not keep-existing: this step IS the question, so the submitted state is the answer
-				// (declining after a stale earlier "yes" must stick).
-				contactPermission: data.contactPermission,
+				// Tri-state (validator gates it on a positive pilot answer): a boolean is the real
+				// answer and writes absolutely (an explicit decline after a stale "yes" must stick); a
+				// null means the question wasn't shown → keep-existing, so a not-shown submit can't
+				// silently revoke a standing grant.
+				contactPermission: data.contactPermission ?? sql`contact_permission`,
 				contactMethod: keepExisting(data.contactMethod, 'contact_method'),
 				phone: keepExisting(data.phone, 'phone')
 			};

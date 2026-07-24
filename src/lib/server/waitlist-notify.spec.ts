@@ -34,17 +34,21 @@ describe('buildWaitlistLeadEmail', () => {
 		expect(email.to).toBe('info@darcstar.tech');
 		expect(email.replyTo).toBe('ada@example.com');
 		expect(email.subject).toContain('ada@example.com');
+		expect(email.text).toContain('Region: North America');
 		expect(email.text).toContain('Role: Engineering');
 		expect(email.text).toContain('Company size: 11–50');
 		expect(email.text).toContain('Heard via: Search');
 		expect(email.text).toContain('Interest: Autonomous robotics'); // free text echoed verbatim
+		expect(email.text).toContain('Marketing consent: Yes (unverified)');
 	});
 
 	it('shows "Not provided" for missing optional fields', () => {
 		const email = buildWaitlistLeadEmail(minimal);
 		expect(email.text).toContain('Name: Not provided');
+		expect(email.text).toContain('Region: Not provided');
 		expect(email.text).toContain('Role: Not provided');
 		expect(email.text).toContain('Interest: Not provided');
+		expect(email.text).toContain('Marketing consent: No');
 	});
 
 	it('escapes HTML in dynamic values', () => {

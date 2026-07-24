@@ -13,6 +13,7 @@ import type { CleanedWaitlist } from './waitlist';
 import type { WaitlistRole } from '$lib/waitlist-roles';
 import type { WaitlistCompanySize } from '$lib/waitlist-company-sizes';
 import type { WaitlistReferralSource } from '$lib/waitlist-referral-sources';
+import type { WaitlistRegion } from '$lib/waitlist-qualification';
 import type { Locale } from '$lib/paraglide/runtime';
 import { CONTACT_EMAIL, SITE_NAME } from '$lib/site';
 import { m } from '$lib/paraglide/messages.js';
@@ -59,6 +60,15 @@ const REFERRAL_LABELS: Record<WaitlistReferralSource, string> = {
 	news: 'News / article',
 	other: 'Other'
 };
+const REGION_LABELS: Record<WaitlistRegion, string> = {
+	'north-america': 'North America',
+	'latin-america': 'Latin America',
+	europe: 'Europe',
+	'middle-east': 'Middle East',
+	africa: 'Africa',
+	'asia-pacific': 'Asia-Pacific',
+	other: 'Other'
+};
 
 const NOT_PROVIDED = 'Not provided';
 const roleLabel = (v: string | null) => (v ? (ROLE_LABELS[v as WaitlistRole] ?? v) : NOT_PROVIDED);
@@ -66,6 +76,8 @@ const sizeLabel = (v: string | null) =>
 	v ? (COMPANY_SIZE_LABELS[v as WaitlistCompanySize] ?? v) : NOT_PROVIDED;
 const referralLabel = (v: string | null) =>
 	v ? (REFERRAL_LABELS[v as WaitlistReferralSource] ?? v) : NOT_PROVIDED;
+const regionLabel = (v: string | null) =>
+	v ? (REGION_LABELS[v as WaitlistRegion] ?? v) : NOT_PROVIDED;
 
 /** Render a signup into the internal lead email. Pure — unit-tested. */
 export function buildWaitlistLeadEmail(sub: CleanedWaitlist): OutboundEmail {
@@ -75,11 +87,15 @@ export function buildWaitlistLeadEmail(sub: CleanedWaitlist): OutboundEmail {
 		['Email', sub.email],
 		['Name', sub.name ?? NOT_PROVIDED],
 		['Company', sub.company ?? NOT_PROVIDED],
+		['Region', regionLabel(sub.countryRegion)],
 		['Role', roleLabel(sub.role)],
 		['Company size', sizeLabel(sub.companySize)],
 		['Interest', sub.interest ?? NOT_PROVIDED],
 		['Heard via', referralLabel(sub.hearAbout)],
-		['Phone', sub.phone ?? NOT_PROVIDED]
+		['Phone', sub.phone ?? NOT_PROVIDED],
+		// Unverified single-opt-in claim (see schema.ts / waitlist-store.ts) — surfaced so ops can see
+		// it, NOT a licence to mail without double-opt-in.
+		['Marketing consent', sub.consentUpdates ? 'Yes (unverified)' : 'No']
 	];
 
 	const text = rows.map(([k, v]) => `${k}: ${v}`).join('\n');
