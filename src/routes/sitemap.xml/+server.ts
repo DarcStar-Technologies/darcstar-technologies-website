@@ -20,6 +20,7 @@ import type { RequestHandler } from './$types';
 const STATIC_PATHS = [
 	'/',
 	'/about',
+	'/evidence',
 	'/news',
 	'/research',
 	'/people',
