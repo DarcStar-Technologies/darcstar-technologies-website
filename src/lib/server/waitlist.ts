@@ -25,8 +25,13 @@ import {
 	isPositivePilotInterest
 } from '$lib/waitlist-qualification';
 
-/** Only email surfaces an inline error — everything else is optional and coerced, never rejected. */
-export type WaitlistFieldError = 'email';
+/**
+ * The required core fields surface an inline error; everything else is optional and coerced, never
+ * rejected. v2 step 1 (DAR-60) made `name` required alongside `email` — the v1 form asked for email
+ * only. Old rows may still carry a null name (they predate the requirement); the store's keep-existing
+ * enrich never erases one, and only NEW writes go through this gate.
+ */
+export type WaitlistFieldError = 'email' | 'name';
 
 export interface CleanedWaitlist {
 	email: string; // normalized to lowercase for the unique index / dedupe
@@ -101,9 +106,10 @@ const slugArray = <T extends string>(v: unknown, list: readonly T[], max: number
 };
 
 /**
- * Validate + normalize a raw waitlist signup. Only `email` can fail (required + shape); a tampered or
- * unknown slug (`role`/`companySize`/`hearAbout`) coerces to null rather than erroring (the selects
- * only offer valid slugs). Email is lowercased so the unique index dedupes case-insensitively.
+ * Validate + normalize a raw waitlist signup. `email` (required + shape) and `name` (required, DAR-60)
+ * can fail; a tampered or unknown slug (`role`/`companySize`/`hearAbout`/`countryRegion`) coerces to
+ * null rather than erroring (the selects only offer valid slugs). Email is lowercased so the unique
+ * index dedupes case-insensitively.
  */
 export function validateWaitlist(data: {
 	email?: unknown;
@@ -118,18 +124,20 @@ export function validateWaitlist(data: {
 	consentUpdates?: unknown;
 }): WaitlistValidation {
 	const email = str(data.email).toLowerCase();
+	const name = optionalText(data.name, NAME_MAX); // null when blank → the required-name gate below
 	const role = str(data.role);
 	const companySize = str(data.companySize);
 	const hearAbout = str(data.hearAbout);
 
 	const errors: WaitlistFieldError[] = [];
 	if (email.length > EMAIL_MAX || !EMAIL_RE.test(email)) errors.push('email');
+	if (name === null) errors.push('name'); // required since v2 step 1; empty/whitespace fails
 
 	return {
 		ok: errors.length === 0,
 		cleaned: {
 			email,
-			name: optionalText(data.name, NAME_MAX),
+			name,
 			company: optionalText(data.company, COMPANY_MAX),
 			role: isRole(role) ? role : null,
 			companySize: isCompanySize(companySize) ? companySize : null,

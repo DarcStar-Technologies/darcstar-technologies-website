@@ -9,10 +9,17 @@ Everything lives under `src/lib/waitlist*.ts` (client-safe slug lists + labels),
 waitlist*.ts` (validators, store, token, notify), the `waitlist` table (`db/schema.ts`), and the
 `/waitlist` + `/admin/waitlist` routes.
 
-## v1 form (live today)
+## Step 1 — the core signup (live)
 
-Email is the only required field; every other field is optional lead enrichment behind a `<details>`
-disclosure. Safety rails, all preserved by v2:
+`/waitlist` is the v2 step-1 core signup (DAR-60): **Name + Email are required**; Organization
+(`company`), Country/region (a `GlassSelect` over `WAITLIST_REGIONS` → `waitlist-region-labels.ts`),
+and an unchecked marketing-consent checkbox (`consent_updates`) are optional. Submit persists the row
+immediately, so abandoning the later qualification steps still retains the signup. It remains the one
+indexable entry to the flow. (The v1 form asked for email only behind a `<details>` enrichment
+disclosure; DAR-60 flattened it — role moved to step 2, phone to step 4A, and company-size / interest
+/ hear-about left the UI, their columns retained per DAR-59. The interest free-text datalist and its
+`+page.server.ts` load were retired with it, so the page now has no server load.) Safety rails,
+unchanged since v1:
 
 - **Honeypot** `website` field — a non-empty value is silently accepted (never persisted, trap not
   revealed).
@@ -28,11 +35,11 @@ disclosure. Safety rails, all preserved by v2:
 
 ## v2 progressive qualification flow (DAR-58)
 
-The v1 single form is being replaced by a short progressive flow (step 1 secures the signup; steps
-2–4 gather qualification data from people willing to continue). **DAR-59 shipped the data-model
-foundation only** — the schema columns, validators, store step-path, and the continuation token. The
-step UIs and endpoints land in DAR-60…DAR-63; the classifier + admin view in DAR-65; funnel
-analytics in DAR-66.
+The single form is being replaced by a short progressive flow (step 1 secures the signup; steps 2–4
+gather qualification data from people willing to continue). **DAR-59 shipped the data-model
+foundation** (schema columns, validators, store step-path, continuation token) and **DAR-60 shipped
+step 1** (the core signup above, whose success response returns the token). Steps 2–4's UIs +
+endpoints land in DAR-61…DAR-63; the classifier + admin view in DAR-65; funnel analytics in DAR-66.
 
 ### Qualification columns
 

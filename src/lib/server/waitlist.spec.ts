@@ -8,24 +8,38 @@ import {
 } from './waitlist';
 
 describe('validateWaitlist', () => {
-	it('accepts an email-only signup and normalizes the email to lowercase', () => {
-		const { ok, cleaned, errors } = validateWaitlist({ email: '  Ada@Example.COM ' });
+	it('accepts a name + email signup and normalizes the email to lowercase', () => {
+		const { ok, cleaned, errors } = validateWaitlist({
+			name: '  Ada Lovelace  ',
+			email: '  Ada@Example.COM '
+		});
 		expect(ok).toBe(true);
 		expect(errors).toEqual([]);
 		expect(cleaned.email).toBe('ada@example.com'); // lowercased for the unique-index dedupe
-		expect(cleaned.name).toBeNull();
+		expect(cleaned.name).toBe('Ada Lovelace'); // trimmed
 		expect(cleaned.role).toBeNull();
 		expect(cleaned.interest).toBeNull();
 	});
 
-	it('rejects a missing or malformed email', () => {
-		expect(validateWaitlist({}).errors).toContain('email');
-		expect(validateWaitlist({ email: 'not-an-email' }).errors).toContain('email');
-		expect(validateWaitlist({ email: 'a@b' }).errors).toContain('email'); // no dot in domain
+	it('requires name (v2 step 1) — blank or absent fails with a name issue', () => {
+		expect(validateWaitlist({ email: 'a@b.co' }).errors).toContain('name');
+		const blank = validateWaitlist({ email: 'a@b.co', name: '   ' });
+		expect(blank.ok).toBe(false);
+		expect(blank.errors).toContain('name');
+		expect(blank.cleaned.name).toBeNull(); // whitespace-only normalizes to null
+		// A real name clears it.
+		expect(validateWaitlist({ email: 'a@b.co', name: 'Ada' }).ok).toBe(true);
+	});
+
+	it('rejects a missing or malformed email (name held valid to isolate the email check)', () => {
+		expect(validateWaitlist({ name: 'Ada' }).errors).toContain('email');
+		expect(validateWaitlist({ name: 'Ada', email: 'not-an-email' }).errors).toContain('email');
+		expect(validateWaitlist({ name: 'Ada', email: 'a@b' }).errors).toContain('email'); // no dot in domain
 	});
 
 	it('coerces a valid role/companySize/hearAbout slug and nulls an unknown one without failing', () => {
 		const good = validateWaitlist({
+			name: 'Ada',
 			email: 'a@b.co',
 			role: 'engineering',
 			companySize: '11-50',
@@ -36,6 +50,7 @@ describe('validateWaitlist', () => {
 		expect(good.cleaned.hearAbout).toBe('search');
 
 		const bad = validateWaitlist({
+			name: 'Ada',
 			email: 'a@b.co',
 			role: 'wizard',
 			companySize: '999',
@@ -48,7 +63,13 @@ describe('validateWaitlist', () => {
 	});
 
 	it('keeps interest as free text (trimmed), not constrained to an enum', () => {
-		const { cleaned } = validateWaitlist({ email: 'a@b.co', interest: '  Fleet logistics  ' });
+		// The interest COLUMN survives DAR-60 (only its form datalist was retired), so the validator
+		// still cleans a supplied value.
+		const { cleaned } = validateWaitlist({
+			name: 'Ada',
+			email: 'a@b.co',
+			interest: '  Fleet logistics  '
+		});
 		expect(cleaned.interest).toBe('Fleet logistics');
 	});
 
@@ -69,18 +90,20 @@ describe('validateWaitlist', () => {
 
 	it('treats blank optional fields as null', () => {
 		const { cleaned } = validateWaitlist({
+			name: 'Ada',
 			email: 'a@b.co',
-			name: '   ',
+			company: '   ',
 			interest: '',
 			phone: '  '
 		});
-		expect(cleaned.name).toBeNull();
+		expect(cleaned.company).toBeNull();
 		expect(cleaned.interest).toBeNull();
 		expect(cleaned.phone).toBeNull();
 	});
 
 	it('v2 step-1 fields: countryRegion coerces like the other slugs; consent parses as a checkbox', () => {
 		const good = validateWaitlist({
+			name: 'Ada',
 			email: 'a@b.co',
 			countryRegion: 'europe',
 			consentUpdates: 'on'
@@ -88,7 +111,7 @@ describe('validateWaitlist', () => {
 		expect(good.cleaned.countryRegion).toBe('europe');
 		expect(good.cleaned.consentUpdates).toBe(true);
 
-		const bad = validateWaitlist({ email: 'a@b.co', countryRegion: 'atlantis' });
+		const bad = validateWaitlist({ name: 'Ada', email: 'a@b.co', countryRegion: 'atlantis' });
 		expect(bad.cleaned.countryRegion).toBeNull();
 		// Absent checkbox is FALSE, never null — absence of the field is not consent.
 		expect(bad.cleaned.consentUpdates).toBe(false);
