@@ -15,9 +15,20 @@ test('research page renders its hero heading and origin-honest lede', async ({ p
 // asserted; the origin/sort sets are static. Assertions scope to the form (its aria-label
 // names it): the zero-match state renders a SECOND 'Clear filters' link in the message, so a
 // page-wide locator would strict-mode-collide if the data ever makes this combination empty.
+//
+// CI contract (test.yml, DAR-49): the e2e job runs Sanity-token-less, so the index is EMPTY
+// there and the bar is deliberately gated off — the filter tests assert the empty state in
+// that environment and the full contract when content exists (the route's own degradation,
+// deterministic per environment — not a flaky conditional).
+const FILTER_FORM = { name: 'Filter and sort papers' };
+
 test('filter bar renders and SSRs the URL state into its controls', async ({ page }) => {
 	await page.goto('/research?origin=external&sort=title');
-	const form = page.getByRole('form', { name: 'Filter and sort papers' });
+	const form = page.getByRole('form', FILTER_FORM);
+	if ((await form.count()) === 0) {
+		await expect(page.getByText('No papers yet')).toBeVisible();
+		return;
+	}
 	await expect(form.getByLabel('Topic')).toBeVisible();
 	await expect(form.getByLabel('Author')).toBeVisible();
 	await expect(form.getByLabel('Origin')).toHaveValue('external');
@@ -31,7 +42,11 @@ test('filter bar renders and SSRs the URL state into its controls', async ({ pag
 // select names feeding buildFilterQuery and the submit handler.
 test('applying a filter navigates to the filtered URL', async ({ page }) => {
 	await page.goto('/research');
-	const form = page.getByRole('form', { name: 'Filter and sort papers' });
+	const form = page.getByRole('form', FILTER_FORM);
+	if ((await form.count()) === 0) {
+		await expect(page.getByText('No papers yet')).toBeVisible();
+		return;
+	}
 	await form.getByLabel('Origin').selectOption('external');
 	await form.getByRole('button', { name: 'Apply' }).click();
 	await expect(page).toHaveURL(/\/research\?origin=external$/);
