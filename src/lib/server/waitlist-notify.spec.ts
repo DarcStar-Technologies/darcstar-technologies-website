@@ -10,7 +10,9 @@ const full: CleanedWaitlist = {
 	companySize: '11-50',
 	interest: 'Autonomous robotics',
 	hearAbout: 'search',
-	phone: '+1 555 000 1234'
+	phone: '+1 555 000 1234',
+	countryRegion: 'north-america',
+	consentUpdates: true
 };
 
 const minimal: CleanedWaitlist = {
@@ -21,7 +23,9 @@ const minimal: CleanedWaitlist = {
 	companySize: null,
 	interest: null,
 	hearAbout: null,
-	phone: null
+	phone: null,
+	countryRegion: null,
+	consentUpdates: false
 };
 
 describe('buildWaitlistLeadEmail', () => {
