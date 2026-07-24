@@ -14,6 +14,7 @@ import { TRANSLATED_LOCALES } from '../lib/seo';
 const STATIC_PATHS = [
 	'/',
 	'/about',
+	'/evidence',
 	'/news',
 	'/research',
 	'/people',
