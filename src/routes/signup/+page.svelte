@@ -55,9 +55,6 @@
 		reset: (id: string) => void;
 		remove: (id: string) => void;
 	};
-	// The api.js URL derives from the shared TURNSTILE_ORIGIN so the CSP allowlist
-	// (vite.config.ts) can never drift from the loader.
-	const TURNSTILE_SRC = TURNSTILE_SCRIPT_URL;
 
 	// Exposed by the attachment so a failed submit can refresh the (single-use) challenge token.
 	let resetTurnstile = $state<(() => void) | undefined>(undefined);
@@ -81,10 +78,12 @@
 		if (win.turnstile) {
 			render();
 		} else {
-			let script = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SRC}"]`);
+			let script = document.querySelector<HTMLScriptElement>(
+				`script[src="${TURNSTILE_SCRIPT_URL}"]`
+			);
 			if (!script) {
 				script = document.createElement('script');
-				script.src = TURNSTILE_SRC;
+				script.src = TURNSTILE_SCRIPT_URL;
 				script.async = true;
 				document.head.appendChild(script);
 			}

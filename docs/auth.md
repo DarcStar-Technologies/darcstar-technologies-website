@@ -86,6 +86,10 @@ so the sign-up surface can't be abused:
    `/request-password-reset`, which have no widget and would break the no-JS `/login`. Registered only
    when `TURNSTILE_SECRET_KEY` is set (dev without keys signs up challenge-free — graceful, like the
    Resend skip). The `/signup` action forwards the widget token as the `x-captcha-response` header.
+   **Local `pnpm preview` is always captcha-ACTIVE**: it bakes Cloudflare's always-pass **test**
+   keypair via `--var` (DAR-45 — a real sitekey rejects localhost), so a preview POST to
+   `/sign-up/email` without a token now 400s, and real-key siteverify behavior can't be observed
+   through local preview — only on the deployed preview/prod Workers, whose secrets are real.
 2. **`requireEmailVerification: true`** — a sign-up creates an **unverified** account and does NOT sign
    the visitor in (no session token); Better Auth rejects sign-**in** for any unverified user with
    **403 `EMAIL_NOT_VERIFIED`** until they click the emailed link. On verify, `autoSignInAfterVerification`

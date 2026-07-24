@@ -19,22 +19,29 @@ copy):
 Kit owns the CSP because its inline hydration bootstrap needs the per-response **nonce** Kit
 injects — a hook-built header can't know it. The policy is **enforced** (not report-only), on the
 strength of `src/routes/security-headers.e2e.ts`, which drives the real Workers runtime and fails
-on any `securitypolicyviolation` event. Its teeth come from four mechanisms:
+on any `securitypolicyviolation` event. Its teeth come from five mechanisms:
 
 - a violation guard over every public path (including `/es`), asserting the worker header set on
-  each — so a page that starts prerendering (served by the assets layer, CSP demoted to a
-  `<meta>` tag that can't carry `frame-ancestors`) fails the suite instead of silently degrading;
+  each — so an audited page that starts prerendering (served by the assets layer, CSP demoted to
+  a `<meta>` tag that can't carry `frame-ancestors`) fails the suite instead of silently
+  degrading;
+- a **build-output check** that `.svelte-kit/cloudflare` contains zero prerendered `.html` files,
+  so the "nothing prerenders" invariant holds even for future pages nobody enrolled in the
+  audited list;
 - the **live Turnstile widget** on `/signup`: `pnpm preview` bakes Cloudflare's always-pass
   **test** sitekey (`1x00000000000000000000AA`, `--var` in package.json), because a real sitekey
   rejects localhost with a 400 before rendering — the test key runs the real challenge pipeline
   anywhere, proving `script-src` live (the widget's iframe hides inside a **closed shadow root**,
   so the e2e keys on the `cf-turnstile-response` input it injects; `frame-src` is pinned by the
-  synthetic probe);
-- **synthetic probes** that inject a script/iframe/image from each allowlisted origin — CSP blocks
-  fire at request-attempt time, before any network I/O, so this works with no Sanity token or
-  content;
-- a **negative control** that injects a non-allowlisted script and asserts the violation IS
-  captured, so the collector can't rot into a vacuous pass.
+  synthetic probe). This is the one test needing network egress to `challenges.cloudflare.com` —
+  offline runners fail it for environment reasons;
+- **synthetic probes** that request a bogus 404 path on each allowlisted origin (script + iframe +
+  image) — the CSP verdict lands at request-attempt time, before any network I/O, so this needs no
+  Sanity token or content and executes no third-party code; probe origins are imported from
+  `src/lib/security-headers.ts`, the same module the CSP config reads;
+- a **negative control** that injects a blocked script, iframe, AND image and asserts each
+  directive's violation is captured — so neither the collector nor a single accidentally-widened
+  directive can rot the suite into a vacuous pass.
 
 Current allowlist and why:
 
@@ -97,8 +104,9 @@ HMR dies in an exotic dev setup, that's why.
 ## Static assets — the `_headers` file
 
 Workers static assets are served **before the worker runs**, so `hooks.server.ts` never sees them.
-The project-root `_headers` file (nosniff + HSTS on `/*`) is their only header path — keep it in
-sync with the hook. Gotchas learned the hard way:
+The project-root `_headers` file (nosniff + HSTS on `/*`) is their only header path — it restates
+`HSTS_VALUE` from `src/lib/security-headers.ts` by hand (plaintext can't import TS); the e2e asset
+test pins both copies. Gotchas learned the hard way:
 
 - It must live in the **project root**, not `static/` — `@sveltejs/adapter-cloudflare` errors on a
   `static/_headers` at build time. The adapter copies it to `.svelte-kit/cloudflare/_headers` and
