@@ -13,9 +13,9 @@ export const CFC_KERNEL_LATENCY = '0.767 µs';
  * kernel latency above. */
 export const REALTIME_MULTIPLE = '13,000×';
 
-// Theorem-catalog counts as of GIDE release v2026.07.1 (July 2026): the conformance
-// registry's machine-checked set is complete (dual-prover, zero local axioms) + axiom-backed.
-export const THEOREMS_CATALOGUED = 338;
+// Machine-checked theorem counts as of GIDE release v2026.07.1 (July 2026): complete
+// (dual-prover, zero local axioms) + axiom-backed. Deliberately NOT here: the catalog total /
+// not-yet-mechanized remainder — the public surface states what IS proven, not the backlog.
 export const THEOREMS_COMPLETE = 31;
 export const THEOREMS_AXIOM_BACKED = 188;
 export const THEOREMS_CHECKED = THEOREMS_COMPLETE + THEOREMS_AXIOM_BACKED;

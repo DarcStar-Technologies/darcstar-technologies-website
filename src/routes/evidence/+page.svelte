@@ -16,13 +16,14 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import LegalSection from '$lib/components/LegalSection.svelte';
 	import { m } from '$lib/paraglide/messages.js';
+	import { localizeHref } from '$lib/paraglide/runtime';
 	import { contactDialog } from '$lib/contact-dialog.svelte';
+	import { inlineLinkClass } from '$lib/styles';
 	import {
 		CFC_KERNEL_LATENCY,
 		DOMAINS,
 		REALTIME_MULTIPLE,
 		THEOREMS_AXIOM_BACKED,
-		THEOREMS_CATALOGUED,
 		THEOREMS_CHECKED,
 		THEOREMS_COMPLETE
 	} from '$lib/evidence';
@@ -37,6 +38,8 @@
 		dated: string;
 		claim: string;
 		fields: EvidenceField[];
+		/** Detail-page link (run-level benchmarks, proof methodology) rendered after the fields. */
+		more?: { href: string; label: string };
 	};
 
 	// `$derived` for the same reason as the homepage readouts: message calls re-resolve if a
@@ -50,11 +53,10 @@
 			dated: m.evidence_cfc_dated(),
 			claim: m.evidence_cfc_claim({ latency: CFC_KERNEL_LATENCY }),
 			fields: [
-				{ label: m.evidence_label_environment(), body: m.evidence_cfc_environment() },
 				{ label: m.evidence_label_method(), body: m.evidence_cfc_method() },
-				{ label: m.evidence_label_not_covered(), body: m.evidence_cfc_not_covered() },
-				{ label: m.evidence_label_artifacts(), body: m.evidence_cfc_artifacts() }
-			]
+				{ label: m.evidence_label_not_covered(), body: m.evidence_cfc_not_covered() }
+			],
+			more: { href: '/evidence/benchmarks', label: m.evidence_cfc_more() }
 		},
 		{
 			id: 'realtime',
@@ -68,7 +70,8 @@
 			fields: [
 				{ label: m.evidence_label_method(), body: m.evidence_realtime_method() },
 				{ label: m.evidence_label_not_covered(), body: m.evidence_realtime_not_covered() }
-			]
+			],
+			more: { href: '/evidence/benchmarks', label: m.evidence_cfc_more() }
 		},
 		{
 			id: 'theorems',
@@ -77,17 +80,11 @@
 			dated: m.evidence_theorems_dated(),
 			claim: m.evidence_theorems_claim({
 				checked: THEOREMS_CHECKED,
-				catalogued: THEOREMS_CATALOGUED,
 				complete: THEOREMS_COMPLETE,
-				axiomBacked: THEOREMS_AXIOM_BACKED,
-				excluded: THEOREMS_CATALOGUED - THEOREMS_CHECKED
+				axiomBacked: THEOREMS_AXIOM_BACKED
 			}),
-			fields: [
-				{ label: m.evidence_label_provers(), body: m.evidence_theorems_provers() },
-				{ label: m.evidence_label_method(), body: m.evidence_theorems_method() },
-				{ label: m.evidence_label_not_covered(), body: m.evidence_theorems_not_covered() },
-				{ label: m.evidence_label_artifacts(), body: m.evidence_theorems_artifacts() }
-			]
+			fields: [{ label: m.evidence_label_not_covered(), body: m.evidence_theorems_not_covered() }],
+			more: { href: '/evidence/proofs', label: m.evidence_theorems_more() }
 		},
 		{
 			id: 'safety',
@@ -151,6 +148,11 @@
 						</div>
 					{/each}
 				</div>
+				{#if card.more}
+					<p class="mt-6 text-sm">
+						<a href={localizeHref(card.more.href)} class={inlineLinkClass}>{card.more.label}</a>
+					</p>
+				{/if}
 			</section>
 		{/each}
 
