@@ -106,6 +106,8 @@ const AUDITED_PAGES: { path: string; ready?: (page: Page) => Promise<void> }[] =
 	{ path: '/people' },
 	{ path: '/contact' },
 	{ path: '/waitlist' },
+	{ path: '/privacy' },
+	{ path: '/terms' },
 	{ path: '/forgot-password' },
 	{ path: '/login' },
 	{
