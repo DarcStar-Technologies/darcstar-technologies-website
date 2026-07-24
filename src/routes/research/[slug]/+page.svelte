@@ -12,6 +12,7 @@
 	import PaperOrigin from '$lib/components/PaperOrigin.svelte';
 	import PaperExternalDisclaimer from '$lib/components/PaperExternalDisclaimer.svelte';
 	import PaperTopics from '$lib/components/PaperTopics.svelte';
+	import { researchTopicHref } from '$lib/research-filters';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
 	import PortableBody from '$lib/components/portable/PortableBody.svelte';
 	import { m } from '$lib/paraglide/messages.js';
@@ -88,10 +89,7 @@
 					{paper.authors.map((a) => a.name).join(', ')}
 				</p>
 			{/if}
-			<PaperTopics
-				topics={paper.topics}
-				topicHref={(slug) => localizeHref(`/research?topic=${encodeURIComponent(slug)}`)}
-			/>
+			<PaperTopics topics={paper.topics} topicHref={researchTopicHref} />
 			{#if paper.categories && paper.categories.length > 0}
 				<div class="flex flex-wrap gap-2">
 					{#each paper.categories as cat (cat._id)}

@@ -27,10 +27,12 @@
 	import { fieldClass } from '$lib/components/ContactFields.svelte';
 	import {
 		buildFilterQuery,
+		FILTER_PARAM,
 		filterPapers,
 		hasActiveFilters,
 		paperFacets,
 		parseResearchFilters,
+		researchTopicHref,
 		sortPapers,
 		type FacetOption
 	} from '$lib/research-filters';
@@ -46,40 +48,40 @@
 	const filters = $derived(parseResearchFilters(page.url.searchParams));
 	const facets = $derived(paperFacets(data.papers));
 	const filtered = $derived(filterPapers(data.papers, filters));
-	const darcstarPapers = $derived(
-		sortPapers(
-			filtered.filter((p) => p.darcstarAuthored),
-			filters.sort,
-			getLocale()
-		)
-	);
-	const externalPapers = $derived(
-		sortPapers(
-			filtered.filter((p) => !p.darcstarAuthored),
-			filters.sort,
-			getLocale()
-		)
-	);
+	// A title sort merges the origin sections into ONE alphabetical list — two separately-sorted
+	// sections would read as broken. Safe: every card carries its own origin chip + disclaimer
+	// (DAR-52), so the section framing is redundant for correctness.
+	const mergeSections = $derived(filters.sort === 'title');
+	const allPapers = $derived(sortPapers(filtered, filters.sort, getLocale()));
+	const darcstarPapers = $derived(allPapers.filter((p) => p.darcstarAuthored));
+	const externalPapers = $derived(allPapers.filter((p) => !p.darcstarAuthored));
 	const filtersActive = $derived(hasActiveFilters(filters));
 
 	const originOptions = $derived<FacetOption[]>([
 		{ value: 'darcstar', label: m.research_filter_origin_darcstar() },
 		{ value: 'external', label: m.research_filter_origin_external() }
 	]);
-	const sortOptions = $derived<FacetOption[]>([{ value: 'title', label: m.research_sort_title() }]);
+	const sortOptions = $derived<FacetOption[]>([
+		{ value: 'date-asc', label: m.research_sort_oldest() },
+		{ value: 'title', label: m.research_sort_title() }
+	]);
 
 	// JS path: rebuild the query from the form and navigate in place (buildFilterQuery keeps
-	// the URL clean of empty params).
-	function applyFilters(form: HTMLFormElement) {
+	// the URL clean of empty params). Debounced: a collapsed <select> fires `change` on every
+	// arrow keypress in Firefox/Chrome-on-Linux, so navigating per keystroke would storm the
+	// history — 250ms collapses a run of keypresses into one goto. Identical-URL calls bail so
+	// change-then-Apply doesn't navigate twice. Apply (submit) flushes immediately.
+	let applyTimer: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => () => clearTimeout(applyTimer));
+	function applyFilters(form: HTMLFormElement, immediate = false) {
 		const query = buildFilterQuery(new FormData(form));
-		goto(query ? `${page.url.pathname}?${query}` : page.url.pathname, {
-			noScroll: true,
-			keepFocus: true
-		});
+		const target = query ? `${page.url.pathname}?${query}` : page.url.pathname;
+		clearTimeout(applyTimer);
+		if (target === page.url.pathname + page.url.search) return;
+		const navigate = () => goto(target, { noScroll: true, keepFocus: true });
+		if (immediate) navigate();
+		else applyTimer = setTimeout(navigate, 250);
 	}
-
-	const topicFilterHref = (slug: string) =>
-		localizeHref(`/research?topic=${encodeURIComponent(slug)}`);
 </script>
 
 <Seo title={m.research_page_title()} description={m.research_page_description()} />
@@ -114,7 +116,7 @@
 		{#if paper.abstract}
 			<p class="mt-3 line-clamp-3 text-sm leading-relaxed text-body">{paper.abstract}</p>
 		{/if}
-		<PaperTopics topics={paper.topics} class="mt-3" topicHref={topicFilterHref} />
+		<PaperTopics topics={paper.topics} class="mt-3" topicHref={researchTopicHref} />
 		<div class="mt-4">
 			<PaperLinks arxivId={paper.arxivId} doi={paper.doi} codeUrl={paper.codeUrl} url={paper.url} />
 		</div>
@@ -135,8 +137,12 @@
 	</section>
 {/snippet}
 
-<!-- One labeled facet select. `current === null` selects the empty "All …"/default option, so
-     SSR renders the URL's state without JS. -->
+<!-- One labeled facet select, driven entirely by `value` on the <select>: Svelte marks the
+     matching option during SSR (no-JS state) AND sets the IDL value client-side — which
+     per-option `selected` attrs can't do once the user has touched the control (browsers
+     ignore attribute changes on a dirtied select, so Clear/Back/tag-link navigations would
+     desync the display). An unknown URL value (renamed slug, hand-edited URL) renders as a
+     raw synthetic option rather than masquerading as "All". -->
 {#snippet filterSelect(
 	name: string,
 	label: string,
@@ -146,10 +152,13 @@
 )}
 	<label class="block">
 		<span class="mb-1.5 block text-xs font-medium tracking-wide text-body">{label}</span>
-		<select {name} class={fieldClass}>
-			<option value="" selected={current === null}>{emptyLabel}</option>
+		<select {name} value={current ?? ''} class={fieldClass}>
+			<option value="">{emptyLabel}</option>
+			{#if current !== null && !options.some((o) => o.value === current)}
+				<option value={current}>{current}</option>
+			{/if}
 			{#each options as opt (opt.value)}
-				<option value={opt.value} selected={current === opt.value}>{opt.label}</option>
+				<option value={opt.value}>{opt.label}</option>
 			{/each}
 		</select>
 	</label>
@@ -164,61 +173,65 @@
 	/>
 
 	<div class="mx-auto w-full max-w-3xl space-y-8">
-		<form
-			method="GET"
-			aria-label={m.research_filter_label()}
-			class="glass-card grid grid-cols-2 items-end gap-3 p-4 sm:grid-cols-[1fr_1fr_1fr_1fr_auto] sm:p-5"
-			onchange={(e) => applyFilters(e.currentTarget)}
-			onsubmit={(e) => {
-				e.preventDefault();
-				applyFilters(e.currentTarget);
-			}}
-		>
-			{@render filterSelect(
-				'topic',
-				m.research_filter_topic_label(),
-				m.research_filter_all_topics(),
-				facets.topics,
-				filters.topic
-			)}
-			{@render filterSelect(
-				'author',
-				m.research_filter_author_label(),
-				m.research_filter_all_authors(),
-				facets.authors,
-				filters.author
-			)}
-			{@render filterSelect(
-				'origin',
-				m.research_filter_origin_label(),
-				m.research_filter_all_origins(),
-				originOptions,
-				filters.origin
-			)}
-			{@render filterSelect(
-				'sort',
-				m.research_filter_sort_label(),
-				m.research_sort_newest(),
-				sortOptions,
-				filters.sort === 'date' ? null : filters.sort
-			)}
-			<div class="col-span-2 flex items-center gap-3 sm:col-span-1">
-				<button
-					type="submit"
-					class="glass-btn rounded-lg px-4 py-2.5 text-sm font-medium text-white"
-				>
-					{m.research_filter_apply()}
-				</button>
-				{#if filtersActive}
-					<a
-						href={localizeHref('/research')}
-						class="text-xs text-muted transition-colors hover:text-white"
+		<!-- Gated on content: an outage/empty index shouldn't present dead facet controls over
+		     the "no papers" message. -->
+		{#if data.papers.length > 0}
+			<form
+				method="GET"
+				aria-label={m.research_filter_label()}
+				class="glass-card grid grid-cols-2 items-end gap-3 p-4 sm:grid-cols-[1fr_1fr_1fr_1fr_auto] sm:p-5"
+				onchange={(e) => applyFilters(e.currentTarget)}
+				onsubmit={(e) => {
+					e.preventDefault();
+					applyFilters(e.currentTarget, true);
+				}}
+			>
+				{@render filterSelect(
+					FILTER_PARAM.topic,
+					m.research_filter_topic_label(),
+					m.research_filter_all_topics(),
+					facets.topics,
+					filters.topic
+				)}
+				{@render filterSelect(
+					FILTER_PARAM.author,
+					m.research_filter_author_label(),
+					m.research_filter_all_authors(),
+					facets.authors,
+					filters.author
+				)}
+				{@render filterSelect(
+					FILTER_PARAM.origin,
+					m.research_filter_origin_label(),
+					m.research_filter_all_origins(),
+					originOptions,
+					filters.origin
+				)}
+				{@render filterSelect(
+					FILTER_PARAM.sort,
+					m.research_filter_sort_label(),
+					m.research_sort_newest(),
+					sortOptions,
+					filters.sort === 'date' ? null : filters.sort
+				)}
+				<div class="col-span-2 flex items-center gap-3 sm:col-span-1">
+					<button
+						type="submit"
+						class="glass-btn rounded-lg px-4 py-2.5 text-sm font-medium text-white"
 					>
-						{m.research_filter_clear()}
-					</a>
-				{/if}
-			</div>
-		</form>
+						{m.research_filter_apply()}
+					</button>
+					{#if filtersActive}
+						<a
+							href={localizeHref('/research')}
+							class="text-xs text-muted transition-colors hover:text-white"
+						>
+							{m.research_filter_clear()}
+						</a>
+					{/if}
+				</div>
+			</form>
+		{/if}
 
 		{#if data.papers.length === 0}
 			<p class="glass-card px-8 py-12 text-center text-sm text-body">{m.research_empty()}</p>
@@ -228,23 +241,38 @@
 				<a href={localizeHref('/research')} class={inlineLinkClass}>{m.research_filter_clear()}</a>
 			</p>
 		{:else}
-			<div class="space-y-12">
-				{#if darcstarPapers.length > 0}
-					{@render paperSection(
-						m.research_section_darcstar_heading(),
-						m.research_section_darcstar_note(),
-						darcstarPapers
-					)}
-				{/if}
+			{#if filtersActive}
+				<p class="text-xs text-muted">
+					{m.research_filter_count({ shown: filtered.length, total: data.papers.length })}
+				</p>
+			{/if}
+			{#if mergeSections}
+				<!-- Title sort: one merged A–Z list — two separately-sorted sections would read as
+				     broken. Origin context rides on each card (chips + disclaimer). -->
+				<ul class="space-y-6">
+					{#each allPapers as paper (paper._id)}
+						{@render paperCard(paper)}
+					{/each}
+				</ul>
+			{:else}
+				<div class="space-y-12">
+					{#if darcstarPapers.length > 0}
+						{@render paperSection(
+							m.research_section_darcstar_heading(),
+							m.research_section_darcstar_note(),
+							darcstarPapers
+						)}
+					{/if}
 
-				{#if externalPapers.length > 0}
-					{@render paperSection(
-						m.research_section_external_heading(),
-						m.research_section_external_note(),
-						externalPapers
-					)}
-				{/if}
-			</div>
+					{#if externalPapers.length > 0}
+						{@render paperSection(
+							m.research_section_external_heading(),
+							m.research_section_external_note(),
+							externalPapers
+						)}
+					{/if}
+				</div>
+			{/if}
 		{/if}
 	</div>
 </div>
