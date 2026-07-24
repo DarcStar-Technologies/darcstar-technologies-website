@@ -6,6 +6,7 @@
 	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import Icon from '$lib/components/Icon.svelte';
+	import { inlineLinkClass } from '$lib/components/FormPrivacyNotice.svelte';
 
 	// Domains the one engine has actually shipped into. Declared before `readouts`
 	// so the stats row can source its "domains shipped" figure from this list's
@@ -22,16 +23,19 @@
 		{ n: m.domain_selfdev_name(), d: m.domain_selfdev_desc() }
 	]);
 
-	// Stats row — REAL, verifiable numbers only (issue #13). Latency and the 13,000×
-	// real-time margin are measured; "theorems proven" is the machine-checked count;
-	// "domains shipped" is `domains.length`. Only the LABELS are messages — the values
-	// stay as data: they're en-formatted figures, not translatable prose (a real `es`
-	// would run them through Intl.NumberFormat, e.g. "13.000×"), and the numbers must
-	// read identically across locales.
+	// Stats row — REAL, verifiable numbers only (issue #13), each scoped on /evidence (DAR-43):
+	// latency is measured, the 13,000× margin is derived from it (10 ms budget ÷ 0.767 µs),
+	// 219 is the machine-checked theorem count from the GIDE conformance registry (31 complete
+	// + 188 axiom-backed, of 338 catalogued — as of v2026.07.1; the old "150" was the Layer-1
+	// catalog size, not a proven count), and "domains shipped" is `domains.length`. Keep these
+	// in lockstep with the /evidence cards. Only the LABELS are messages — the values stay as
+	// data: they're en-formatted figures, not translatable prose (a real `es` would run them
+	// through Intl.NumberFormat, e.g. "13.000×"), and the numbers must read identically across
+	// locales.
 	const readouts = $derived([
 		{ v: '0.767 µs', l: m.readout_cfc_label() },
 		{ v: '13,000×', l: m.readout_realtime_label() },
-		{ v: '150', l: m.readout_theorems_label() },
+		{ v: '219', l: m.readout_theorems_label() },
 		{ v: String(domains.length), l: m.readout_domains_label() }
 	]);
 	const pillars = $derived([
@@ -134,6 +138,16 @@
 					</div>
 				</div>
 			{/each}
+			<!-- The path from claim to evidence (DAR-43): every figure above is scoped, dated,
+			     and bounded on /evidence. `w-full` drops the link onto its own centered row. -->
+			<div class="w-full">
+				<a
+					href={localizeHref('/evidence')}
+					class="text-xs text-muted transition-colors hover:text-white"
+				>
+					{m.readout_evidence_link()}
+				</a>
+			</div>
 		</div>
 
 		<section id="gide" class="glass-card scroll-mt-24 overflow-hidden">
@@ -178,6 +192,11 @@
 			</h2>
 			<p class="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-body sm:text-base">
 				{m.section_proven_body()}
+			</p>
+			<p class="mt-6">
+				<a href={localizeHref('/evidence')} class={inlineLinkClass}>
+					{m.section_proven_evidence_link()}
+				</a>
 			</p>
 		</section>
 
