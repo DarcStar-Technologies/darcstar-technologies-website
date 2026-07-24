@@ -4,11 +4,14 @@ import { createClient } from '@libsql/client';
 import * as schema from './db/schema';
 import type { Db } from './db';
 import { waitlist } from './db/schema';
-import { upsertWaitlist } from './waitlist-store';
+import { applyWaitlistStep, upsertWaitlist } from './waitlist-store';
 import type { CleanedWaitlist } from './waitlist';
 
 // Real DB integration test — the insert-or-enrich + `isNew` gate is the security-critical logic
 // (gates the emails; the pure specs can't reach it), so exercise it against an in-memory libsql.
+// The v2 step updates (applyWaitlistStep) are covered here too: they're the only write path for
+// the optional steps, and their guarantees (own-columns-only, monotonic step, no row creation)
+// are what the continuation-token design leans on.
 const client = createClient({ url: ':memory:' });
 const db = drizzle(client, { schema }) as unknown as Db;
 
@@ -20,7 +23,9 @@ const base: CleanedWaitlist = {
 	companySize: null,
 	interest: null,
 	hearAbout: null,
-	phone: null
+	phone: null,
+	countryRegion: null,
+	consentUpdates: false
 };
 
 const rows = () => db.select().from(waitlist);
@@ -33,6 +38,14 @@ beforeAll(async () => {
 			id text PRIMARY KEY NOT NULL,
 			email text NOT NULL,
 			name text, company text, role text, company_size text, interest text, hear_about text, phone text,
+			country_region text,
+			consent_updates integer DEFAULT 0 NOT NULL,
+			consent_updates_at integer,
+			primary_application text, evaluation_timeline text,
+			current_approach text, economic_impact text, budget_range text, adoption_evidence text,
+			pilot_interest text, deployment_scale text, contact_permission integer, contact_method text,
+			research_preferences text,
+			qualification_step integer,
 			ip_hash text, user_agent text,
 			created_at integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
 			updated_at integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
@@ -100,5 +113,168 @@ describe('upsertWaitlist', () => {
 		await upsertWaitlist(db, { ...base, name: 'Ada' }, 'h', null);
 		const [after] = await rows();
 		expect(after.createdAt.getTime()).toBe(before.createdAt.getTime());
+	});
+
+	it('returns the SAME row id for insert and enrich (the continuation token binds to it)', async () => {
+		const first = await upsertWaitlist(db, base, 'h', null);
+		const again = await upsertWaitlist(db, { ...base, email: 'ADA@example.com' }, 'h', null);
+		expect(first.id).toBeTruthy();
+		expect(again.id).toBe(first.id); // case-insensitive match still resolves to the one row
+	});
+
+	it('enriches (never loops) when the stored email is not byte-lowercase', async () => {
+		// Simulate an out-of-band row whose stored email has uppercase bytes (import/console write —
+		// the column has no lowercase constraint, only the functional unique index). A signup for the
+		// lowercase form conflicts on lower(email); the enrich must match it via lower(email), NOT an
+		// exact-equality key that would miss and spin forever (the recursion-DoS this guards against).
+		await client.execute(
+			`INSERT INTO waitlist (id, email, name) VALUES ('mixed-1', 'Ada@Example.com', 'Ada')`
+		);
+		const r = await upsertWaitlist(db, { ...base, company: 'Acme' }, 'h', null);
+		expect(r.isNew).toBe(false);
+		expect(r.id).toBe('mixed-1');
+		const all = await rows();
+		expect(all).toHaveLength(1); // no duplicate inserted
+		expect(all[0].company).toBe('Acme'); // enriched in place
+	});
+
+	it('starts qualification_step at 1 and keeps consent monotonic + timestamped across enriches', async () => {
+		// First submit WITHOUT consent — no grant, no timestamp.
+		await upsertWaitlist(db, base, 'h', null);
+		let [row] = await rows();
+		expect(row.qualificationStep).toBe(1);
+		expect(row.consentUpdates).toBe(false);
+		expect(row.consentUpdatesAt).toBeNull();
+
+		// Enrich WITH consent — grant recorded, timestamp stamped.
+		await upsertWaitlist(db, { ...base, consentUpdates: true }, 'h', null);
+		[row] = await rows();
+		expect(row.consentUpdates).toBe(true);
+		const grantedAt = row.consentUpdatesAt;
+		expect(grantedAt).not.toBeNull();
+
+		// An unchecked box on a later re-submit is "no new grant", NOT a revocation, and must not
+		// move the first-grant timestamp.
+		await upsertWaitlist(db, { ...base, consentUpdates: false }, 'h', null);
+		[row] = await rows();
+		expect(row.consentUpdates).toBe(true);
+		expect(row.consentUpdatesAt?.getTime()).toBe(grantedAt?.getTime());
+	});
+});
+
+describe('applyWaitlistStep', () => {
+	const insert = async () => (await upsertWaitlist(db, { ...base, name: 'Ada' }, 'h', null)).id;
+
+	it('writes ONLY its own step columns — identity fields stay untouched', async () => {
+		const id = await insert();
+		const { updated } = await applyWaitlistStep(db, id, {
+			step: 2,
+			role: 'engineering-leader',
+			primaryApplication: 'ai-agents-llm-systems',
+			evaluationTimeline: 'evaluating-now'
+		});
+		expect(updated).toBe(true);
+		const [row] = await rows();
+		expect(row.email).toBe('ada@example.com'); // identity untouched
+		expect(row.name).toBe('Ada');
+		expect(row.role).toBe('engineering-leader');
+		expect(row.primaryApplication).toBe('ai-agents-llm-systems');
+		expect(row.evaluationTimeline).toBe('evaluating-now');
+		expect(row.qualificationStep).toBe(2);
+	});
+
+	it('round-trips the JSON multi-selects and applies keep-existing on a sparser resubmit', async () => {
+		const id = await insert();
+		await applyWaitlistStep(db, id, {
+			step: 3,
+			currentApproach: 'manual-operation',
+			economicImpact: '250k-1m',
+			budgetRange: '25k-100k',
+			adoptionEvidence: ['evaluation-pilot', 'third-party-review']
+		});
+		// A sparser step-3 resubmit (all null) must erase nothing.
+		await applyWaitlistStep(db, id, {
+			step: 3,
+			currentApproach: null,
+			economicImpact: null,
+			budgetRange: null,
+			adoptionEvidence: null
+		});
+		const [row] = await rows();
+		expect(row.currentApproach).toBe('manual-operation');
+		expect(row.adoptionEvidence).toEqual(['evaluation-pilot', 'third-party-review']);
+		expect(row.qualificationStep).toBe(3);
+	});
+
+	it('4a: boolean writes contact_permission absolutely, null keep-existings it, step never rewinds', async () => {
+		const id = await insert();
+		await applyWaitlistStep(db, id, {
+			step: '4a',
+			pilotInterest: 'yes-within-6-months',
+			deploymentScale: 'Two quadrotor cells, ~40 units',
+			contactPermission: true, // a granted answer
+			contactMethod: 'email',
+			phone: null
+		});
+		let [row] = await rows();
+		expect(row.qualificationStep).toBe(4);
+		expect(row.contactPermission).toBe(true);
+
+		// Revisiting an EARLIER step must not rewind the high-water mark…
+		await applyWaitlistStep(db, id, {
+			step: 2,
+			role: null,
+			primaryApplication: null,
+			evaluationTimeline: 'within-3-months'
+		});
+		// …and a later 4a where the question WASN'T shown (validator emits contactPermission=null)
+		// must PRESERVE the standing grant — the key anti-clobber property.
+		await applyWaitlistStep(db, id, {
+			step: '4a',
+			pilotInterest: null,
+			deploymentScale: null,
+			contactPermission: null,
+			contactMethod: null,
+			phone: null
+		});
+		[row] = await rows();
+		expect(row.qualificationStep).toBe(4);
+		expect(row.evaluationTimeline).toBe('within-3-months');
+		expect(row.contactPermission).toBe(true); // NOT revoked by a not-shown submit
+		expect(row.pilotInterest).toBe('yes-within-6-months'); // keep-existing survived the resubmit
+
+		// An explicit decline (false — validator saw a positive pilot + unchecked box) DOES stick.
+		await applyWaitlistStep(db, id, {
+			step: '4a',
+			pilotInterest: 'possibly-contact-me',
+			deploymentScale: null,
+			contactPermission: false,
+			contactMethod: null,
+			phone: null
+		});
+		[row] = await rows();
+		expect(row.contactPermission).toBe(false);
+	});
+
+	it('stores step-4b research preferences', async () => {
+		const id = await insert();
+		await applyWaitlistStep(db, id, {
+			step: '4b',
+			researchPreferences: ['technical-reports', 'open-source-releases']
+		});
+		const [row] = await rows();
+		expect(row.researchPreferences).toEqual(['technical-reports', 'open-source-releases']);
+		expect(row.qualificationStep).toBe(4);
+	});
+
+	it('reports updated=false for an unknown id and NEVER creates a row (decoy-token path)', async () => {
+		const { updated } = await applyWaitlistStep(db, crypto.randomUUID(), {
+			step: 2,
+			role: null,
+			primaryApplication: null,
+			evaluationTimeline: null
+		});
+		expect(updated).toBe(false);
+		expect(await rows()).toHaveLength(0);
 	});
 });

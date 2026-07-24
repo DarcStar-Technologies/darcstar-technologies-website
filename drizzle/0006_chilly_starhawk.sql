@@ -1,0 +1,1 @@
+ALTER TABLE `waitlist` ADD `consent_updates_at` integer;

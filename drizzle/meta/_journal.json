@@ -36,6 +36,20 @@
       "when": 1784824866469,
       "tag": "0004_faithful_sentry",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784877629995,
+      "tag": "0005_deep_blackheart",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784906965622,
+      "tag": "0006_chilly_starhawk",
+      "breakpoints": true
     }
   ]
 }

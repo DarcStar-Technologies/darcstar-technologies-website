@@ -100,6 +100,12 @@ export const loginAudit = sqliteTable(
 //     is deliberately FREE TEXT (a growing list, not an enum) and `phone` is free text. The
 //     `interest` index backs the /waitlist datalist's frequency query (group by interest).
 //   - No `user_id`: a waitlist is pre-account lead capture, so rows are not linked to accounts.
+//   - The v2 progressive flow (DAR-59) adds the qualification columns below the v1 block. All are
+//     nullable (steps 2–4 are optional and reached via a signed continuation token — see
+//     waitlist-token.ts); slugs are validated against $lib/waitlist-qualification.ts; the two
+//     multi-selects store JSON string arrays. `company_size`/`interest`/`hear_about` predate v2 and
+//     stay for their historical data even after the v2 UI stops writing them. `role` is shared:
+//     v1 slugs remain as history, new writes use the v2 set.
 export const waitlist = sqliteTable(
 	'waitlist',
 	{
@@ -114,6 +120,40 @@ export const waitlist = sqliteTable(
 		interest: text('interest'),
 		hearAbout: text('hear_about'),
 		phone: text('phone'),
+		// --- v2 step 1 (DAR-60) ---
+		countryRegion: text('country_region'),
+		// Marketing-updates opt-in. False for every pre-v2 row (nobody was asked); grants are
+		// monotonic in the store (an unchecked re-submit never silently revokes) — revocation is a
+		// deliberate future mechanism, not a form default. IMPORTANT: this is an UNVERIFIED claim —
+		// the form is unauthenticated single-opt-in, so a third party can set it for any address. It
+		// must NOT drive a real send without double-opt-in + unsubscribe (see waitlist-store.ts).
+		consentUpdates: integer('consent_updates', { mode: 'boolean' }).default(false).notNull(),
+		// When consent was FIRST granted (provenance for a compliance review). Null = never granted;
+		// separate from updated_at, which later step writes clobber.
+		consentUpdatesAt: integer('consent_updates_at', { mode: 'timestamp_ms' }),
+		// --- v2 step 2 (DAR-61) ---
+		primaryApplication: text('primary_application'),
+		evaluationTimeline: text('evaluation_timeline'),
+		// --- v2 step 3 (DAR-62) ---
+		currentApproach: text('current_approach'),
+		economicImpact: text('economic_impact'),
+		budgetRange: text('budget_range'),
+		adoptionEvidence: text('adoption_evidence', { mode: 'json' }).$type<string[]>(),
+		// --- v2 step 4A (DAR-63) ---
+		pilotInterest: text('pilot_interest'),
+		deploymentScale: text('deployment_scale'),
+		// Nullable on purpose: null = never shown the question; false = shown and declined.
+		contactPermission: integer('contact_permission', { mode: 'boolean' }),
+		contactMethod: text('contact_method'),
+		// --- v2 step 4B (DAR-63) ---
+		researchPreferences: text('research_preferences', { mode: 'json' }).$type<string[]>(),
+		// Highest flow step COMPLETED (1 = signup … 4 = a branch), bumped monotonically by the step
+		// updates — the classifier/funnel's "where did they stop". Null = row created before the v2
+		// migration; a new signup on the still-live v1 form completed step 1 ("secure the signup"), so
+		// it correctly reads 1. Step 4 does NOT record which branch: derive it from the branch-specific
+		// columns (pilot_interest set → branch A; research_preferences set → branch B), so DAR-65/66
+		// need no extra column and no backfill.
+		qualificationStep: integer('qualification_step'),
 		ipHash: text('ip_hash'),
 		userAgent: text('user_agent'),
 		createdAt: integer('created_at', { mode: 'timestamp_ms' })

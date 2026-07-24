@@ -10,6 +10,8 @@ import { getDb } from '$lib/server/db';
 import { waitlist } from '$lib/server/db/schema';
 import { validateWaitlist } from '$lib/server/waitlist';
 import { upsertWaitlist } from '$lib/server/waitlist-store';
+import { mintWaitlistToken, mintDecoyWaitlistToken } from '$lib/server/waitlist-token';
+import { readEnv } from '$lib/server/env';
 import { hashIp } from '$lib/server/contact'; // shared truncated-SHA-256 IP hash (same throttle model)
 import { sendWaitlistEmails } from '$lib/server/waitlist-notify';
 import { m } from '$lib/paraglide/messages.js';
@@ -28,10 +30,26 @@ type WaitlistInput = {
 	interest: string;
 	hearAbout: string;
 	phone: string;
+	countryRegion: string; // v2 step 1 (DAR-60 renders it; validated slug)
+	consentUpdates: boolean; // v2 step 1 marketing opt-in checkbox (typed boolean so DAR-60 can use .as('checkbox'))
 	website: string; // honeypot — must stay empty
 };
 
-export const joinWaitlist = form<WaitlistInput, { success: true }>(
+// `token` is the signed continuation handle for the optional qualification steps (DAR-59): the
+// step forms post it back and the server verifies (waitlist-token.ts) before enriching the row.
+//
+// SECURITY NOTE (deliberate, and the DAR-61+ step endpoints MUST account for it): the same success
+// shape — token included — is returned for a new AND an existing email, which is what keeps this
+// from being an email-enumeration oracle. The consequence is that anyone who submits a known
+// address receives a token bound to THAT row. The step writes are therefore built to be safe under
+// that exposure: they only ever touch qualification columns (never identity), and per-field
+// keep-existing / tri-state rules bound what a holder can change. This is a LARGER surface than v1's
+// enrich-by-email (which could only fill null step-1 fields), so each step endpoint must keep that
+// bound — do not add an absolute overwrite of a sensitive field. The embedded row id is an opaque
+// UUID and authorizes nothing without the MAC.
+type WaitlistResult = { success: true; token?: string };
+
+export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 	'unchecked',
 	async (data, issue) => {
 		// Grab request-scoped handles FIRST (before any await): on workerd platform.env is only valid
@@ -42,11 +60,23 @@ export const joinWaitlist = form<WaitlistInput, { success: true }>(
 		const userAgent = event.request.headers.get('user-agent') ?? null;
 		const platform = event.platform;
 		const locale = getLocale();
+		// The token signing secret, via the shared per-request resolver (sync — valid at this
+		// pre-await point). Reused from Better Auth (domain-separated inside waitlist-token.ts) so no
+		// new secret needs provisioning.
+		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 
-		// Honeypot: humans never fill the hidden `website` field; bots do. Silently accept (don't persist,
-		// don't reveal the trap).
+		// Honeypot: humans never fill the hidden `website` field; bots do. Silently accept (don't
+		// persist, don't reveal the trap) — including a DECOY token so the response BODY matches a real
+		// success. The decoy is deterministic per email (a fresh id each submit would itself leak the
+		// trap) and addresses no real row. Note this hides only the body: the honeypot returns before
+		// the DB round-trips a real submit makes, so a timing side-channel remains.
 		if (typeof data.website === 'string' && data.website.trim() !== '') {
-			return { success: true };
+			return {
+				success: true,
+				token: tokenSecret
+					? await mintDecoyWaitlistToken(tokenSecret, String(data.email ?? ''))
+					: undefined
+			};
 		}
 
 		const { ok, cleaned, errors } = validateWaitlist(data);
@@ -68,7 +98,7 @@ export const joinWaitlist = form<WaitlistInput, { success: true }>(
 		// Insert this email, or enrich the existing row (case-insensitive unique on lower(email)). The
 		// same success response either way keeps this from being an email-enumeration oracle.
 		// `isNew` is true only on a GENUINE first signup — see waitlist-store.ts.
-		const { isNew } = await upsertWaitlist(db, cleaned, ipHash, userAgent);
+		const { isNew, id } = await upsertWaitlist(db, cleaned, ipHash, userAgent);
 
 		// Fire-and-forget notifications (lead + signer ack), same pattern as the contact form: the row
 		// is already persisted, so a send failure must NOT fail the signup — log and move on.
@@ -88,6 +118,11 @@ export const joinWaitlist = form<WaitlistInput, { success: true }>(
 			if (platform?.ctx) platform.ctx.waitUntil(send);
 		}
 
-		return { success: true };
+		// New and existing emails get the same shape INCLUDING the token (anti-enumeration); without
+		// a secret (misconfigured env) the signup still succeeds, just without the optional steps.
+		return {
+			success: true,
+			token: tokenSecret ? await mintWaitlistToken(tokenSecret, id) : undefined
+		};
 	}
 );
