@@ -24,19 +24,26 @@ audit — this repo holds only the public prose, never the artifacts):
 
 ## Rules when editing
 
-- **Numbers are dated claims.** A card's value and its `*_dated` line change together, never
+- **The figures live in ONE module: `src/lib/evidence.ts`.** The homepage readouts, the
+  /evidence card values, and the number-bearing message prose (via Paraglide `{param}`s —
+  `evidence_theorems_claim` etc.) all consume those constants, and `DOMAINS` is the shared
+  domain spine (count, order, names) both surfaces iterate. Re-measure → change the constant
+  (plus the card's `*_dated` line) and every surface follows; never re-inline a figure. The
+  e2e pins the rendered `219` on both pages, so a partial edit fails loudly.
+- **Numbers are dated claims.** A figure and its `*_dated` line change together, never
   alone. Re-measured → update both; don't quietly bump a figure.
-- **The homepage readouts must agree with the cards** (`src/routes/+page.svelte` stats row
-  links to /evidence). The theorems figure on both surfaces is the **machine-checked count**
-  from the conformance registry (`.met = true` = complete + axiom-backed) — NOT the Layer-1
-  catalog size. The site shipped "150 theorems proven" for a while; that was the Layer-1
-  count, not a proven count, and DAR-43 corrected it to 219. Don't reintroduce it.
+- **The theorems figure is the machine-checked count** from the conformance registry
+  (`.met = true` = complete + axiom-backed) — NOT the Layer-1 catalog size. The site shipped
+  "150 theorems proven" for a while; that was the Layer-1 count, not a proven count, and
+  DAR-43 corrected it to 219 (`THEOREMS_CHECKED`). Don't reintroduce it.
 - **Never claim a proven latency bound.** GIDE's proof corpus proves no microsecond/latency
   bound anywhere; latency is measured, the 13,000× is derived. The internal whitepaper is
   explicit that "proven microsecond safety" phrasing would be falsified on review.
 - **Scope 0.767 µs to the reference kernel.** The GIDE repo itself forbids citing it as "the
-  controller latency" — the deployed quadrotor cascade is ≈52 µs p50 / ≈94 µs p99.
-- The card headline values are **data in the component** (en-formatted, locale-invariant),
-  same convention as the homepage readouts; all prose is Paraglide messages.
+  controller latency" — the deployed quadrotor cascade is ≈52 µs p50 / ≈94 µs p99. Per-run
+  provenance detail (ARM 0.75 attributed; committed x86 re-runs 0.81–0.91) stays prose in
+  `evidence_cfc_method` — keep the ARM/x86 attribution straight, they are different machines.
+- The card headline values are **data, locale-invariant** (en-formatted), same convention as
+  the homepage readouts; all prose is Paraglide messages.
 - New indexable route obligations were done for /evidence (sitemap `STATIC_PATHS` ×2 +
   security-headers `AUDITED_PAGES`) — mirror that if this page ever gains sub-routes.

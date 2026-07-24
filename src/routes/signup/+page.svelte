@@ -11,7 +11,7 @@
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import { fieldClass, submitButtonClass } from '$lib/components/ContactFields.svelte';
-	import { inlineLinkClass } from '$lib/components/FormPrivacyNotice.svelte';
+	import { inlineLinkClass } from '$lib/styles';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 	import { TURNSTILE_SCRIPT_URL } from '$lib/security-headers';

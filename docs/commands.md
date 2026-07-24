@@ -12,6 +12,7 @@
 
 - `pnpm test:unit` — Vitest (watch). `pnpm test:unit -- --run` for a single pass. Filter with a path/name, e.g. `pnpm test:unit -- --run src/lib/vitest-examples/greet.spec.ts`.
 - `pnpm test:e2e` — installs chromium (the only browser the config ever launches), then Playwright. Playwright's `webServer` runs `pnpm build && pnpm preview`, so e2e exercises the Cloudflare preview build. Test files match `**/*.e2e.{ts,js}`.
+  - **Local re-run gotcha:** `wrangler dev` persists the worker's Cache API to `.wrangler/state` (gitignored — CI's clean checkout is immune), and the adapter caches any `Cache-Control: public` response. `/sitemap.xml` ships `max-age=3600`, so a rebuilt preview within the hour can replay the _previous build's_ cached sitemap and fail the seo specs against changes that are really there — `rm -rf .wrangler/state` and re-run.
 - `pnpm test` — unit (`--run`) then e2e.
 
 Vitest is configured with **three projects** (see `vite.config.ts`), so pick the right filename convention:

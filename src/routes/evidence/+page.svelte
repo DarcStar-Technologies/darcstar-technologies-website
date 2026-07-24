@@ -8,14 +8,24 @@
 	// corpus + attribution ledger, theorem catalog + conformance registry) — see docs/evidence.md
 	// for provenance and the update rules. Two invariants when editing:
 	//   1. Numbers are DATED claims — a value and its dated line change together, never alone.
-	//   2. The homepage readouts (src/routes/+page.svelte) must agree with these cards; the
-	//      theorems figure on both surfaces is the machine-checked count (complete + axiom-backed).
+	//   2. The headline figures + domain list are single-sourced in $lib/evidence.ts — the
+	//      homepage readouts read the SAME constants, and the message prose takes them as
+	//      parameters, so the claim and evidence surfaces cannot disagree.
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import PageHero from '$lib/components/PageHero.svelte';
 	import Seo from '$lib/components/Seo.svelte';
 	import LegalSection from '$lib/components/LegalSection.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { contactDialog } from '$lib/contact-dialog.svelte';
+	import {
+		CFC_KERNEL_LATENCY,
+		DOMAINS,
+		REALTIME_MULTIPLE,
+		THEOREMS_AXIOM_BACKED,
+		THEOREMS_CATALOGUED,
+		THEOREMS_CHECKED,
+		THEOREMS_COMPLETE
+	} from '$lib/evidence';
 
 	type EvidenceField = { label: string; body: string };
 	type EvidenceCard = {
@@ -30,15 +40,15 @@
 	};
 
 	// `$derived` for the same reason as the homepage readouts: message calls re-resolve if a
-	// locale switcher ever lands. Values stay literal data. Domain names reuse the homepage's
-	// `domain_*_name` messages so the two lists can never drift apart.
+	// locale switcher ever lands. Values come from the $lib/evidence.ts constants (shared with
+	// the homepage readouts); the domains card iterates the shared DOMAINS spine.
 	const cards = $derived<EvidenceCard[]>([
 		{
 			id: 'cfc-inference',
-			value: '0.767 µs',
+			value: CFC_KERNEL_LATENCY,
 			title: m.evidence_cfc_title(),
 			dated: m.evidence_cfc_dated(),
-			claim: m.evidence_cfc_claim(),
+			claim: m.evidence_cfc_claim({ latency: CFC_KERNEL_LATENCY }),
 			fields: [
 				{ label: m.evidence_label_environment(), body: m.evidence_cfc_environment() },
 				{ label: m.evidence_label_method(), body: m.evidence_cfc_method() },
@@ -48,10 +58,13 @@
 		},
 		{
 			id: 'realtime',
-			value: '13,000×',
+			value: REALTIME_MULTIPLE,
 			title: m.evidence_realtime_title(),
-			dated: m.evidence_realtime_dated(),
-			claim: m.evidence_realtime_claim(),
+			dated: m.evidence_realtime_dated({ latency: CFC_KERNEL_LATENCY }),
+			claim: m.evidence_realtime_claim({
+				multiple: REALTIME_MULTIPLE,
+				latency: CFC_KERNEL_LATENCY
+			}),
 			fields: [
 				{ label: m.evidence_label_method(), body: m.evidence_realtime_method() },
 				{ label: m.evidence_label_not_covered(), body: m.evidence_realtime_not_covered() }
@@ -59,10 +72,16 @@
 		},
 		{
 			id: 'theorems',
-			value: '219',
+			value: String(THEOREMS_CHECKED),
 			title: m.evidence_theorems_title(),
 			dated: m.evidence_theorems_dated(),
-			claim: m.evidence_theorems_claim(),
+			claim: m.evidence_theorems_claim({
+				checked: THEOREMS_CHECKED,
+				catalogued: THEOREMS_CATALOGUED,
+				complete: THEOREMS_COMPLETE,
+				axiomBacked: THEOREMS_AXIOM_BACKED,
+				excluded: THEOREMS_CATALOGUED - THEOREMS_CHECKED
+			}),
 			fields: [
 				{ label: m.evidence_label_provers(), body: m.evidence_theorems_provers() },
 				{ label: m.evidence_label_method(), body: m.evidence_theorems_method() },
@@ -83,17 +102,11 @@
 		},
 		{
 			id: 'domains',
-			value: '5',
+			value: String(DOMAINS.length),
 			title: m.evidence_domains_title(),
 			dated: m.evidence_domains_dated(),
 			claim: m.evidence_domains_claim(),
-			fields: [
-				{ label: m.domain_cartpole_name(), body: m.evidence_domain_cartpole_body() },
-				{ label: m.domain_quadrotor_name(), body: m.evidence_domain_quadrotor_body() },
-				{ label: m.domain_markets_name(), body: m.evidence_domain_markets_body() },
-				{ label: m.domain_llm_name(), body: m.evidence_domain_llm_body() },
-				{ label: m.domain_selfdev_name(), body: m.evidence_domain_selfdev_body() }
-			]
+			fields: DOMAINS.map((d) => ({ label: d.name(), body: d.evidence() }))
 		}
 	]);
 </script>
@@ -148,7 +161,7 @@
 					type="button"
 					aria-haspopup="dialog"
 					onclick={() => contactDialog.show()}
-					class="glass-btn mt-5 rounded-full px-6 py-3 text-sm font-medium text-white"
+					class="glass-btn btn-pill mt-5"
 				>
 					{m.evidence_ip_cta()}
 				</button>

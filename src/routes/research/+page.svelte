@@ -23,7 +23,7 @@
 	import PaperExternalDisclaimer from '$lib/components/PaperExternalDisclaimer.svelte';
 	import PaperTopics from '$lib/components/PaperTopics.svelte';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
-	import { inlineLinkClass } from '$lib/components/FormPrivacyNotice.svelte';
+	import { inlineLinkClass, mutedLinkClass } from '$lib/styles';
 	import { fieldClass } from '$lib/components/ContactFields.svelte';
 	import {
 		buildFilterQuery,
@@ -222,10 +222,7 @@
 						{m.research_filter_apply()}
 					</button>
 					{#if filtersActive}
-						<a
-							href={localizeHref('/research')}
-							class="text-xs text-muted transition-colors hover:text-white"
-						>
+						<a href={localizeHref('/research')} class={mutedLinkClass}>
 							{m.research_filter_clear()}
 						</a>
 					{/if}

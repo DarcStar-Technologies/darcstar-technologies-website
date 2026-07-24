@@ -14,7 +14,10 @@ test('evidence page renders the hero, the claim cards, and the IP boundary', asy
 	await expect(page.getByRole('heading', { name: 'Formal safety guarantees' })).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Domains shipped' })).toBeVisible();
 
-	// The load-bearing honesty content: the machine-checked breakdown and the IP boundary.
+	// The load-bearing honesty content: the machine-checked breakdown (the card's headline
+	// figure AND its prose — both flow from $lib/evidence.ts, so this pins the constants
+	// end-to-end) and the IP boundary.
+	await expect(page.getByText('219', { exact: true })).toBeVisible();
 	await expect(page.getByText('219 of the 338 catalogued theorems')).toBeVisible();
 	await expect(
 		page.getByRole('heading', { name: 'What we deliberately do not publish' })
@@ -22,10 +25,12 @@ test('evidence page renders the hero, the claim cards, and the IP boundary', asy
 });
 
 // The DAR-43 complaint was "no path from claim to evidence" — pin the path: the homepage
-// stats row shows the corrected machine-checked count and links through to /evidence.
+// stats row shows the corrected machine-checked count (219, NOT the old Layer-1 "150" —
+// the readout renders THEOREMS_CHECKED from $lib/evidence.ts) and links through to /evidence.
 test('homepage stats row links through to the evidence page', async ({ page }) => {
 	await page.goto('/');
 
+	await expect(page.getByText('219', { exact: true })).toBeVisible();
 	await expect(page.getByText('theorems machine-checked')).toBeVisible();
 	await page.getByRole('link', { name: 'How we verify these numbers' }).click();
 
