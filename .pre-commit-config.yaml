@@ -21,16 +21,18 @@ repos:
         additional_dependencies:
           - '@commitlint/config-conventional'
 
-  # Keep generated Cloudflare env types in sync with their two committed inputs: wrangler.jsonc
-  # (bindings) and .env.example (env-var names). The hook regenerates worker-configuration.d.ts
-  # and fails if it drifted from what's staged, so neither edit can land with stale types.
+  # Keep generated Cloudflare env types in sync with two of their three committed inputs:
+  # wrangler.jsonc (bindings) and .env.example (env-var names). The hook regenerates
+  # worker-configuration.d.ts and fails if it drifted from what's staged, so neither edit can
+  # land with stale types. The third input — the wrangler VERSION (its runtime-types section) —
+  # is deliberately out of scope: dep-bump commits are frequent, this hook costs a wrangler run,
+  # and the `check` CI job's drift guard catches a stale regen before merge anyway.
   #
   # `pnpm gen` is scripts/gen-types.mjs (DAR-49), which made generation fully DETERMINISTIC:
   # env-var names are read from .env.example (never a dev's real .env), and the volatile bits of
   # wrangler's output (content hash, the post-build `mainModule`/GlobalProps block — issue #67)
-  # are normalized away. Any checkout reproduces the committed file byte-for-byte, so the
-  # `files` scope is purely a speed optimization now, not a correctness dodge. The `check` CI
-  # job carries the enforced twin of this guard.
+  # are normalized away. Any checkout reproduces the committed file byte-for-byte; the `check`
+  # CI job carries the enforced twin of this guard.
   - repo: local
     hooks:
       - id: wrangler-types

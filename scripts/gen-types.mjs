@@ -12,28 +12,57 @@
 //      (.svelte-kit/cloudflare/_worker.js) exists, so output differed before vs after a build.
 //      Stripped — nothing in src/ consumes it.
 //
+// `--strict-vars=false` belongs to (1): without it, vars set in wrangler.jsonc (ORIGIN) type as
+// `string` only while .env.example ALSO lists them — deleting that seemingly-redundant line
+// would silently flip ORIGIN to a literal union of the prod/preview values. The flag makes the
+// plain-`string` shape intrinsic (byte-identical output today).
+//
 // Result: byte-identical output on every checkout. It changes only when a committed input does
 // (wrangler.jsonc, .env.example, or the wrangler version), and the `check` CI job drift-guards
 // the committed copy, so those changes must ship their regenerated types.
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const outFile = join(root, 'worker-configuration.d.ts');
 
-const result = spawnSync('pnpm', ['exec', 'wrangler', 'types', '--env-file=.env.example'], {
-	cwd: root,
-	stdio: ['ignore', 'ignore', 'inherit']
-});
-if (result.status !== 0) {
-	console.error('gen-types: wrangler types failed');
-	process.exit(result.status ?? 1);
-}
+// Run wrangler's pure-JS bin under the current node — no `pnpm exec` boot (~1.2s/run) and no
+// shell, which also keeps Windows working (a `pnpm.cmd` shim can't be spawned shell-less).
+const require = createRequire(import.meta.url);
+const wranglerPkgPath = require.resolve('wrangler/package.json');
+const wranglerBin = join(
+	dirname(wranglerPkgPath),
+	JSON.parse(readFileSync(wranglerPkgPath, 'utf8')).bin.wrangler
+);
 
-let types = readFileSync(outFile, 'utf8');
+// Generate to a scratch path so a failed validation below can never leave the committed file
+// clobbered with raw un-normalized output. The positional [path] must come BEFORE --env-file:
+// that flag is a greedy array option and would swallow a trailing positional.
+const scratchDir = mkdtempSync(join(tmpdir(), 'gen-types-'));
+const scratchFile = join(scratchDir, 'worker-configuration.d.ts');
+let types;
+try {
+	const result = spawnSync(
+		process.execPath,
+		[wranglerBin, 'types', scratchFile, '--env-file=.env.example', '--strict-vars=false'],
+		{ cwd: root, stdio: ['ignore', 'ignore', 'inherit'] }
+	);
+	// A spawn-level failure (ENOENT etc.) never runs the child, so nothing reaches the inherited
+	// stderr — surface it, or the generic message below blames wrangler for not having run.
+	if (result.error) console.error('gen-types:', result.error);
+	if (result.status !== 0) {
+		console.error('gen-types: wrangler types failed');
+		process.exit(result.status ?? 1);
+	}
+	types = readFileSync(scratchFile, 'utf8');
+} finally {
+	rmSync(scratchDir, { recursive: true, force: true });
+}
 
 // (2) Volatile header — the wrangler line carries the invocation + a hash of the pre-normalized
 // content (which itself varies by (3)), so it can never be stable. One line in, one line out.
@@ -53,10 +82,15 @@ types = types.replace(
 // (3) Build-output-dependent block. Tab-anchored on purpose: the project section is
 // tab-indented, while the runtime-types section further down declares its own space-indented
 // empty `GlobalProps` (a declaration-merge target) that must stay.
-const globalProps = /\n\tinterface GlobalProps \{[\s\S]*?\n\t\}/;
-types = types.replace(globalProps, '');
-if (globalProps.test(types)) {
-	console.error('gen-types: GlobalProps survived the strip — wrangler output changed?');
+types = types.replace(/\n\tinterface GlobalProps \{[\s\S]*?\n\t\}/, '');
+// Guard on the block's one unique string, not the strip regex (which would be equally blind to
+// the format change it is meant to catch): the built worker's module path appears exactly once
+// pre-strip when a build exists, and nowhere else in the file — including the runtime section's
+// GlobalProps docs, whose examples reference other module names.
+if (types.includes('.svelte-kit/cloudflare/_worker')) {
+	console.error(
+		'gen-types: the build-dependent GlobalProps block survived the strip — wrangler output changed?'
+	);
 	process.exit(1);
 }
 
