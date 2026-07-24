@@ -14,7 +14,11 @@ describe('PaperTopics', () => {
 		const first = page.getByText('Efficient Attention');
 		await expect.element(first).toBeVisible();
 		await expect.element(first).toHaveAttribute('title', 'Faster attention kernels.');
-		await expect.element(page.getByText('Long-Context')).toBeVisible();
+		// A description-less topic must carry NO title attribute (the `?? undefined` branch) —
+		// an empty-string tooltip would render a blank hover box.
+		const second = page.getByText('Long-Context');
+		await expect.element(second).toBeVisible();
+		await expect.element(second).not.toHaveAttribute('title');
 	});
 
 	it('renders nothing without topics', () => {

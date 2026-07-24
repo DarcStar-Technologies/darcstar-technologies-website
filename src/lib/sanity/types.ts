@@ -520,7 +520,7 @@ export type PostBySlugQueryResult = {
 
 // Source: src/lib/sanity/queries.ts
 // Variable: papersQuery
-// Query: *[_type == "paper" && defined(slug.current)] | order(publishedDate desc) {		_id,		title,		"slug": slug.current,		status,		darcstarAuthored,		"hasCommentary": coalesce(count(commentary) > 0, false),		venue,		publishedDate,		url,		doi,		arxivId,		codeUrl,		abstract,		"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),		"topics": array::compact(topics[]->{ _id, title })	}
+// Query: *[_type == "paper" && defined(slug.current)] | order(publishedDate desc) {		_id,		title,		"slug": slug.current,		status,		darcstarAuthored,		"hasCommentary": coalesce(count(commentary) > 0, false),		venue,		publishedDate,		url,		doi,		arxivId,		codeUrl,		abstract,		"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),		"topics": array::compact(topics[]->{ _id, title, description })	}
 export type PapersQueryResult = Array<{
 	_id: string;
 	title: string;
@@ -543,6 +543,7 @@ export type PapersQueryResult = Array<{
 	topics: Array<{
 		_id: string;
 		title: string;
+		description: string | null;
 	}> | null;
 }>;
 
@@ -627,7 +628,7 @@ declare module '@sanity/client' {
 	interface SanityQueries {
 		'\n\t*[_type == "post" && defined(slug.current)] | order(publishedAt desc) {\n\t\t_id,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\texcerpt,\n\t\tpublishedAt,\n\t\tfeatured,\n\t\tcoverImage,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role })\n\t}\n': PostsQueryResult;
 		'\n\t*[_type == "post" && slug.current == $slug][0] {\n\t\t_id,\n\t\t_updatedAt,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\texcerpt,\n\t\tpublishedAt,\n\t\tcoverImage,\n\t\tbody,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role, image }),\n\t\t"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),\n\t\t"relatedPapers": array::compact(relatedPapers[]->{ _id, title, "slug": slug.current, venue }),\n\t\tseo\n\t}\n': PostBySlugQueryResult;
-		'\n\t*[_type == "paper" && defined(slug.current)] | order(publishedDate desc) {\n\t\t_id,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\tstatus,\n\t\tdarcstarAuthored,\n\t\t"hasCommentary": coalesce(count(commentary) > 0, false),\n\t\tvenue,\n\t\tpublishedDate,\n\t\turl,\n\t\tdoi,\n\t\tarxivId,\n\t\tcodeUrl,\n\t\tabstract,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),\n\t\t"topics": array::compact(topics[]->{ _id, title })\n\t}\n': PapersQueryResult;
+		'\n\t*[_type == "paper" && defined(slug.current)] | order(publishedDate desc) {\n\t\t_id,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\tstatus,\n\t\tdarcstarAuthored,\n\t\t"hasCommentary": coalesce(count(commentary) > 0, false),\n\t\tvenue,\n\t\tpublishedDate,\n\t\turl,\n\t\tdoi,\n\t\tarxivId,\n\t\tcodeUrl,\n\t\tabstract,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),\n\t\t"topics": array::compact(topics[]->{ _id, title, description })\n\t}\n': PapersQueryResult;
 		'\n\t*[_type == "paper" && slug.current == $slug][0] {\n\t\t_id,\n\t\t_updatedAt,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\tstatus,\n\t\tdarcstarAuthored,\n\t\tabstract,\n\t\tcommentary,\n\t\tvenue,\n\t\tpublishedDate,\n\t\turl,\n\t\tdoi,\n\t\tarxivId,\n\t\tcodeUrl,\n\t\t"pdfUrl": pdf.asset->url,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role }),\n\t\t"topics": array::compact(topics[]->{ _id, title, description }),\n\t\t"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),\n\t\tseo\n\t}\n': PaperBySlugQueryResult;
 		'{\n\t"posts": *[_type == "post" && defined(slug.current)]{ "slug": slug.current, _updatedAt },\n\t"papers": *[_type == "paper" && defined(slug.current)]{ "slug": slug.current, _updatedAt }\n}': SitemapEntriesQueryResult;
 		'\n\t*[_type == "person" && kind != "external"] | order(name asc) {\n\t\t_id,\n\t\tname,\n\t\t"slug": slug.current,\n\t\trole,\n\t\timage,\n\t\tbio,\n\t\tsocialLinks[]{ label, url }\n\t}\n': PeopleQueryResult;

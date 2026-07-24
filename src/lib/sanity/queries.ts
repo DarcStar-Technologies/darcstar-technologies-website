@@ -62,7 +62,7 @@ export const papersQuery = defineQuery(`
 		codeUrl,
 		abstract,
 		"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),
-		"topics": array::compact(topics[]->{ _id, title })
+		"topics": array::compact(topics[]->{ _id, title, description })
 	}
 `);
 
