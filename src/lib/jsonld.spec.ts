@@ -165,6 +165,17 @@ describe('scholarlyArticleJsonLd', () => {
 		const paper = scholarlyArticleJsonLd({ title: 'Internal' }, { url: `${ORIGIN}/research/x` });
 		expect(paper.sameAs).toBeUndefined();
 	});
+
+	it('claims the org as publisher ONLY for first-party papers (DAR-52 fail-safe polarity)', () => {
+		const url = `${ORIGIN}/research/x`;
+		const ours = scholarlyArticleJsonLd({ title: 'Ours', darcstarAuthored: true }, { url });
+		expect(ours.publisher).toEqual({ '@id': organizationId(ORIGIN) });
+		// Explicitly external AND unset/null both mean third-party — never claim publisher.
+		for (const darcstarAuthored of [false, null, undefined]) {
+			const external = scholarlyArticleJsonLd({ title: 'Not ours', darcstarAuthored }, { url });
+			expect(external.publisher, `darcstarAuthored=${darcstarAuthored}`).toBeUndefined();
+		}
+	});
 });
 
 describe('breadcrumbJsonLd', () => {

@@ -129,7 +129,10 @@ blocks:
   one `@graph` script; empty arrays render nothing): `Person` on `/people`
   (the index is the profile surface), `Article` + `BreadcrumbList` on
   `/news/[slug]`, `ScholarlyArticle` + `BreadcrumbList` on `/research/[slug]`
-  (DOI/arXiv/publisher links ride along as `sameAs`).
+  (DOI/arXiv/publisher links ride along as `sameAs`). ScholarlyArticle claims
+  the org as `publisher` **only when `darcstarAuthored`** — third-party papers
+  (DAR-52, fail-safe polarity: unset → external) must not be machine-readably
+  misattributed.
 - **`$lib/jsonld.ts` must stay dependency-pure** (constants + one static asset):
   the root layout imports it, so anything it pulls in ships in **every** page's
   initial client bundle — an earlier draft imported the Sanity URL builder here

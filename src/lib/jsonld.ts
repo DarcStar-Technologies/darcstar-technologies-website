@@ -128,10 +128,14 @@ interface PaperInput {
 	url?: string | null;
 	doi?: string | null;
 	arxivId?: string | null;
+	darcstarAuthored?: boolean | null;
 }
 
 /** ScholarlyArticle node for a /research/[slug] paper. External identities (publisher page,
- * DOI, arXiv) go in `sameAs` — the mainEntityOfPage stays OUR detail page. */
+ * DOI, arXiv) go in `sameAs` — the mainEntityOfPage stays OUR detail page. The org is claimed
+ * as `publisher` ONLY for first-party papers: /research also lists foundational third-party
+ * work (DAR-52), and machine-readable misattribution would be worse than the visible-copy kind
+ * that issue fixed. Same fail-safe polarity: unset/null `darcstarAuthored` → no claim. */
 export function scholarlyArticleJsonLd(paper: PaperInput, opts: { url: string }) {
 	const origin = new URL(opts.url).origin;
 	return {
@@ -141,7 +145,7 @@ export function scholarlyArticleJsonLd(paper: PaperInput, opts: { url: string })
 		datePublished: paper.publishedDate ?? undefined,
 		dateModified: paper._updatedAt ?? undefined,
 		author: authorNodes(paper.authors),
-		publisher: { '@id': organizationId(origin) },
+		publisher: paper.darcstarAuthored ? { '@id': organizationId(origin) } : undefined,
 		mainEntityOfPage: opts.url,
 		url: opts.url,
 		sameAs: nonEmpty(
