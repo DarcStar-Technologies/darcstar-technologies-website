@@ -44,6 +44,19 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The preview worker constructs its DB/auth clients per request (getDb() / Better Auth
+      # throw when the vars are ABSENT), but the e2e specs are DB-free by design — placeholder
+      # values satisfy construction without any real credentials, and the one load that queries
+      # (/waitlist interest suggestions) degrades to its curated seed. Turnstile test keys are
+      # baked into the preview script itself.
+      - name: Provide placeholder runtime env (specs never touch a real DB)
+        run: |
+          {
+            echo 'DATABASE_URL=libsql://placeholder.invalid'
+            echo 'DATABASE_AUTH_TOKEN=placeholder'
+            echo 'BETTER_AUTH_SECRET=e2e-placeholder-not-a-secret'
+            echo 'ORIGIN=http://localhost:4173'
+          } > .env
       # Not `pnpm test:e2e` — its bare `playwright install` pulls every browser engine; the
       # config only ever launches chromium.
       - run: pnpm exec playwright install --with-deps chromium
