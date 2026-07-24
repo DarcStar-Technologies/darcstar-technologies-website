@@ -91,6 +91,24 @@ read as ours, so the rendering rail is:
   images resolve identically). The "our take on this work" note above it renders for third-party
   papers only — a first-party paper with commentary gets the section without external framing.
 
+### /research filtering & sorting
+
+`?topic=&author=&origin=&sort=` filter (topic/author **slugs**, origin `darcstar|external`) and
+sort (`date` default · `date-asc` · `title`) the ONE SSR papers fetch — semantics live in
+`src/lib/research-filters.ts` (unit-tested; empty/unknown params degrade safely; origin keeps the
+DAR-52 fail-safe polarity; the param names + topic-link URL live in ONE place there —
+`FILTER_PARAM` / `researchTopicHref`). URL params are the single source of state: the bar is a
+**native GET form** (works no-JS; Apply submits), enhanced on change to a **debounced** `goto`
+with clean URLs (a collapsed select fires `change` per arrow keypress in some browsers); the
+selects carry `value=` as well as option `selected` because Svelte only toggles the selected
+ATTRIBUTE, which browsers ignore once the control is user-dirtied (Clear/Back would desync). The
+server load never reads the URL, so query-only navigations don't re-hit Sanity. **Topic/author**
+options derive from the fetched papers (those two selects only offer values that match at least
+one paper; origin/sort are static sets). A **title sort merges the origin sections** into one
+A–Z list (cards are origin-self-sufficient per DAR-52). Topic tags (`PaperTopics`'s `topicHref`)
+link into `?topic=`, so a tag is an entry point, not a dead end. Scale assumption: a curated,
+un-paginated index — pagination or hundreds of papers would need GROQ-side filtering.
+
 ### Paper meta-rail charge mapping
 
 The chips/pills around a paper color-code the brand triad ([styling — color-charge triad](styling.md#the-color-charge-triad--one-source-of-truth)) by MEANING, so a new chip must pick the right charge — don't grab a color ad hoc:

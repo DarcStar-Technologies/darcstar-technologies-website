@@ -25,4 +25,20 @@ describe('PaperTopics', () => {
 		const { container } = render(PaperTopics, { topics: null });
 		expect(container.textContent?.trim() ?? '').toBe('');
 	});
+
+	it('renders tags as filter links when topicHref is provided (slugless tags stay spans)', async () => {
+		render(PaperTopics, {
+			topics: [
+				{ _id: 't1', title: 'Efficient Attention', slug: 'efficient-attention' },
+				{ _id: 't2', title: 'Long-Context' }
+			],
+			topicHref: (slug: string) => `/research?topic=${slug}`
+		});
+		await expect
+			.element(page.getByRole('link', { name: 'Efficient Attention' }))
+			.toHaveAttribute('href', '/research?topic=efficient-attention');
+		// No slug → not a link, but still rendered.
+		await expect.element(page.getByText('Long-Context')).toBeVisible();
+		expect(page.getByRole('link', { name: 'Long-Context' }).elements().length).toBe(0);
+	});
 });
