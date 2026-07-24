@@ -10,6 +10,8 @@
 	import { loginDialog } from '$lib/login-dialog.svelte';
 	import { createSheenSync } from '$lib/glass-sheen';
 	import { afterNavigate } from '$app/navigation';
+	import { page } from '$app/state';
+	import { jsonLdScript, organizationJsonLd } from '$lib/jsonld';
 
 	let { children } = $props();
 
@@ -32,7 +34,16 @@
 	afterNavigate(() => sheen?.refresh(contactDialog.open || loginDialog.open));
 </script>
 
-<svelte:head><link rel="icon" href={favicon} /></svelte:head>
+<svelte:head>
+	<link rel="icon" href={favicon} />
+	<!-- Site-wide Organization JSON-LD (DAR-48). Lives HERE, not in <Seo>, deliberately: every
+	     page carries the org node once, and pages' own nodes reference it by @id (…/#organization).
+	     This does not breach the "one <Seo> per page, never in the layout" rule — that rule exists
+	     because duplicated OG tags corrupt scrapes; a second, differently-typed head entry doesn't.
+	     Inert data block (never executed), safely serialized — see $lib/jsonld.ts. -->
+	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+	{@html jsonLdScript(organizationJsonLd(page.url.origin))}
+</svelte:head>
 
 <div class="flex min-h-dvh flex-col">
 	<Header />

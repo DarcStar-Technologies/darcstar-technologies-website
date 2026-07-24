@@ -1,3 +1,8 @@
 # allow crawling everything by default
 User-agent: *
 Disallow:
+
+# Absolute by spec, and this file is a static asset (it can't know its serving origin), so the
+# production origin is hardcoded. Preview origins serving this line are harmless — previews are
+# not meant to be indexed (they self-canonicalize; see docs/seo.md).
+Sitemap: https://darcstar.tech/sitemap.xml

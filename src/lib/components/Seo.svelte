@@ -8,20 +8,20 @@
 	// component's <svelte:head>, so a layout copy plus a page copy would duplicate
 	// the OG tags). Props override the site-wide defaults below.
 	import { page } from '$app/state';
-	import { getLocale, baseLocale } from '$lib/paraglide/runtime';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 	// Fingerprint-imported: a regenerated card (node scripts/gen-og.mjs) gets a new
 	// hashed URL, so scrapers re-fetch instead of caching stale. Source: scripts/gen-og.mjs.
 	import ogImage from '$lib/assets/og-image.png';
 	import { SITE_NAME } from '$lib/site';
+	// The one "is this locale real?" flag, shared with /sitemap.xml — it gates the
+	// og:locale:alternate loop below, (later) the hreflang set, and the noindex on
+	// untranslated locales. See $lib/seo.ts.
+	import { TRANSLATED_LOCALES } from '$lib/seo';
+	import { jsonLdScript } from '$lib/jsonld';
 
 	// BCP-47 → OG's underscore locale form. Mirrors project.inlang locales (en, es).
 	const OG_LOCALE: Record<string, string> = { en: 'en_US', es: 'es_ES' };
-	// Locales whose copy is genuinely translated. `es` is wired but still English
-	// placeholder (issue #18), so it is NOT listed — this one flag gates the
-	// og:locale:alternate loop below and (later) the hreflang set, and drives the
-	// noindex on untranslated locales. Add 'es' the day messages/es.json is real.
-	const TRANSLATED_LOCALES: string[] = [baseLocale];
 
 	interface Props {
 		/** Full <title>. Defaults to the brand + tagline. */
@@ -37,6 +37,12 @@
 		imageAlt?: string;
 		/** Force `robots: noindex` regardless of locale — for gated/internal pages (#69 /admin, /login). */
 		noindex?: boolean;
+		/**
+		 * schema.org node(s) for this page (DAR-48) — build with the $lib/jsonld helpers; an array
+		 * becomes one `@graph` script. The site-wide Organization node comes from the root layout,
+		 * so pages only pass their OWN entities (Article, ScholarlyArticle, Person, BreadcrumbList).
+		 */
+		jsonLd?: object | object[];
 	}
 
 	let {
@@ -46,7 +52,8 @@
 		type = 'website',
 		image = ogImage,
 		imageAlt = m.seo_default_image_alt(),
-		noindex: forceNoindex = false
+		noindex: forceNoindex = false,
+		jsonLd
 	}: Props = $props();
 
 	// Absolutize against the serving origin — on production this is darcstar.tech,
@@ -68,6 +75,9 @@
 	// `forceNoindex` (a page prop) also covers gated/internal pages that must never be
 	// indexed in any locale (#69: /admin, /login).
 	const noindex = $derived(forceNoindex || !TRANSLATED_LOCALES.includes(locale));
+	// jsonLdScript returns '' for an empty entity list (e.g. /people with an empty team), and
+	// the {#if} below treats '' as falsy — so empty data renders no script at all.
+	const jsonLdHtml = $derived(jsonLd ? jsonLdScript(jsonLd) : undefined);
 </script>
 
 <svelte:head>
@@ -103,4 +113,11 @@
 	<meta name="twitter:description" content={description} />
 	<meta name="twitter:image" content={imageUrl} />
 	<meta name="twitter:image:alt" content={imageAlt} />
+
+	{#if jsonLdHtml}
+		<!-- JSON-LD data block — inert to CSP script-src (never executed), safely serialized
+		     (jsonLdScript escapes `<`), so {@html} is sound here. -->
+		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+		{@html jsonLdHtml}
+	{/if}
 </svelte:head>
