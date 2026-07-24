@@ -6,33 +6,30 @@
 	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import Icon from '$lib/components/Icon.svelte';
+	import { inlineLinkClass, mutedLinkClass } from '$lib/styles';
+	import { CFC_KERNEL_LATENCY, DOMAINS, REALTIME_MULTIPLE, THEOREMS_CHECKED } from '$lib/evidence';
 
-	// Domains the one engine has actually shipped into. Declared before `readouts`
-	// so the stats row can source its "domains shipped" figure from this list's
-	// length — the number can never drift from the rows rendered in the section below.
-	// `$derived` (not a plain const): the visible copy is Paraglide messages, so the
-	// array re-resolves if a locale switcher is ever added — getLocale() is $state-backed
-	// (src/lib/paraglide.svelte.ts). On SSR it evaluates exactly once. Structural fields
-	// (icon/cvar) stay literal.
-	const domains = $derived([
-		{ n: m.domain_cartpole_name(), d: m.domain_cartpole_desc() },
-		{ n: m.domain_quadrotor_name(), d: m.domain_quadrotor_desc() },
-		{ n: m.domain_markets_name(), d: m.domain_markets_desc() },
-		{ n: m.domain_llm_name(), d: m.domain_llm_desc() },
-		{ n: m.domain_selfdev_name(), d: m.domain_selfdev_desc() }
-	]);
+	// Domains the one engine has actually shipped into — the shared spine in $lib/evidence.ts
+	// (DAR-43), so the rows here, the "domains shipped" figure, and the /evidence domains card
+	// all iterate one list and can never drift. `$derived` (not a plain const): the visible
+	// copy is Paraglide messages, so the array re-resolves if a locale switcher is ever added —
+	// getLocale() is $state-backed (src/lib/paraglide.svelte.ts). On SSR it evaluates exactly
+	// once.
+	const domains = $derived(DOMAINS.map((d) => ({ n: d.name(), d: d.home() })));
 
-	// Stats row — REAL, verifiable numbers only (issue #13). Latency and the 13,000×
-	// real-time margin are measured; "theorems proven" is the machine-checked count;
-	// "domains shipped" is `domains.length`. Only the LABELS are messages — the values
-	// stay as data: they're en-formatted figures, not translatable prose (a real `es`
-	// would run them through Intl.NumberFormat, e.g. "13.000×"), and the numbers must
-	// read identically across locales.
+	// Stats row — REAL, verifiable numbers only (issue #13), each scoped on /evidence (DAR-43).
+	// Every figure comes from $lib/evidence.ts, the single source the /evidence cards read too:
+	// latency is measured, the multiple is derived from it (10 ms budget ÷ latency), and the
+	// theorem figure is the machine-checked conformance-registry count (the old "150" was the
+	// Layer-1 catalog size, not a proven count — see docs/evidence.md). Only the LABELS are
+	// messages — the values stay as data: they're en-formatted figures, not translatable prose
+	// (a real `es` would run them through Intl.NumberFormat, e.g. "13.000×"), and the numbers
+	// must read identically across locales.
 	const readouts = $derived([
-		{ v: '0.767 µs', l: m.readout_cfc_label() },
-		{ v: '13,000×', l: m.readout_realtime_label() },
-		{ v: '150', l: m.readout_theorems_label() },
-		{ v: String(domains.length), l: m.readout_domains_label() }
+		{ v: CFC_KERNEL_LATENCY, l: m.readout_cfc_label() },
+		{ v: REALTIME_MULTIPLE, l: m.readout_realtime_label() },
+		{ v: String(THEOREMS_CHECKED), l: m.readout_theorems_label() },
+		{ v: String(DOMAINS.length), l: m.readout_domains_label() }
 	]);
 	const pillars = $derived([
 		{
@@ -134,6 +131,13 @@
 					</div>
 				</div>
 			{/each}
+			<!-- The path from claim to evidence (DAR-43): every figure above is scoped, dated,
+			     and bounded on /evidence. `w-full` drops the link onto its own centered row. -->
+			<div class="w-full">
+				<a href={localizeHref('/evidence')} class={mutedLinkClass}>
+					{m.readout_evidence_link()}
+				</a>
+			</div>
 		</div>
 
 		<section id="gide" class="glass-card scroll-mt-24 overflow-hidden">
@@ -178,6 +182,11 @@
 			</h2>
 			<p class="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-body sm:text-base">
 				{m.section_proven_body()}
+			</p>
+			<p class="mt-6">
+				<a href={localizeHref('/evidence')} class={inlineLinkClass}>
+					{m.section_proven_evidence_link()}
+				</a>
 			</p>
 		</section>
 
