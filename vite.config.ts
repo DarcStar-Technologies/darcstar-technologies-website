@@ -9,6 +9,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
+import { SANITY_IMAGE_CDN_ORIGIN, TURNSTILE_ORIGIN } from './src/lib/security-headers';
 
 const dirname =
 	typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
@@ -25,6 +26,39 @@ export default defineConfig({
 				experimental: { async: true }
 			},
 			adapter: adapter(),
+			// Content-Security-Policy (DAR-45). Kit owns the CSP (not hooks.server.ts) because its
+			// inline hydration bootstrap needs the per-response nonce Kit injects. Before adding a
+			// source, read docs/security-headers.md; shared origins live in src/lib/security-headers.ts.
+			csp: {
+				directives: {
+					'default-src': ['self'],
+					// 'self' covers Kit's module scripts; the nonce Kit appends covers its inline
+					// bootstrap; Turnstile's api.js is loaded from challenges.cloudflare.com (/signup).
+					'script-src': ['self', TURNSTILE_ORIGIN],
+					// 'unsafe-inline' is required: Svelte transitions (Header, BackToTop) inject <style>
+					// elements at runtime, and SSR'd `style=` attributes (+page.svelte pillars) can't be
+					// nonced. Kit skips nonces for styles when 'unsafe-inline' is present (a nonce would
+					// make browsers ignore it).
+					'style-src': ['self', 'unsafe-inline'],
+					// data: is @tailwindcss/forms' inline-SVG chevrons/checkmarks; cdn.sanity.io is the
+					// Sanity image CDN (/news · /research · /people).
+					'img-src': ['self', 'data:', SANITY_IMAGE_CDN_ORIGIN],
+					// data: because Vite inlines assets under 4KB — the JetBrains Mono subsets small
+					// enough to clear that bar ship as data: URIs inside the CSS bundle.
+					'font-src': ['self', 'data:'],
+					'connect-src': ['self'],
+					// The Turnstile widget renders inside a challenges.cloudflare.com iframe.
+					'frame-src': [TURNSTILE_ORIGIN],
+					// Clickjacking: nothing embeds this site (mirrored by X-Frame-Options: DENY in the
+					// hook for legacy browsers). frame-ancestors only works because every page is SSR'd:
+					// a prerendered page would get the CSP as a <meta> tag, which can't carry it — the
+					// e2e suite asserts the worker headers on every audited path to pin that invariant.
+					'frame-ancestors': ['none'],
+					'object-src': ['none'],
+					'base-uri': ['self'],
+					'form-action': ['self']
+				}
+			},
 			preprocess: [mdsvex({ extensions: ['.svx', '.md'] })],
 			extensions: ['.svelte', '.svx', '.md'],
 			experimental: { remoteFunctions: true },

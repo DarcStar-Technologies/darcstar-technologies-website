@@ -14,6 +14,7 @@
 	import { inlineLinkClass } from '$lib/components/FormPrivacyNotice.svelte';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
+	import { TURNSTILE_SCRIPT_URL } from '$lib/security-headers';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -54,7 +55,6 @@
 		reset: (id: string) => void;
 		remove: (id: string) => void;
 	};
-	const TURNSTILE_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
 
 	// Exposed by the attachment so a failed submit can refresh the (single-use) challenge token.
 	let resetTurnstile = $state<(() => void) | undefined>(undefined);
@@ -78,10 +78,12 @@
 		if (win.turnstile) {
 			render();
 		} else {
-			let script = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SRC}"]`);
+			let script = document.querySelector<HTMLScriptElement>(
+				`script[src="${TURNSTILE_SCRIPT_URL}"]`
+			);
 			if (!script) {
 				script = document.createElement('script');
-				script.src = TURNSTILE_SRC;
+				script.src = TURNSTILE_SCRIPT_URL;
 				script.async = true;
 				document.head.appendChild(script);
 			}

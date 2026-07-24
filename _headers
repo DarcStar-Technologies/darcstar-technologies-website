@@ -1,0 +1,8 @@
+# Security headers for responses served by the Workers static-assets layer (DAR-45).
+# Assets (/_app/*, robots.txt, …) are served BEFORE the worker runs, so they never pass
+# through hooks.server.ts — this file is their only header path. Plaintext can't import
+# src/lib/security-headers.ts, so HSTS_VALUE is restated by hand: keep them in sync (the
+# e2e asset test pins both copies). See docs/security-headers.md.
+/*
+  X-Content-Type-Options: nosniff
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
