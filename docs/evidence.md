@@ -51,15 +51,20 @@ audit — this repo holds only the public prose, never the artifacts):
 - **Two detail sub-pages carry the depth; the cards stay lean and link to them**
   (`inlineLinkClass` "more" links): `/evidence/benchmarks` = run-level latency detail
   (per-run figures, environment, attribution incl. the logged gap, deployed-controller
-  latency, reproduction path); `/evidence/proofs` = what machine-checked means (complete vs
+  latency, artifacts); `/evidence/proofs` = what machine-checked means (complete vs
   axiom-backed definition, provers/checkers, methodology, trust boundary). Both are
   registered indexable routes (sitemap `STATIC_PATHS` ×2 + security-headers
   `AUDITED_PAGES`) — mirror that for any future sub-route.
 - **Deliberately NOT published anywhere** (beyond the ticket's IP list): exact neural
   architecture numbers (hidden dims, parameter counts — an architecture fingerprint), and
   the theorem-catalog total / not-yet-mechanized remainder (the surface states what IS
-  proven, not the backlog). Two guards enforce it: `src/lib/evidence-boundary.spec.ts`
-  scans the FULL message catalog (every key, both locale files) for the forbidden patterns,
-  and the evidence e2e asserts the rendered absences. A hit means reword the copy — never
-  loosen the pattern. This applies to source comments too (they're published in this public
-  repo), not just rendered copy.
+  proven, not the backlog). Two guards enforce it on **copy**:
+  `src/lib/evidence-boundary.spec.ts` scans the message catalog (every key, both locale
+  files; the word-form check scoped to the `evidence_*`/`domain_*` keys the evidence pages
+  render) **plus the `$lib/evidence` constants** that supply the card values, and the
+  evidence e2e asserts the rendered absences. A hit means reword the copy — never loosen the
+  pattern.
+- The rule covers **source comments too** — this repo is public, and the DAR-43 review found
+  an `h=16` in a doc-comment — but **no automated guard reads comments**: a pattern scan over
+  source false-positives immediately ("parameter" is legitimate prose in these files), so
+  comments are **code-review territory**. Read them when reviewing; don't trust CI for this.

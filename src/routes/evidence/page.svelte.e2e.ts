@@ -71,6 +71,28 @@ test('proofs detail page defines machine-checked without the backlog', async ({ 
 	await expect(page.getByText('338')).toHaveCount(0);
 });
 
+// The nested pages carry Home → Evidence → self breadcrumbs (DAR-48's builder) — the site's
+// first static routes with a parent, so the hierarchy must reach search results.
+test('detail pages emit breadcrumb structured data', async ({ page }) => {
+	for (const [path, leaf] of [
+		['/evidence/benchmarks', 'Benchmarks'],
+		['/evidence/proofs', 'Proof methodology']
+	]) {
+		await page.goto(path);
+		const graphs = await page.locator('script[type="application/ld+json"]').allTextContents();
+		const crumbs = graphs
+			.map((raw) => JSON.parse(raw))
+			.flatMap((node) => (Array.isArray(node['@graph']) ? node['@graph'] : [node]))
+			.find((node) => node['@type'] === 'BreadcrumbList');
+		expect(crumbs, `${path} should carry a BreadcrumbList`).toBeTruthy();
+		expect(crumbs.itemListElement.map((item: { name: string }) => item.name)).toEqual([
+			'Home',
+			'Evidence',
+			leaf
+		]);
+	}
+});
+
 // The DAR-43 complaint was "no path from claim to evidence" — pin the path: the homepage
 // stats row shows the corrected machine-checked count (219, NOT the old Layer-1 "150" —
 // the readout renders THEOREMS_CHECKED from $lib/evidence.ts) and links through to /evidence.

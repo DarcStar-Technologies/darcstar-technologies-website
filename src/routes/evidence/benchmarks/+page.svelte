@@ -1,9 +1,11 @@
 <script lang="ts">
 	// /evidence/benchmarks — the run-level detail behind the latency figures: per-run methodology,
-	// environment, attribution (including the logged gaps), and the reproduction path. Split out of
-	// the /evidence CfC card (which keeps the headline + a summary and links here) so the main page
+	// environment, attribution (including the logged gaps), and the artifacts. Split out of the
+	// /evidence CfC card (which keeps the headline + a summary and links here) so the main page
 	// states claims and this page carries the hardware runs. Same content-only mold as /evidence;
 	// figures shared via $lib/evidence.ts, run-level numbers live in the messages here only.
+	// The artifacts live in a private repo, so this page documents them — it deliberately does
+	// NOT promise a public reproduction path; keep the copy inside what a reader can act on.
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import PageHero from '$lib/components/PageHero.svelte';
 	import Seo from '$lib/components/Seo.svelte';
@@ -12,6 +14,18 @@
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { inlineLinkClass } from '$lib/styles';
 	import { CFC_KERNEL_LATENCY } from '$lib/evidence';
+	import { breadcrumbJsonLd } from '$lib/jsonld';
+	import { page } from '$app/state';
+
+	// Home → Evidence → here (DAR-48's builder): the first static pages with a parent, so the
+	// hierarchy is worth emitting — search results otherwise show these as orphan pages.
+	const jsonLd = $derived([
+		breadcrumbJsonLd([
+			{ name: m.footer_nav_home(), url: page.url.origin + localizeHref('/') },
+			{ name: m.evidence_eyebrow(), url: page.url.origin + localizeHref('/evidence') },
+			{ name: m.evidence_bench_page_heading(), url: page.url.origin + page.url.pathname }
+		])
+	]);
 </script>
 
 <!-- One labeled field row (the /evidence card-field shape — eyebrow label + body). -->
@@ -22,7 +36,11 @@
 	</div>
 {/snippet}
 
-<Seo title={m.evidence_bench_page_title()} description={m.evidence_bench_page_description()} />
+<Seo
+	title={m.evidence_bench_page_title()}
+	description={m.evidence_bench_page_description()}
+	{jsonLd}
+/>
 
 <CosmicBackdrop />
 

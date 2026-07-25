@@ -176,6 +176,7 @@
 	"evidence_ip_cta": "Start that conversation",
 	"evidence_back": "← All evidence",
 
+	"evidence_bench_page_heading": "Benchmarks",
 	"evidence_bench_page_title": "Benchmarks — DarcStar Technologies",
 	"evidence_bench_page_description": "Every benchmark figure behind darcstar.tech, run by run: methodology, environment, and attribution.",
 	"evidence_bench_heading": "Measured on real",
@@ -192,6 +193,7 @@
 	"evidence_bench_controller_body": "A deployed end-to-end controller measures ≈52 µs p50 / ≈94 µs p99 — the figure to cite for whole-controller latency. It clears the 10 ms real-time budget by roughly 190×.",
 	"evidence_bench_artifacts_heading": "Artifacts",
 
+	"evidence_proofs_page_heading": "Proof methodology",
 	"evidence_proofs_page_title": "Proof methodology — DarcStar Technologies",
 	"evidence_proofs_page_description": "What machine-checked means at DarcStar: the definition of proven, the provers and checkers behind it, the verification methodology, and the trust boundary.",
 	"evidence_proofs_heading": "What machine-checked",

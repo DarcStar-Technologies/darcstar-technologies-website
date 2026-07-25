@@ -11,9 +11,24 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { inlineLinkClass } from '$lib/styles';
+	import { breadcrumbJsonLd } from '$lib/jsonld';
+	import { page } from '$app/state';
+
+	// Home → Evidence → here (DAR-48's builder); see the benchmarks page for the rationale.
+	const jsonLd = $derived([
+		breadcrumbJsonLd([
+			{ name: m.footer_nav_home(), url: page.url.origin + localizeHref('/') },
+			{ name: m.evidence_eyebrow(), url: page.url.origin + localizeHref('/evidence') },
+			{ name: m.evidence_proofs_page_heading(), url: page.url.origin + page.url.pathname }
+		])
+	]);
 </script>
 
-<Seo title={m.evidence_proofs_page_title()} description={m.evidence_proofs_page_description()} />
+<Seo
+	title={m.evidence_proofs_page_title()}
+	description={m.evidence_proofs_page_description()}
+	{jsonLd}
+/>
 
 <CosmicBackdrop />
 
