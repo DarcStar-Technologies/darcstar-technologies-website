@@ -36,7 +36,8 @@
 		label,
 		id,
 		field,
-		badge
+		badge,
+		help
 	}: {
 		options: Option[];
 		value?: string;
@@ -48,7 +49,14 @@
 		field?: RemoteFormField<string>;
 		/** Optional muted badge rendered next to the label (e.g. an "optional" marker). */
 		badge?: string;
+		/** Optional supporting line under the label — the survey question a short label can't carry
+		 *  (waitlist step 3). Wired as `aria-describedby`, NOT nested in the <label>, so it's a
+		 *  description rather than part of the control's accessible name. */
+		help?: string;
 	} = $props();
+
+	// Only reference an element that exists — `aria-describedby` pointing at nothing is an a11y bug.
+	const helpId = $derived(help ? `${id}-help` : undefined);
 
 	// Render the native <select> on the server and until mount, then swap to the Zag glass
 	// menu. With `field` present the native control is what submits without JS; after mount
@@ -87,33 +95,42 @@
 	const api = $derived(select.connect(service, normalizeProps));
 
 	const labelClass = 'mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-body';
+	const helpClass = 'mb-1.5 text-xs leading-relaxed text-faint';
 </script>
 
 {#if field && !mounted}
 	<!-- No-JS / pre-hydration fallback: a native <select> styled to match the glass fields
 	     (the CSS chevron affordance in layout.css renders without JS). It carries the field
 	     name + submitted value via {...asSelect}, so it submits and SSR-repopulates. -->
-	<label class="block">
-		<span class={labelClass}>
+	<div>
+		<label for={id} class={labelClass}>
 			{label}
 			{#if badge}<span class="font-normal text-faint">{badge}</span>{/if}
-		</span>
-		<select {...asSelect} {id} class="glass-field w-full rounded-lg px-3.5 py-2.5 text-sm">
+		</label>
+		{#if help}<p id={helpId} class={helpClass}>{help}</p>{/if}
+		<select
+			{...asSelect}
+			{id}
+			aria-describedby={helpId}
+			class="glass-field w-full rounded-lg px-3.5 py-2.5 text-sm"
+		>
 			<option value="">{placeholder}</option>
 			{#each options as opt (opt.value)}
 				<option value={opt.value}>{opt.label}</option>
 			{/each}
 		</select>
-	</label>
+	</div>
 {:else}
 	<div {...api.getRootProps()}>
 		<label {...api.getLabelProps()} class={labelClass}>
 			{label}
 			{#if badge}<span class="font-normal text-faint">{badge}</span>{/if}
 		</label>
+		{#if help}<p id={helpId} class={helpClass}>{help}</p>{/if}
 
 		<button
 			{...api.getTriggerProps()}
+			aria-describedby={helpId}
 			class="glass-field flex w-full items-center justify-between gap-2 rounded-lg px-3.5 py-2.5 text-left text-sm"
 		>
 			<span {...api.getValueTextProps()} class={api.value.length ? 'text-white' : 'text-subtle'}>

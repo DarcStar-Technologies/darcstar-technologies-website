@@ -63,18 +63,64 @@ field and enriches via `applyWaitlistStep` (per-step column map, keep-existing).
 - **Continue is first in the DOM** so it's the default submitter — pressing Enter continues, it
   never accidentally skips.
 
-Routing (Continue → step 3 when the answers qualify as commercial/operational, else a step-4
-branch/confirmation) is defined server-side in the step-3 issue (DAR-62) and plugs into the
-`submitWaitlistStep2` seam; today both Continue and Skip terminate at the confirmation.
+Routing is server-side: the step-2 response carries `next` (`'step3'` or `'done'`), computed by
+`waitlist-flow.ts` from the answers just submitted — see **Step 3** below.
+
+## Step 3 — commercial context (live)
+
+Shown only to **commercial/operational** use cases (DAR-62): four optional questions — **current
+approach**, **economic impact**, **realistic budget** (single-selects) and **adoption requirement** (a
+multi-select capped at `WAITLIST_EVIDENCE_MAX`) — plus the same Continue / Skip pair. Each carries the
+survey question as `help` text (GlassSelect / GlassCheckboxGroup wire it as `aria-describedby`, so the
+question is a description, not part of the control's accessible name). `WaitlistStep3.svelte` owns the
+form, `submitWaitlistStep3` (`waitlist-steps.remote.ts`) the write; slugs in
+`waitlist-qualification.ts`, labels in `waitlist-{approach,impact,budget,evidence}-labels.ts`. The
+impact/budget answers are internal-only — never displayed back or emailed to the respondent, and never
+described as pipeline.
+
+### The gate (`src/lib/server/waitlist-flow.ts`)
+
+The routing rule is implemented ONCE here — DAR-63's step-4 fork and DAR-65's classifier reuse it
+rather than restating it:
+
+- `isCommercialUseCase({ role, primaryApplication })` — DAR-62's exclusions (`researcher` /
+  `student` / `investor-advisor`, or a `research-education` application route past step 3) **plus
+  fail-safe polarity**: commercial needs a POSITIVE signal, so an unanswered (or unrecognized) role
+  AND application reads as non-commercial rather than as a prospect. That matches the epic's polarity
+  for the step-4 fork ("everything else, incl. unanswered → branch B") and keeps money questions away
+  from anyone we can't classify. One answered, non-excluded field is signal enough.
+- `canonicalizeWaitlistRole` — `role` holds both slug sets, so it maps v1 → v2 first; a legacy
+  `research` row would otherwise read as "not a researcher" and get asked about budget.
+- It lives under **`$lib/server`** on purpose: the decision must never be client-authoritative, and
+  the import guard makes that structural (a component physically cannot import it). The browser learns
+  the next step only from a step response's `next`.
+- **Not an authorization boundary.** Skipping step 3 is UX, not permission: a crafted POST straight to
+  `submitWaitlistStep3` still gets validated + stored (token permitting), because answering buys no
+  privilege — the classifier judges the submitter by their role either way. Re-checking the predicate
+  at the write would only add a way to lose data.
+
+### Two mechanics the later steps inherit
+
+- **The token echo.** Each step response returns the submitted `token` verbatim (capped, never
+  re-minted) so the NEXT step's hidden field survives a no-JS re-render — after a native per-step POST
+  the step-1 result is gone. Reflecting the caller's own input hands out nothing new.
+- **Best-effort enrich** (`applyStepBestEffort`). The row persisted at step 1 and these steps are
+  optional enrichment, so a DB failure logs and moves on instead of erroring the visitor's flow — the
+  same posture as the fire-and-forget notification emails. A verification failure is silent for the
+  anti-oracle reason. It also **skips the write for a decoy id** (`isDecoyWaitlistId`, whose shape
+  lives with `mintDecoyWaitlistToken`): the honeypot's token addresses no real row, so the UPDATE
+  could only ever match zero rows — a trap-tripping bot shouldn't get to spend DB writes. Nothing
+  observable changes (the response is generic either way), and it's what keeps the step e2e specs
+  DB-free even on the answered paths.
 
 ## v2 progressive qualification flow (DAR-58)
 
 The single form is being replaced by a short progressive flow (step 1 secures the signup; steps 2–4
 gather qualification data from people willing to continue). **DAR-59 shipped the data-model
-foundation** (schema columns, validators, store step-path, continuation token) and **DAR-60 shipped
-step 1** (the core signup above) and **DAR-61 shipped step 2** (the use-case questions — see
-`## Step 2` above). Steps 3–4's UIs + endpoints land in DAR-62/63; the classifier + admin view in
-DAR-65; funnel analytics in DAR-66.
+foundation** (schema columns, validators, store step-path, continuation token); **DAR-60 shipped
+step 1** (the core signup above), **DAR-61 step 2** (use-case questions) and **DAR-62 step 3**
+(commercial context + the server-side flow gate) — see the sections above. Step 4's branches land in
+DAR-63; the classifier + admin view in DAR-65; funnel analytics in DAR-66.
 
 ### Qualification columns
 
@@ -130,9 +176,10 @@ on first grant (provenance). **It must not drive a real send without double-opt-
 predicate, `isPositivePilotInterest`, that DAR-63 gates the checkbox's rendering on), and the store
 keep-existings a `null` — so a not-shown submit can't silently revoke a standing grant.
 
-### Wire contract for the step forms (DAR-62/63)
+### Wire contract for the step forms
 
-A multi-select checkbox group **must** be named `foo[]`, not `foo`. SvelteKit's form-data conversion
+A multi-select checkbox group **must** be named `foo[]`, not `foo` (step 3's `adoptionEvidence[]` is
+the live example — `GlassCheckboxGroup` gets the suffix from Kit's `.as('checkbox', value)`). SvelteKit's form-data conversion
 throws on a repeated plain name ("Form cannot contain duplicated keys"); only the `[]` suffix yields
 an array (arriving under key `foo`, always `string[]`; zero checks omit the key). Single checkboxes
 (consent, contact permission) are read by presence — any non-empty value is `true` — so the markup

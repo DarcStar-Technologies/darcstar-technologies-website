@@ -33,8 +33,8 @@ footer legal bar (`Footer.svelte`).
   `*_privacy_link` message pair and drop `<FormPrivacyNotice … />` next to its submit.
 - **Keep the policy truthful to the code.** The privacy page enumerates what each form
   actually stores — including the user-agent + hashed IP saved with contact/waitlist
-  submissions, the public (≥3-people) waitlist interest suggestions, and the
-  message→account backfill — plus the sign-in audit log, the sign-in-cookies-only
+  submissions, the optional waitlist qualification answers (value/budget ranges are
+  internal-only: never shown back, never published), and the message→account backfill — plus the sign-in audit log, the sign-in-cookies-only
   cookie story (locale lives in the URL; there is no language cookie), the honest
   no-automatic-expiry status of security logs, and the four processors (Cloudflare,
   Turso, Resend, Sanity — Sanity is content-only and never sees form data). If a form

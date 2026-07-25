@@ -84,8 +84,21 @@ export async function mintDecoyWaitlistToken(
 		key,
 		encoder.encode(`decoy:${email}`) as Uint8Array<ArrayBuffer>
 	);
-	return mintWaitlistToken(secret, `decoy_${b64url(digest).slice(0, 22)}`, now);
+	return mintWaitlistToken(secret, `${DECOY_ID_PREFIX}${b64url(digest).slice(0, 22)}`, now);
 }
+
+const DECOY_ID_PREFIX = 'decoy_';
+
+/**
+ * Is this a verified id we minted for the honeypot? Kept here so the decoy's shape has ONE home.
+ *
+ * A step endpoint uses it to skip the write entirely: the row id is known-fake, so the UPDATE could
+ * only ever match zero rows, and trap-tripping bots shouldn't get to spend DB writes. Safe to trust —
+ * only `verifyWaitlistToken` output reaches this, and an id can't be chosen without forging the MAC.
+ * It changes nothing observable: the response body is generic either way, and step 1's honeypot path
+ * is already timing-distinguishable (accepted, documented).
+ */
+export const isDecoyWaitlistId = (id: string): boolean => id.startsWith(DECOY_ID_PREFIX);
 
 /**
  * Verify a continuation token → the row id it authorizes, or null for ANY failure (malformed,

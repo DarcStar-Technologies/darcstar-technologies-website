@@ -83,14 +83,14 @@
 			disabled={!!submitWaitlistStep2.pending}
 			class="glass-btn order-1 w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 sm:order-2 sm:w-auto"
 		>
-			{m.waitlist_step2_continue()}
+			{m.waitlist_flow_continue()}
 		</button>
 		<button
 			{...submitWaitlistStep2.fields.intent.as('submit', 'skip')}
 			disabled={!!submitWaitlistStep2.pending}
 			class="order-2 rounded-full px-6 py-3 text-sm font-medium text-subtle transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-60 sm:order-1"
 		>
-			{m.waitlist_step2_skip()}
+			{m.waitlist_flow_skip()}
 		</button>
 	</div>
 </form>

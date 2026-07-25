@@ -3,6 +3,7 @@ import {
 	mintWaitlistToken,
 	mintDecoyWaitlistToken,
 	verifyWaitlistToken,
+	isDecoyWaitlistId,
 	WAITLIST_TOKEN_TTL_SECONDS
 } from './waitlist-token';
 
@@ -120,5 +121,20 @@ describe('mintDecoyWaitlistToken', () => {
 		const a = await mintDecoyWaitlistToken(SECRET, 'a@example.com', NOW);
 		const b = await mintDecoyWaitlistToken(SECRET, 'b@example.com', NOW);
 		expect(a).not.toBe(b);
+	});
+
+	// The step endpoints skip the enrich write for a decoy id (it addresses no real row), so the
+	// classifier for that has to recognize exactly what mintDecoy produces — and nothing else.
+	it('is recognizable as a decoy so a step write can be skipped', async () => {
+		const decoy = await verifyWaitlistToken(
+			SECRET,
+			await mintDecoyWaitlistToken(SECRET, 'bot@example.com', NOW),
+			NOW
+		);
+		expect(decoy).not.toBeNull();
+		expect(isDecoyWaitlistId(decoy!)).toBe(true);
+
+		const real = await verifyWaitlistToken(SECRET, await mintWaitlistToken(SECRET, ID, NOW), NOW);
+		expect(isDecoyWaitlistId(real!)).toBe(false);
 	});
 });
