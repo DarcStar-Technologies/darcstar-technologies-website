@@ -209,6 +209,10 @@ test('a non-commercial role routes past step 3 into branch B', async ({ page }) 
 		main.getByRole('heading', { name: 'Help us understand the opportunity' })
 	).toHaveCount(0);
 
+	// Reached from step 2, so the token comes from ITS echo rather than step 3's — same silent-failure
+	// argument as the branch-A assertion.
+	await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
+
 	await main.getByRole('checkbox', { name: 'Technical reports' }).check();
 	await main.getByRole('checkbox', { name: 'Open-source releases' }).check();
 	await main.getByRole('button', { name: 'Continue' }).click();
@@ -228,6 +232,11 @@ test('step 4A reveals the contact block only while the pilot answer is positive'
 	const main = page.getByRole('main');
 
 	await advanceToStep4A(main);
+
+	// The token survived TWO echoes to get here (step 2 → step 3 → step 4). Worth asserting: the
+	// enrich is best-effort and silent, so a broken chain would lose every step-4 answer without a
+	// single visible symptom.
+	await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
 
 	// Unanswered: only the one question.
 	await expect(main.getByText('Evaluation interest')).toBeVisible();
