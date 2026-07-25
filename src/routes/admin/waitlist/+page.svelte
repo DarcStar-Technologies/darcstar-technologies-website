@@ -6,9 +6,11 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { waitlistRoleLabel } from '$lib/waitlist-role-labels';
+	import { waitlistV2RoleLabel } from '$lib/waitlist-v2-role-labels';
 	import { waitlistCompanySizeLabel } from '$lib/waitlist-company-size-labels';
 	import { waitlistReferralLabel } from '$lib/waitlist-referral-labels';
 	import type { WaitlistRole } from '$lib/waitlist-roles';
+	import type { WaitlistV2Role } from '$lib/waitlist-qualification';
 	import type { WaitlistCompanySize } from '$lib/waitlist-company-sizes';
 	import type { WaitlistReferralSource } from '$lib/waitlist-referral-sources';
 	import type { PageData, ActionData } from './$types';
@@ -16,9 +18,16 @@
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	// Slug → localized label, falling back to the raw value for a legacy/unknown slug, em-dash when
-	// absent. Free-text fields (interest) use `orDash` directly.
+	// absent. Free-text fields (interest) use `orDash` directly. `role` holds BOTH the v1 slug set
+	// (legacy rows) and the v2 set (DAR-61's step 2 writes the same column), so resolve it against
+	// both label maps — v2 first — before the raw-slug fallback.
 	const orDash = (v: string | null): string => v ?? '—';
-	const roleFor = (v: string | null) => (v ? (waitlistRoleLabel[v as WaitlistRole]?.() ?? v) : '—');
+	const roleFor = (v: string | null) =>
+		v
+			? (waitlistV2RoleLabel[v as WaitlistV2Role]?.() ??
+				waitlistRoleLabel[v as WaitlistRole]?.() ??
+				v)
+			: '—';
 	const sizeFor = (v: string | null) =>
 		v ? (waitlistCompanySizeLabel[v as WaitlistCompanySize]?.() ?? v) : '—';
 	const hearFor = (v: string | null) =>

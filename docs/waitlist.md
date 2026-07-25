@@ -140,8 +140,10 @@ can carry a `value=` attribute without silently dropping the opt-in.
 
 ## Admin
 
-`/admin/waitlist` is the staff triage view (gated by the `/admin` layout). Its column projection is
-v1-only today; DAR-65 adds the qualification columns, classification, and consent visibility.
+`/admin/waitlist` is the staff triage view (gated by the `/admin` layout). Its `role` column now
+resolves both the v1 and v2 label sets (DAR-61 writes v2 role slugs into that shared column, so the
+roster shows the localized label, not the raw slug); the remaining qualification columns,
+classification, and consent visibility land in DAR-65.
 
 ## Setup
 
