@@ -22,10 +22,13 @@ export const THEOREMS_AXIOM_BACKED = 188;
 export const THEOREMS_CHECKED = THEOREMS_COMPLETE + THEOREMS_AXIOM_BACKED;
 
 /** The shipped-domain spine, ordered. Message references stay UNCALLED here so render sites
- * resolve them under the active locale. The homepage domain rows, its "domains shipped"
- * readout, and the /evidence domains card all iterate THIS list — count, order, and names
- * can't fork between the surfaces. `home` is the homepage row description; `evidence` is the
- * claim card's maturity-honest body. */
+ * resolve them under the active locale. The homepage domain rows, its "domains running
+ * end-to-end" readout, and the /evidence domains card all iterate THIS list — count, order,
+ * and names can't fork between the surfaces (neither surface restates the count in prose
+ * either, since DAR-46). `home` is the homepage row description; `evidence` is the claim
+ * card's maturity-honest body. Each surface defines the term IT uses for the count —
+ * section_domains_scope defines "running end-to-end" on the homepage, evidence_domains_claim
+ * defines "shipped" on /evidence — and both rule out a demo or a customer deployment. */
 export const DOMAINS = [
 	{
 		name: m.domain_cartpole_name,

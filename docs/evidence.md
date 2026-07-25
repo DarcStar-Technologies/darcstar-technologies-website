@@ -41,6 +41,27 @@ audit — this repo holds only the public prose, never the artifacts):
 - **Never claim a proven latency bound.** GIDE's proof corpus proves no microsecond/latency
   bound anywhere; latency is measured, the 13,000× is derived. The internal whitepaper is
   explicit that "proven microsecond safety" phrasing would be falsified on review.
+- **Claims are qualified everywhere, not just on /evidence (DAR-46).** The published
+  formulation is _"formally verified against stated system and environment assumptions"_ —
+  never "proven safe" / "provably safe" / "guaranteed safe". The 2026-07-23 review found the
+  homepage and /about asserting safety as a settled conclusion ("Every safety guarantee is
+  machine-checked", "when GIDE says a system is safe, there is a proof") while /evidence
+  defined `proven` narrowly two clicks away. The split that survives: a **heading** may claim
+  provability (the H1s "Autonomous control you can _prove_ is safe." and "_Provable_ safety for
+  autonomous systems." are kept deliberately — provable is true), but the **body copy under it
+  must name the assumptions and the boundary**. `src/lib/safety-language.spec.ts` guards the
+  phrasing across both locale catalogs, with one allowlisted key —
+  `evidence_safety_not_covered` quotes "proven microsecond safety" in order to disavow it, and
+  a second assertion fails if that key stops quoting it (a stale allowlist is a silent hole).
+- **Say what the domain count means wherever it appears.** The review read "five domains
+  shipped" as possibly meaning pilots or customer deployments. Each surface now defines the term
+  _it actually uses_: the homepage readout is labelled `domains running end-to-end` and
+  `section_domains_scope` defines **that** phrase under the domain list; /evidence keeps the
+  "Domains shipped" card and defines **shipped** in its claim sentence. Both spell out what the
+  count is _not_ (a demo, a customer deployment) — so nothing elsewhere may imply customer
+  delivery: `about_principle_oneengine_body` says the verified core **runs** from quadrotors to
+  financial markets, deliberately not "ships". Neither surface restates the count in prose —
+  both render `DOMAINS.length`, so a sixth domain can't leave a stale "Five" behind.
 - **Scope 0.767 µs to the reference kernel.** The GIDE repo itself forbids citing it as "the
   controller latency" — the deployed controller is ≈52 µs p50 / ≈94 µs p99. Per-run
   provenance detail (ARM 0.75 attributed; committed x86 re-runs 0.81–0.91) lives ONLY in the

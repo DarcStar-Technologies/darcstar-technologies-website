@@ -14,13 +14,44 @@ test('homepage renders the hero, a section and the CTAs', async ({ page }) => {
 	await expect(h1).toContainText('is safe.');
 
 	// A below-the-fold section + the telemetry readout render
-	await expect(page.getByRole('heading', { name: 'Proven, not just tested.' })).toBeVisible();
+	await expect(
+		page.getByRole('heading', { name: 'Verified against stated assumptions.' })
+	).toBeVisible();
 	await expect(page.getByText('CfC inference')).toBeVisible();
 
 	// Primary CTAs — "Explore GIDE" is an in-page anchor; "Contact Us" now opens the
 	// contact modal, so it's a button (issue #11).
 	await expect(page.getByRole('link', { name: 'Explore GIDE' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Contact Us' })).toBeVisible();
+});
+
+// DAR-46: the domain count is the one homepage figure a reader can't interpret on its own —
+// the review read "five domains shipped" as possibly meaning customer deployments. The label
+// now says what it counts, and the definition renders with the list it describes, naming the
+// two readings it is NOT. (The theorems readout is pinned over in evidence/page.svelte.e2e.ts,
+// which asserts the homepage stats row and its click-through to /evidence.)
+test('the domain count says what it counts, and shipped is defined on the page', async ({
+	page
+}) => {
+	await page.goto('/');
+
+	await expect(page.getByText('domains running end-to-end')).toBeVisible();
+	await expect(page.getByText('not a demo, and not a customer deployment')).toBeVisible();
+});
+
+// DAR-46: the real-time pillar used to hardcode both figures in its prose — the one string that
+// broke docs/evidence.md's "never re-inline a figure" rule, so a re-measure would have moved the
+// readouts and left the pillar stale. It now takes them as message params from $lib/evidence, and
+// this asserts they RENDER (a wrong/missing param name compiles fine and prints the placeholder).
+test('the real-time pillar renders its figures from the shared evidence source', async ({
+	page
+}) => {
+	await page.goto('/');
+
+	await expect(
+		page.getByText('the reference kernel measures 0.767 µs per forward pass')
+	).toBeVisible();
+	await expect(page.getByText('13,000× inside a 100 Hz control budget')).toBeVisible();
 });
 
 // The header About link now navigates to the real /about page (issue #61); the old

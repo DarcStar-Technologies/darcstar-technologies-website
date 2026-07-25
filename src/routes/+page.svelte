@@ -10,11 +10,13 @@
 	import { CFC_KERNEL_LATENCY, DOMAINS, REALTIME_MULTIPLE, THEOREMS_CHECKED } from '$lib/evidence';
 
 	// Domains the one engine has actually shipped into — the shared spine in $lib/evidence.ts
-	// (DAR-43), so the rows here, the "domains shipped" figure, and the /evidence domains card
-	// all iterate one list and can never drift. `$derived` (not a plain const): the visible
-	// copy is Paraglide messages, so the array re-resolves if a locale switcher is ever added —
-	// getLocale() is $state-backed (src/lib/paraglide.svelte.ts). On SSR it evaluates exactly
-	// once.
+	// (DAR-43), so the rows here, the "domains running end-to-end" figure, and the /evidence
+	// domains card all iterate one list and can never drift. What the count means is stated
+	// under the rows (section_domains_scope, DAR-46) rather than left to the reader — the
+	// review read the bare count as possibly meaning pilots or customer deployments.
+	// `$derived` (not a plain const): the visible copy is Paraglide messages, so the array
+	// re-resolves if a locale switcher is ever added — getLocale() is $state-backed
+	// (src/lib/paraglide.svelte.ts). On SSR it evaluates exactly once.
 	const domains = $derived(DOMAINS.map((d) => ({ n: d.name(), d: d.home() })));
 
 	// Stats row — REAL, verifiable numbers only (issue #13), each scoped on /evidence (DAR-43).
@@ -42,7 +44,13 @@
 			cvar: 'var(--charge-b)',
 			icon: 'bolt',
 			title: m.pillar_realtime_title(),
-			body: m.pillar_realtime_body()
+			// Both figures come from $lib/evidence.ts as message params, never re-inlined into
+			// the prose (docs/evidence.md) — this string used to hardcode them, so a re-measure
+			// would have left the pillar stale while every other surface moved (DAR-46).
+			body: m.pillar_realtime_body({
+				latency: CFC_KERNEL_LATENCY,
+				multiple: REALTIME_MULTIPLE
+			})
 		},
 		{
 			cvar: 'var(--charge-g)',
@@ -173,6 +181,13 @@
 						<div class="text-sm text-body">{d.d}</div>
 					</div>
 				{/each}
+				<!-- What the "domains running end-to-end" figure actually asserts (DAR-46). It sits
+				     here, at the end of the list the reader is looking at, rather than under the
+				     stats row where it would explain one of four figures. /evidence carries the
+				     per-domain maturity. -->
+				<p class="px-8 py-5 text-sm leading-relaxed text-muted">
+					{m.section_domains_scope()}
+				</p>
 			</div>
 		</section>
 
