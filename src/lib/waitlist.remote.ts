@@ -82,8 +82,9 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		const { ok, cleaned, errors } = validateWaitlist(data);
 		if (!ok) {
 			const issues = [];
+			if (errors.includes('name')) issues.push(issue.name(m.waitlist_error_name()));
 			if (errors.includes('email')) issues.push(issue.email(m.waitlist_error_email()));
-			invalid(...issues); // throws; fields.email.issues() populate client-side
+			invalid(...issues); // throws; fields.{name,email}.issues() populate client-side
 		}
 
 		// Light IP/time throttle (honeypot handles most bots; this caps floods).

@@ -24,11 +24,25 @@ import type {
 	CleanedWaitlistStep4B
 } from './waitlist';
 
-// `coalesce(<new>, <existing-column>)` — on enrich, a provided value wins; a blank (null, since the
-// validator nulls empties) keeps whatever's already stored. So a returning user fills gaps / updates
-// fields they re-enter, and never erases data by submitting a sparser form.
+// Two enrich policies. They differ ONLY when both the stored value and a new value are present:
+//
+// keepExisting = `coalesce(<new>, <existing>)` — the PROVIDED value wins; a blank (null, since the
+// validator nulls empties) keeps what's stored. Used by the token-gated qualification steps
+// (applyWaitlistStep): possessing the continuation token authorizes updating a field you re-enter,
+// and a sparser resubmit still never erases.
 function keepExisting(next: string | null, column: string) {
 	return sql`coalesce(${next}, ${sql.raw(column)})`;
+}
+
+// fillIfEmpty = `coalesce(<existing>, <new>)` — the STORED value wins; the new value only lands in a
+// still-null column. Used by the step-1 upsert enrich (upsertWaitlist), which carries NO token: an
+// anonymous re-submit of a known email can fill gaps but must never OVERWRITE a stored value, so a
+// stranger who knows an existing address can't clobber that row's name/company/region. Enrich is also
+// throttle-exempt (it adds no row for the per-IP row-count check to see), so overwrite-on-resubmit
+// would otherwise be an unbounded vandalism vector. The FIRST write (insert) still sets every field;
+// only later same-email collisions are held fill-forward.
+function fillIfEmpty(next: string | null, column: string) {
+	return sql`coalesce(${sql.raw(column)}, ${next})`;
 }
 
 // JSON-array twin of keepExisting: drizzle's json mapping doesn't apply inside raw SQL, so the
@@ -98,21 +112,24 @@ export async function upsertWaitlist(
 
 		if (inserted.length > 0) return { isNew: true, id: inserted[0].id };
 
-		// Already on the list — enrich in place, bump updated_at (same clock as the DB default).
+		// Already on the list — enrich in place, FILL-FORWARD: fillIfEmpty only fills still-null
+		// columns and never overwrites a stored value, so a stranger who knows an existing email
+		// can't clobber the row's name/company/region via an (unauthenticated, throttle-exempt)
+		// resubmit. updated_at bumps on the same clock as the DB default.
 		// Consent is MONOTONIC: max(existing, new) — an unchecked box on a re-submit is "no new grant",
 		// not a revocation (revoking is a deliberate future mechanism, e.g. an unsubscribe link). The
 		// timestamp is set only on the FIRST grant (coalesce keeps an existing one).
 		const enriched = await db
 			.update(waitlist)
 			.set({
-				name: keepExisting(sub.name, 'name'),
-				company: keepExisting(sub.company, 'company'),
-				role: keepExisting(sub.role, 'role'),
-				companySize: keepExisting(sub.companySize, 'company_size'),
-				interest: keepExisting(sub.interest, 'interest'),
-				hearAbout: keepExisting(sub.hearAbout, 'hear_about'),
-				phone: keepExisting(sub.phone, 'phone'),
-				countryRegion: keepExisting(sub.countryRegion, 'country_region'),
+				name: fillIfEmpty(sub.name, 'name'),
+				company: fillIfEmpty(sub.company, 'company'),
+				role: fillIfEmpty(sub.role, 'role'),
+				companySize: fillIfEmpty(sub.companySize, 'company_size'),
+				interest: fillIfEmpty(sub.interest, 'interest'),
+				hearAbout: fillIfEmpty(sub.hearAbout, 'hear_about'),
+				phone: fillIfEmpty(sub.phone, 'phone'),
+				countryRegion: fillIfEmpty(sub.countryRegion, 'country_region'),
 				consentUpdates: sql`max(consent_updates, ${grantsConsent ? 1 : 0})`,
 				consentUpdatesAt: grantsConsent
 					? sql`coalesce(consent_updates_at, ${DB_NOW})`

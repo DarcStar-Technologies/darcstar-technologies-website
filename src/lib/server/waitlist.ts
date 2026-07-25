@@ -1,7 +1,8 @@
 // Pure waitlist helpers — no DB / SvelteKit-request imports, so they're unit-testable in isolation
 // (src/lib/server/waitlist.spec.ts). The remote function (src/lib/waitlist.remote.ts) is the only
 // caller: it maps `errors` to `invalid(issue.*())` and UPSERTs `cleaned`. The slug lists are the
-// client-safe single sources shared with the form's <select>s; `interest` is deliberately free text.
+// client-safe single sources the selects + admin view share; `interest` is a retained free-text
+// column — its form input and suggestion datalist were retired in DAR-60, the column kept per DAR-59.
 import { WAITLIST_ROLES, type WaitlistRole } from '$lib/waitlist-roles';
 import { WAITLIST_COMPANY_SIZES, type WaitlistCompanySize } from '$lib/waitlist-company-sizes';
 import {
@@ -25,8 +26,13 @@ import {
 	isPositivePilotInterest
 } from '$lib/waitlist-qualification';
 
-/** Only email surfaces an inline error — everything else is optional and coerced, never rejected. */
-export type WaitlistFieldError = 'email';
+/**
+ * The required core fields surface an inline error; everything else is optional and coerced, never
+ * rejected. v2 step 1 (DAR-60) made `name` required alongside `email` — the v1 form asked for email
+ * only. Old rows may still carry a null name (they predate the requirement); the store's keep-existing
+ * enrich never erases one, and only NEW writes go through this gate.
+ */
+export type WaitlistFieldError = 'email' | 'name';
 
 export interface CleanedWaitlist {
 	email: string; // normalized to lowercase for the unique index / dedupe
@@ -34,7 +40,7 @@ export interface CleanedWaitlist {
 	company: string | null;
 	role: string | null; // validated slug or null
 	companySize: string | null; // validated slug or null
-	interest: string | null; // FREE TEXT (trimmed) — a growing list, not an enum
+	interest: string | null; // FREE TEXT (trimmed), not an enum; retained column, no longer surfaced in the form (DAR-60)
 	hearAbout: string | null; // validated slug or null
 	phone: string | null;
 	countryRegion: string | null; // validated slug or null (v2 step 1)
@@ -51,7 +57,7 @@ export interface WaitlistValidation {
 const EMAIL_MAX = 254; // RFC 5321 practical maximum
 const NAME_MAX = 100;
 const COMPANY_MAX = 200;
-const INTEREST_MAX = 120; // a short phrase, not an essay — keeps the free-text datalist tidy
+const INTEREST_MAX = 120; // caps the retained free-text interest column (its input/datalist retired in DAR-60)
 const PHONE_MAX = 40;
 
 // Pragmatic email shape check (same as the contact validator): one @, a dot in the domain, no
@@ -101,9 +107,10 @@ const slugArray = <T extends string>(v: unknown, list: readonly T[], max: number
 };
 
 /**
- * Validate + normalize a raw waitlist signup. Only `email` can fail (required + shape); a tampered or
- * unknown slug (`role`/`companySize`/`hearAbout`) coerces to null rather than erroring (the selects
- * only offer valid slugs). Email is lowercased so the unique index dedupes case-insensitively.
+ * Validate + normalize a raw waitlist signup. `email` (required + shape) and `name` (required, DAR-60)
+ * can fail; a tampered or unknown slug (`role`/`companySize`/`hearAbout`/`countryRegion`) coerces to
+ * null rather than erroring (the selects only offer valid slugs). Email is lowercased so the unique
+ * index dedupes case-insensitively.
  */
 export function validateWaitlist(data: {
 	email?: unknown;
@@ -118,18 +125,20 @@ export function validateWaitlist(data: {
 	consentUpdates?: unknown;
 }): WaitlistValidation {
 	const email = str(data.email).toLowerCase();
+	const name = optionalText(data.name, NAME_MAX); // null when blank → the required-name gate below
 	const role = str(data.role);
 	const companySize = str(data.companySize);
 	const hearAbout = str(data.hearAbout);
 
 	const errors: WaitlistFieldError[] = [];
 	if (email.length > EMAIL_MAX || !EMAIL_RE.test(email)) errors.push('email');
+	if (name === null) errors.push('name'); // required since v2 step 1; empty/whitespace fails
 
 	return {
 		ok: errors.length === 0,
 		cleaned: {
 			email,
-			name: optionalText(data.name, NAME_MAX),
+			name,
 			company: optionalText(data.company, COMPANY_MAX),
 			role: isRole(role) ? role : null,
 			companySize: isCompanySize(companySize) ? companySize : null,

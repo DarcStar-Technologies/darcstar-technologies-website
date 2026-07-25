@@ -1,15 +1,20 @@
 <script lang="ts">
-	// Public /waitlist page — early-access lead capture. Same utility-page shell as /contact
-	// (CosmicBackdrop + centred glass-card, indexable). It spreads the SAME remote `form`
+	// Public /waitlist page — v2 step 1, the core early-access signup (DAR-60). Same utility-page shell
+	// as /contact (CosmicBackdrop + centred glass-card, indexable). It spreads the SAME remote `form`
 	// (joinWaitlist), so with JS it progressively enhances and without JS it degrades to a native POST
 	// that reloads the page: success arrives as joinWaitlist.result, validation errors + repopulated
 	// values come back through the fields' .issues()/.as() during SSR. No custom `enhance` — the
 	// default enhancement + native fallback are exactly what this page wants.
 	//
-	// "Not too annoying" = progressive disclosure: only EMAIL (required) and the submit button show up
-	// front; every enrichment field lives inside a <details> "add details (optional)" (a no-JS-friendly
-	// disclosure). `interest` is free text with a <datalist> of suggestions (seed + values other people
-	// have entered often enough to be non-identifying — see +page.server.ts), never a closed enum.
+	// This is the ONLY required step: submit persists the row immediately (upsertWaitlist), so
+	// abandoning the later qualification steps still retains the signup. NAME + EMAIL are required
+	// (v1 asked email only); Organization + Country/region + the marketing-consent checkbox are
+	// optional. The old `<details>` enrichment disclosure is gone — role moves to step 2, phone to
+	// step 4A, and company-size/interest/hear-about left the UI (their columns stay per DAR-59).
+	//
+	// The success response now also carries the DAR-59 continuation token (joinWaitlist.result.token).
+	// Step 2 (DAR-61) will swap this confirmation for the step-2 transition; until then a completed
+	// signup shows the confirmation, which is the correct terminal state for step 1 on its own.
 	import Seo from '$lib/components/Seo.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
@@ -18,31 +23,16 @@
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
 	import { fieldClass } from '$lib/components/ContactFields.svelte';
 	import { joinWaitlist } from '$lib/waitlist.remote';
-	import { WAITLIST_ROLES } from '$lib/waitlist-roles';
-	import { waitlistRoleLabel } from '$lib/waitlist-role-labels';
-	import { WAITLIST_COMPANY_SIZES } from '$lib/waitlist-company-sizes';
-	import { waitlistCompanySizeLabel } from '$lib/waitlist-company-size-labels';
-	import { WAITLIST_REFERRAL_SOURCES } from '$lib/waitlist-referral-sources';
-	import { waitlistReferralLabel } from '$lib/waitlist-referral-labels';
+	import { WAITLIST_REGIONS } from '$lib/waitlist-qualification';
+	import { waitlistRegionLabel } from '$lib/waitlist-region-labels';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
-	import type { PageData } from './$types';
 
-	let { data }: { data: PageData } = $props();
-
-	// Slug → {value,label} option lists for the selects. `$derived` so labels re-resolve on locale
+	// Slug → {value,label} options for the region select. `$derived` so labels re-resolve on locale
 	// change (the label accessors are $state-backed Paraglide messages).
-	const roleOptions = $derived(
-		WAITLIST_ROLES.map((v) => ({ value: v, label: waitlistRoleLabel[v]() }))
+	const regionOptions = $derived(
+		WAITLIST_REGIONS.map((v) => ({ value: v, label: waitlistRegionLabel[v]() }))
 	);
-	const sizeOptions = $derived(
-		WAITLIST_COMPANY_SIZES.map((v) => ({ value: v, label: waitlistCompanySizeLabel[v]() }))
-	);
-	const hearOptions = $derived(
-		WAITLIST_REFERRAL_SOURCES.map((v) => ({ value: v, label: waitlistReferralLabel[v]() }))
-	);
-
-	const interestListId = 'waitlist-interest-opts';
 </script>
 
 <Seo title={m.waitlist_page_title()} description={m.waitlist_page_description()} />
@@ -56,8 +46,7 @@
 {/snippet}
 
 <!-- One text field — label (+ optional badge), the glass-field control, and its inline errors.
-     `remoteField` is a joinWaitlist.fields.* accessor. `list` wires the interest input to its
-     <datalist>; `required` marks email. -->
+     `remoteField` is a joinWaitlist.fields.* accessor. `required` marks name + email. -->
 {#snippet textField(
 	labelText: string,
 	remoteField: typeof joinWaitlist.fields.email,
@@ -67,7 +56,6 @@
 		autocomplete?: AutoFill;
 		optional?: boolean;
 		required?: boolean;
-		list?: string;
 	}
 )}
 	<label class="block">
@@ -80,7 +68,6 @@
 			class={fieldClass}
 			placeholder={opts.placeholder}
 			autocomplete={opts.autocomplete}
-			list={opts.list}
 			required={opts.required}
 		/>
 		{@render fieldError(remoteField.issues())}
@@ -119,12 +106,18 @@
 					/>
 				</div>
 
-				<!-- Whole-form issues (e.g. rate limit); the email field's issues render under it. -->
+				<!-- Whole-form issues (e.g. rate limit); the name/email field issues render under them. -->
 				{#each joinWaitlist.fields.allIssues() as issue (issue.message)}
 					{#if issue.path.length === 0}
 						<ErrorBanner>{issue.message}</ErrorBanner>
 					{/if}
 				{/each}
+
+				{@render textField(m.waitlist_field_name_label(), joinWaitlist.fields.name, {
+					placeholder: m.waitlist_field_name_placeholder(),
+					autocomplete: 'name',
+					required: true
+				})}
 
 				{@render textField(m.waitlist_field_email_label(), joinWaitlist.fields.email, {
 					type: 'email',
@@ -133,69 +126,30 @@
 					required: true
 				})}
 
-				<!-- Progressive disclosure: everything below is optional lead enrichment, tucked away so
-				     the default view is just email + the button. Native <details> works without JS. -->
-				<details class="group rounded-lg border border-hairline/60 px-3.5 py-3">
-					<summary
-						class="flex cursor-pointer list-none items-center justify-between text-xs font-medium text-body transition-colors [&::-webkit-details-marker]:hidden hover:text-white"
-					>
-						{m.waitlist_details_summary()}
-						<span class="text-faint transition-transform group-open:rotate-180" aria-hidden="true"
-							>▾</span
-						>
-					</summary>
-					<div class="mt-4 space-y-4">
-						{@render textField(m.waitlist_field_name_label(), joinWaitlist.fields.name, {
-							placeholder: m.waitlist_field_name_placeholder(),
-							autocomplete: 'name',
-							optional: true
-						})}
-						{@render textField(m.waitlist_field_company_label(), joinWaitlist.fields.company, {
-							placeholder: m.waitlist_field_company_placeholder(),
-							autocomplete: 'organization',
-							optional: true
-						})}
-						<GlassSelect
-							id="waitlist-role"
-							label={m.waitlist_field_role_label()}
-							badge={m.waitlist_optional()}
-							placeholder={m.waitlist_select_placeholder()}
-							options={roleOptions}
-							field={joinWaitlist.fields.role}
-						/>
-						<GlassSelect
-							id="waitlist-company-size"
-							label={m.waitlist_field_company_size_label()}
-							badge={m.waitlist_optional()}
-							placeholder={m.waitlist_select_placeholder()}
-							options={sizeOptions}
-							field={joinWaitlist.fields.companySize}
-						/>
-						{@render textField(m.waitlist_field_interest_label(), joinWaitlist.fields.interest, {
-							placeholder: m.waitlist_field_interest_placeholder(),
-							optional: true,
-							list: interestListId
-						})}
-						<datalist id={interestListId}>
-							{#each data.interestSuggestions as suggestion (suggestion)}
-								<option value={suggestion}></option>
-							{/each}
-						</datalist>
-						<GlassSelect
-							id="waitlist-hear-about"
-							label={m.waitlist_field_hear_about_label()}
-							badge={m.waitlist_optional()}
-							placeholder={m.waitlist_select_placeholder()}
-							options={hearOptions}
-							field={joinWaitlist.fields.hearAbout}
-						/>
-						{@render textField(m.waitlist_field_phone_label(), joinWaitlist.fields.phone, {
-							placeholder: m.waitlist_field_phone_placeholder(),
-							autocomplete: 'tel',
-							optional: true
-						})}
-					</div>
-				</details>
+				{@render textField(m.waitlist_field_company_label(), joinWaitlist.fields.company, {
+					placeholder: m.waitlist_field_company_placeholder(),
+					autocomplete: 'organization',
+					optional: true
+				})}
+
+				<GlassSelect
+					id="waitlist-region"
+					label={m.waitlist_field_region_label()}
+					badge={m.waitlist_optional()}
+					placeholder={m.waitlist_select_placeholder()}
+					options={regionOptions}
+					field={joinWaitlist.fields.countryRegion}
+				/>
+
+				<!-- Optional, UNCHECKED marketing opt-in → consent_updates (DAR-59). A checkbox submits
+				     nothing when unchecked, so absence is stored as false server-side, never consent. -->
+				<label class="flex cursor-pointer items-start gap-3 text-sm text-body">
+					<input
+						{...joinWaitlist.fields.consentUpdates.as('checkbox')}
+						class="mt-0.5 size-4 shrink-0 accent-primary-500"
+					/>
+					<span>{m.waitlist_consent_label()}</span>
+				</label>
 
 				<!-- Data-handling notice (DAR-44) — the shared FormPrivacyNotice, same as the
 				     contact form's (ContactFields). -->
