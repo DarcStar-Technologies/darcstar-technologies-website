@@ -3,10 +3,10 @@ import { expect, test, type Locator } from '@playwright/test';
 // /waitlist (DAR-60 step 1 · DAR-61 step 2 · DAR-62 step 3) through the Cloudflare worker build.
 // Hermetic against the placeholder DB (DATABASE_URL=…invalid in CI): step 1's honeypot short-circuit
 // accepts-but-does-not-persist and hands back a decoy continuation token (pure crypto, no DB) — that's
-// what lets these specs reach and drive the later steps without a real database. The decoy token DOES
-// verify (it addresses no real row), so a step submitted WITH answers does attempt its enrich UPDATE;
-// that's fine because the enrich is best-effort (waitlist-steps.remote.ts logs and moves on rather
-// than failing the visitor's flow), so the placeholder DB's failure is invisible to the page.
+// what lets these specs reach and drive the later steps without a real database. The decoy verifies
+// to a `decoy_` id, which the step endpoints deliberately skip the enrich write for (it addresses no
+// real row), so even the ANSWERED paths below stay DB-free. Belt and braces: the enrich is
+// best-effort anyway (waitlist-steps.remote.ts logs a failure rather than breaking the flow).
 // Selectors are scoped to <main> for consistency with the contact spec (the layout mounts the hidden
 // contact modal outside <main>).
 
@@ -56,7 +56,7 @@ async function chooseOption(main: Locator, field: RegExp, option: string) {
 }
 
 // Signup → step 2 → answer with a commercial role → step 3. An answered, non-excluded role is what
-// routes Continue into step 3 (waitlist-flow.ts); the role also makes this submit attempt its enrich.
+// routes Continue into step 3 (waitlist-flow.ts).
 async function advanceToStep3(main: Locator) {
 	await advanceToStep2(main);
 	await chooseOption(main, /Your role/, 'Engineering or technical leader');
@@ -137,8 +137,8 @@ test('a commercial use case continues from step 2 into the step-3 questions', as
 	await evidence('Formal proof artifacts').uncheck();
 	await expect(evidence('Production references')).toBeEnabled();
 
-	// Continue with real answers → the enrich is attempted (best-effort; a placeholder-DB failure is
-	// logged, never surfaced) and the flow terminates at the confirmation.
+	// Continue with real answers terminates at the confirmation (the decoy id skips the write, so this
+	// stays DB-free — the stored side is covered by waitlist-store.spec.ts against real libsql).
 	await main.getByRole('button', { name: 'Continue' }).click();
 	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
 	await expect(page).toHaveURL(/\/waitlist$/);

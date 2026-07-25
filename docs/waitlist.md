@@ -107,8 +107,11 @@ rather than restating it:
 - **Best-effort enrich** (`applyStepBestEffort`). The row persisted at step 1 and these steps are
   optional enrichment, so a DB failure logs and moves on instead of erroring the visitor's flow — the
   same posture as the fire-and-forget notification emails. A verification failure is silent for the
-  anti-oracle reason. (This is also why the e2e can drive the answered paths against CI's placeholder
-  DB: the write is attempted, fails, and the page never notices.)
+  anti-oracle reason. It also **skips the write for a decoy id** (`isDecoyWaitlistId`, whose shape
+  lives with `mintDecoyWaitlistToken`): the honeypot's token addresses no real row, so the UPDATE
+  could only ever match zero rows — a trap-tripping bot shouldn't get to spend DB writes. Nothing
+  observable changes (the response is generic either way), and it's what keeps the step e2e specs
+  DB-free even on the answered paths.
 
 ## v2 progressive qualification flow (DAR-58)
 

@@ -24,7 +24,7 @@ import { form } from '$app/server';
 import { getDb, type Db } from '$lib/server/db';
 import { validateWaitlistStep2, validateWaitlistStep3 } from '$lib/server/waitlist';
 import { applyWaitlistStep, type WaitlistStepData } from '$lib/server/waitlist-store';
-import { verifyWaitlistToken } from '$lib/server/waitlist-token';
+import { verifyWaitlistToken, isDecoyWaitlistId } from '$lib/server/waitlist-token';
 import { nextStepAfterStep2, type WaitlistNextStep } from '$lib/server/waitlist-flow';
 import { readEnv } from '$lib/server/env';
 
@@ -63,9 +63,11 @@ async function applyStepBestEffort(
 	if (!tokenSecret) return; // misconfigured env: the flow still works, it just can't enrich
 	try {
 		const id = await verifyWaitlistToken(tokenSecret, token);
-		// A null id (malformed/expired/tampered/decoy token) is not surfaced — skip the write.
-		// applyWaitlistStep itself no-ops when the id matches no row (deleted, or a honeypot decoy).
-		if (id) await applyWaitlistStep(db, id, data);
+		// A null id (malformed/expired/tampered) is not surfaced — skip the write. A DECOY id (the
+		// honeypot's token) is skipped too: it addresses no real row, so the UPDATE could only match
+		// zero rows, and a trap-tripping bot shouldn't get to spend DB writes. Both look identical to
+		// the caller. applyWaitlistStep also no-ops on an id whose row is simply gone.
+		if (id && !isDecoyWaitlistId(id)) await applyWaitlistStep(db, id, data);
 	} catch (err) {
 		console.error('waitlist step enrich failed', data.step, err);
 	}
