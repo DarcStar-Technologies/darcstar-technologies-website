@@ -76,4 +76,24 @@ describe('buildWaitlistAckEmail', () => {
 		const email = buildWaitlistAckEmail({ ...full, name: '<b>x</b>' }, 'en');
 		expect(email.html).not.toContain('<b>x</b>');
 	});
+
+	// DAR-63 acceptance: the step-4A free text (`deployment_scale`) is stored but must never be
+	// surfaced back to the submitter. The structural guarantee is the signature — both builders take
+	// CleanedWaitlist, which is step 1 only, and the ack echoes nothing but the name. This pins the
+	// behaviour anyway, since a future "here's what you told us" ack would be exactly the regression:
+	// smuggle the qualification answers in past the type and assert none of them reach the message.
+	it('never echoes qualification answers back to the submitter', () => {
+		const smuggled = {
+			...full,
+			deploymentScale: 'SENTINEL-SCALE',
+			pilotInterest: 'SENTINEL-PILOT',
+			budgetRange: 'SENTINEL-BUDGET',
+			economicImpact: 'SENTINEL-IMPACT'
+		} as CleanedWaitlist;
+
+		const email = buildWaitlistAckEmail(smuggled, 'en');
+		for (const body of [email.subject, email.text, email.html]) {
+			expect(body).not.toContain('SENTINEL');
+		}
+	});
 });

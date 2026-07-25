@@ -1,12 +1,14 @@
 import { expect, test, type Locator } from '@playwright/test';
 
-// /waitlist (DAR-60 step 1 · DAR-61 step 2 · DAR-62 step 3) through the Cloudflare worker build.
-// Hermetic against the placeholder DB (DATABASE_URL=…invalid in CI): step 1's honeypot short-circuit
-// accepts-but-does-not-persist and hands back a decoy continuation token (pure crypto, no DB) — that's
-// what lets these specs reach and drive the later steps without a real database. The decoy verifies
-// to a `decoy_` id, which the step endpoints deliberately skip the enrich write for (it addresses no
-// real row), so even the ANSWERED paths below stay DB-free. Belt and braces: the enrich is
-// best-effort anyway (waitlist-steps.remote.ts logs a failure rather than breaking the flow).
+// /waitlist (DAR-60 step 1 · DAR-61 step 2 · DAR-62 step 3 · DAR-63 step 4) through the Cloudflare
+// worker build. Hermetic against the placeholder DB (DATABASE_URL=…invalid in CI): step 1's honeypot
+// short-circuit accepts-but-does-not-persist and hands back a decoy continuation token (pure crypto,
+// no DB) — that's what lets these specs reach and drive the later steps without a real database. The
+// decoy verifies to a `decoy_` id, which the step endpoints deliberately skip the enrich write for
+// (it addresses no real row), so even the ANSWERED paths below stay DB-free. Belt and braces: the
+// enrich is best-effort anyway (waitlist-steps.remote.ts logs a failure rather than breaking the
+// flow). The step-4 branch is chosen from the answers alone (a signed claim, never a stored read),
+// so both branches are reachable here too.
 // Selectors are scoped to <main> for consistency with the contact spec (the layout mounts the hidden
 // contact modal outside <main>).
 
@@ -50,19 +52,30 @@ async function advanceToStep2(main: Locator) {
 }
 
 // Pick a value from a hydrated GlassSelect (the Zag glass menu, not the no-JS <select> fallback).
-async function chooseOption(main: Locator, field: RegExp, option: string) {
+async function chooseOption(main: Locator, field: RegExp, option: RegExp | string) {
 	await main.getByRole('combobox', { name: field }).click();
 	await main.getByRole('option', { name: option }).click();
 }
 
-// Signup → step 2 → answer with a commercial role → step 3. An answered, non-excluded role is what
-// routes Continue into step 3 (waitlist-flow.ts).
+// Signup → step 2 → answer with a commercial role AND a near-term timeline → step 3. The role is what
+// routes Continue into step 3; the timeline is what the (signed) step-4 branch will be chosen from
+// once step 3 is done — see waitlist-flow.ts.
 async function advanceToStep3(main: Locator) {
 	await advanceToStep2(main);
 	await chooseOption(main, /Your role/, 'Engineering or technical leader');
+	await chooseOption(main, /Evaluation timeline/, 'Evaluating now');
 	await main.getByRole('button', { name: 'Continue' }).click();
 	await expect(
 		main.getByRole('heading', { level: 1, name: 'Help us understand the opportunity' })
+	).toBeVisible();
+}
+
+// …and on into branch A, the only path that reaches it via step 3.
+async function advanceToStep4A(main: Locator) {
+	await advanceToStep3(main);
+	await main.getByRole('button', { name: 'Continue' }).click();
+	await expect(
+		main.getByRole('heading', { level: 1, name: 'Would you consider an evaluation?' })
 	).toBeVisible();
 }
 
@@ -85,14 +98,15 @@ test('signup advances to the step-2 questions, and "Skip for now" reaches the co
 	await expect(main.getByRole('button', { name: 'Skip for now' })).toBeVisible();
 
 	// Skip persists nothing (no DB) and lands on the terminal confirmation, inline — no navigation to
-	// the raw remote action, and no duplicate-attach / other runtime error.
+	// the raw remote action, and no duplicate-attach / other runtime error. Skip means "stop asking
+	// me things", so it terminates instead of forking to step 4.
 	await main.getByRole('button', { name: 'Skip for now' }).click();
 	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
 	await expect(page).toHaveURL(/\/waitlist$/);
 	expect(errors).toEqual([]);
 });
 
-test('"Continue" with no answers selected reaches the confirmation', async ({ page }) => {
+test('"Continue" with no answers selected forks to branch B and finishes', async ({ page }) => {
 	await page.goto('/waitlist');
 	const main = page.getByRole('main');
 
@@ -100,7 +114,20 @@ test('"Continue" with no answers selected reaches the confirmation', async ({ pa
 
 	// Every select left blank → nothing to persist (all three fields are optional), and nothing to
 	// classify either, so the flow routes PAST step 3 (fail-safe polarity: unanswered is not a
-	// commercial prospect — waitlist-flow.ts) straight to the confirmation, with no DB round-trip.
+	// commercial prospect) and PAST branch A (same polarity: an unanswered timeline is not active
+	// interest) into branch B, with no DB round-trip — waitlist-flow.ts.
+	await main.getByRole('button', { name: 'Continue' }).click();
+	await expect(
+		main.getByRole('heading', { level: 1, name: 'What would you like to receive?' })
+	).toBeVisible();
+	await expect(
+		main.getByRole('heading', { name: 'Help us understand the opportunity' })
+	).toHaveCount(0);
+
+	// Branch B asks nothing about money or pilots.
+	await expect(main.getByText('Realistic budget')).toHaveCount(0);
+	await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toHaveCount(0);
+
 	await main.getByRole('button', { name: 'Continue' }).click();
 	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
 	await expect(page).toHaveURL(/\/waitlist$/);
@@ -124,8 +151,11 @@ test('a commercial use case continues from step 2 into the step-3 questions', as
 	await expect(main.getByText('Adoption requirement')).toBeVisible();
 
 	// The continuation token was carried forward by the step-2 response — that echo is what lets step 3
-	// (and DAR-63's step 4) authorize their writes, including after a no-JS re-render.
+	// (and step 4) authorize their writes, including after a no-JS re-render. Alongside it rides the
+	// SIGNED step-4 branch: step 3 doesn't re-ask the timeline the fork reads, so step 2's decision is
+	// carried here rather than re-derived (and a MAC, not trust, is what makes the hidden field safe).
 	await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
+	await expect(main.locator('input[name="branchClaim"]')).toHaveValue(/^b1\./);
 
 	// The ≤3 cap is an enhancement: once three are ticked the rest disable, and unticking frees a slot.
 	// (The server truncates regardless — see the step-3 validator.)
@@ -137,11 +167,13 @@ test('a commercial use case continues from step 2 into the step-3 questions', as
 	await evidence('Formal proof artifacts').uncheck();
 	await expect(evidence('Production references')).toBeEnabled();
 
-	// Continue with real answers terminates at the confirmation (the decoy id skips the write, so this
-	// stays DB-free — the stored side is covered by waitlist-store.spec.ts against real libsql).
+	// Continue with real answers moves on to the branch the timeline earned (the decoy id skips the
+	// write, so this stays DB-free — the stored side is covered by waitlist-store.spec.ts against real
+	// libsql).
 	await main.getByRole('button', { name: 'Continue' }).click();
-	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
-	await expect(page).toHaveURL(/\/waitlist$/);
+	await expect(
+		main.getByRole('heading', { level: 1, name: 'Would you consider an evaluation?' })
+	).toBeVisible();
 	expect(errors).toEqual([]);
 });
 
@@ -151,29 +183,98 @@ test('"Skip for now" on step 3 reaches the confirmation', async ({ page }) => {
 
 	await advanceToStep3(main);
 
-	// Skip persists none of step 3's answers (even if boxes were ticked first) and terminates.
+	// Skip persists none of step 3's answers (even if boxes were ticked first) and terminates — it
+	// doesn't fall through to step 4 either.
 	await main.getByRole('checkbox', { name: 'Production references' }).check();
 	await main.getByRole('button', { name: 'Skip for now' }).click();
 	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
 	await expect(page).toHaveURL(/\/waitlist$/);
 });
 
-// The other half of the gate: researchers, students and investors never see the money questions.
-test('a non-commercial role routes past step 3 to the confirmation', async ({ page }) => {
+// The other half of the step-3 gate: researchers, students and investors never see the money
+// questions — they fork straight from step 2 into branch B.
+test('a non-commercial role routes past step 3 into branch B', async ({ page }) => {
 	await page.goto('/waitlist');
 	const main = page.getByRole('main');
 
 	await advanceToStep2(main);
 	await chooseOption(main, /Your role/, 'Researcher');
+	await chooseOption(main, /Evaluation timeline/, 'General interest only');
 	await main.getByRole('button', { name: 'Continue' }).click();
 
-	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
+	await expect(
+		main.getByRole('heading', { level: 1, name: 'What would you like to receive?' })
+	).toBeVisible();
 	await expect(
 		main.getByRole('heading', { name: 'Help us understand the opportunity' })
 	).toHaveCount(0);
+
+	await main.getByRole('checkbox', { name: 'Technical reports' }).check();
+	await main.getByRole('checkbox', { name: 'Open-source releases' }).check();
+	await main.getByRole('button', { name: 'Continue' }).click();
+	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
 });
 
-// Without JavaScript both steps must still submit: each remote form degrades to a native per-step
+// DAR-63 branch A: the contact block is revealed only by a POSITIVE pilot answer, and the phone field
+// only by choosing a call. With JS this is an {#if} — the fields aren't merely hidden, they're absent,
+// so a stale phone number can't ride along after the answer changes.
+test('step 4A reveals the contact block only while the pilot answer is positive', async ({
+	page
+}) => {
+	const errors: string[] = [];
+	page.on('pageerror', (e) => errors.push(e.message));
+
+	await page.goto('/waitlist');
+	const main = page.getByRole('main');
+
+	await advanceToStep4A(main);
+
+	// Unanswered: only the one question.
+	await expect(main.getByText('Evaluation interest')).toBeVisible();
+	await expect(main.getByLabel(/Deployment scale/)).toHaveCount(0);
+	await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toHaveCount(0);
+
+	await chooseOption(main, /Evaluation interest/, /within 3 months/);
+	await expect(main.getByLabel(/Deployment scale/)).toBeVisible();
+	await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toBeVisible();
+	await expect(main.getByRole('combobox', { name: /Preferred contact method/ })).toBeVisible();
+
+	// The phone field is the nested reveal — a call, not email.
+	await expect(main.getByLabel(/Phone/)).toHaveCount(0);
+	await chooseOption(main, /Preferred contact method/, 'Phone or video call');
+	await expect(main.getByLabel(/Phone/)).toBeVisible();
+	await main.getByLabel(/Phone/).fill('+1 555 000 1234');
+
+	// Answering the whole branch terminates the flow.
+	await main.getByRole('checkbox', { name: /contact me directly/ }).check();
+	await main.getByLabel(/Deployment scale/).fill('Two inspection cells, about 40 units.');
+	await main.getByRole('button', { name: 'Continue' }).click();
+	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
+	expect(errors).toEqual([]);
+});
+
+// The A-negative path: "not currently" collapses the contact block, so nobody is asked for a phone
+// number or permission they didn't earn. (The server independently records contact_permission as
+// "never asked" for a non-positive answer — waitlist.spec.ts.)
+test('step 4A hides the contact block again for a negative answer', async ({ page }) => {
+	await page.goto('/waitlist');
+	const main = page.getByRole('main');
+
+	await advanceToStep4A(main);
+
+	await chooseOption(main, /Evaluation interest/, /within 6 months/);
+	await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toBeVisible();
+
+	await chooseOption(main, /Evaluation interest/, 'Not currently');
+	await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toHaveCount(0);
+	await expect(main.getByLabel(/Deployment scale/)).toHaveCount(0);
+	await expect(main.getByLabel(/Phone/)).toHaveCount(0);
+
+	await main.getByRole('button', { name: 'Continue' }).click();
+	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
+});
+
+// Without JavaScript every step must still submit: each remote form degrades to a native per-step
 // POST. Verify step 1's form carries the native-submit contract (method + action) without submitting
 // (that would need a real DB).
 test.describe('without JavaScript', () => {
@@ -189,11 +290,12 @@ test.describe('without JavaScript', () => {
 	});
 
 	// The whole chain, unhydrated: each step is a full-page POST that re-renders the next one. This is
-	// what the response's `token` echo is FOR — after a native step-2 POST the step-1 result is gone, so
-	// without the echo step 3 would render with no authorization to carry. Runs on the honeypot's decoy
-	// token like the hydrated specs, so no real row is involved. GlassSelect serves its native <select>
-	// here (never hydrated), which is also the only place these SSR code paths get exercised.
-	test('steps 1 → 2 → 3 chain through native POSTs, carrying the token forward', async ({
+	// what the response's `token` echo (and step 2's signed branch claim) are FOR — after a native POST
+	// the previous step's result is gone, so without them step 4 would render with no authorization to
+	// carry and no idea which branch it is. Runs on the honeypot's decoy token like the hydrated specs,
+	// so no real row is involved. GlassSelect serves its native <select> here (never hydrated), which
+	// is also the only place these SSR code paths get exercised.
+	test('steps 1 → 2 → 3 → 4A chain through native POSTs, carrying the token forward', async ({
 		page
 	}) => {
 		await page.goto('/waitlist');
@@ -208,18 +310,36 @@ test.describe('without JavaScript', () => {
 			main.getByRole('heading', { level: 1, name: "Tell us what you're working on" })
 		).toBeVisible();
 
-		// A commercial role → step 2's Continue routes into step 3.
+		// A commercial role → step 2's Continue routes into step 3; the near-term timeline is what the
+		// step-4 branch gets decided from.
 		await main.getByLabel(/Your role/).selectOption('engineering-leader');
+		await main.getByLabel(/Evaluation timeline/).selectOption('evaluating-now');
 		await main.getByRole('button', { name: 'Continue' }).click();
 
 		await expect(
 			main.getByRole('heading', { level: 1, name: 'Help us understand the opportunity' })
 		).toBeVisible();
 		await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
+		await expect(main.locator('input[name="branchClaim"]')).toHaveValue(/^b1\./);
 
 		// Step 3 answers submit natively too (the checkbox group needs no JS at all).
 		await main.getByLabel(/Realistic budget/).selectOption('25k-100k');
 		await main.getByRole('checkbox', { name: 'Formal proof artifacts' }).check();
+		await main.getByRole('button', { name: 'Continue' }).click();
+
+		// Branch A, unhydrated: the conditional reveals are progressive enhancement ONLY, so every
+		// field is rendered and submittable here — hiding is what JS adds, never gating.
+		await expect(
+			main.getByRole('heading', { level: 1, name: 'Would you consider an evaluation?' })
+		).toBeVisible();
+		await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
+		await expect(main.getByLabel(/Deployment scale/)).toBeVisible();
+		await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toBeVisible();
+		await expect(main.getByLabel(/Phone/)).toBeVisible();
+
+		await main.getByLabel(/Evaluation interest/).selectOption('possibly-contact-me');
+		await main.getByRole('checkbox', { name: /contact me directly/ }).check();
+		await main.getByLabel(/Preferred contact method/).selectOption('phone-video');
 		await main.getByRole('button', { name: 'Continue' }).click();
 		await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
 	});

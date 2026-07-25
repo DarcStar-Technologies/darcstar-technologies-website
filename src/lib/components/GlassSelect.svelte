@@ -5,6 +5,13 @@
 		value: string;
 		label: string;
 	}
+
+	// The label + help-line chrome every glass form field wears. Exported so the waitlist steps'
+	// non-select controls (step 4A's deployment-scale textarea and phone input) match their sibling
+	// selects exactly instead of re-typing the classes and drifting.
+	export const fieldLabelClass =
+		'mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-body';
+	export const fieldHelpClass = 'mb-1.5 text-xs leading-relaxed text-faint';
 </script>
 
 <script lang="ts">
@@ -93,9 +100,6 @@
 		positioning: { sameWidth: true }
 	}));
 	const api = $derived(select.connect(service, normalizeProps));
-
-	const labelClass = 'mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-body';
-	const helpClass = 'mb-1.5 text-xs leading-relaxed text-faint';
 </script>
 
 {#if field && !mounted}
@@ -103,11 +107,11 @@
 	     (the CSS chevron affordance in layout.css renders without JS). It carries the field
 	     name + submitted value via {...asSelect}, so it submits and SSR-repopulates. -->
 	<div>
-		<label for={id} class={labelClass}>
+		<label for={id} class={fieldLabelClass}>
 			{label}
 			{#if badge}<span class="font-normal text-faint">{badge}</span>{/if}
 		</label>
-		{#if help}<p id={helpId} class={helpClass}>{help}</p>{/if}
+		{#if help}<p id={helpId} class={fieldHelpClass}>{help}</p>{/if}
 		<select
 			{...asSelect}
 			{id}
@@ -122,11 +126,11 @@
 	</div>
 {:else}
 	<div {...api.getRootProps()}>
-		<label {...api.getLabelProps()} class={labelClass}>
+		<label {...api.getLabelProps()} class={fieldLabelClass}>
 			{label}
 			{#if badge}<span class="font-normal text-faint">{badge}</span>{/if}
 		</label>
-		{#if help}<p id={helpId} class={helpClass}>{help}</p>{/if}
+		{#if help}<p id={helpId} class={fieldHelpClass}>{help}</p>{/if}
 
 		<button
 			{...api.getTriggerProps()}
