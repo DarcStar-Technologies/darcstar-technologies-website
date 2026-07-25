@@ -21,12 +21,15 @@ const FORBIDDEN: { name: string; pattern: RegExp; keys?: RegExp }[] = [
 	{ name: 'hidden-dimension wording', pattern: /hidden[- ]?(dim|unit)/i },
 	{ name: 'hidden-dim shorthand (h=N)', pattern: /\bh=\d+/ },
 	// The word "parameter" is legitimate elsewhere (query params, form copy), so the word-form
-	// check is scoped to the keys the evidence pages render: their own `evidence_*` copy AND
-	// the `domain_*` labels the domains card pulls in through $lib/evidence's DOMAINS.
+	// check is scoped to the keys that describe the engine: the evidence pages' own `evidence_*`
+	// copy, the `domain_*` labels the domains card pulls in through $lib/evidence's DOMAINS, and
+	// the homepage's `section_domains_*` block — the domains section is prose ABOUT the engine's
+	// specialization, the likeliest place for an architecture number to be written in by hand
+	// (DAR-46 added section_domains_scope there, outside the original two prefixes).
 	{
 		name: 'parameter-count wording on evidence copy',
 		pattern: /\bparameters?\b/i,
-		keys: /^(evidence|domain)_/
+		keys: /^(evidence|domain|section_domains)_/
 	}
 ];
 
