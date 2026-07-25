@@ -36,13 +36,45 @@ unchanged since v1:
   row), so without the gate the ack would be an unthrottled mailbomb.
 - **Anti-enumeration** — new vs. existing email return the identical success shape.
 
+## Step 2 — use-case questions (live)
+
+After a successful signup the page swaps step 2 (DAR-61) into the same glass-card: three optional
+single-selects — **primary application**, **your role** (the v2 `WAITLIST_V2_ROLES` set written to
+the existing `role` column), and **evaluation timeline** — plus **Continue** / **Skip for now**.
+Slugs live in `waitlist-qualification.ts`; labels in `waitlist-application-labels.ts`,
+`waitlist-v2-role-labels.ts`, and `waitlist-timeline-labels.ts` (the v2 role labels are DISTINCT from
+the v1 `waitlist-role-labels.ts`, whose slugs survive only as stored history). `WaitlistStep2.svelte`
+owns the form; `+page.svelte` owns the step state machine (step-1 success → step 2 →
+confirmation — it checks the step-2 result FIRST, since on the JS path the step-1 result is still
+truthy).
+
+The write is `submitWaitlistStep2` (`waitlist-steps.remote.ts`, its own remote `form` — enhances
+with JS, degrades to a native per-step POST). It carries step 1's **continuation token** as a hidden
+field and enriches via `applyWaitlistStep` (per-step column map, keep-existing). Rules:
+
+- **Anti-oracle** — every path returns the identical `{ success: true }`. A bad/expired/decoy
+  token, a row that no longer exists, and a real write are indistinguishable, matching the token
+  layer's generic-null contract. Continue never surfaces a field error (an unknown slug coerces to
+  null, never rejects).
+- **Skip and empty Continue write nothing** — Skip must not persist partial junk, and an all-blank
+  Continue has nothing to enrich, so both short-circuit _before any DB round-trip_ (which is also what
+  keeps the step-2 e2e hermetic against the placeholder DB — it reaches step 2 via the honeypot's
+  decoy token, then skips / empty-continues with no query).
+- **Continue is first in the DOM** so it's the default submitter — pressing Enter continues, it
+  never accidentally skips.
+
+Routing (Continue → step 3 when the answers qualify as commercial/operational, else a step-4
+branch/confirmation) is defined server-side in the step-3 issue (DAR-62) and plugs into the
+`submitWaitlistStep2` seam; today both Continue and Skip terminate at the confirmation.
+
 ## v2 progressive qualification flow (DAR-58)
 
 The single form is being replaced by a short progressive flow (step 1 secures the signup; steps 2–4
 gather qualification data from people willing to continue). **DAR-59 shipped the data-model
 foundation** (schema columns, validators, store step-path, continuation token) and **DAR-60 shipped
-step 1** (the core signup above, whose success response returns the token). Steps 2–4's UIs +
-endpoints land in DAR-61…DAR-63; the classifier + admin view in DAR-65; funnel analytics in DAR-66.
+step 1** (the core signup above) and **DAR-61 shipped step 2** (the use-case questions — see
+`## Step 2` above). Steps 3–4's UIs + endpoints land in DAR-62/63; the classifier + admin view in
+DAR-65; funnel analytics in DAR-66.
 
 ### Qualification columns
 
@@ -108,8 +140,10 @@ can carry a `value=` attribute without silently dropping the opt-in.
 
 ## Admin
 
-`/admin/waitlist` is the staff triage view (gated by the `/admin` layout). Its column projection is
-v1-only today; DAR-65 adds the qualification columns, classification, and consent visibility.
+`/admin/waitlist` is the staff triage view (gated by the `/admin` layout). Its `role` column now
+resolves both the v1 and v2 label sets (DAR-61 writes v2 role slugs into that shared column, so the
+roster shows the localized label, not the raw slug); the remaining qualification columns,
+classification, and consent visibility land in DAR-65.
 
 ## Setup
 

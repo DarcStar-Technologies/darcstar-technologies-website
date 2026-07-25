@@ -12,17 +12,21 @@
 	// optional. The old `<details>` enrichment disclosure is gone — role moves to step 2, phone to
 	// step 4A, and company-size/interest/hear-about left the UI (their columns stay per DAR-59).
 	//
-	// The success response now also carries the DAR-59 continuation token (joinWaitlist.result.token).
-	// Step 2 (DAR-61) will swap this confirmation for the step-2 transition; until then a completed
-	// signup shows the confirmation, which is the correct terminal state for step 1 on its own.
+	// The success response also carries the DAR-59 continuation token (joinWaitlist.result.token). This
+	// page is the step state machine: step-1 success advances to step 2 (DAR-61, the WaitlistStep2
+	// component) rather than straight to the confirmation, carrying the token as its authorization; the
+	// confirmation is the terminal state shown once step 2 is submitted (Continue or Skip). See the
+	// {#if} below for the three states.
 	import Seo from '$lib/components/Seo.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import ContactSuccess from '$lib/components/ContactSuccess.svelte';
 	import FormPrivacyNotice from '$lib/components/FormPrivacyNotice.svelte';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
+	import WaitlistStep2 from '$lib/components/WaitlistStep2.svelte';
 	import { fieldClass } from '$lib/components/ContactFields.svelte';
 	import { joinWaitlist } from '$lib/waitlist.remote';
+	import { submitWaitlistStep2 } from '$lib/waitlist-steps.remote';
 	import { WAITLIST_REGIONS } from '$lib/waitlist-qualification';
 	import { waitlistRegionLabel } from '$lib/waitlist-region-labels';
 	import { localizeHref } from '$lib/paraglide/runtime';
@@ -76,7 +80,9 @@
 
 <section class="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:py-16">
 	<div class="glass-card mx-auto w-full max-w-lg p-6 text-left sm:p-8">
-		{#if joinWaitlist.result?.success}
+		{#if submitWaitlistStep2.result?.success}
+			<!-- Terminal state: step 2 submitted (Continue or Skip). Check this FIRST — on the JS path
+			     joinWaitlist.result is still truthy here, so the step-2 result must take precedence. -->
 			<ContactSuccess title={m.waitlist_success_title()} body={m.waitlist_success_body()}>
 				{#snippet action()}
 					<div class="mt-6 flex justify-center">
@@ -84,6 +90,11 @@
 					</div>
 				{/snippet}
 			</ContactSuccess>
+		{:else if joinWaitlist.result?.success}
+			<!-- Step-1 signup succeeded → the optional step-2 questions, authorized by the token step 1
+			     returned. A misconfigured (secret-less) signup returns no token; the step then can't
+			     enrich, but the questions still render and Skip still terminates cleanly. -->
+			<WaitlistStep2 token={joinWaitlist.result.token ?? ''} />
 		{:else}
 			<p class="eyebrow text-xs tracking-[0.25em]">{m.waitlist_page_eyebrow()}</p>
 			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">{m.waitlist_heading()}</h1>
