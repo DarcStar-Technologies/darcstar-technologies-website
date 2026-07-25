@@ -86,14 +86,16 @@ describe('upsertWaitlist', () => {
 		expect(all[0].company).toBe('Acme'); // the mixed-case resubmit still ENRICHED the row
 	});
 
-	it('enriches: fills newly-provided fields, never erases existing ones', async () => {
+	it('enriches FILL-FORWARD: fills null columns but never overwrites a stored value', async () => {
 		await upsertWaitlist(
 			db,
 			{ ...base, name: 'Ada', company: 'Acme', interest: 'Robotics' },
 			'h',
 			null
 		);
-		// resubmit adds a role + a new interest, leaves name/company blank → they must survive
+		// A resubmit fills a still-null column (role) but a value for an already-set one (interest)
+		// must NOT overwrite it — step 1 is unauthenticated, so a stranger who knows the email can't
+		// clobber stored data. name/company are blank here, so they survive under either policy.
 		await upsertWaitlist(
 			db,
 			{ ...base, role: 'engineering', interest: 'Fleet logistics' },
@@ -103,8 +105,26 @@ describe('upsertWaitlist', () => {
 		const [row] = await rows();
 		expect(row.name).toBe('Ada'); // preserved (blank on resubmit)
 		expect(row.company).toBe('Acme'); // preserved
-		expect(row.role).toBe('engineering'); // filled
-		expect(row.interest).toBe('Fleet logistics'); // updated (provided value wins)
+		expect(row.role).toBe('engineering'); // filled (was null)
+		expect(row.interest).toBe('Robotics'); // NOT overwritten — fill-forward keeps the stored value
+	});
+
+	it('enrich cannot overwrite a stored identity value even when a new one is supplied', async () => {
+		// The security property behind fillIfEmpty: required-name (DAR-60) means every submit carries a
+		// name, but an anonymous resubmit for a known email must not replace the stored one — and it's
+		// throttle-exempt (enrich adds no row), so overwrite would be an unbounded vandalism vector.
+		await upsertWaitlist(db, { ...base, name: 'Ada Lovelace', company: 'Acme' }, 'h', null);
+		const r = await upsertWaitlist(
+			db,
+			{ ...base, name: 'Mallory', company: 'Evil Corp', countryRegion: 'europe' },
+			'other-ip',
+			null
+		);
+		expect(r.isNew).toBe(false);
+		const [row] = await rows();
+		expect(row.name).toBe('Ada Lovelace'); // attacker-supplied name did NOT win
+		expect(row.company).toBe('Acme'); // nor company
+		expect(row.countryRegion).toBe('europe'); // but a previously-NULL field still fills forward
 	});
 
 	it('leaves created_at unchanged across an enrich (it is an UPDATE, not a new row)', async () => {

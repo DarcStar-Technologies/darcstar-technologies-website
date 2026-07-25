@@ -1,7 +1,8 @@
 // Pure waitlist helpers — no DB / SvelteKit-request imports, so they're unit-testable in isolation
 // (src/lib/server/waitlist.spec.ts). The remote function (src/lib/waitlist.remote.ts) is the only
 // caller: it maps `errors` to `invalid(issue.*())` and UPSERTs `cleaned`. The slug lists are the
-// client-safe single sources shared with the form's <select>s; `interest` is deliberately free text.
+// client-safe single sources the selects + admin view share; `interest` is a retained free-text
+// column — its form input and suggestion datalist were retired in DAR-60, the column kept per DAR-59.
 import { WAITLIST_ROLES, type WaitlistRole } from '$lib/waitlist-roles';
 import { WAITLIST_COMPANY_SIZES, type WaitlistCompanySize } from '$lib/waitlist-company-sizes';
 import {
@@ -39,7 +40,7 @@ export interface CleanedWaitlist {
 	company: string | null;
 	role: string | null; // validated slug or null
 	companySize: string | null; // validated slug or null
-	interest: string | null; // FREE TEXT (trimmed) — a growing list, not an enum
+	interest: string | null; // FREE TEXT (trimmed), not an enum; retained column, no longer surfaced in the form (DAR-60)
 	hearAbout: string | null; // validated slug or null
 	phone: string | null;
 	countryRegion: string | null; // validated slug or null (v2 step 1)
@@ -56,7 +57,7 @@ export interface WaitlistValidation {
 const EMAIL_MAX = 254; // RFC 5321 practical maximum
 const NAME_MAX = 100;
 const COMPANY_MAX = 200;
-const INTEREST_MAX = 120; // a short phrase, not an essay — keeps the free-text datalist tidy
+const INTEREST_MAX = 120; // caps the retained free-text interest column (its input/datalist retired in DAR-60)
 const PHONE_MAX = 40;
 
 // Pragmatic email shape check (same as the contact validator): one @, a dot in the domain, no

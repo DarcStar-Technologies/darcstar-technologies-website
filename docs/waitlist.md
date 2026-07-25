@@ -26,8 +26,11 @@ unchanged since v1:
 - **IP/time throttle** — at most 5 signups per hashed IP per hour (`hashIp`, the same truncated
   SHA-256 as the contact form; the raw IP is never stored).
 - **Insert-or-enrich** on `lower(email)` (unique index) via `upsertWaitlist` — a re-signup enriches
-  the existing row (coalesce keep-existing: a provided value wins, a blank keeps what's stored)
-  rather than piling up duplicates. It returns `isNew` (a genuine first signup) and the row `id`.
+  the existing row **fill-forward** (`fillIfEmpty`: fills a still-null column, never overwrites a
+  stored value) rather than piling up duplicates. Step 1 is unauthenticated, so this stops a stranger
+  who knows an existing email from clobbering its name/company/region on a (throttle-exempt) resubmit;
+  the token-gated qualification steps keep provided-wins (`keepExisting`) since holding the token is
+  the authorization. It returns `isNew` (a genuine first signup) and the row `id`.
 - **Emails gated on `isNew`** — a lead → `info@` and a localized signer ack, fire-and-forget via
   `ctx.waitUntil`. Gating on `isNew` is the anti-abuse boundary: same-email replays enrich (add no
   row), so without the gate the ack would be an unthrottled mailbomb.
