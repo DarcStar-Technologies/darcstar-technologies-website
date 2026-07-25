@@ -21,6 +21,8 @@ const STATIC_PATHS = [
 	'/',
 	'/about',
 	'/evidence',
+	'/evidence/benchmarks',
+	'/evidence/proofs',
 	'/news',
 	'/research',
 	'/people',

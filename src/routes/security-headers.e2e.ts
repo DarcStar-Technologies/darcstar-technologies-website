@@ -102,6 +102,8 @@ const AUDITED_PAGES: { path: string; ready?: (page: Page) => Promise<void> }[] =
 	{ path: '/es' },
 	{ path: '/about' },
 	{ path: '/evidence' },
+	{ path: '/evidence/benchmarks' },
+	{ path: '/evidence/proofs' },
 	{ path: '/news' },
 	{ path: '/research' },
 	{ path: '/people' },

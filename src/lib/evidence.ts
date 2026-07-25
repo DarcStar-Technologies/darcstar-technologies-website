@@ -5,17 +5,18 @@
 // (a figure and its card's dated line change together) live in docs/evidence.md.
 import { m } from '$lib/paraglide/messages.js';
 
-/** Mean single-cell CfC forward pass (the h=16 reference kernel — NOT the deployed
- * controller), measured December 2025. */
+/** Mean single-cell CfC forward pass of the reference kernel (NOT the deployed controller),
+ * measured December 2025. Exact kernel dimensions are deliberately unstated — see the IP
+ * boundary in docs/evidence.md. */
 export const CFC_KERNEL_LATENCY = '0.767 µs';
 
 /** Derived, never separately measured: the 10 ms (100 Hz) control budget ÷ the measured
  * kernel latency above. */
 export const REALTIME_MULTIPLE = '13,000×';
 
-// Theorem-catalog counts as of GIDE release v2026.07.1 (July 2026): the conformance
-// registry's machine-checked set is complete (dual-prover, zero local axioms) + axiom-backed.
-export const THEOREMS_CATALOGUED = 338;
+// Machine-checked theorem counts as of GIDE release v2026.07.1 (July 2026): complete
+// (dual-prover, zero local axioms) + axiom-backed. Deliberately NOT here: the catalog total /
+// not-yet-mechanized remainder — the public surface states what IS proven, not the backlog.
 export const THEOREMS_COMPLETE = 31;
 export const THEOREMS_AXIOM_BACKED = 188;
 export const THEOREMS_CHECKED = THEOREMS_COMPLETE + THEOREMS_AXIOM_BACKED;

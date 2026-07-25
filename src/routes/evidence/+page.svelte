@@ -1,8 +1,9 @@
 <script lang="ts">
-	// /evidence (DAR-43) — the IP-safe backing for every major homepage claim: one card per claim
-	// with its date/version, environment, methodology, assumptions, and — deliberately — what the
-	// claim does NOT cover, plus the IP boundary (what stays private and the NDA path). Content-only
-	// page on /privacy's mold: no loader, all copy in Paraglide messages.
+	// /evidence (DAR-43) — the IP-safe backing for every major homepage claim: one LEAN card per
+	// claim (claim + date/version, a method summary, and — deliberately — what the claim does NOT
+	// cover), linking to the depth pages /evidence/benchmarks (run-level hardware detail) and
+	// /evidence/proofs (proving methodology); plus the IP boundary (what stays private and the NDA
+	// path). Content-only page on /privacy's mold: no loader, all copy in Paraglide messages.
 	//
 	// The facts here are transcribed from the GIDE hub's own source-of-record documents (benchmark
 	// corpus + attribution ledger, theorem catalog + conformance registry) — see docs/evidence.md
@@ -15,14 +16,16 @@
 	import PageHero from '$lib/components/PageHero.svelte';
 	import Seo from '$lib/components/Seo.svelte';
 	import LegalSection from '$lib/components/LegalSection.svelte';
+	import EvidenceClaimHeader from '$lib/components/EvidenceClaimHeader.svelte';
 	import { m } from '$lib/paraglide/messages.js';
+	import { localizeHref } from '$lib/paraglide/runtime';
 	import { contactDialog } from '$lib/contact-dialog.svelte';
+	import { inlineLinkClass } from '$lib/styles';
 	import {
 		CFC_KERNEL_LATENCY,
 		DOMAINS,
 		REALTIME_MULTIPLE,
 		THEOREMS_AXIOM_BACKED,
-		THEOREMS_CATALOGUED,
 		THEOREMS_CHECKED,
 		THEOREMS_COMPLETE
 	} from '$lib/evidence';
@@ -37,6 +40,8 @@
 		dated: string;
 		claim: string;
 		fields: EvidenceField[];
+		/** Detail-page link (run-level benchmarks, proof methodology) rendered after the fields. */
+		more?: { href: string; label: string };
 	};
 
 	// `$derived` for the same reason as the homepage readouts: message calls re-resolve if a
@@ -50,11 +55,10 @@
 			dated: m.evidence_cfc_dated(),
 			claim: m.evidence_cfc_claim({ latency: CFC_KERNEL_LATENCY }),
 			fields: [
-				{ label: m.evidence_label_environment(), body: m.evidence_cfc_environment() },
 				{ label: m.evidence_label_method(), body: m.evidence_cfc_method() },
-				{ label: m.evidence_label_not_covered(), body: m.evidence_cfc_not_covered() },
-				{ label: m.evidence_label_artifacts(), body: m.evidence_cfc_artifacts() }
-			]
+				{ label: m.evidence_label_not_covered(), body: m.evidence_cfc_not_covered() }
+			],
+			more: { href: '/evidence/benchmarks', label: m.evidence_cfc_more() }
 		},
 		{
 			id: 'realtime',
@@ -68,7 +72,8 @@
 			fields: [
 				{ label: m.evidence_label_method(), body: m.evidence_realtime_method() },
 				{ label: m.evidence_label_not_covered(), body: m.evidence_realtime_not_covered() }
-			]
+			],
+			more: { href: '/evidence/benchmarks', label: m.evidence_cfc_more() }
 		},
 		{
 			id: 'theorems',
@@ -77,17 +82,11 @@
 			dated: m.evidence_theorems_dated(),
 			claim: m.evidence_theorems_claim({
 				checked: THEOREMS_CHECKED,
-				catalogued: THEOREMS_CATALOGUED,
 				complete: THEOREMS_COMPLETE,
-				axiomBacked: THEOREMS_AXIOM_BACKED,
-				excluded: THEOREMS_CATALOGUED - THEOREMS_CHECKED
+				axiomBacked: THEOREMS_AXIOM_BACKED
 			}),
-			fields: [
-				{ label: m.evidence_label_provers(), body: m.evidence_theorems_provers() },
-				{ label: m.evidence_label_method(), body: m.evidence_theorems_method() },
-				{ label: m.evidence_label_not_covered(), body: m.evidence_theorems_not_covered() },
-				{ label: m.evidence_label_artifacts(), body: m.evidence_theorems_artifacts() }
-			]
+			fields: [{ label: m.evidence_label_not_covered(), body: m.evidence_theorems_not_covered() }],
+			more: { href: '/evidence/proofs', label: m.evidence_theorems_more() }
 		},
 		{
 			id: 'safety',
@@ -135,14 +134,12 @@
 		     heading navigation, the /privacy items pattern. -->
 		{#each cards as card (card.id)}
 			<section id={card.id} class="glass-card scroll-mt-24 p-8 sm:p-10">
-				<div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-					{#if card.value}
-						<span class="font-mono text-2xl text-white">{card.value}</span>
-					{/if}
-					<h2 class="text-xl font-medium tracking-tight text-white sm:text-2xl">{card.title}</h2>
-				</div>
-				<p class="mt-1.5 font-mono text-xs tracking-wide text-muted">{card.dated}</p>
-				<p class="mt-4 text-sm leading-relaxed text-body">{card.claim}</p>
+				<EvidenceClaimHeader
+					value={card.value}
+					title={card.title}
+					dated={card.dated}
+					claim={card.claim}
+				/>
 				<div class="mt-6 space-y-5">
 					{#each card.fields as field, i (i)}
 						<div>
@@ -151,6 +148,11 @@
 						</div>
 					{/each}
 				</div>
+				{#if card.more}
+					<p class="mt-6 text-sm">
+						<a href={localizeHref(card.more.href)} class={inlineLinkClass}>{card.more.label}</a>
+					</p>
+				{/if}
 			</section>
 		{/each}
 
