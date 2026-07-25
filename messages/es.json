@@ -164,7 +164,7 @@
 	"evidence_domains_dated": "One verified core, specialized at compile time",
 	"evidence_domains_claim": "Five domains build and run end-to-end against the same verified core. Shipped means the domain exists as a working subsystem with its own harness — maturity varies and is stated per domain below, not rounded up.",
 	"evidence_domain_cartpole_body": "The original demonstration domain: 3D cart-pole balancing with machine-checked CBF safety filtering.",
-	"evidence_domain_quadrotor_body": "6-DOF rigid-body dynamics under a hybrid cascade controller, with the deployed configuration benchmarked end-to-end on the benchmarks page.",
+	"evidence_domain_quadrotor_body": "6-DOF rigid-body dynamics under a hybrid cascade controller, with the deployed configuration benchmarked end-to-end.",
 	"evidence_domain_markets_body": "Live FX market data and paper trading against the Oanda API, driven by a 36-objective training curriculum.",
 	"evidence_domain_llm_body": "Entropy, grounding, and safety regulation for language-model control behind a multi-tier governance pipeline.",
 	"evidence_domain_selfdev_body": "The youngest domain: an autonomous spec → build → verify loop, currently approaching its first fully autonomous cycle — we say so rather than round up.",
@@ -177,7 +177,7 @@
 	"evidence_back": "← All evidence",
 
 	"evidence_bench_page_title": "Benchmarks — DarcStar Technologies",
-	"evidence_bench_page_description": "Every benchmark figure behind darcstar.tech, run by run: methodology, environment, attribution, and the reproduction path.",
+	"evidence_bench_page_description": "Every benchmark figure behind darcstar.tech, run by run: methodology, environment, and attribution.",
 	"evidence_bench_heading": "Measured on real",
 	"evidence_bench_heading_emphasis": "hardware",
 	"evidence_bench_lead": "The run-level detail behind the latency figures: how each number was measured, on what, with the attribution behind it — including the gaps we log rather than hide.",
@@ -190,7 +190,7 @@
 	"evidence_bench_rerun_x86_body": "Committed x86 re-runs land between 0.81 and 0.91 µs mean.",
 	"evidence_bench_controller_heading": "The deployed controller",
 	"evidence_bench_controller_body": "A deployed end-to-end controller measures ≈52 µs p50 / ≈94 µs p99 — the figure to cite for whole-controller latency. It clears the 10 ms real-time budget by roughly 190×.",
-	"evidence_bench_artifacts_heading": "Artifacts & reproduction",
+	"evidence_bench_artifacts_heading": "Artifacts",
 
 	"evidence_proofs_page_title": "Proof methodology — DarcStar Technologies",
 	"evidence_proofs_page_description": "What machine-checked means at DarcStar: the definition of proven, the provers and checkers behind it, the verification methodology, and the trust boundary.",

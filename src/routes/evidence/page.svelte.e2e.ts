@@ -41,7 +41,22 @@ test('benchmarks detail page carries the hardware runs', async ({ page }) => {
 	await expect(page.getByText('0.767 µs', { exact: true })).toBeVisible();
 	await expect(page.getByText('Neoverse-N2')).toBeVisible();
 	await expect(page.getByText('0.81 and 0.91 µs')).toBeVisible();
-	await expect(page.getByText('parameters')).toHaveCount(0);
+	// The whole-controller figure — the number this page exists to carry (the copy calls it
+	// "the figure to cite"); its absence must fail, not just the kernel figures'.
+	await expect(page.getByText('52 µs p50')).toBeVisible();
+	await expect(page.getByText('parameter')).toHaveCount(0);
+});
+
+// The card → detail-page hops, actually clicked: link-name presence can't catch a
+// fat-fingered `more.href`, and a direct goto exercises the page but never the link.
+test('card links navigate to their detail pages', async ({ page }) => {
+	await page.goto('/evidence');
+	await page.getByRole('link', { name: 'What machine-checked means' }).click();
+	await expect(page).toHaveURL(/\/evidence\/proofs$/);
+
+	await page.goto('/evidence');
+	await page.getByRole('link', { name: 'Hardware runs & full methodology' }).first().click();
+	await expect(page).toHaveURL(/\/evidence\/benchmarks$/);
 });
 
 // The proof-methodology detail page defines "machine-checked" (complete vs axiom-backed),

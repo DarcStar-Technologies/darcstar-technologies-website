@@ -1,9 +1,11 @@
 # Evidence page — /evidence (DAR-43)
 
-The public, IP-safe backing for every major homepage claim. One claim card per claim, each
-carrying: the exact claim + its date/version, environment, methodology, assumptions, prover
-versions, **what the claim does not cover**, and the artifact/verification path — plus the IP
-boundary (what stays private, and the NDA route for qualified partners).
+The public, IP-safe backing for every major homepage claim. One **lean** claim card per
+claim — the exact claim + its date/version, a methodology summary, and **what the claim does
+not cover** — linking to two depth pages: `/evidence/benchmarks` (run-level environment,
+per-run figures, attribution, artifacts) and `/evidence/proofs` (what proven means, prover
+versions, methodology, trust boundary). Plus the IP boundary (what stays private, and the NDA
+route for qualified partners).
 
 Content-only page on the `/privacy` mold: no loader, all copy in Paraglide messages
 (`evidence_*` keys), shared `PageHero` + `LegalSection`, claim cards rendered from a data
@@ -56,4 +58,8 @@ audit — this repo holds only the public prose, never the artifacts):
 - **Deliberately NOT published anywhere** (beyond the ticket's IP list): exact neural
   architecture numbers (hidden dims, parameter counts — an architecture fingerprint), and
   the theorem-catalog total / not-yet-mechanized remainder (the surface states what IS
-  proven, not the backlog). The e2e asserts both absences — keep it that way.
+  proven, not the backlog). Two guards enforce it: `src/lib/evidence-boundary.spec.ts`
+  scans the FULL message catalog (every key, both locale files) for the forbidden patterns,
+  and the evidence e2e asserts the rendered absences. A hit means reword the copy — never
+  loosen the pattern. This applies to source comments too (they're published in this public
+  repo), not just rendered copy.

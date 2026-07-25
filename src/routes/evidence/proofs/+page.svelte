@@ -26,7 +26,7 @@
 	/>
 
 	<div class="mx-auto w-full max-w-3xl space-y-8">
-		<p>
+		<p class="text-sm">
 			<a href={localizeHref('/evidence')} class={inlineLinkClass}>{m.evidence_back()}</a>
 		</p>
 

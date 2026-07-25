@@ -7,11 +7,20 @@
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import PageHero from '$lib/components/PageHero.svelte';
 	import Seo from '$lib/components/Seo.svelte';
+	import EvidenceClaimHeader from '$lib/components/EvidenceClaimHeader.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { inlineLinkClass } from '$lib/styles';
 	import { CFC_KERNEL_LATENCY } from '$lib/evidence';
 </script>
+
+<!-- One labeled field row (the /evidence card-field shape — eyebrow label + body). -->
+{#snippet field(label: string, body: string)}
+	<div>
+		<h3 class="eyebrow text-xs tracking-widest">{label}</h3>
+		<p class="mt-1.5 text-sm leading-relaxed text-body">{body}</p>
+	</div>
+{/snippet}
 
 <Seo title={m.evidence_bench_page_title()} description={m.evidence_bench_page_description()} />
 
@@ -26,30 +35,20 @@
 	/>
 
 	<div class="mx-auto w-full max-w-3xl space-y-8">
-		<p>
+		<p class="text-sm">
 			<a href={localizeHref('/evidence')} class={inlineLinkClass}>{m.evidence_back()}</a>
 		</p>
 
 		<section class="glass-card p-8 sm:p-10">
-			<div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-				<span class="font-mono text-2xl text-white">{CFC_KERNEL_LATENCY}</span>
-				<h2 class="text-xl font-medium tracking-tight text-white sm:text-2xl">
-					{m.evidence_bench_kernel_heading()}
-				</h2>
-			</div>
-			<p class="mt-1.5 font-mono text-xs tracking-wide text-muted">{m.evidence_cfc_dated()}</p>
-			<p class="mt-4 text-sm leading-relaxed text-body">
-				{m.evidence_cfc_claim({ latency: CFC_KERNEL_LATENCY })}
-			</p>
+			<EvidenceClaimHeader
+				value={CFC_KERNEL_LATENCY}
+				title={m.evidence_bench_kernel_heading()}
+				dated={m.evidence_cfc_dated()}
+				claim={m.evidence_cfc_claim({ latency: CFC_KERNEL_LATENCY })}
+			/>
 			<div class="mt-6 space-y-5">
-				<div>
-					<h3 class="eyebrow text-xs tracking-widest">{m.evidence_label_method()}</h3>
-					<p class="mt-1.5 text-sm leading-relaxed text-body">{m.evidence_bench_kernel_method()}</p>
-				</div>
-				<div>
-					<h3 class="eyebrow text-xs tracking-widest">{m.evidence_label_environment()}</h3>
-					<p class="mt-1.5 text-sm leading-relaxed text-body">{m.evidence_cfc_environment()}</p>
-				</div>
+				{@render field(m.evidence_label_method(), m.evidence_bench_kernel_method())}
+				{@render field(m.evidence_label_environment(), m.evidence_cfc_environment())}
 			</div>
 		</section>
 
@@ -58,18 +57,8 @@
 				{m.evidence_bench_reruns_heading()}
 			</h2>
 			<div class="mt-6 space-y-5">
-				<div>
-					<h3 class="eyebrow text-xs tracking-widest">{m.evidence_bench_rerun_arm_label()}</h3>
-					<p class="mt-1.5 text-sm leading-relaxed text-body">
-						{m.evidence_bench_rerun_arm_body()}
-					</p>
-				</div>
-				<div>
-					<h3 class="eyebrow text-xs tracking-widest">{m.evidence_bench_rerun_x86_label()}</h3>
-					<p class="mt-1.5 text-sm leading-relaxed text-body">
-						{m.evidence_bench_rerun_x86_body()}
-					</p>
-				</div>
+				{@render field(m.evidence_bench_rerun_arm_label(), m.evidence_bench_rerun_arm_body())}
+				{@render field(m.evidence_bench_rerun_x86_label(), m.evidence_bench_rerun_x86_body())}
 			</div>
 		</section>
 
