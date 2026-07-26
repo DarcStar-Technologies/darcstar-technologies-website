@@ -60,7 +60,7 @@ function b64urlDecode(s: string): Uint8Array<ArrayBuffer> | null {
 // ---------------------------------------------------------------------------------------------
 // The signing core. BOTH of the flow's signed values share this shape — `<prefix>.<payload>.<exp>.
 // <mac>` — and, more importantly, one implementation of the canonicalization rules below: the
-// continuation token here, and DAR-63's step-4 branch claim (waitlist-flow.ts, which owns routing
+// continuation token here, and the flow claim (waitlist-flow.ts, which owns routing
 // and therefore its own tamper-proof transport). `domain` + `prefix` keep them apart — a value
 // minted as one can never verify as the other, even though both key off BETTER_AUTH_SECRET.
 

@@ -103,6 +103,40 @@ pilots or contact permission. Labels live in `waitlist-labels.ts` like every oth
 - **Branch B preferences are not consent.** `consent_updates` (step 1) governs whether we may write
   at all, and is itself an unverified single-opt-in claim.
 
+## The confirmation — one personalized CTA (live)
+
+Every path ends on `WaitlistConfirmation.svelte` (DAR-64): the full flow, a Skip at any step, and
+both step-4 branches. It reuses the shared `ContactSuccess` shell (check badge + title/body) and adds
+**exactly one** call to action, chosen from four:
+
+| Audience                                   | CTA                                | Target                                  |
+| ------------------------------------------ | ---------------------------------- | --------------------------------------- |
+| Strong pilot prospect (positive 4A pilot)  | Request an evaluation conversation | `/contact`, upgraded to the modal by JS |
+| Technical evaluator (commercial, no pilot) | View the GIDE evidence overview    | `/evidence`                             |
+| Researcher / education (or investor)       | Explore technical publications     | `/research`                             |
+| General signup (nothing classifiable)      | Return to DarcStar                 | `/`                                     |
+
+- **The variant is a SERVER decision.** `confirmationCtaFor` (`waitlist-flow.ts`) picks it from the
+  same flow state that routes the steps, and the terminal step's response carries the resolved value
+  as `cta`; the component receives a bare slug and only maps it to a label + href. Nothing is
+  re-derived from form values in the browser.
+- **Ordered by the strongest signal**, with fail-safe polarity at the bottom: a positive pilot answer
+  outranks any audience (and is the ONLY route to the conversation CTA — branch B can't reach it,
+  because it never asks the question), and an unknown audience gets `home`, which commits to nothing.
+  A **Skip** is treated as "we learned nothing" for the step it skipped: skipping step 2 → `home`;
+  skipping step 3 or 4 keeps the audience step 2 established, since a skip persists nothing but
+  doesn't retract what was already answered.
+- **Nothing the visitor answered is echoed back.** The screen is fixed copy plus a link, so the
+  internal-only value/budget/deployment answers have no path to it — asserted in the e2e, which fails
+  on a currency figure or a budget/impact/deployment label anywhere in the confirmation.
+- **No-JS**: all four variants are real `<a href>`s. The pilot one is genuinely a `/contact` link;
+  with JS a click handler opens the site-wide `contactDialog` in place instead (modifier and
+  non-primary clicks are left alone so "open in a new tab" still works), and `aria-haspopup="dialog"`
+  is `mounted`-gated so the ARIA promise is only made once it's true.
+- The epic's `evaluation_conversation_requested` **analytics event is not fired** — the site has no
+  analytics transport yet. Its call site is marked in `WaitlistConfirmation.svelte`; **DAR-66** owns
+  it.
+
 ## The routing rules (`src/lib/server/waitlist-flow.ts`)
 
 Every routing decision is implemented ONCE here — the step endpoints and DAR-65's classifier reuse
@@ -120,6 +154,13 @@ these rather than restating them:
   `3-12-months` → **A**, everything else (incl. unanswered, unrecognized) → **B**, the branch that
   asks nothing sensitive. Keyed on the timeline ALONE — role/application gate step 3, not this fork,
   so a researcher who is evaluating now still gets asked branch A's question.
+- `audienceFor({ role, primaryApplication })` — DAR-64's three-way split for the confirmation CTA:
+  `commercial` (reusing `isCommercialUseCase`, not restating it), `research` (an answered but
+  excluded signal — researcher/student/**investor**/research-education), `general` (nothing
+  recognized). The step-3 gate's boolean can't serve here, because "told us they're a researcher" and
+  "told us nothing" are both non-commercial but only one has an interest worth pointing at.
+- `confirmationCtaFor({ audience, pilotInterest })` — the CTA itself, ordered strongest-signal-first
+  with `home` as the fail-safe floor. See **The confirmation** above.
 - It lives under **`$lib/server`** on purpose: the decision must never be client-authoritative, and
   the import guard makes that structural (a component physically cannot import it). The browser learns
   the next step only from a step response's `next`.
@@ -130,25 +171,32 @@ these rather than restating them:
   lose data. The one exception is step 4A's `contact_permission`, gated at the validator so a grant
   can only be recorded from a question that was actually on screen.
 
-### The branch claim — why step 3 doesn't read the row
+### The flow claim — why later steps don't read the row
 
-The fork reads `evaluation_timeline`, answered at **step 2** — but a commercial visitor passes
-through step 3, whose form doesn't re-ask it. Recovering it by **reading the stored row was
-rejected**: `next` would then depend on stored state, and the continuation token deliberately reaches
-any submitter of a known email, so a `next: 'step4a'` would prove "this address is on the list, with a
-near-term timeline" to anyone who guesses it. Instead step 2 **signs** the decided branch
-(`mintWaitlistBranchClaim` — its own domain + `b1` prefix over the same secret, so it can never be
-confused with a continuation token) and returns it as `branchClaim`; step 3's form carries it as a
-hidden field and the endpoint verifies it. The MAC is what makes the hidden field safe — nobody can
-edit their way into branch A's contact-collection — and because the claim is minted from answers the
-visitor just submitted, it tells its holder nothing they didn't already know. It is **not** bound to
-the row id: it authorizes no write, it only chooses which questions render.
+Two decisions are settled by the **step-2** answers and re-asked by nothing afterwards: the step-4
+fork (from `evaluation_timeline`) and the confirmation's CTA audience (from role/application).
+Recovering them by **reading the stored row was rejected**: `next` and `cta` would then depend on
+stored state, and the continuation token deliberately reaches any submitter of a known email, so a
+`next: 'step4a'` would prove "this address is on the list, with a near-term timeline" to anyone who
+guesses it. Instead step 2 **signs** both (`mintWaitlistFlowClaim`, payload `<branch>|<audience>` —
+its own domain + `f1` prefix over the same secret, so it can never be confused with a continuation
+token) and returns it as `flowClaim`; each later step's form carries it as a hidden field and the
+endpoint verifies it. The MAC is what makes the hidden field safe — nobody can edit their way into
+branch A's contact-collection, or promote themselves into the pilot CTA — and because the claim is
+minted from answers the visitor just submitted, it tells its holder nothing they didn't already know.
+It is **not** bound to the row id: it authorizes no write, it only chooses which questions render and
+which link the confirmation offers.
+
+One claim rather than one per fact: a second signed field per decision would multiply the wiring at
+every step for no added guarantee, since the MAC covers the whole payload either way. Both halves are
+closed vocabularies and `verifyWaitlistFlowClaim` narrows against them rather than casting.
 
 ### Two mechanics the later steps inherit
 
-- **The token echo.** Each step response returns the submitted `token` verbatim (capped, never
-  re-minted) so the NEXT step's hidden field survives a no-JS re-render — after a native per-step POST
-  the step-1 result is gone. Reflecting the caller's own input hands out nothing new.
+- **The signed-value echo.** Each step response returns the submitted `token` — and, through step 3,
+  the `flowClaim` — verbatim (capped, never re-minted) so the NEXT step's hidden fields survive a
+  no-JS re-render; after a native per-step POST the previous result is gone. Reflecting the caller's
+  own input hands out nothing new, and never re-minting means one place decides what a claim says.
 - **Best-effort enrich** (`applyStepBestEffort`). The row persisted at step 1 and these steps are
   optional enrichment, so a DB failure logs and moves on instead of erroring the visitor's flow — the
   same posture as the fire-and-forget notification emails. A verification failure is silent for the
@@ -164,9 +212,10 @@ The single form is being replaced by a short progressive flow (step 1 secures th
 gather qualification data from people willing to continue). **DAR-59 shipped the data-model
 foundation** (schema columns, validators, store step-path, continuation token); **DAR-60 shipped
 step 1** (the core signup above), **DAR-61 step 2** (use-case questions), **DAR-62 step 3**
-(commercial context + the server-side flow gate) and **DAR-63 step 4** (the A/B intent branches) —
-see the sections above. The flow is now complete end to end; the classifier + admin view land in
-DAR-65, funnel analytics in DAR-66.
+(commercial context + the server-side flow gate), **DAR-63 step 4** (the A/B intent branches) and
+**DAR-64 the confirmation** (one server-chosen CTA) — see the sections above. The flow is now
+complete end to end; the classifier + admin view land in DAR-65, funnel analytics (including the
+confirmation's `evaluation_conversation_requested` event) in DAR-66.
 
 ### Qualification columns
 

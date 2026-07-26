@@ -33,7 +33,10 @@
 	} from '$lib/waitlist-labels';
 	import { m } from '$lib/paraglide/messages.js';
 
-	let { token }: { token: string } = $props();
+	// `flowClaim` carries step 2's signed decisions. This is the terminal step, so what it needs from
+	// them is the CTA audience the confirmation is personalized on (DAR-64) — passed straight through
+	// as a hidden field, never read here.
+	let { token, flowClaim }: { token: string; flowClaim: string } = $props();
 
 	// Slug → {value,label} options. `$derived` so labels re-resolve on locale change (the label
 	// accessors are $state-backed Paraglide messages).
@@ -66,6 +69,7 @@
 	<!-- The continuation token: authorization the server verifies before enriching the row. Hidden,
 	     carried through from whichever step routed here (step 3, or step 2 directly). -->
 	<input {...submitWaitlistStep4A.fields.token.as('hidden', token)} />
+	<input {...submitWaitlistStep4A.fields.flowClaim.as('hidden', flowClaim)} />
 
 	<GlassSelect
 		id="waitlist-pilot"

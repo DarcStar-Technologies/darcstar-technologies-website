@@ -16,11 +16,11 @@
 	// page is the step state machine: step-1 success advances to step 2 (DAR-61) rather than straight to
 	// the confirmation; a step-2 Continue from a commercial/operational use case advances to step 3
 	// (DAR-62), everyone else forks straight to a step-4 branch (DAR-63) — each carrying the token
-	// forward as its authorization. Which branch is a SERVER decision the page just obeys. See `stage`.
+	// forward as its authorization. Which branch is a SERVER decision the page just obeys, and so is
+	// the confirmation's CTA (DAR-64). See `stage` and `cta`.
 	import Seo from '$lib/components/Seo.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
-	import ContactSuccess from '$lib/components/ContactSuccess.svelte';
 	import FormPrivacyNotice from '$lib/components/FormPrivacyNotice.svelte';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
 	import WaitlistStepHeading from '$lib/components/WaitlistStepHeading.svelte';
@@ -28,6 +28,7 @@
 	import WaitlistStep3 from '$lib/components/WaitlistStep3.svelte';
 	import WaitlistStep4A from '$lib/components/WaitlistStep4A.svelte';
 	import WaitlistStep4B from '$lib/components/WaitlistStep4B.svelte';
+	import WaitlistConfirmation from '$lib/components/WaitlistConfirmation.svelte';
 	import { fieldClass } from '$lib/styles';
 	import { joinWaitlist } from '$lib/waitlist.remote';
 	import {
@@ -38,7 +39,6 @@
 	} from '$lib/waitlist-steps.remote';
 	import { WAITLIST_REGIONS } from '$lib/waitlist-qualification';
 	import { toOptions, waitlistRegionLabel } from '$lib/waitlist-labels';
-	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 
 	// Slug → {value,label} options for the region select. `$derived` so labels re-resolve on locale
@@ -69,9 +69,24 @@
 			''
 	);
 
-	// The signed step-4 branch, minted at step 2 and handed to step 3 so it survives the detour (step 3
-	// doesn't re-ask the timeline the fork reads). Opaque here — the page carries it, never reads it.
-	const branchClaim = $derived(submitWaitlistStep2.result?.branchClaim ?? '');
+	// Step 2's signed decisions — the step-4 branch and the confirmation's CTA audience — minted at
+	// step 2 and echoed by step 3 so they survive the detour (neither step re-asks the answers they
+	// were derived from). Opaque here: the page carries the claim to the next step, never reads it.
+	const flowClaim = $derived(
+		submitWaitlistStep3.result?.flowClaim ?? submitWaitlistStep2.result?.flowClaim ?? ''
+	);
+
+	// The confirmation's one call to action (DAR-64), decided server-side by whichever step ended the
+	// flow — only a terminal response carries one, so the same later-wins fallback chain as `stage`
+	// finds it. `'home'` is the fail-safe default (it commits to nothing) for the shapes that can't
+	// happen: no result at all, or a response that predates this field.
+	const cta = $derived(
+		submitWaitlistStep4A.result?.cta ??
+			submitWaitlistStep4B.result?.cta ??
+			submitWaitlistStep3.result?.cta ??
+			submitWaitlistStep2.result?.cta ??
+			'home'
+	);
 </script>
 
 <Seo title={m.waitlist_page_title()} description={m.waitlist_page_description()} />
@@ -118,22 +133,16 @@
 		{#if stage === 'done'}
 			<!-- Terminal state: the flow routed to the confirmation (a Skip, or the last step submitted).
 			     Value/budget answers are internal-only, so nothing from them is echoed back here. -->
-			<ContactSuccess title={m.waitlist_success_title()} body={m.waitlist_success_body()}>
-				{#snippet action()}
-					<div class="mt-6 flex justify-center">
-						<a href={localizeHref('/')} class="glass-btn btn-pill">{m.waitlist_page_back_home()}</a>
-					</div>
-				{/snippet}
-			</ContactSuccess>
+			<WaitlistConfirmation {cta} />
 		{:else if stage === 'step4a'}
 			<!-- Active commercial interest → pilot details (DAR-63 branch A). -->
-			<WaitlistStep4A token={stepToken} />
+			<WaitlistStep4A token={stepToken} {flowClaim} />
 		{:else if stage === 'step4b'}
 			<!-- Research or general interest → what they'd like to receive (DAR-63 branch B). -->
-			<WaitlistStep4B token={stepToken} />
+			<WaitlistStep4B token={stepToken} {flowClaim} />
 		{:else if stage === 'step3'}
 			<!-- Commercial/operational use case → the optional step-3 questions (DAR-62). -->
-			<WaitlistStep3 token={stepToken} {branchClaim} />
+			<WaitlistStep3 token={stepToken} {flowClaim} />
 		{:else if stage === 'step2'}
 			<!-- Step-1 signup succeeded → the optional step-2 questions, authorized by the token step 1
 			     returned. -->
