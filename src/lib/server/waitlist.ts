@@ -160,6 +160,25 @@ export function validateWaitlist(data: {
 // store (waitlist-store.ts applyWaitlistStep) writes only those, so a crafted POST can't reach
 // step-1 identity fields through a later step.
 
+/**
+ * Did a validated step payload carry ANY answer? The step endpoints short-circuit the DB write when
+ * it didn't (every field of every step is optional, so an all-blank Continue is valid — it just has
+ * nothing to enrich).
+ *
+ * Generic on purpose. This replaced four hand-maintained `a !== null || b !== null || …` chains, one
+ * per step, which had to be extended by hand whenever a validator gained a field — and the failure
+ * mode was invisible: forget the new field, and a submission answering ONLY that field would write
+ * nothing at all, silently (the enrich is best-effort and logs nothing on the happy path). Every
+ * validator below returns a flat object of `T | null`, so this is exactly equivalent and cannot
+ * fall behind.
+ *
+ * `!== null`, NOT truthiness: step 4A's `contactPermission: false` is a real answer (an explicit
+ * decline, which must be stored), and `''` never reaches here — the validators null empty strings.
+ */
+export function hasAnyAnswer(cleaned: object): boolean {
+	return Object.values(cleaned).some((value) => value !== null);
+}
+
 export interface CleanedWaitlistStep2 {
 	role: string | null;
 	primaryApplication: string | null;

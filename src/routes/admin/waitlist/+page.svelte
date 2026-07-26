@@ -5,10 +5,12 @@
 	// localized labels; `interest` is free text, shown verbatim.
 	import Seo from '$lib/components/Seo.svelte';
 	import { m } from '$lib/paraglide/messages.js';
-	import { waitlistRoleLabel } from '$lib/waitlist-role-labels';
-	import { waitlistV2RoleLabel } from '$lib/waitlist-v2-role-labels';
-	import { waitlistCompanySizeLabel } from '$lib/waitlist-company-size-labels';
-	import { waitlistReferralLabel } from '$lib/waitlist-referral-labels';
+	import {
+		waitlistRoleLabel,
+		waitlistV2RoleLabel,
+		waitlistCompanySizeLabel,
+		waitlistReferralLabel
+	} from '$lib/waitlist-labels';
 	import type { WaitlistRole } from '$lib/waitlist-roles';
 	import type { WaitlistV2Role } from '$lib/waitlist-qualification';
 	import type { WaitlistCompanySize } from '$lib/waitlist-company-sizes';

@@ -19,9 +19,10 @@
 	import { m } from '$lib/paraglide/messages.js';
 	// The shared inner form body (honeypot, fields, submit) — same as the modal's. This page
 	// only supplies its own <form> wrapper (for the no-JS native POST) and the interest
-	// control (a native <select>, since the modal's GlassSelect is JS-only). `fieldClass` is
-	// re-exported so that <select> matches the fields exactly.
-	import ContactFields, { fieldClass } from '$lib/components/ContactFields.svelte';
+	// control (a native <select>, since the modal's GlassSelect is JS-only). `fieldClass`
+	// ($lib/styles) is what makes that <select> match the fields exactly.
+	import ContactFields from '$lib/components/ContactFields.svelte';
+	import { fieldClass } from '$lib/styles';
 	import ContactSuccess from '$lib/components/ContactSuccess.svelte';
 </script>
 

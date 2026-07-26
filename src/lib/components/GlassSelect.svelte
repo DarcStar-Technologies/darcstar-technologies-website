@@ -5,13 +5,6 @@
 		value: string;
 		label: string;
 	}
-
-	// The label + help-line chrome every glass form field wears. Exported so the waitlist steps'
-	// non-select controls (step 4A's deployment-scale textarea and phone input) match their sibling
-	// selects exactly instead of re-typing the classes and drifting.
-	export const fieldLabelClass =
-		'mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-body';
-	export const fieldHelpClass = 'mb-1.5 text-xs leading-relaxed text-faint';
 </script>
 
 <script lang="ts">
@@ -33,6 +26,7 @@
 	import { mergeProps, normalizeProps, useMachine } from '@zag-js/svelte';
 	import { onMount } from 'svelte';
 	import type { RemoteFormField } from '@sveltejs/kit';
+	import { fieldClass, fieldLabelClass, fieldHelpClass } from '$lib/styles';
 	import Icon from './Icon.svelte';
 	import IconCheck from './IconCheck.svelte';
 
@@ -112,12 +106,7 @@
 			{#if badge}<span class="font-normal text-faint">{badge}</span>{/if}
 		</label>
 		{#if help}<p id={helpId} class={fieldHelpClass}>{help}</p>{/if}
-		<select
-			{...asSelect}
-			{id}
-			aria-describedby={helpId}
-			class="glass-field w-full rounded-lg px-3.5 py-2.5 text-sm"
-		>
+		<select {...asSelect} {id} aria-describedby={helpId} class={fieldClass}>
 			<option value="">{placeholder}</option>
 			{#each options as opt (opt.value)}
 				<option value={opt.value}>{opt.label}</option>
@@ -135,7 +124,7 @@
 		<button
 			{...api.getTriggerProps()}
 			aria-describedby={helpId}
-			class="glass-field flex w-full items-center justify-between gap-2 rounded-lg px-3.5 py-2.5 text-left text-sm"
+			class="{fieldClass} flex items-center justify-between gap-2 text-left"
 		>
 			<span {...api.getValueTextProps()} class={api.value.length ? 'text-white' : 'text-subtle'}>
 				{api.valueAsString || placeholder}

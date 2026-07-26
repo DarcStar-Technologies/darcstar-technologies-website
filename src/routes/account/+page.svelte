@@ -11,7 +11,7 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { interestLabel } from '$lib/contact-interest-labels';
 	import type { Interest } from '$lib/contact-interests';
-	import { fieldClass, submitButtonClass } from '$lib/components/ContactFields.svelte';
+	import { fieldClass, submitButtonClass } from '$lib/styles';
 	import type { PageData } from './$types';
 
 	type FormResult = { scope?: string; error?: string; ok?: boolean; name?: string } | null;

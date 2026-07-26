@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	hasAnyAnswer,
 	validateWaitlist,
 	validateWaitlistStep2,
 	validateWaitlistStep3,
@@ -255,5 +256,69 @@ describe('validateWaitlistStep4B', () => {
 			researchPreferences: all
 		});
 		expect(validateWaitlistStep4B({}).researchPreferences).toBeNull();
+	});
+});
+
+// The step endpoints skip the DB write when a Continue carried no answers. This replaced four
+// hand-maintained OR chains whose failure mode was silent: miss a field, and a submission answering
+// only THAT field would persist nothing at all.
+describe('hasAnyAnswer', () => {
+	const empty = () => [
+		validateWaitlistStep2({}),
+		validateWaitlistStep3({}),
+		validateWaitlistStep4A({}),
+		validateWaitlistStep4B({})
+	];
+
+	const answered = () => [
+		validateWaitlistStep2({
+			role: 'student',
+			primaryApplication: 'research-education',
+			evaluationTimeline: 'evaluating-now'
+		}),
+		validateWaitlistStep3({
+			currentApproach: 'internal-system',
+			economicImpact: 'over-1m',
+			budgetRange: '25k-100k',
+			adoptionEvidence: ['evaluation-pilot']
+		}),
+		validateWaitlistStep4A({
+			pilotInterest: 'yes-within-3-months',
+			deploymentScale: 'two cells',
+			contactPermission: 'on',
+			contactMethod: 'phone-video',
+			phone: '+1 555 000 1234'
+		}),
+		validateWaitlistStep4B({ researchPreferences: ['technical-reports'] })
+	];
+
+	it('is false for an untouched payload of every step', () => {
+		for (const cleaned of empty())
+			expect(hasAnyAnswer(cleaned), JSON.stringify(cleaned)).toBe(false);
+	});
+
+	it('is true for a fully answered payload of every step', () => {
+		for (const cleaned of answered()) expect(hasAnyAnswer(cleaned)).toBe(true);
+	});
+
+	// The property the OR chains kept failing to guarantee: EVERY field on its own is enough to
+	// trigger the write. Enumerated from the validator output, so a new column is covered the moment
+	// the validator emits it — no test to remember to extend.
+	it('sees an answer in any single field, for every step', () => {
+		for (const cleaned of answered()) {
+			for (const [field, value] of Object.entries(cleaned)) {
+				const onlyThisField = Object.fromEntries(
+					Object.keys(cleaned).map((key) => [key, key === field ? value : null])
+				);
+				expect(hasAnyAnswer(onlyThisField), field).toBe(true);
+			}
+		}
+	});
+
+	// Tri-state, not truthiness: an explicit "no, do not contact me" must still be written.
+	it('counts a declined contact permission as an answer', () => {
+		const declined = validateWaitlistStep4A({ pilotInterest: 'yes-within-3-months' });
+		expect(declined.contactPermission).toBe(false);
+		expect(hasAnyAnswer({ ...declined, pilotInterest: null })).toBe(true);
 	});
 });

@@ -7,7 +7,7 @@
 	import { enhance } from '$app/forms';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
-	import { fieldClass, submitButtonClass } from '$lib/components/ContactFields.svelte';
+	import { fieldClass, submitButtonClass } from '$lib/styles';
 	import type { PageData } from './$types';
 
 	let { data, form }: { data: PageData; form?: FormResult } = $props();

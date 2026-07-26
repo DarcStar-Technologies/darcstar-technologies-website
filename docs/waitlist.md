@@ -12,7 +12,7 @@ waitlist*.ts` (validators, store, token, notify), the `waitlist` table (`db/sche
 ## Step 1 — the core signup (live)
 
 `/waitlist` is the v2 step-1 core signup (DAR-60): **Name + Email are required**; Organization
-(`company`), Country/region (a `GlassSelect` over `WAITLIST_REGIONS` → `waitlist-region-labels.ts`),
+(`company`), Country/region (a `GlassSelect` over `WAITLIST_REGIONS` → `waitlist-labels.ts`),
 and an unchecked marketing-consent checkbox (`consent_updates`) are optional. Submit persists the row
 immediately, so abandoning the later qualification steps still retains the signup. It remains the one
 indexable entry to the flow. (The v1 form asked for email only behind a `<details>` enrichment
@@ -41,10 +41,10 @@ unchanged since v1:
 After a successful signup the page swaps step 2 (DAR-61) into the same glass-card: three optional
 single-selects — **primary application**, **your role** (the v2 `WAITLIST_V2_ROLES` set written to
 the existing `role` column), and **evaluation timeline** — plus **Continue** / **Skip for now**.
-Slugs live in `waitlist-qualification.ts`; labels in `waitlist-application-labels.ts`,
-`waitlist-v2-role-labels.ts`, and `waitlist-timeline-labels.ts` (the v2 role labels are DISTINCT from
-the v1 `waitlist-role-labels.ts`, whose slugs survive only as stored history). `WaitlistStep2.svelte`
-owns the form; `+page.svelte` owns the step state machine (step-1 success → step 2 →
+Slugs live in `waitlist-qualification.ts`, labels in `waitlist-labels.ts` (the v2 role labels are
+DISTINCT from the v1 `waitlistRoleLabel` in the same module, whose slugs survive only as stored
+history; `toOptions` there pairs a slug list with its label map for the selects).
+`WaitlistStep2.svelte` owns the form; `+page.svelte` owns the step state machine (step-1 success → step 2 →
 confirmation — it checks the step-2 result FIRST, since on the JS path the step-1 result is still
 truthy).
 
@@ -59,9 +59,12 @@ field and enriches via `applyWaitlistStep` (per-step column map, keep-existing).
 - **Skip and empty Continue write nothing** — Skip must not persist partial junk, and an all-blank
   Continue has nothing to enrich, so both short-circuit _before any DB round-trip_ (which is also what
   keeps the step-2 e2e hermetic against the placeholder DB — it reaches step 2 via the honeypot's
-  decoy token, then skips / empty-continues with no query).
+  decoy token, then skips / empty-continues with no query). "Has an answer" is
+  `hasAnyAnswer(cleaned)` — a generic `some(v => v !== null)` over the validator's output rather than
+  a per-step list of fields, so a new column can't be left out of it and silently stop persisting.
 - **Continue is first in the DOM** so it's the default submitter — pressing Enter continues, it
-  never accidentally skips.
+  never accidentally skips. Both buttons live in `WaitlistStepActions.svelte`, shared by all four
+  steps, so that ordering has one home.
 
 Routing is server-side: the step-2 response carries `next` (`'step3'`, `'step4a'`, `'step4b'` or
 `'done'`), computed by `waitlist-flow.ts` from the answers just submitted — see **The routing rules**
@@ -75,8 +78,7 @@ multi-select capped at `WAITLIST_EVIDENCE_MAX`) — plus the same Continue / Ski
 survey question as `help` text (GlassSelect / GlassCheckboxGroup wire it as `aria-describedby`, so the
 question is a description, not part of the control's accessible name). `WaitlistStep3.svelte` owns the
 form, `submitWaitlistStep3` (`waitlist-steps.remote.ts`) the write; slugs in
-`waitlist-qualification.ts`, labels in `waitlist-{approach,impact,budget,evidence}-labels.ts`. The
-impact/budget answers are internal-only — never displayed back or emailed to the respondent, and never
+`waitlist-qualification.ts`, labels in `waitlist-labels.ts`. The impact/budget answers are internal-only — never displayed back or emailed to the respondent, and never
 described as pipeline.
 
 ## Step 4 — intent branches (live)
@@ -87,7 +89,7 @@ pilot?) and, **only for a positive answer**, a revealed block — deployment sca
 at `WAITLIST_DEPLOYMENT_SCALE_MAX`), contact permission, preferred contact method, and a phone field
 nested behind choosing a call. Branch **B** (`WaitlistStep4B.svelte` → `submitWaitlistStep4B`) is for
 research/general interest: one uncapped multi-select of what to send, and **nothing** about budgets,
-pilots or contact permission. Labels live in `waitlist-{pilot-interest,contact-method,research-preference}-labels.ts`.
+pilots or contact permission. Labels live in `waitlist-labels.ts` like every other step's.
 
 - **The reveals are progressive enhancement, never a gate.** `mounted` is false during SSR and until
   hydration, so a no-JS visitor gets every field rendered and submittable (all optional); JS only

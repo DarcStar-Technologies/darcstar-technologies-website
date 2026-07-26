@@ -1,13 +1,3 @@
-<script module lang="ts">
-	// The recessed glass-well styling for the form controls. Exported so the /contact page's
-	// native <select> interest control (which this component can't own — see below) can match
-	// the fields exactly: `import ContactFields, { fieldClass } from './ContactFields.svelte'`.
-	export const fieldClass = 'glass-field w-full rounded-lg px-3.5 py-2.5 text-sm';
-	// The pill submit button — shared with the login form (LoginForm) so the two can't drift.
-	export const submitButtonClass =
-		'glass-btn w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60';
-</script>
-
 <script lang="ts">
 	// Shared inner body of the contact form — the honeypot, whole-form issues, the
 	// name/email/company/message fields, and the submit button — identical between the global
@@ -23,6 +13,7 @@
 	// - `error`  — optional block rendered just above the submit button (the modal's
 	//   catch-all "something went wrong"; the page has none).
 	import type { Snippet } from 'svelte';
+	import { fieldClass, submitButtonClass } from '$lib/styles';
 	import { submitContact } from '$lib/contact.remote';
 	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import { m } from '$lib/paraglide/messages.js';
