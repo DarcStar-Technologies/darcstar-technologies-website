@@ -29,8 +29,10 @@ unchanged since v1:
   the existing row **fill-forward** (`fillIfEmpty`: fills a still-null column, never overwrites a
   stored value) rather than piling up duplicates. Step 1 is unauthenticated, so this stops a stranger
   who knows an existing email from clobbering its name/company/region on a (throttle-exempt) resubmit;
-  the token-gated qualification steps keep provided-wins (`keepExisting`) since holding the token is
-  the authorization. It returns `isNew` (a genuine first signup) and the row `id`.
+  the token-gated qualification steps keep provided-wins (`keepExisting`) for their **judgement**
+  columns, but not for the two that direct an action — see
+  [What a token holder may overwrite](#what-a-token-holder-may-overwrite-dar-72). It returns `isNew`
+  (a genuine first signup) and the row `id`.
 - **Emails gated on `isNew`** — a lead → `info@` and a localized signer ack, fire-and-forget via
   `ctx.waitUntil`. Gating on `isNew` is the anti-abuse boundary: same-email replays enrich (add no
   row), so without the gate the ack would be an unthrottled mailbomb.
@@ -394,8 +396,11 @@ so it authorizes writing that row's qualification columns to whoever holds it. T
 surface than v1's enrich-by-email. The step writes are built to stay safe under that exposure:
 `applyWaitlistStep` uses an explicit **per-step column map** (mass-assignment guard — a step can only
 write its own columns, never identity, never another step's answers), and per-field keep-existing
-rules bound what a holder can change. **A step endpoint must not add an absolute overwrite of a
-sensitive field.** (The honeypot path returns a _decoy_ token — deterministic per email, addressing
+rules bound what a holder can change — with `phone` and `contact_permission` bounded harder still
+(DAR-72: [What a token holder may overwrite](#what-a-token-holder-may-overwrite-dar-72)). **A step
+endpoint must not add an absolute overwrite of a sensitive field**, and a new column that names a
+contact destination or grants permission to use one belongs on the DAR-72 policies, not
+`keepExisting`. (The honeypot path returns a _decoy_ token — deterministic per email, addressing
 no real row — so the response body matches a real success; a timing side-channel still distinguishes
 the trap, which is accepted.)
 
@@ -474,11 +479,54 @@ predicate, `isPositivePilotInterest`, that `WaitlistStep4A` reveals the checkbox
 keep-existings a `null` — so a not-shown submit can't silently revoke a standing grant.
 
 Like `consent_updates`, it is an **unverified claim**: the row is identified only by a continuation
-token, which the anti-enumeration success shape hands to _any_ submitter of a known email. So a third
-party who guesses an address on the list can set (or overwrite) that row's `contact_permission`,
-`phone` and `pilot_interest` — the same provided-wins exposure every qualification column has under
-`keepExisting`. Treat step 4A's contact block as a lead-qualification hint, **not** proof that this
-person asked to be called, and confirm by replying to the signed-up address before acting on it.
+token, which the anti-enumeration success shape hands to _any_ submitter of a known email. Treat step
+4A's contact block as a lead-qualification hint, **not** proof that this person asked to be called,
+and confirm by replying to the signed-up address before acting on it. That process rule is the real
+control here; the store policy below only stops an attacker overturning what the real person said.
+
+### What a token holder may overwrite (DAR-72)
+
+The step columns were uniformly `keepExisting` on the premise that _holding the continuation token is
+the authorization_. **That premise doesn't hold.** Step 1 returns the identical success shape — token
+included — for a new and an existing email, which is precisely what stops it being an enumeration
+oracle, and which means the token reaches any submitter of a known address. The step endpoints
+therefore have the **same effective authorization as the unauthenticated step-1 enrich**, and had a
+_weaker_ write policy than it on a column both can write.
+
+Two columns are off `keepExisting`, chosen by what they **do**, not by how sensitive they look:
+
+| Column               | Policy                                                                        | Why                                                                                                                                                         |
+| -------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `phone`              | `fillIfEmpty` — fills a null, never replaces                                  | The only step-writable column that supplies a contact **destination** (`email` is in no step's column map). Now matches step 1's policy on the same column. |
+| `contact_permission` | `grantFillsDeclineWins` — `false` writes absolutely, `true` fills a null only | The flag that turns the record into permission to use one. A decline must always stick (DAR-63); a grant may no longer overturn one.                        |
+
+Everything else stays `keepExisting` deliberately. Role, timeline, approach, budget and evidence are
+judgement inputs a human weighs — poisonable, caveated on the admin page, and already kept out of the
+classifier where it matters (DAR-65 excludes the self-reported money figures by input type). Locking
+them down would trade away "let someone fix their own answer" for no reduction in attacker capability.
+`contact_method` also stays: it picks among channels we already hold, so it can misroute a
+conversation but cannot supply a destination.
+
+**The limit, stated plainly:** this bounds _overwriting_, not the first write. A row with no phone
+still accepts an attacker's, and a row never asked about contact still accepts an attacker's grant —
+the common case, since `phone` is optional at step 1 and `contact_permission` starts `null` on every
+row. That is not fixable at this layer: the endpoint exists to accept those answers from a submitter
+we cannot identify. What changed is that an attacker can no longer overturn something the real person
+already told us.
+
+Costs accepted, both silent (the response is generic by design, so neither surfaces an error): a
+visitor who supplies a _different_ number at step 4A than the one on their row has it dropped, and one
+who declines and later changes their mind must say so by replying to the signed-up address. Prefilling
+the step-4A phone field so the visitor can see what's stored is **not** an option — it would hand the
+stored number to any token holder, i.e. build the disclosure oracle the whole design avoids.
+
+Also considered and rejected: giving step 4A its own `contact_phone` column, so a genuine correction
+survives _and_ an operator sees the conflict (a migration plus a two-phone reconciliation on the admin
+page, for a case where the dominant attack is unfixed either way — one uniform rule is easier to keep
+true); and binding the token to the minting session or IP, which would break the no-JS multi-request
+flow the token is echoed through. Rate-limiting the step endpoints shipped separately as
+[DAR-68](#step-write-budget-dar-68) and raises the cost of every variant of this without fixing the
+single-shot case.
 
 ### Wire contract for the step forms
 

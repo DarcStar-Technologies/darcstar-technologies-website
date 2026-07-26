@@ -223,7 +223,8 @@ export interface CleanedWaitlistStep4A {
 	deploymentScale: string | null;
 	// TRI-STATE, matching schema.ts's contact_permission: null = the question wasn't shown (pilot
 	// interest not positive), false = shown and declined, true = granted. The store keep-existings a
-	// null so a not-shown submit can't clobber a real prior answer.
+	// null so a not-shown submit can't clobber a real prior answer, and since DAR-72 it takes a
+	// decline absolutely but only fills a grant into a row that was never asked.
 	contactPermission: boolean | null;
 	contactMethod: string | null;
 	phone: string | null;

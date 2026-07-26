@@ -28,8 +28,9 @@ import type {
 //
 // keepExisting = `coalesce(<new>, <existing>)` — the PROVIDED value wins; a blank (null, since the
 // validator nulls empties) keeps what's stored. Used by the token-gated qualification steps
-// (applyWaitlistStep): possessing the continuation token authorizes updating a field you re-enter,
-// and a sparser resubmit still never erases.
+// (applyWaitlistStep) for the JUDGEMENT columns — the answers a human weighs when triaging, where
+// re-asking is normal and refusing a correction would only lose data. A sparser resubmit never
+// erases. See the DAR-72 note above applyWaitlistStep for why the two ACTIONABLE columns don't use it.
 function keepExisting(next: string | null, column: string) {
 	return sql`coalesce(${next}, ${sql.raw(column)})`;
 }
@@ -50,6 +51,27 @@ function fillIfEmpty(next: string | null, column: string) {
 // never-erase posture as the scalars.
 function keepExistingJson(next: string[] | null, column: string) {
 	return keepExisting(next === null ? null : JSON.stringify(next), column);
+}
+
+// Third policy, for `contact_permission` alone (DAR-72). A permission is not symmetric, so neither
+// of the two above fits: the RESTRICTIVE answer is authoritative and the permissive one is
+// fill-forward.
+//
+//   false → writes absolutely. An explicit decline must always stick (DAR-63's rule, and revocation
+//           has to work from whoever is actually sitting at the form).
+//   true  → only lands in a still-null column, i.e. on a row that was never asked. A grant can no
+//           longer overturn a stored decline.
+//   null  → the question wasn't shown; keep whatever stands (unchanged from DAR-63).
+//
+// The asymmetry is the same fail-safe polarity used for `seo.noIndex` and the commercial gate:
+// acting on someone needs a POSITIVE signal that survives, while withdrawing needs only to be said
+// once. Cost: a genuine visitor who declines and later changes their mind silently no-ops, and must
+// tell us by replying to the address they signed up with — which is the confirmation step outreach
+// is supposed to go through anyway.
+function grantFillsDeclineWins(next: boolean | null, column: string) {
+	if (next === null) return sql`${sql.raw(column)}`;
+	if (next === false) return sql`0`;
+	return sql`coalesce(${sql.raw(column)}, 1)`;
 }
 
 const DB_NOW = sql`(cast(unixepoch('subsecond') * 1000 as integer))`;
@@ -227,11 +249,47 @@ export type WaitlistStepData =
 /** qualification_step is monotonic: a revisit to an earlier step never rewinds the high-water mark. */
 const stepRank = { 2: 2, 3: 3, '4a': 4, '4b': 4 } as const;
 
+// ---------------------------------------------------------------------------------------------
+// What a token holder may OVERWRITE (DAR-72). The step columns used to be uniformly keepExisting on
+// the premise that "holding the continuation token is the authorization". That premise doesn't hold:
+// step 1 returns the identical success shape — token included — for a new and an existing email,
+// which is exactly what stops it being an enumeration oracle, and which means the token reaches ANY
+// submitter of a known address. So these steps have the SAME effective authorization as the
+// unauthenticated step-1 enrich, and had a WEAKER write policy than it on a column both can write.
+//
+// Two columns therefore move off keepExisting, picked by what they DO rather than how sensitive they
+// look: `phone` is the only step-writable column that supplies a contact DESTINATION (email is in no
+// step's column map — the mass-assignment guard already saw to that), and `contact_permission` is the
+// flag that turns the record into permission to use one. Together they were enough to make our
+// internal record say "this person wants to be called, here", with an attacker-controlled "here".
+//
+// Everything else stays keepExisting deliberately. Role, timeline, approach, budget, evidence and the
+// rest are judgement inputs a human weighs; they can be poisoned, that is caveated on the admin page,
+// and DAR-65 already keeps the self-reported money figures out of the classifier. Locking them down
+// would trade a real "let someone fix their own answer" for no reduction in what an attacker can do.
+//
+// LIMIT, stated plainly: this bounds OVERWRITING, not the first write. A row with no phone still
+// accepts an attacker's, and a row never asked about contact still accepts an attacker's grant —
+// which is the common case, since `phone` is optional at step 1 and `contact_permission` starts null
+// on every row. That isn't fixable here: the endpoint's entire purpose is to accept those answers
+// from a submitter we cannot identify. The control that actually covers it is the process one — treat
+// step 4A's contact block as a lead-qualification hint and confirm by replying to the SIGNED-UP
+// address, which is the one field no step can touch. What changed is that an attacker can no longer
+// overturn something the real person already told us.
+//
+// Rejected: giving step 4A its own `contact_phone` column so a genuine correction survives AND the
+// conflict is visible to an operator. It's a migration plus a two-phone reconciliation on the admin
+// page, for a case where the dominant attack (null → attacker value) is unfixed either way; a single
+// uniform rule — no unauthenticated path overwrites a stored value, restrictive values always win —
+// is easier to keep true. Also rejected: binding the token to the minting session or IP (DAR-72
+// option 4), which would break the no-JS multi-request flow the token is echoed through.
+
 /**
  * Apply one optional step to an existing row (id comes from a VERIFIED continuation token — this
  * function trusts its caller on that and enforces everything else). Explicit per-step SET objects
  * are the mass-assignment guard: a step can only ever write its own columns, never identity
- * (email/name/…) and never another step's answers. Same keep-existing semantics as the enrich path.
+ * (email/name/…) and never another step's answers. Judgement columns are keep-existing; the two
+ * actionable ones are not — see the note above.
  *
  * Returns `updated: false` when the id matches no row (deleted, or a decoy token minted for the
  * honeypot path) — callers respond with the same generic success either way, so this is not an
@@ -265,13 +323,15 @@ export async function applyWaitlistStep(
 			set = {
 				pilotInterest: keepExisting(data.pilotInterest, 'pilot_interest'),
 				deploymentScale: keepExisting(data.deploymentScale, 'deployment_scale'),
-				// Tri-state (validator gates it on a positive pilot answer): a boolean is the real
-				// answer and writes absolutely (an explicit decline after a stale "yes" must stick); a
-				// null means the question wasn't shown → keep-existing, so a not-shown submit can't
-				// silently revoke a standing grant.
-				contactPermission: data.contactPermission ?? sql`contact_permission`,
+				// Tri-state, and asymmetric since DAR-72 — see grantFillsDeclineWins. A decline still
+				// writes absolutely; a grant now only lands on a row that was never asked.
+				contactPermission: grantFillsDeclineWins(data.contactPermission, 'contact_permission'),
+				// Stays provided-wins: it picks among channels we already hold, so it can misroute a
+				// conversation but can't supply a destination. Poisoning it is a judgement problem.
 				contactMethod: keepExisting(data.contactMethod, 'contact_method'),
-				phone: keepExisting(data.phone, 'phone')
+				// FILL-FORWARD (DAR-72), matching step 1's policy on this exact column rather than the
+				// other step columns'. See the note above.
+				phone: fillIfEmpty(data.phone, 'phone')
 			};
 			break;
 		case '4b':
