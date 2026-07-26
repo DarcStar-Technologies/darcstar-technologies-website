@@ -1,7 +1,7 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import type { PageData } from './$types';
+import type { ActionData, PageData } from './$types';
 
 // DAR-65's rendering acceptance: the triage view rendered from seeded fixture data. It lives here
 // rather than in the e2e suite because that suite is hermetic — no session cookie and no reachable
@@ -50,9 +50,13 @@ const ROW: Signup = {
 	contactMethod: 'phone-video',
 	researchPreferences: null,
 	qualificationStep: 4,
+	invitedAt: null,
+	invitedBy: null,
+	activatedAt: null,
 	createdAt: new Date('2026-07-01T12:00:00Z'),
 	updatedAt: new Date('2026-07-02T12:00:00Z'),
-	leadClass: 'priority-a'
+	leadClass: 'priority-a',
+	inviteState: 'not-invited'
 };
 
 const RESEARCHER: Signup = {
@@ -67,7 +71,12 @@ const RESEARCHER: Signup = {
 	contactPermission: null,
 	deploymentScale: null,
 	researchPreferences: ['technical-reports'],
-	leadClass: 'research'
+	leadClass: 'research',
+	// Already invited (DAR-67) — so one row in the default fixture exercises the resend affordance.
+	invitedAt: new Date('2026-07-03T09:00:00Z'),
+	invitedBy: 'staff-1',
+	activatedAt: null,
+	inviteState: 'invited'
 };
 
 // The funnel readout's fixture (DAR-66). Deliberately a shrinking series with 200 views and 50
@@ -94,8 +103,8 @@ const data = (over: Partial<PageFixture> = {}): PageFixture => ({
 	...over
 });
 
-const mount = (over?: Partial<PageFixture>) =>
-	render(AdminWaitlistPage, { data: data(over) as PageData, form: null });
+const mount = (over?: Partial<PageFixture>, form: ActionData = null) =>
+	render(AdminWaitlistPage, { data: data(over) as PageData, form });
 
 describe('/admin/waitlist', () => {
 	it('renders a badge, the row summary and the qualification detail for each signup', async () => {
@@ -152,9 +161,11 @@ describe('/admin/waitlist', () => {
 	// out of the band they were working in.
 	it('carries the active filter into every delete action', () => {
 		const { container } = mount({ filter: 'priority-a' });
-		const actions = [...container.querySelectorAll('form[method="post"]')].map((f) =>
-			f.getAttribute('action')
-		);
+		// Filtered to the delete forms — each row also carries an invite form (DAR-67), covered by its
+		// own test below.
+		const actions = [...container.querySelectorAll('form[method="post"]')]
+			.map((f) => f.getAttribute('action'))
+			.filter((a) => a?.startsWith('?/delete'));
 		expect(actions).toHaveLength(2);
 		expect(new Set(actions)).toEqual(new Set(['?/delete&class=priority-a']));
 	});
@@ -224,5 +235,84 @@ describe('/admin/waitlist', () => {
 		mount();
 		await expect.element(page.getByText(/internal triage signal/)).toBeVisible();
 		await expect.element(page.getByText(/unverified claims/)).toBeVisible();
+	});
+});
+
+// DAR-67's invite-only onboarding. The state is decided server-side (`waitlistInviteState`, unit-tested
+// in waitlist-invite.spec.ts); these cover what the operator actually sees and clicks.
+describe('/admin/waitlist invitations', () => {
+	it('renders each row in its own invite state', async () => {
+		mount();
+		// ROW has never been invited; RESEARCHER has. The detail-row labels are deliberately worded as
+		// events ("Invitation sent", "Password set") rather than states, so these badge texts are unique
+		// on the page and an exact match means the badge, not a <dt>.
+		await expect.element(page.getByText('Not invited', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('Invited', { exact: true })).toBeVisible();
+	});
+
+	it('shows the activated badge once the invitee has set a password', async () => {
+		mount({
+			signups: [
+				{
+					...ROW,
+					invitedAt: new Date('2026-07-03T09:00:00Z'),
+					invitedBy: 'staff-1',
+					activatedAt: new Date('2026-07-04T09:00:00Z'),
+					inviteState: 'activated'
+				}
+			]
+		});
+		await expect.element(page.getByText('Activated', { exact: true })).toBeVisible();
+	});
+
+	// The label is the only thing telling an operator whether they are about to send a first invitation
+	// or a duplicate, so it has to track the row rather than the page.
+	it('offers Invite for a fresh row and Resend for one already invited', async () => {
+		mount();
+		await expect.element(page.getByText('Invite', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('Resend', { exact: true })).toBeVisible();
+	});
+
+	// A bare `?/invite` resolves to /admin/waitlist?/invite and drops `class=`, bouncing the operator out
+	// of the band they were working in — the same trap the delete action already guards against.
+	it('carries the active filter into every invite action', () => {
+		const { container } = mount({ filter: 'priority-a' });
+		const actions = [...container.querySelectorAll('form[method="post"]')]
+			.map((f) => f.getAttribute('action'))
+			.filter((a) => a?.startsWith('?/invite'));
+		expect(actions).toHaveLength(2);
+		expect(new Set(actions)).toEqual(new Set(['?/invite&class=priority-a']));
+	});
+
+	// Both outcome banners live at the top of the page: a no-JS submit re-renders the whole table, and
+	// a status message buried in row 137 is not a confirmation.
+	it('confirms a sent invitation, naming the address', async () => {
+		mount(undefined, { invite: { ok: true, email: 'lead@example.com', created: true } });
+		await expect.element(page.getByText('Invitation sent to lead@example.com.')).toBeVisible();
+	});
+
+	// The one failure with its own message: it needs a different action from the operator (go to the
+	// roster), not a retry.
+	it('explains a refusal to invite an address that already belongs to staff', async () => {
+		mount(undefined, { invite: { error: 'staff_account' } });
+		await expect.element(page.getByText(/already belongs to a staff account/)).toBeVisible();
+	});
+
+	// The account exists but nothing was mailed — so the row stays un-invited and retrying is right.
+	it('distinguishes a send failure from a generic one', async () => {
+		mount(undefined, { invite: { error: 'email_failed' } });
+		await expect.element(page.getByText(/invitation email didn't send/)).toBeVisible();
+	});
+
+	it('falls back to the generic message for any other failure', async () => {
+		mount(undefined, { invite: { error: 'create_failed' } });
+		await expect.element(page.getByText(/Couldn't send that invitation/)).toBeVisible();
+	});
+
+	// A delete failure and an invite failure both carry an `error` key; only the namespace tells them
+	// apart, so a delete error must not surface as an invite error or vice versa.
+	it('keeps the delete error and the invite error apart', async () => {
+		const { container } = mount(undefined, { error: 'forbidden' });
+		expect(container.textContent).not.toContain("Couldn't send that invitation");
 	});
 });

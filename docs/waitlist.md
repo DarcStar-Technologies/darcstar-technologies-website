@@ -254,12 +254,18 @@ deploy that lands before its migration has no table and must not take the triage
 
 `app.html` sets `data-sveltekit-preload-data="hover"` on `<body>`, and preloading **data** means
 running the page's load — which is where the view is recorded. Left at the default, every mouse pass
-over the homepage CTA or the footer link (present on every page) would count a view for a page nobody
-opened, permanently understating the primary metric. Both links opt down to
-`data-sveltekit-preload-data="tap"`: the fetch starts on pointerdown, so the latency win survives, and
-a hover-then-click reuses that single request — a real visitor is fetched once and counted once.
-**A new link to /waitlist needs the same attribute**; `page.svelte.e2e.ts` asserts at the network
-layer that a hover triggers no `/waitlist/__data.json`, and that a click still triggers exactly one.
+over a link would count a view for a page nobody opened, permanently understating the primary metric.
+Every link to /waitlist therefore opts down to `data-sveltekit-preload-data="tap"`: the fetch starts on
+pointerdown, so the latency win survives, and a hover-then-click reuses that single request — a real
+visitor is fetched once and counted once.
+
+**A new link to /waitlist needs the same attribute.** DAR-67 added three, and the reason the rule is
+worth restating is that they arrived from a completely unrelated change (closing public sign-up), which
+is exactly how this kind of regression gets in: the navbar "Request access" link and the `LoginDialog`
+prompt are BOTH rendered on every page, and the `/signup` notice and `/login` page carry one each.
+Current set: homepage CTA · footer · navbar · `LoginDialog` · `/login` · `/signup`.
+`page.svelte.e2e.ts` asserts at the network layer that a hover triggers no `/waitlist/__data.json`, and
+that a click still triggers exactly one.
 
 ### Caveats the readout states
 
@@ -449,6 +455,12 @@ read is capped at the 200 most recent, and classification/filtering happen over 
   compute a different one. A null rate (nothing viewed yet, or the readout unavailable) renders as the
   page's usual em-dash, never a `0%` that would read as "nobody converts". Zero-filled, so a stage
   nobody has reached shows a `0` rather than vanishing.
+- **Access column + Invite button** (DAR-67) — the waitlist is now the front of the account funnel,
+  not just a mailing list: public sign-up is closed, so staff invite prospects from here. The column
+  shows a derived three-state badge (not invited / invited / activated) and the row's action reads
+  **Invite** or **Resend** to match. Full mechanics — the account creation, the activation token, why
+  the send is awaited, and the `activated_at` stamp — are in [auth.md](auth.md#invite-only-onboarding-dar-67);
+  what matters here is the state, below.
 - **Two standing caveats** are printed under the table rather than left to a doc nobody reads at 2am:
   the priority band is an internal guess and not pipeline, and outreach permission / phone / consent
   are unverified claims from an unauthenticated form — confirm by replying to the signed-up address
@@ -461,6 +473,41 @@ tri-state column, the chips, the detail disclosure, and that a delete keeps the 
 to live there rather than in the e2e suite: that suite is hermetic, with neither a session cookie nor
 a reachable DB, so it can only assert the guard's redirect — which it does, including for a crafted
 `?class=`. Mounting the page needs `$app/state` stubbed, because `Seo.svelte` reads it.
+
+## Invite-only onboarding (DAR-67)
+
+Public self-signup is closed, so the waitlist is the only public path to an account and
+`/admin/waitlist` is where that path is walked. The auth-side mechanics live in
+[auth.md](auth.md#invite-only-onboarding-dar-67); what belongs here is the three columns this table
+grew and what they actually assert.
+
+`invited_at` · `invited_by` · `activated_at` sit on **`waitlist`**, not on `user`, for the obvious
+reason: the un-invited majority has no `user` row to hang them off — "not invited" is the default
+state of a waitlist entry, not of an account. The badge is **derived on read**
+(`waitlistInviteState`, `$lib/waitlist-invite.ts`), exactly like DAR-65's lead class and for the same
+reason: it's a pure function of columns already on the row.
+
+Three things about them are easy to get wrong:
+
+1. **`invited_at` is the LAST send, not the first.** A resend overwrites it, because the operational
+   question is "did I already email them, and how long ago" — a first-contact date frozen weeks back
+   answers that wrongly. The durable history is the structured `[invite] activation.sent` line in
+   Workers Logs, which is also the only record of _who_ invited whom over time.
+2. **`invited_at` means an email was accepted by Resend, never "we tried".** The invite action sends
+   BEFORE it stamps, so a failed send leaves the row looking un-invited and the button still reading
+   Invite — which is the correct next move. Retrying is safe: the account created on the failed
+   attempt is found rather than duplicated.
+3. **`activated_at` is not "has an account".** An invited account exists from the moment the invite is
+   sent; this column records the invitee actually setting a password, stamped by auth.ts's
+   `onPasswordReset` hook. That hook fires for every reset on the site, so the query only stamps rows
+   that were genuinely invited and aren't already stamped — otherwise an ordinary self-service reset
+   by someone who happens to be on the list would flip their badge and claim an onboarding that never
+   happened.
+
+Deliberately NOT built: any automatic invitation. Priority-A leads are not auto-invited and no
+notification fires — the same restraint as DAR-65's Priority-A notification, and for a stronger
+reason here, since the action mints an account and mails a credential-setting link. Every invitation
+is a human decision behind a confirm.
 
 ## Setup
 

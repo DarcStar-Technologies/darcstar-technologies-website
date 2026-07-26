@@ -23,6 +23,13 @@
 	// Keep the token across a no-JS failure re-render: the action echoes it back on recoverable fails.
 	const token = $derived(form?.token ?? data.token ?? '');
 
+	// Invitation mode (DAR-67) — same page, same action, same token; only the words change. An invitee
+	// arriving from a staff invitation has never had a password, so every "new password" / "reset" /
+	// "update" phrase is subtly wrong for them, and wrong-sounding security mail is how people learn to
+	// ignore it. The flag rides in the query and survives a no-JS re-render because the form POSTs to
+	// the current URL. Cosmetic only — see the load.
+	const invite = $derived(data.invite);
+
 	function errorMessage(code: string): string {
 		switch (code) {
 			case 'missing':
@@ -38,7 +45,7 @@
 </script>
 
 <Seo
-	title={m.reset_password_page_title()}
+	title={invite ? m.reset_password_invite_page_title() : m.reset_password_page_title()}
 	description={m.reset_password_page_description()}
 	noindex
 />
@@ -53,7 +60,9 @@
 			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
 				{m.reset_password_success_heading()}
 			</h1>
-			<p class="mt-3 text-sm text-body">{m.reset_password_success_body()}</p>
+			<p class="mt-3 text-sm text-body">
+				{invite ? m.reset_password_invite_success_body() : m.reset_password_success_body()}
+			</p>
 			<p class="mt-6 text-sm text-body">
 				<a
 					class="font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline"
@@ -64,7 +73,12 @@
 			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
 				{m.reset_password_invalid_heading()}
 			</h1>
-			<p class="mt-3 text-sm text-body">{m.reset_password_invalid_body()}</p>
+			<!-- The recovery link points at /forgot-password for an invitee too, and correctly: their
+			     account already exists, so the ordinary reset flow will mail them a fresh link without
+			     needing staff at all. Only the sentence above it changes. -->
+			<p class="mt-3 text-sm text-body">
+				{invite ? m.reset_password_invite_invalid_body() : m.reset_password_invalid_body()}
+			</p>
 			<p class="mt-6 text-sm text-body">
 				<a
 					class="font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline"
@@ -73,9 +87,11 @@
 			</p>
 		{:else}
 			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
-				{m.reset_password_heading()}
+				{invite ? m.reset_password_invite_heading() : m.reset_password_heading()}
 			</h1>
-			<p class="mt-2 text-sm text-body">{m.reset_password_lead()}</p>
+			<p class="mt-2 text-sm text-body">
+				{invite ? m.reset_password_invite_lead() : m.reset_password_lead()}
+			</p>
 
 			<form
 				method="post"
@@ -96,7 +112,9 @@
 
 				<label class="block">
 					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body">
-						{m.reset_password_field_password_label()}
+						{invite
+							? m.reset_password_invite_field_password_label()
+							: m.reset_password_field_password_label()}
 					</span>
 					<input
 						type="password"
@@ -105,13 +123,19 @@
 						minlength="8"
 						autocomplete="new-password"
 						class={fieldClass}
-						placeholder={m.reset_password_field_password_placeholder()}
+						placeholder={invite
+							? m.reset_password_invite_field_password_placeholder()
+							: m.reset_password_field_password_placeholder()}
 					/>
 					<span class="mt-1.5 block text-xs text-body/70">{m.reset_password_password_hint()}</span>
 				</label>
 
 				<button type="submit" disabled={submitting} class={submitButtonClass}>
-					{submitting ? m.reset_password_submitting() : m.reset_password_submit()}
+					{#if invite}
+						{submitting ? m.reset_password_invite_submitting() : m.reset_password_invite_submit()}
+					{:else}
+						{submitting ? m.reset_password_submitting() : m.reset_password_submit()}
+					{/if}
 				</button>
 			</form>
 		{/if}

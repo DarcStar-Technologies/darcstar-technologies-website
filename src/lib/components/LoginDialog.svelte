@@ -27,15 +27,18 @@
 	     (and a duplicate on /login). Mounting on open also gives a fresh form — no lingering password. -->
 	{#if loginDialog.open}
 		<LoginForm onSuccess={() => loginDialog.close()} />
-		<!-- Sign-up prompt — the /login page owns this same chrome (login/+page.svelte). The dialog
-		     needs its own copy or JS users have no path to /signup: the navbar "Sign in" opens THIS
+		<!-- Request-access prompt — the /login page owns this same chrome (login/+page.svelte). The
+		     dialog needs its own copy or JS users have no path to it: the navbar "Sign in" opens THIS
 		     dialog, not the page, and LoginForm carries only the fields. Close the dialog on click so
-		     it can't linger over /signup after client-side navigation. -->
+		     it can't linger over the destination after client-side navigation.
+		     DAR-67 retargeted this from /signup (now an invite-only notice) to /waitlist, the only route
+		     to an account; `preload-data="tap"` keeps a hover off /waitlist's view count (DAR-66). -->
 		<p class="mt-6 text-sm text-body">
 			{m.login_need_account_prompt()}
 			<a
 				class="font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline"
-				href={localizeHref('/signup')}
+				href={localizeHref('/waitlist')}
+				data-sveltekit-preload-data="tap"
 				onclick={() => loginDialog.close()}>{m.login_need_account_link()}</a
 			>
 		</p>

@@ -1,28 +1,38 @@
 import { describe, expect, test } from 'vitest';
 import { betterAuth } from 'better-auth/minimal';
 import { memoryAdapter } from 'better-auth/adapters/memory';
+import { admin } from 'better-auth/plugins';
 import { emailAndPassword } from './auth-options';
 
-// #96 (PR 2): public email/password sign-up is now OPEN — reversing the #48 lockdown — but gated. A
-// sign-up creates an UNVERIFIED account and does NOT sign the visitor in; `requireEmailVerification`
-// then blocks sign-IN until the email is confirmed. (Cloudflare Turnstile is the other gate, but it's
-// an onRequest plugin needing a live siteverify call, so it's out of scope for this hermetic test.)
+// DAR-67: public email/password sign-up is CLOSED again (`disableSignUp`) — accounts are invite-only,
+// minted by staff from /admin/waitlist. #96 PR 2's gates (`requireEmailVerification`, Turnstile) were
+// the previous regime; verification stays on for the accounts that predate the lockdown, and the
+// captcha plugin is gone with the form it guarded.
 //
 // This can't be exercised through the e2e preview: better-auth's isAuthPath() rejects any request
 // whose origin differs from the configured baseURL (ORIGIN), and the preview serves on localhost:4173
 // while ORIGIN is the production host — so the endpoint 404s before the auth logic runs. Instead we
 // build a throwaway instance from the SAME `emailAndPassword` config the app uses (auth-options.ts),
 // backed by an in-memory adapter, so the assertions are hermetic (no DB, no origin, no env) and guard
-// the real config values: that sign-up is enabled AND that verification is required to sign in.
+// the real config values: that public sign-up is refused, that the staff path is NOT, and that
+// verification is still required to sign in.
 function buildAuth(opts: typeof emailAndPassword) {
 	return betterAuth({
 		baseURL: 'http://localhost',
 		secret: 'test-secret-value-at-least-32-characters-long',
 		// Seed the core Better Auth models so a real sign-up has tables to write to.
 		database: memoryAdapter({ user: [], session: [], account: [], verification: [] }),
-		emailAndPassword: opts
+		emailAndPassword: opts,
+		// The roster + invite paths both go through this plugin's create-user endpoint, so the lockdown
+		// tests need it registered to prove the staff route survives. Mirrors auth.ts's `defaultRole`.
+		plugins: [admin({ adminRoles: ['admin'], defaultRole: 'user' })]
 	});
 }
+
+// Registration as it stands OPEN — the only difference from the shipped config is the one flag. Used
+// by fixtures that must MAKE an account the normal way (a legacy unverified user, say) and by the
+// controls that prove the flag, not some incidental default, is what closes the door.
+const openSignUp = { ...emailAndPassword, disableSignUp: false };
 
 const PASSWORD = 'a-long-enough-password';
 
@@ -30,14 +40,18 @@ const PASSWORD = 'a-long-enough-password';
 // `/send-verification-email` endpoint (better-auth 400s "not enabled" without the callback) so the
 // #115 resend affordance can be exercised, and (b) lets a test assert exactly WHICH addresses actually
 // triggered a send. `sendOnSignUp` records the sign-up mail too (tests clear the sink before probing).
-// Uses the same shared `emailAndPassword` (requireEmailVerification: true) as prod — accounts start
-// unverified, which is the regime the resend path serves.
+//
+// Uses `openSignUp` rather than the shipped config for one reason: the fixture has to CREATE an
+// unverified account, and DAR-67's lockdown refuses the only ordinary way to make one. It keeps
+// `requireEmailVerification: true`, which is the part that matters — this suite is about the
+// unverified-account regime, and that regime still exists for everyone who registered before the
+// lockdown. Those are precisely the users the resend affordance now serves.
 function buildAuthWithVerifySink(sink: { email: string; url: string }[]) {
 	return betterAuth({
 		baseURL: 'http://localhost',
 		secret: 'test-secret-value-at-least-32-characters-long',
 		database: memoryAdapter({ user: [], session: [], account: [], verification: [] }),
-		emailAndPassword,
+		emailAndPassword: openSignUp,
 		emailVerification: {
 			sendOnSignUp: true,
 			sendVerificationEmail: async ({ user, url }) => {
@@ -47,20 +61,75 @@ function buildAuthWithVerifySink(sink: { email: string; url: string }[]) {
 	});
 }
 
-describe('auth public sign-up + email verification (#96 PR2)', () => {
-	test('our config allows sign-up, but leaves the account unverified and not signed in', async () => {
-		const res = await buildAuth(emailAndPassword).api.signUpEmail({
-			body: { name: 'probe', email: 'probe@example.com', password: PASSWORD }
+describe('auth registration is invite-only (DAR-67)', () => {
+	// THE BOUNDARY. Hiding /signup is cosmetic; this is the line that actually closes registration, so
+	// it is asserted against the very config object auth.ts spreads into the live instance.
+	test('our config refuses public sign-up outright', async () => {
+		await expect(
+			buildAuth(emailAndPassword).api.signUpEmail({
+				body: { name: 'probe', email: 'probe@example.com', password: PASSWORD }
+			})
+		).rejects.toThrow(/sign up is not enabled/i);
+	});
+
+	// The other half, and the half a lockdown can silently break: staff must still be able to mint
+	// accounts, or invite-only onboarding has no onboarding. `disableSignUp` is checked by the
+	// /sign-up/email route only — the admin plugin's create-user is a different endpoint that never
+	// consults it — but "these two flags live in different files and happen not to interact" is exactly
+	// the sort of thing an upgrade changes.
+	test('the staff path still mints accounts, already verified', async () => {
+		const auth = buildAuth(emailAndPassword);
+		const created = await auth.api.createUser({
+			body: {
+				email: 'invited@example.com',
+				name: 'Invitee',
+				password: PASSWORD,
+				role: 'user',
+				data: { emailVerified: true }
+			}
 		});
-		// Sign-up is no longer locked down (#48 reversed).
-		expect(res.user.email).toBe('probe@example.com');
-		// requireEmailVerification → the new account starts unverified and gets no session token.
+		expect(created.user.email).toBe('invited@example.com');
+		// Verified at creation, or `requireEmailVerification` would 403 the invitee at their first
+		// sign-in — with no way out, since nobody sent them a verification link.
+		expect(created.user.emailVerified).toBe(true);
+	});
+
+	// A staff-minted account is immediately usable. This is the acceptance criterion "an invited
+	// prospect can sign in" reduced to its auth-layer core (the password swap is activation.spec.ts).
+	test('a staff-minted account can sign in straight away', async () => {
+		const auth = buildAuth(emailAndPassword);
+		await auth.api.createUser({
+			body: {
+				email: 'usable@example.com',
+				name: 'Invitee',
+				password: PASSWORD,
+				role: 'user',
+				data: { emailVerified: true }
+			}
+		});
+		const res = await auth.api.signInEmail({
+			body: { email: 'usable@example.com', password: PASSWORD }
+		});
+		expect(res.user.email).toBe('usable@example.com');
+	});
+
+	// Control: flip the ONE flag and sign-up works again — proving the refusal above is `disableSignUp`
+	// and not some unrelated misconfiguration that would also block the staff path.
+	test('control: sign-up succeeds with disableSignUp off', async () => {
+		const res = await buildAuth(openSignUp).api.signUpEmail({
+			body: { name: 'probe', email: 'control@example.com', password: PASSWORD }
+		});
+		expect(res.user.email).toBe('control@example.com');
+		// Still unverified + unsigned-in under requireEmailVerification, as it was under #96 PR 2.
 		expect(res.user.emailVerified).toBe(false);
 		expect(res.token).toBeNull();
 	});
 
-	test('our config blocks sign-in until the email is verified', async () => {
-		const auth = buildAuth(emailAndPassword);
+	// Unchanged by the lockdown and still load-bearing: accounts created BEFORE it (self-registrants
+	// who never clicked their link) are unverified and must stay locked out — which is what makes the
+	// #115 resend affordance in LoginForm the only way back in for them.
+	test('sign-in still requires a verified email', async () => {
+		const auth = buildAuth(openSignUp);
 		await auth.api.signUpEmail({
 			body: { name: 'probe', email: 'verify@example.com', password: PASSWORD }
 		});
@@ -68,63 +137,6 @@ describe('auth public sign-up + email verification (#96 PR2)', () => {
 		await expect(
 			auth.api.signInEmail({ body: { email: 'verify@example.com', password: PASSWORD } })
 		).rejects.toThrow(/verif/i);
-	});
-
-	// Anti-enumeration: a sign-up for an ALREADY-registered address must be indistinguishable from a
-	// fresh one, or the form leaks which emails have accounts. better-auth gives us this for free —
-	// but ONLY because `requireEmailVerification` flips its `shouldReturnGenericDuplicateResponse`
-	// path (sign-up.mjs): the duplicate returns a generic 200 with a synthetic, non-persisted user and
-	// a null token instead of throwing USER_ALREADY_EXISTS. This test pins that behavior so a
-	// better-auth upgrade (or someone flipping the flag) can't silently reopen the enumeration leak —
-	// the signup form (signup/+page.server.ts) relies on `res.ok` staying true here. The second
-	// attempt also uses a DIFFERENT case + password to prove the dedup is by normalized email alone.
-	test('duplicate email returns a generic success, never a "user exists" leak', async () => {
-		const auth = buildAuth(emailAndPassword);
-		await auth.api.signUpEmail({
-			body: { name: 'first', email: 'dup@example.com', password: PASSWORD }
-		});
-		// Same address, different case + password — must resolve (not throw) and look like a new signup.
-		const res = await auth.api.signUpEmail({
-			body: { name: 'second', email: 'DUP@example.com', password: 'a-different-password' }
-		});
-		expect(res.token).toBeNull(); // no session minted
-		expect(res.user.email).toBe('dup@example.com'); // normalized (lowercased), synthetic
-	});
-
-	// Control: with verification OFF, the SAME duplicate DOES throw "user already exists" — proving the
-	// generic response above is bound to requireEmailVerification, not incidental. If this ever stops
-	// throwing, the anti-enumeration guarantee is no longer specifically ours to reason about.
-	test('control: a duplicate email throws when verification is not required', async () => {
-		const auth = buildAuth({
-			enabled: true,
-			disableSignUp: false,
-			requireEmailVerification: false
-		});
-		await auth.api.signUpEmail({
-			body: { name: 'first', email: 'dupctl@example.com', password: PASSWORD }
-		});
-		await expect(
-			auth.api.signUpEmail({
-				body: { name: 'second', email: 'dupctl@example.com', password: PASSWORD }
-			})
-		).rejects.toThrow(/already exists/i);
-	});
-
-	// Control: with verification NOT required, the same account can sign in immediately — proving the
-	// block above comes from requireEmailVerification, not some unrelated misconfiguration.
-	test('control: sign-in succeeds when verification is not required', async () => {
-		const auth = buildAuth({
-			enabled: true,
-			disableSignUp: false,
-			requireEmailVerification: false
-		});
-		await auth.api.signUpEmail({
-			body: { name: 'probe', email: 'control@example.com', password: PASSWORD }
-		});
-		const res = await auth.api.signInEmail({
-			body: { email: 'control@example.com', password: PASSWORD }
-		});
-		expect(res.user.email).toBe('control@example.com');
 	});
 
 	// #115 resend-verification affordance. The signup "check your email" panel forwards to

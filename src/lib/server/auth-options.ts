@@ -19,9 +19,22 @@
 // mirroring a table.
 export const emailAndPassword = {
 	enabled: true,
-	disableSignUp: false,
+	// DAR-67: public self-signup is CLOSED again — accounts are invite-only. Staff pick a prospect off
+	// /admin/waitlist and mail them an activation link; the admin plugin's roster create-user is a
+	// different endpoint and does NOT consult this flag (plugins/admin), so both staff paths still mint
+	// accounts. This is the boundary: better-auth rejects POST /sign-up/email with
+	// EMAIL_PASSWORD_SIGN_UP_DISABLED at the router (api/routes/sign-up.mjs), so hiding the page is
+	// cosmetic and this line is the gate. `requireEmailVerification` below stays on for the accounts
+	// that already exist — both staff paths mark their creations verified.
+	disableSignUp: true,
 	requireEmailVerification: true
 };
+
+// How long a password-reset token stays valid. Shared rather than inlined because DAR-67's activation
+// links are password-reset tokens minted directly (activation.ts) — the invite email's "expires in an
+// hour" copy, better-auth's `resetPasswordTokenExpiresIn`, and the expiry stamped on the verification
+// row all have to be the same number or one of them is lying.
+export const RESET_PASSWORD_TOKEN_TTL_SECONDS = 3600;
 
 // #69: the admin login (`/login`) makes sign-in publicly reachable for the first time, so
 // rate-limit the auth endpoints. `storage: 'database'` persists the counters in a `rateLimit`
@@ -38,6 +51,9 @@ export const rateLimit = {
 	// can't mint accounts in bulk. Behavioral (no schema impact); shared with the CLI config, which
 	// ignores limits at generation time.
 	customRules: {
+		// Kept after DAR-67 closed sign-up, though the endpoint now rejects every request anyway: the
+		// limiter runs first, so this is what stops a script from hammering a permanently-400ing endpoint
+		// for free. It also means re-opening registration doesn't have to remember to re-add a cap.
 		'/sign-up/email': { window: 3600, max: 3 },
 		// #115: the resend-verification affordance (signup "check your email" panel → POST
 		// /send-verification-email) is an email-SEND trigger, so it's an abuse surface too — bound it

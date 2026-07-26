@@ -1,5 +1,6 @@
 import { fail, type Actions } from '@sveltejs/kit';
 import { getAuth } from '$lib/server/auth';
+import { ACTIVATION_QUERY_FLAG } from '$lib/server/activation';
 import type { PageServerLoad } from './$types';
 
 // Password-reset (step 2 — the emailed link lands here). Better Auth's GET /reset-password/:token
@@ -17,7 +18,13 @@ export const load: PageServerLoad = ({ url }) => {
 	// means someone hit /reset-password directly. Either way there's no usable token → show the
 	// "invalid link" state, not a password form that can't succeed.
 	const invalid = !token || url.searchParams.has('error');
-	return { token: token ?? null, invalid };
+	// DAR-67: an invitation link (activation.ts) lands here carrying this flag, and the page swaps to
+	// "set your password" copy — an invitee has no old password, so "reset yours" would be wrong and
+	// would read like a phishing tell. PURELY COSMETIC: anyone can append the flag by hand, and doing
+	// so changes nothing but wording. The token in the URL remains the entire authorization, and this
+	// action treats an invitation and a self-service reset identically because they ARE identical.
+	const invite = url.searchParams.has(ACTIVATION_QUERY_FLAG);
+	return { token: token ?? null, invalid, invite };
 };
 
 export const actions: Actions = {

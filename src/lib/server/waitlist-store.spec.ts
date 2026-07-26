@@ -46,6 +46,7 @@ beforeAll(async () => {
 			pilot_interest text, deployment_scale text, contact_permission integer, contact_method text,
 			research_preferences text,
 			qualification_step integer,
+			invited_at integer, invited_by text, activated_at integer,
 			ip_hash text, user_agent text,
 			created_at integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
 			updated_at integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL

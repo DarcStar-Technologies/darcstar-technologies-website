@@ -93,10 +93,16 @@ async function settle(page: Page) {
 }
 
 // Every public surface, rendered under the enforced CSP: Kit's hydration bootstrap (script
-// nonce), Svelte transitions + SSR'd style attributes ('unsafe-inline' styles), the localized
-// /es tree (paraglide reroute + transformPageChunk), and the live Turnstile widget on /signup.
+// nonce), Svelte transitions + SSR'd style attributes ('unsafe-inline' styles), and the localized
+// /es tree (paraglide reroute + transformPageChunk).
 // Each test also asserts the worker header set arrived — a page that starts prerendering moves to
 // the assets layer, silently losing these headers (and frame-ancestors), and fails here.
+//
+// /signup used to carry a `ready` hook waiting on a LIVE Turnstile widget, which exercised
+// script-src + frame-src against the real challenge platform. DAR-67 closed public sign-up, so the
+// page is now a notice with no form and no widget — the hook would wait forever on an input that is
+// never injected. The origin itself is still covered, deterministically, by the synthetic probes
+// below (and its CSP allowlist is deliberately retained so re-opening sign-up needs no CSP change).
 const AUDITED_PAGES: { path: string; ready?: (page: Page) => Promise<void> }[] = [
 	{ path: '/' },
 	{ path: '/es' },
@@ -113,15 +119,7 @@ const AUDITED_PAGES: { path: string; ready?: (page: Page) => Promise<void> }[] =
 	{ path: '/terms' },
 	{ path: '/forgot-password' },
 	{ path: '/login' },
-	{
-		path: '/signup',
-		// The preview's always-pass TEST sitekey mounts the real widget on any host, exercising
-		// script-src + the challenge platform live. Turnstile hides its iframe inside a CLOSED
-		// shadow root (invisible to selectors), so the deterministic "widget ran" signal is the
-		// hidden token input `turnstile.render()` injects into the form.
-		ready: (page) =>
-			page.locator('input[name="cf-turnstile-response"]').first().waitFor({ state: 'attached' })
-	}
+	{ path: '/signup' }
 ];
 
 for (const { path, ready } of AUDITED_PAGES) {

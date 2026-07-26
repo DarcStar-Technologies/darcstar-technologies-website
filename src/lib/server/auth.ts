@@ -1,14 +1,20 @@
 import { betterAuth } from 'better-auth/minimal';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { admin, captcha } from 'better-auth/plugins';
+import { admin } from 'better-auth/plugins';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { getRequestEvent } from '$app/server';
 import { getDb } from '$lib/server/db';
-import { emailAndPassword, rateLimit, session } from '$lib/server/auth-options';
+import {
+	emailAndPassword,
+	rateLimit,
+	session,
+	RESET_PASSWORD_TOKEN_TTL_SECONDS
+} from '$lib/server/auth-options';
 import { parseAdminIds } from '$lib/server/admin-access';
 import { createLoginAuditHook } from '$lib/server/auth-audit';
 import { persistLoginAudit } from '$lib/server/login-audit-store';
 import { linkSubmissionsToUser } from '$lib/server/contact-ownership';
+import { markWaitlistActivated } from '$lib/server/waitlist-invite';
 import { sendVerificationEmail as sendVerificationMessage } from '$lib/server/verification-email';
 import { sendPasswordResetEmail as sendPasswordResetMessage } from '$lib/server/password-reset-email';
 import { baseLocale } from '$lib/paraglide/runtime';
@@ -23,19 +29,6 @@ function createAuth() {
 	// over these instead of re-reading env inside better-auth's async machinery — where the
 	// SvelteKit request's AsyncLocalStorage context (which readEnv needs) may no longer be active.
 	const resendKey = readEnv('RESEND_API_KEY');
-	// Turnstile is all-or-nothing: enforcing needs the SECRET (server siteverify) AND the widget needs
-	// the SITE key. With only ONE set, enforcing would dead-end sign-up (a required token with no widget
-	// to mint it) or show a widget the server ignores — so a partial config counts as "captcha off"
-	// (rate limiting + email verification still gate sign-up). The /signup load gates the widget on the
-	// same pair, keeping "widget shown" ⟺ "captcha enforced".
-	const turnstileSecret = readEnv('TURNSTILE_SECRET_KEY');
-	const turnstileSiteKey = readEnv('TURNSTILE_SITE_KEY');
-	const captchaActive = Boolean(turnstileSecret && turnstileSiteKey);
-	if (Boolean(turnstileSecret) !== Boolean(turnstileSiteKey)) {
-		console.warn(
-			'[auth] Turnstile is half-configured — set BOTH TURNSTILE_SECRET_KEY and TURNSTILE_SITE_KEY (or neither); captcha is DISABLED on sign-up until both are present'
-		);
-	}
 	return betterAuth({
 		baseURL: readEnv('ORIGIN'),
 		secret: readEnv('BETTER_AUTH_SECRET'),
@@ -54,13 +47,20 @@ function createAuth() {
 			'*-darcstar-technologies-website-preview.darcstar.workers.dev'
 		],
 		database: drizzleAdapter(getDb(), { provider: 'sqlite' }),
-		// #96 PR2: public sign-up re-opened behind verification+captcha — base config in auth-options.ts.
-		// Augmented here with the env-bound password-reset sender (needs the Resend key), like
-		// emailVerification below. `revokeSessionsOnPasswordReset` signs out all OTHER sessions on a
-		// reset — recovering a compromised account must not leave an attacker signed in.
+		// Base config (now `disableSignUp` — invite-only since DAR-67) in auth-options.ts. Augmented here
+		// with the env-bound password-reset sender (needs the Resend key), like emailVerification below.
+		// `revokeSessionsOnPasswordReset` signs out all OTHER sessions on a reset — recovering a
+		// compromised account must not leave an attacker signed in.
+		//
+		// The reset flow carries more weight than its name suggests now: DAR-67's invitations are
+		// password-reset tokens, so this is also the path by which every new account gets its first
+		// password. Disabling reset would disable onboarding.
 		emailAndPassword: {
 			...emailAndPassword,
-			resetPasswordTokenExpiresIn: 3600, // 1 hour — matches the verification token + the email copy
+			// Shared with DAR-67's activation links, which stamp their own expiry on a hand-minted token
+			// (activation.ts) — one constant so the token, the config and the "expires in an hour" copy
+			// can't drift apart. Also matches the verification token's expiresIn below.
+			resetPasswordTokenExpiresIn: RESET_PASSWORD_TOKEN_TTL_SECONDS,
 			revokeSessionsOnPasswordReset: true,
 			sendResetPassword: async ({ user, url }) => {
 				if (!resendKey) {
@@ -77,16 +77,44 @@ function createAuth() {
 					{ to: user.email, name: user.name, url },
 					baseLocale
 				);
+			},
+			// DAR-67: setting a password IS the activation event for an invited prospect, and this is the
+			// only hook that sees it — /reset-password consumes the token through better-auth, which knows
+			// nothing about the waitlist. Fires for EVERY reset, so the discrimination lives in the query:
+			// `markWaitlistActivated` stamps only a row that was actually invited and isn't already
+			// stamped (see waitlist-invite.ts). A routine reset by someone who was never invited matches
+			// nothing and writes nothing.
+			//
+			// Best-effort and fully swallowed: this is a reporting timestamp, and failing someone's
+			// password reset over it would be the tail wagging the dog. Awaited inline by the endpoint
+			// (password.mjs), so we're still inside the SvelteKit request — `getDb()` resolves normally.
+			onPasswordReset: async ({ user }) => {
+				try {
+					const stamped = await markWaitlistActivated(getDb(), user.email);
+					if (stamped > 0) {
+						// Pairs with the '[invite] activation.sent' line the invite action writes, so the two
+						// ends of an onboarding are greppable together in Workers Logs.
+						console.info('[invite] activation.completed', JSON.stringify({ email: user.email }));
+					}
+				} catch (err) {
+					console.error('[invite] stamping the waitlist activation failed', err);
+				}
 			}
 		},
 		rateLimit, // #69: DB-backed limiter on the now-public auth endpoints — see auth-options.ts
 		session, // cookie-cache the session so signed-in page views skip the DB — see auth-options.ts
 		// #96 (PR 2): verify the email before an account is usable (requireEmailVerification lives in
-		// auth-options.ts). `sendOnSignUp` mails the link at registration; `autoSignInAfterVerification`
-		// drops the visitor into /account (the callbackURL the /signup action passes) the moment they
-		// click it; `afterEmailVerification` is the SAFE point to claim their historical contact
+		// auth-options.ts). `autoSignInAfterVerification` drops the visitor into /account the moment they
+		// click the link; `afterEmailVerification` is the SAFE point to claim their historical contact
 		// submissions — email ownership is now proven (reuses PR 1's linkSubmissionsToUser). Env-bound
 		// (Resend key + DB), so it lives here, not in auth-options.ts.
+		//
+		// DAR-67 left this whole block in place even though invite-only onboarding creates accounts
+		// ALREADY verified (staff vouch by typing the address), so nothing routes through it on the happy
+		// path any more. It still serves the accounts that predate the lockdown: legacy self-registrants
+		// who never clicked their link are unverified, still 403 at sign-in, and still need `sendOnSignIn`
+		// plus the #115 resend affordance to get in. `sendOnSignUp` is now unreachable (there are no
+		// sign-ups) and kept only so re-opening registration doesn't silently ship without it.
 		emailVerification: {
 			sendOnSignUp: true,
 			// Re-send the link when an UNVERIFIED account tries to sign in (it still 403s). Recovery for a
@@ -149,20 +177,16 @@ function createAuth() {
 				// makes an operator; the bootstrap script (create-admin.ts) sets `admin` directly.
 				defaultRole: 'user'
 			}),
-			// #96 (PR 2): Cloudflare Turnstile on public sign-up ONLY. `endpoints` MUST stay scoped to
-			// /sign-up/email — the plugin's defaults ALSO guard /sign-in/email + /request-password-reset,
-			// which carry no widget and would break the no-JS /login. Registered only when the secret is
-			// present, so dev without keys signs up challenge-free (graceful, like the Resend skip).
-			// Behavioral (onRequest) → NOT mirrored to auth-cli.ts. Sits before sveltekitCookies (last).
-			...(captchaActive
-				? [
-						captcha({
-							provider: 'cloudflare-turnstile',
-							secretKey: turnstileSecret as string,
-							endpoints: ['/sign-up/email']
-						})
-					]
-				: []),
+			// DAR-67 REMOVED the Cloudflare Turnstile captcha plugin. It was scoped to exactly one
+			// endpoint — POST /sign-up/email (#96 PR 2) — and that endpoint now rejects everything at the
+			// router (`disableSignUp`, auth-options.ts), so the challenge guarded nothing. Keeping it would
+			// have been worse than dead weight: its onRequest runs BEFORE the sign-up check, so a probe
+			// would come back "solve the captcha" instead of "sign-up is disabled", which reads like a door
+			// that opens for anyone patient enough.
+			//
+			// TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY stay in the env and the challenges.cloudflare.com
+			// CSP allowlist stays in vite.config.ts, so re-opening public sign-up means re-adding this
+			// plugin and a widget — not a secrets rotation and a CSP change. See docs/auth.md.
 			sveltekitCookies(getRequestEvent) // make sure this is the last plugin in the array
 		]
 	});
