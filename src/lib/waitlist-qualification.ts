@@ -156,3 +156,34 @@ export const WAITLIST_DEPLOYMENT_SCALE_MAX = 500;
  */
 export const WAITLIST_CTAS = ['pilot', 'evidence', 'research', 'home'] as const;
 export type WaitlistCta = (typeof WAITLIST_CTAS)[number];
+
+/**
+ * Internal lead classes (DAR-65), listed in TRIAGE ORDER — the index IS the priority rank, so the
+ * admin view's sort and its filter chips read the same order from one place.
+ *
+ * INTERNAL ONLY. This is a staff-facing triage bucket: never rendered on a public page, never emailed
+ * to the person classified, never described as committed pipeline. Only the VOCABULARY lives out here
+ * (client-safe, because `/admin/waitlist` renders a localized badge for it) — the decision itself is
+ * `classifyWaitlistLead` under `$lib/server`, exactly the split DAR-64's CTA uses.
+ */
+export const WAITLIST_LEAD_CLASSES = [
+	'priority-a',
+	'priority-b',
+	'priority-c',
+	'research',
+	'investor'
+] as const;
+export type WaitlistLeadClass = (typeof WAITLIST_LEAD_CLASSES)[number];
+
+/**
+ * A lead class → its triage rank (lower sorts first). Derived from the list order above rather than
+ * a second hand-maintained map, so the two can't disagree.
+ *
+ * A value outside the list is unreachable through the type, but ranks LAST rather than taking
+ * `indexOf`'s -1 — which would sort an unrecognized bucket above Priority A, the one direction a
+ * triage list must never fail in.
+ */
+export const waitlistLeadClassRank = (leadClass: WaitlistLeadClass): number => {
+	const rank = WAITLIST_LEAD_CLASSES.indexOf(leadClass);
+	return rank === -1 ? WAITLIST_LEAD_CLASSES.length : rank;
+};

@@ -123,12 +123,24 @@ export function audienceFor(answers: {
 export const WAITLIST_STEP4_BRANCHES = ['step4a', 'step4b'] as const;
 export type WaitlistStep4Branch = (typeof WAITLIST_STEP4_BRANCHES)[number];
 
-/** Timelines that read as active commercial interest — DAR-63's branch-A set. */
+/** Timelines that read as active commercial interest — an evaluation window inside 12 months. */
 const ACTIVE_EVALUATION_TIMELINES: readonly WaitlistTimeline[] = [
 	'evaluating-now',
 	'within-3-months',
 	'3-12-months'
 ];
+
+/**
+ * Is this an active (within-12-months) evaluation window? DAR-63's branch-A test, exported because
+ * DAR-65's classifier needs the same threshold for its Priority-B floor — one list, two readers,
+ * rather than a second copy that can drift. Fail-safe: unanswered and unrecognized are NOT active.
+ */
+export function isActiveEvaluationTimeline(evaluationTimeline: string | null | undefined): boolean {
+	return (
+		evaluationTimeline != null &&
+		(ACTIVE_EVALUATION_TIMELINES as readonly string[]).includes(evaluationTimeline)
+	);
+}
 
 /**
  * Which step-4 branch an evaluation timeline earns. FAIL-SAFE POLARITY again, and this time it's
@@ -140,10 +152,7 @@ const ACTIVE_EVALUATION_TIMELINES: readonly WaitlistTimeline[] = [
  * which is DAR-63's rule as written.
  */
 export function step4BranchFor(evaluationTimeline: string | null | undefined): WaitlistStep4Branch {
-	return evaluationTimeline != null &&
-		(ACTIVE_EVALUATION_TIMELINES as readonly string[]).includes(evaluationTimeline)
-		? 'step4a'
-		: 'step4b';
+	return isActiveEvaluationTimeline(evaluationTimeline) ? 'step4a' : 'step4b';
 }
 
 /**

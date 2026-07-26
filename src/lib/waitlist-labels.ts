@@ -25,7 +25,8 @@ import type {
 	WaitlistPilotInterest,
 	WaitlistContactMethod,
 	WaitlistResearchPreference,
-	WaitlistCta
+	WaitlistCta,
+	WaitlistLeadClass
 } from '$lib/waitlist-qualification';
 import type { WaitlistRole } from '$lib/waitlist-roles';
 import type { WaitlistCompanySize } from '$lib/waitlist-company-sizes';
@@ -179,6 +180,18 @@ export const waitlistCtaLabel: Record<WaitlistCta, () => string> = {
 	evidence: m.waitlist_cta_evidence,
 	research: m.waitlist_cta_research,
 	home: m.waitlist_cta_home
+};
+
+// --- Internal triage (staff-only) --------------------------------------------------------------
+
+/** The lead-class badge on /admin/waitlist (DAR-65). STAFF-ONLY copy: which class a row is in is
+ *  decided server-side by `classifyWaitlistLead` and must never reach a public page or an email. */
+export const waitlistLeadClassLabel: Record<WaitlistLeadClass, () => string> = {
+	'priority-a': m.admin_waitlist_class_priority_a,
+	'priority-b': m.admin_waitlist_class_priority_b,
+	'priority-c': m.admin_waitlist_class_priority_c,
+	research: m.admin_waitlist_class_research,
+	investor: m.admin_waitlist_class_investor
 };
 
 // --- v1 (retired from the form, still rendered by /admin/waitlist for historical rows) ----------
