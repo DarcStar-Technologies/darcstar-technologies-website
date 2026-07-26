@@ -61,6 +61,8 @@
 	const atCap = $derived(data.total >= data.limit);
 
 	const basePath = $derived(localizeHref('/admin/waitlist'));
+	// SvelteKit reads the action name from the `?/name` key, so extra params ride alongside it.
+	const deleteAction = $derived(data.filter ? `?/delete&class=${data.filter}` : '?/delete');
 	const chipBase =
 		'rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500';
 	const chipActive = 'bg-white/10 text-white';
@@ -92,11 +94,14 @@
 	{/if}
 
 	<!-- Filter by lead class. Plain links + a GET query, so it needs no JS and every view is
-	     bookmarkable; the counts are over the whole window, not the filtered slice. -->
+	     bookmarkable; the counts are over the whole window, not the filtered slice.
+	     aria-current="true" rather than "page": this IS still the waitlist page, and the layout's
+	     nav already owns the one aria-current="page" — two of those would leave a screen reader
+	     announcing two different "current page"s. -->
 	<nav class="flex flex-wrap items-center gap-1" aria-label={m.admin_waitlist_filter_label()}>
 		<a
 			href={basePath}
-			aria-current={data.filter === null ? 'page' : undefined}
+			aria-current={data.filter === null ? 'true' : undefined}
 			class="{chipBase} {data.filter === null ? chipActive : chipIdle}"
 			>{m.admin_waitlist_filter_option({
 				label: m.admin_waitlist_filter_all(),
@@ -106,7 +111,7 @@
 		{#each WAITLIST_LEAD_CLASSES as leadClass (leadClass)}
 			<a
 				href={`${basePath}?class=${leadClass}`}
-				aria-current={data.filter === leadClass ? 'page' : undefined}
+				aria-current={data.filter === leadClass ? 'true' : undefined}
 				class="{chipBase} {data.filter === leadClass ? chipActive : chipIdle}"
 				>{m.admin_waitlist_filter_option({
 					label: waitlistLeadClassLabel[leadClass](),
@@ -185,7 +190,10 @@
 											class="inline-flex cursor-pointer list-none items-center rounded px-2 py-1 text-xs font-medium text-error-400 transition-colors [&::-webkit-details-marker]:hidden hover:bg-error-500/10 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none"
 											>{m.admin_delete()}</summary
 										>
-										<form method="post" action="?/delete" class="mt-1.5">
+										<!-- Carry the active filter through the action URL. A bare `?/delete` would
+									     resolve to /admin/waitlist?/delete and drop `class=`, bouncing the
+									     operator out of the band they were working. -->
+										<form method="post" action={deleteAction} class="mt-1.5">
 											<input type="hidden" name="id" value={row.id} />
 											<button
 												type="submit"

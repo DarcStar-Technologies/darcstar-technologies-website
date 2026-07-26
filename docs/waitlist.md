@@ -356,9 +356,13 @@ read is capped at the 200 most recent, and classification/filtering happen over 
   are unverified claims from an unauthenticated form — confirm by replying to the signed-up address
   before acting on them (see `contact_permission` below for why).
 
-The badge rendering is pinned in `WaitlistLeadClassBadge.svelte.spec.ts` (the client project, where a
-fixture is just a prop). The e2e suite can only assert the guard's redirect — it is hermetic, with
-neither a session cookie nor a reachable DB to seed.
+Rendering is pinned in the **client** project, where a seeded row is just a prop:
+`page.svelte.spec.ts` mounts the whole page over fixture signups (badges, label resolution, the
+tri-state column, the chips, the detail disclosure, and that a delete keeps the active band), and
+`WaitlistLeadClassBadge.svelte.spec.ts` covers every class plus Priority A's louder treatment. It has
+to live there rather than in the e2e suite: that suite is hermetic, with neither a session cookie nor
+a reachable DB, so it can only assert the guard's redirect — which it does, including for a crafted
+`?class=`. Mounting the page needs `$app/state` stubbed, because `Seo.svelte` reads it.
 
 ## Setup
 

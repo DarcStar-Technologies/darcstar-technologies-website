@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { classifyWaitlistLead, type WaitlistLeadSignals } from './waitlist-classify';
-import { isActiveEvaluationTimeline } from './waitlist-flow';
 import { WAITLIST_ROLES } from '$lib/waitlist-roles';
 import {
 	WAITLIST_APPLICATIONS,
@@ -21,6 +20,10 @@ const AUTHORITY_ROLES = [
 ];
 const NON_COMMERCIAL_ROLES = ['researcher', 'student', 'investor-advisor'];
 const IMMEDIATE_TIMELINES = ['evaluating-now', 'within-3-months'];
+// Priority B's floor. Spelled out rather than imported from waitlist-flow: the point of restating
+// the rubric is that a change to the shared 12-month window has to fail a test, not silently move
+// the B/C boundary with it.
+const ACTIVE_TIMELINES = [...IMMEDIATE_TIMELINES, '3-12-months'];
 // Positive in the same sense step 4A means it — "possibly, contact me" counts, and deliberately so.
 const POSITIVE_PILOTS = [
 	'yes-within-3-months',
@@ -70,7 +73,7 @@ describe('classifyWaitlistLead — the rubric matrix', () => {
 					POSITIVE_PILOTS.includes(String(pilotInterest))
 				) {
 					expect(got).toBe('priority-a');
-				} else if (isActiveEvaluationTimeline(evaluationTimeline)) {
+				} else if (ACTIVE_TIMELINES.includes(String(evaluationTimeline))) {
 					expect(got).toBe('priority-b');
 				} else {
 					expect(got).toBe('priority-c');
@@ -217,5 +220,12 @@ describe('waitlistLeadClassRank', () => {
 		expect(waitlistLeadClassRank('priority-a')).toBe(0);
 		expect(waitlistLeadClassRank('priority-c')).toBeLessThan(waitlistLeadClassRank('research'));
 		expect(waitlistLeadClassRank('research')).toBeLessThan(waitlistLeadClassRank('investor'));
+	});
+
+	// Unreachable through the type, but the failure direction matters: `indexOf`'s -1 would sort an
+	// unrecognized bucket ABOVE Priority A, which is the one place a triage list must not fail.
+	it('ranks an unrecognized class last rather than first', () => {
+		const rank = waitlistLeadClassRank('not-a-class' as (typeof WAITLIST_LEAD_CLASSES)[number]);
+		expect(rank).toBeGreaterThan(waitlistLeadClassRank('investor'));
 	});
 });

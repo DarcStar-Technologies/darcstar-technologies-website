@@ -175,7 +175,15 @@ export const WAITLIST_LEAD_CLASSES = [
 ] as const;
 export type WaitlistLeadClass = (typeof WAITLIST_LEAD_CLASSES)[number];
 
-/** A lead class → its triage rank (lower sorts first). Derived from the list order above rather than
- *  a second hand-maintained map, so the two can't disagree. */
-export const waitlistLeadClassRank = (leadClass: WaitlistLeadClass): number =>
-	WAITLIST_LEAD_CLASSES.indexOf(leadClass);
+/**
+ * A lead class → its triage rank (lower sorts first). Derived from the list order above rather than
+ * a second hand-maintained map, so the two can't disagree.
+ *
+ * A value outside the list is unreachable through the type, but ranks LAST rather than taking
+ * `indexOf`'s -1 — which would sort an unrecognized bucket above Priority A, the one direction a
+ * triage list must never fail in.
+ */
+export const waitlistLeadClassRank = (leadClass: WaitlistLeadClass): number => {
+	const rank = WAITLIST_LEAD_CLASSES.indexOf(leadClass);
+	return rank === -1 ? WAITLIST_LEAD_CLASSES.length : rank;
+};
