@@ -4,7 +4,12 @@ import { createClient } from '@libsql/client';
 import * as schema from './db/schema';
 import type { Db } from './db';
 import { waitlist } from './db/schema';
-import { applyWaitlistStep, upsertWaitlist } from './waitlist-store';
+import {
+	applyWaitlistStep,
+	upsertWaitlist,
+	WAITLIST_STEP_WRITE_MAX,
+	WAITLIST_STEP_WRITE_WINDOW_MS
+} from './waitlist-store';
 import type { CleanedWaitlist } from './waitlist';
 
 // Real DB integration test — the insert-or-enrich + `isNew` gate is the security-critical logic
@@ -46,6 +51,7 @@ beforeAll(async () => {
 			pilot_interest text, deployment_scale text, contact_permission integer, contact_method text,
 			research_preferences text,
 			qualification_step integer,
+			step_write_count integer, step_write_window_at integer,
 			invited_at integer, invited_by text, activated_at integer,
 			ip_hash text, user_agent text,
 			created_at integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
@@ -297,5 +303,144 @@ describe('applyWaitlistStep', () => {
 		});
 		expect(updated).toBe(false);
 		expect(await rows()).toHaveLength(0);
+	});
+});
+
+// DAR-68 — the per-row step-write budget. These steps are unauthenticated writes authorized only by
+// the continuation token, which the anti-enumeration success shape hands to any submitter of a known
+// address, so the bound has to hold against a holder who is deliberately hostile.
+describe('applyWaitlistStep step-write budget', () => {
+	const insert = async () => (await upsertWaitlist(db, { ...base, name: 'Ada' }, 'h', null)).id;
+
+	// One well-formed step-2 write, with a distinguishable role so a REFUSED write can be told from
+	// an applied one by looking at what is stored rather than only at the return value.
+	const step2 = (id: string, role: string | null = 'engineering-leader') =>
+		applyWaitlistStep(db, id, {
+			step: 2,
+			role,
+			primaryApplication: null,
+			evaluationTimeline: null
+		});
+
+	/** Age the row's window start so the fixed window has expired without waiting an hour. */
+	const expireWindow = (id: string) =>
+		client.execute({
+			sql: 'UPDATE waitlist SET step_write_window_at = ? WHERE id = ?',
+			args: [Date.now() - WAITLIST_STEP_WRITE_WINDOW_MS - 60_000, id]
+		});
+
+	it('opens a window on the first step write and spends one unit per write', async () => {
+		const id = await insert();
+		await step2(id);
+		const [first] = await rows();
+		expect(first.stepWriteCount).toBe(1);
+		expect(first.stepWriteWindowAt).toBeInstanceOf(Date);
+
+		// Move the window start to a known moment still INSIDE the window before the second write.
+		// Without this the next assertion is intermittently blind: two consecutive writes can land in
+		// the same millisecond, and then "the start didn't move" is true of a SLIDING window too —
+		// measured, it misses the sliding mutation about one run in three. Pinning it half a window
+		// back makes the two behaviours differ by half an hour.
+		const pinned = Date.now() - WAITLIST_STEP_WRITE_WINDOW_MS / 2;
+		await client.execute({
+			sql: 'UPDATE waitlist SET step_write_window_at = ? WHERE id = ?',
+			args: [pinned, id]
+		});
+
+		await step2(id);
+		const [second] = await rows();
+		expect(second.stepWriteCount).toBe(2);
+		// Fixed window, not sliding: a write inside a live window must not push its start forward, or
+		// a steady drip would hold the window open indefinitely and the cap would never reset.
+		expect(second.stepWriteWindowAt?.getTime()).toBe(pinned);
+	});
+
+	it('refuses the write past the cap, and refuses it the SAME way a missing row is refused', async () => {
+		const id = await insert();
+		for (let i = 0; i < WAITLIST_STEP_WRITE_MAX; i++) expect((await step2(id)).updated).toBe(true);
+
+		// Over budget. `updated: false` is the identical answer applyWaitlistStep gives for an id that
+		// matches no row (the decoy-token path above), which is what keeps the throttle from being a
+		// token-validity oracle: the caller cannot tell the two apart, and returns the same success.
+		const over = await step2(id, 'researcher');
+		expect(over.updated).toBe(false);
+
+		const [row] = await rows();
+		expect(row.role).toBe('engineering-leader'); // the refused answer was not applied
+		expect(row.stepWriteCount).toBe(WAITLIST_STEP_WRITE_MAX); // …and refusing did not spend budget either
+	});
+
+	it('leaves the row byte-identical when it refuses — including the window start', async () => {
+		const id = await insert();
+		for (let i = 0; i < WAITLIST_STEP_WRITE_MAX; i++) await step2(id);
+		const [before] = await rows();
+
+		await step2(id, 'researcher');
+		const [after] = await rows();
+		// Whole-row equality, not a field or two: a refusal is a zero-row UPDATE, so NOTHING may move —
+		// not the answers, not qualification_step, not updated_at, and above all not step_write_window_at
+		// (were a refusal to stamp the window, hammering would keep resetting the clock and the row could
+		// never recover its budget). Comparing the whole row is also what makes this test able to fail:
+		// the window start alone can't detect a broken guard, since a PERMITTED in-window write leaves it
+		// untouched too.
+		expect(after).toEqual(before);
+	});
+
+	it('restores the budget once the window expires', async () => {
+		const id = await insert();
+		for (let i = 0; i < WAITLIST_STEP_WRITE_MAX; i++) await step2(id);
+		expect((await step2(id)).updated).toBe(false);
+
+		await expireWindow(id);
+
+		const resumed = await step2(id, 'researcher');
+		expect(resumed.updated).toBe(true);
+		const [row] = await rows();
+		expect(row.role).toBe('researcher');
+		expect(row.stepWriteCount).toBe(1); // a fresh window starts the count over, it does not resume
+	});
+
+	it('treats a pre-DAR-68 row (null counters) as having a full budget', async () => {
+		const id = await insert();
+		await client.execute({
+			sql: 'UPDATE waitlist SET step_write_count = NULL, step_write_window_at = NULL WHERE id = ?',
+			args: [id]
+		});
+		const { updated } = await step2(id);
+		expect(updated).toBe(true);
+		const [row] = await rows();
+		expect(row.stepWriteCount).toBe(1);
+	});
+
+	// A refusal is SILENT — the endpoints return the same generic success either way — so a cap set
+	// near a real visitor's ceiling would eat their answers with nothing to show for it. The whole
+	// flow is three writes; this pins that the cap leaves room for walking back through all of them
+	// several times over, so a future tightening has to break a test rather than a visitor.
+	it('leaves generous headroom above a complete flow (2 → 3 → 4)', async () => {
+		const id = await insert();
+		const walk = async () => {
+			await applyWaitlistStep(db, id, {
+				step: 2,
+				role: 'engineering-leader',
+				primaryApplication: null,
+				evaluationTimeline: null
+			});
+			await applyWaitlistStep(db, id, {
+				step: 3,
+				currentApproach: null,
+				economicImpact: null,
+				budgetRange: null,
+				adoptionEvidence: ['internal-benchmarks']
+			});
+			return applyWaitlistStep(db, id, {
+				step: '4a',
+				pilotInterest: 'yes-interested',
+				deploymentScale: null,
+				contactPermission: null,
+				contactMethod: null,
+				phone: null
+			});
+		};
+		for (let pass = 0; pass < 5; pass++) expect((await walk()).updated).toBe(true);
 	});
 });
