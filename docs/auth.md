@@ -147,6 +147,13 @@ escalation to reach through it). No JS required; two-step `<details>` confirm, s
    `[invite] activation.sent` line goes to Workers Logs (mirroring the login-audit posture) and is the
    only durable history of who invited whom, since a resend overwrites `invited_at`.
 
+**Local dev without Resend.** With no `RESEND_API_KEY` the invite logs the activation link and returns
+a FAILURE rather than claiming success, because nothing was mailed — so `invited_at` stays null. That is
+deliberate, but it has a consequence worth knowing before you go looking for a bug: since
+`markWaitlistActivated` requires `invited_at IS NOT NULL`, clicking the logged link and setting a
+password will **not** flip the badge to Activated locally. To exercise that path end to end you need a
+real Resend key (send to a throwaway address, not your own inbox), or to set `invited_at` by hand.
+
 ### Activation state
 
 Three columns on `waitlist` (**not** on `user` — the un-invited majority has no `user` row to hang

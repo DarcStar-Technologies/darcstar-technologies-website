@@ -304,6 +304,14 @@ describe('/admin/waitlist invitations', () => {
 		await expect.element(page.getByText(/invitation email didn't send/)).toBeVisible();
 	});
 
+	// A disabled account needs the operator to go re-enable it, not to retry — and it must say so,
+	// because setting a password does NOT restore access, so the invitation would otherwise look
+	// successful right up to the sign-in the prospect still can't pass.
+	it('explains a refusal to invite a disabled account', async () => {
+		mount(undefined, { invite: { error: 'account_disabled' } });
+		await expect.element(page.getByText(/account is disabled/)).toBeVisible();
+	});
+
 	it('falls back to the generic message for any other failure', async () => {
 		mount(undefined, { invite: { error: 'create_failed' } });
 		await expect.element(page.getByText(/Couldn't send that invitation/)).toBeVisible();

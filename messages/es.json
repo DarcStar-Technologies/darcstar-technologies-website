@@ -524,6 +524,7 @@
 	"admin_waitlist_invite_error": "Couldn't send that invitation. Nothing was emailed — try again.",
 	"admin_waitlist_invite_error_staff": "That address already belongs to a staff account. Manage it from the roster instead.",
 	"admin_waitlist_invite_error_email": "The account is ready, but the invitation email didn't send. Try again.",
+	"admin_waitlist_invite_error_disabled": "That account is disabled. Re-enable it on the users page before inviting them — setting a password won't restore access.",
 	"admin_waitlist_field_invited": "Invitation sent",
 	"admin_waitlist_field_invited_by": "Invited by",
 	"admin_waitlist_field_activated": "Password set",

@@ -94,6 +94,10 @@
 		switch (code) {
 			case 'staff_account':
 				return m.admin_waitlist_invite_error_staff();
+			// Both of these need the operator to go and DO something else first, so they get their own
+			// copy — "try again" would send them round the same loop.
+			case 'account_disabled':
+				return m.admin_waitlist_invite_error_disabled();
 			// The account exists but nothing was mailed, so the row is still un-invited and the button
 			// still reads Invite. Worth its own message: "try again" is genuinely the right next move,
 			// unlike the generic failure where something may be structurally wrong.

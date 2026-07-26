@@ -37,7 +37,8 @@ beforeAll(async () => {
 			email_verified integer DEFAULT 0 NOT NULL,
 			created_at integer DEFAULT ${NOW_DEFAULT} NOT NULL,
 			updated_at integer DEFAULT ${NOW_DEFAULT} NOT NULL,
-			role text
+			role text,
+			banned integer DEFAULT 0
 		)`
 	);
 });
@@ -64,10 +65,10 @@ async function seedLead(
 	});
 }
 
-async function seedAccount(id: string, email: string, role: string | null) {
+async function seedAccount(id: string, email: string, role: string | null, banned = 0) {
 	await client.execute({
-		sql: 'INSERT INTO user (id, name, email, role) VALUES (?, ?, ?, ?)',
-		args: [id, 'Seeded', email, role]
+		sql: 'INSERT INTO user (id, name, email, role, banned) VALUES (?, ?, ?, ?, ?)',
+		args: [id, 'Seeded', email, role, banned]
 	});
 }
 
@@ -104,8 +105,23 @@ describe('findAccountByEmail', () => {
 		expect(await findAccountByEmail(db, 'lead@example.com', undefined)).toEqual({
 			id: 'u1',
 			role: 'user',
-			isStaff: false
+			isStaff: false,
+			banned: false
 		});
+	});
+
+	// The invite refuses a disabled account, because setting a password does not lift a ban — the
+	// prospect would follow a live link to a sign-in they still can't pass.
+	it('reports a roster-disabled account as banned', async () => {
+		await seedAccount('u1', 'disabled@example.com', 'user', 1);
+		expect((await findAccountByEmail(db, 'disabled@example.com', undefined))?.banned).toBe(true);
+	});
+
+	// `banned` is nullable — the column arrived with the admin plugin, so rows created before it hold
+	// null. Null must read as "not banned", or every legacy account becomes uninvitable.
+	it('reads a null banned column as not banned', async () => {
+		await seedAccount('u1', 'legacy@example.com', null, null as unknown as number);
+		expect((await findAccountByEmail(db, 'legacy@example.com', undefined))?.banned).toBe(false);
 	});
 
 	// The staff flag is what stops the invite button from mailing a password-reset link at a colleague.
@@ -146,6 +162,15 @@ describe('markWaitlistInvited', () => {
 		const row = await readLead('w1');
 		expect(row.invited_at).toBeGreaterThan(1_000);
 		expect(row.invited_by).toBe('staff-2');
+	});
+
+	// Same rule as `markWaitlistActivated` below: `updated_at` is the VISITOR's edit timestamp (the step
+	// writes bump it), and an invite is our action, not theirs. These two helpers disagreeing about it
+	// would make "last updated" mean one thing for invited rows and another for activated ones.
+	it('leaves updated_at alone', async () => {
+		await seedLead('w1', 'lead@example.com');
+		await markWaitlistInvited(db, 'w1', 'staff-1');
+		expect((await readLead('w1')).updated_at).toBe(1_000_000);
 	});
 });
 

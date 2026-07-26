@@ -195,6 +195,12 @@ export const actions: Actions = {
 		// and a confusing email; staff accounts are managed on /admin/users.
 		if (existing?.isStaff) return fail(400, { invite: { error: 'staff_account' as const } });
 
+		// Equally, refuse a roster-DISABLED account. Setting a password does not lift a ban, so the
+		// invitation would work perfectly right up to the point where it doesn't: the prospect follows a
+		// live link, chooses a password, and then can't sign in — and neither they nor the operator who
+		// pressed the button would have any way to see why. Re-enable it on /admin/users first.
+		if (existing?.banned) return fail(400, { invite: { error: 'account_disabled' as const } });
+
 		let userId = existing?.id;
 		const created = userId === undefined;
 		if (userId === undefined) {
@@ -227,18 +233,32 @@ export const actions: Actions = {
 				console.error('[invite] creating the account failed', err);
 				return fail(500, { invite: { error: 'create_failed' as const } });
 			}
-
-			// Claim their earlier anonymous contact submissions, same vouch as the roster path (#96) — so
-			// the messages they sent before having an account are waiting at /account when they arrive.
-			// Best-effort: a link failure must not fail an already-created account.
-			try {
-				await linkSubmissionsToUser(db, userId, row.email);
-			} catch (err) {
-				console.error('[invite] linking submissions to the invited account failed', err);
-			}
 		}
 
-		const link = await mintActivationLink(auth, userId);
+		// Claim their earlier anonymous contact submissions, same vouch as the roster path (#96) — so the
+		// messages they sent before having an account are waiting at /account when they arrive.
+		//
+		// Runs for a FOUND account too, not just a freshly created one, and that isn't belt-and-braces:
+		// an account predating DAR-67 may be an unverified self-registrant whose `afterEmailVerification`
+		// backfill never fired, so being invited is the first moment anyone vouches for them. The helper
+		// only touches rows with `user_id IS NULL`, so re-running it is a no-op rather than a re-assignment.
+		// Best-effort: a link failure must not fail an invitation that is otherwise fine.
+		try {
+			await linkSubmissionsToUser(db, userId, row.email);
+		} catch (err) {
+			console.error('[invite] linking submissions to the invited account failed', err);
+		}
+
+		// Wrapped like every other step: the account may already exist by now, and an unhandled throw
+		// here would replace the triage page with SvelteKit's error screen instead of a message the
+		// operator can act on.
+		let link;
+		try {
+			link = await mintActivationLink(auth, userId);
+		} catch (err) {
+			console.error('[invite] minting the activation link failed', err);
+			return fail(500, { invite: { error: 'create_failed' as const } });
+		}
 
 		if (!resendKey) {
 			// No Resend key — local dev. Log the link so a developer can click it, and report the failure
