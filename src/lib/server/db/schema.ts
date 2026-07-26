@@ -161,6 +161,25 @@ export const waitlist = sqliteTable(
 		// columns (pilot_interest set → branch A; research_preferences set → branch B), so DAR-65/66
 		// need no extra column and no backfill.
 		qualificationStep: integer('qualification_step'),
+		// --- Step-write budget (DAR-68) ---
+		// The throttle for the token-gated steps 2–4, which are unauthenticated writes: a fixed window
+		// per ROW, because a continuation token addresses exactly one row and that makes the row the
+		// real abuse unit (per-IP would punish shared NATs for a bound this already gets exactly).
+		//
+		// These live on the row rather than in a counter table for one reason, and it's the whole
+		// design: `applyWaitlistStep` reads and bumps them INSIDE the UPDATE it was already making
+		// (see waitlist-store.ts), so a legitimate step costs no extra query and a throttled one costs
+		// LESS than the write it replaces — the opposite of a DB-backed limiter, which spends a read
+		// plus a write to refuse a write, i.e. protects the database by hammering it.
+		//
+		// Null on every pre-DAR-68 row and on every row that has never taken a step write; the guard
+		// coalesces rather than backfilling.
+		stepWriteCount: integer('step_write_count'),
+		// Start of the current window, on the DB clock (the guard compares and stamps in one statement,
+		// so a Worker/Turso skew can't shift one against the other). Not advanced by writes inside a
+		// live window — a fixed window from the first write, not a sliding one — and a REFUSED write
+		// doesn't touch it either, so hammering can't extend its own lockout.
+		stepWriteWindowAt: integer('step_write_window_at', { mode: 'timestamp_ms' }),
 		// --- Invite-only onboarding (DAR-67) ---
 		// Public self-signup is closed, so an account exists only because staff invited this prospect
 		// from /admin/waitlist. These three columns are the invite's state machine, and they live HERE

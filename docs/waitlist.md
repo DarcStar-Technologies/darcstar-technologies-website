@@ -399,6 +399,52 @@ sensitive field.** (The honeypot path returns a _decoy_ token — deterministic 
 no real row — so the response body matches a real success; a timing side-channel still distinguishes
 the trap, which is accepted.)
 
+### Step-write budget (DAR-68)
+
+Because the token reaches any submitter of a known address, a holder could drive **unbounded
+`UPDATE`s** at that row: the steps add no row, and step 1's throttle counts _rows created per hashed
+IP_, so nothing capped them. Not a data-integrity problem (the column map above bounds _what_ can
+change) — a cost one.
+
+The cap is **per row**, not per IP: a token addresses exactly one row, which makes the row the thing
+being abused, and keying on it doesn't punish everyone behind a shared NAT for one of them. It is
+**`STEP_WRITE_MAX` (20) step writes per row per hour**, and it lives as a **`WHERE` predicate on the
+`UPDATE` `applyWaitlistStep` was already making**, with the counter in two columns on the row
+(`step_write_count`, `step_write_window_at`). Three properties follow, and each is why it's built
+that way:
+
+- **No extra query.** A permitted step costs what it always did; a refused one costs one `UPDATE`
+  matching zero rows — strictly _less_ than the write it replaces. A counter table (Better Auth's
+  `rate_limit` was the obvious candidate) inverts that: spending a read plus a write to refuse a
+  write is protecting the database by hammering it, and refusals get more expensive exactly as abuse
+  gets worse.
+- **No oracle, structurally.** The constraint was that a throttle must not leak token validity. There
+  is no code path that could: the guard isn't a check that runs before the write and returns a
+  verdict, it **is** the write. A refused step, a decoy token, an expired token, a deleted row and a
+  success are one indistinguishable generic response.
+- **Nothing is lost.** A refusal drops one enrichment, never a signup.
+
+The cap is deliberately far above a real ceiling (the whole flow is three writes) rather than snug
+against it, because the refusal is **silent** — a cap tight enough to catch a visitor would eat their
+answers with no error. A unit spec walks the full flow five times over to keep it that way.
+SQLite evaluates `SET` expressions against the **pre-update** row, which is what lets the counter
+read and replace itself in one statement; the window is **fixed, not sliding** (a write inside a live
+window doesn't move its start, and a _refused_ write touches nothing, so hammering can't extend its
+own lockout).
+
+**What this does not bound**, stated plainly: request _volume_ (a refused POST still costs a Worker
+round trip), and an attacker holding tokens for N rows gets N budgets. Neither is fixable at this
+layer — volumetric defense against a distributed or multi-token flood belongs at the edge (a
+Cloudflare rate-limiting rule on `/waitlist`), where rotating tokens can't sidestep it. The
+**funnel-event insert on these same endpoints is a separate, still-unbounded vector** — `flow_id` is
+client-minted, so rotating it defeats the composite-key cap, and it doesn't even need a valid token;
+the fix is to sign the flow id (DAR-86), not to gate analytics on the step write, which would stop
+counting the skips the funnel exists to measure. The **step-1 enrich** is unbounded for the same
+reason the steps were (a known email enriches, adds no row, never trips the row-count throttle) —
+tracked as DAR-87, and _not_ a copy of this fix: a refused enrich is indistinguishable from the
+delete race `upsertWaitlist`'s convergence loop uses `enriched.length === 0` to detect, so the same
+predicate would turn a throttled resubmit into a `did not converge` 500.
+
 ### Consent
 
 `consent_updates` is an **unverified single-opt-in claim** — the form is unauthenticated, so a third

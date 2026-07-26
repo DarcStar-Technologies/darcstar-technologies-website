@@ -12,7 +12,7 @@
 // applyWaitlistStep is the ONLY write path for the optional steps 2–4 — keyed strictly by id (the
 // caller resolves it from a verified token), building each step's SET clause from an explicit
 // per-step column list, so no later step can create a row or touch step-1 identity fields.
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { SQLiteUpdateSetSource } from 'drizzle-orm/sqlite-core';
 import type { Db } from './db';
 import { waitlist } from './db/schema';
@@ -53,6 +53,60 @@ function keepExistingJson(next: string[] | null, column: string) {
 }
 
 const DB_NOW = sql`(cast(unixepoch('subsecond') * 1000 as integer))`;
+
+// ---------------------------------------------------------------------------------------------
+// Step-write budget (DAR-68). Steps 2–4 are unauthenticated writes authorized only by the
+// continuation token, and the step-1 throttle can't see them: it counts ROWS created per hashed IP,
+// and a step adds no row. So a token holder could drive unbounded UPDATEs at one row.
+//
+// The unit is the ROW, not the IP: a token addresses exactly one row, which makes the row the thing
+// being abused, and keying on it doesn't punish everyone behind a shared NAT for one of them.
+//
+// The bound is a WHERE predicate on the UPDATE `applyWaitlistStep` was already going to make, with
+// the counter kept in two columns on the row itself. Three properties follow from that, and each is
+// the reason for it:
+//
+//   NO EXTRA QUERY. A permitted step costs exactly what it cost before; a refused one costs one
+//   UPDATE that matches zero rows, which is strictly LESS than the write it replaces. A counter
+//   table would invert that — spending a read and a write to refuse a write is protecting the
+//   database by hammering it, and the refusals get more expensive precisely when abuse gets worse.
+//
+//   NO ORACLE, STRUCTURALLY. The ticket's constraint is that a throttle must not become a token
+//   validity oracle. There is no code path here that could leak one: the guard is not a check that
+//   runs before the write and returns a verdict, it IS the write, so nothing branches on it and
+//   nothing can be surfaced. A refused step is indistinguishable from a decoy token, an expired
+//   token, a deleted row and a successful write — all of them are the same generic success.
+//
+//   NOTHING IS LOST. A refusal drops one enrichment, never a signup: the row was persisted at step
+//   1 and these columns are optional extras.
+//
+// What this does NOT bound is request VOLUME — a refused POST still reaches the Worker and still
+// costs one round trip, and an attacker holding tokens for N rows gets N budgets. Neither is fixable
+// here: volumetric defense against a distributed or multi-token flood belongs at the edge (a
+// Cloudflare rate-limiting rule on /waitlist), where it can't be sidestepped by rotating tokens.
+
+/** Window length for the per-row step-write budget. */
+export const STEP_WRITE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+/**
+ * Step writes allowed per row per window.
+ *
+ * Deliberately far above a real visitor's ceiling rather than snug against it. The whole flow is
+ * three writes (step 2 → 3 → a step-4 branch), so even someone who walks back through every step
+ * correcting answers several times stays well underneath — which matters because the refusal is
+ * SILENT, so a cap tight enough to catch a legitimate user would eat their answers with no error and
+ * no way to tell. A generous cap still turns "unbounded" into a fixed small number, which is the
+ * entire ask; buying a tighter one with silent data loss would be a bad trade.
+ */
+export const STEP_WRITE_MAX = 20;
+
+// Start of the current window, on the DB clock. Both the predicate and the stamp derive from this
+// one expression, so the comparison and the value it writes can never come from different clocks.
+const STEP_WINDOW_START = sql`(${DB_NOW} - ${STEP_WRITE_WINDOW_MS})`;
+
+// True when the row's window is still live. Null (never step-written, or a pre-DAR-68 row) is false,
+// so the else-branch of each CASE below opens a fresh window — no backfill needed.
+const IN_WINDOW = sql`(step_write_window_at > ${STEP_WINDOW_START})`;
 
 /**
  * Insert a new signup, or enrich the existing row when this email is already on the list. Returns
@@ -168,7 +222,9 @@ const stepRank = { 2: 2, 3: 3, '4a': 4, '4b': 4 } as const;
  *
  * Returns `updated: false` when the id matches no row (deleted, or a decoy token minted for the
  * honeypot path) — callers respond with the same generic success either way, so this is not an
- * existence oracle.
+ * existence oracle. Since DAR-68 it also returns false when the row has spent its step-write budget
+ * for the window, which is deliberately the SAME answer: a throttle that could be told apart from a
+ * missing row would be exactly the oracle the budget is required not to be.
  */
 export async function applyWaitlistStep(
 	db: Db,
@@ -217,9 +273,23 @@ export async function applyWaitlistStep(
 		.set({
 			...set,
 			qualificationStep: sql`max(coalesce(qualification_step, 1), ${stepRank[data.step]})`,
+			// Spend one unit of the window's budget. SQLite evaluates every SET expression against the
+			// PRE-update row, so these two read the counter they are replacing.
+			stepWriteCount: sql`case when ${IN_WINDOW} then coalesce(step_write_count, 0) + 1 else 1 end`,
+			// Fixed window: a write inside a live one leaves the start where it is, so the window can't
+			// be walked forward indefinitely by writing at its edge.
+			stepWriteWindowAt: sql`case when ${IN_WINDOW} then step_write_window_at else ${DB_NOW} end`,
 			updatedAt: DB_NOW
 		})
-		.where(eq(waitlist.id, id))
+		.where(
+			and(
+				eq(waitlist.id, id),
+				// The budget check (DAR-68), as a predicate rather than a prior query — see the block
+				// comment above STEP_WRITE_MAX. Expired or never-opened window ⇒ allowed (and the SET
+				// above opens a fresh one); otherwise allowed only while the count is under the cap.
+				sql`(not ${IN_WINDOW} or coalesce(step_write_count, 0) < ${STEP_WRITE_MAX})`
+			)
+		)
 		.returning({ id: waitlist.id });
 
 	return { updated: updated.length > 0 };
