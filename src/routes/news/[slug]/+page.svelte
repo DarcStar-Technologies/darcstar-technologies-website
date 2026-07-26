@@ -1,8 +1,8 @@
 <script lang="ts">
 	// /news/[slug] — a single post: helix hero with the title, meta, cover image, the Portable Text
 	// body (PortableBody), and any related papers. `data.post` is non-null here (the load 404s a
-	// missing slug, which narrows the type). SEO title/description/OG-image derive from the post's
-	// `seo` field, falling back to its excerpt/cover and finally the site defaults.
+	// missing slug, which narrows the type). The head comes from the post's `seo` field via
+	// contentSeo(), falling back to its excerpt/cover and finally the site defaults.
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import Seo from '$lib/components/Seo.svelte';
 	import PageHero from '$lib/components/PageHero.svelte';
@@ -12,7 +12,7 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import { formatDate } from '$lib/sanity/date';
-	import { ogImageUrl } from '$lib/sanity/image';
+	import { contentSeo } from '$lib/sanity/content-seo';
 	import { articleJsonLd, breadcrumbJsonLd } from '$lib/jsonld';
 	import { page } from '$app/state';
 	import type { PageServerData } from './$types';
@@ -20,17 +20,22 @@
 	let { data }: { data: PageServerData } = $props();
 	const post = $derived(data.post);
 
-	const seoTitle = $derived(post.seo?.metaTitle ?? m.content_doc_title({ title: post.title }));
-	const seoDescription = $derived(post.seo?.metaDescription ?? post.excerpt ?? undefined);
-	// Try the explicit seo.ogImage first, then the coverImage — via `ogImageUrl` (not `??` on the
-	// fields), so an ogImage object that exists but has no asset doesn't shadow a usable coverImage.
-	const seoImage = $derived(ogImageUrl(post.seo?.ogImage) ?? ogImageUrl(post.coverImage));
+	// Every <Seo> prop the post's SEO tab drives — including its "hide from search engines" toggle
+	// (DAR-71) — comes from this one mapper, spread below. Only the blank-field fallbacks are local.
+	const seo = $derived(
+		contentSeo(post.seo, {
+			title: m.content_doc_title({ title: post.title }),
+			description: post.excerpt ?? undefined,
+			image: post.coverImage,
+			imageAlt: post.title
+		})
+	);
 
 	// Article + breadcrumb JSON-LD (DAR-48). Same URL convention as <Seo>'s canonical: the
 	// current pathname (so a localized view self-describes) absolutized against the origin.
 	const pageUrl = $derived(page.url.origin + page.url.pathname);
 	const jsonLd = $derived([
-		articleJsonLd(post, { url: pageUrl, image: seoImage }),
+		articleJsonLd(post, { url: pageUrl, image: seo.image }),
 		breadcrumbJsonLd([
 			{ name: m.footer_nav_home(), url: page.url.origin + localizeHref('/') },
 			{ name: m.nav_news(), url: page.url.origin + localizeHref('/news') },
@@ -39,14 +44,7 @@
 	]);
 </script>
 
-<Seo
-	title={seoTitle}
-	description={seoDescription}
-	type="article"
-	image={seoImage}
-	imageAlt={seoImage ? post.title : undefined}
-	{jsonLd}
-/>
+<Seo {...seo} type="article" {jsonLd} />
 
 <CosmicBackdrop />
 

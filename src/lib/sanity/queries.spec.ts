@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { postsQuery, postBySlugQuery, papersQuery, paperBySlugQuery, peopleQuery } from './queries';
+import {
+	postsQuery,
+	postBySlugQuery,
+	papersQuery,
+	paperBySlugQuery,
+	peopleQuery,
+	sitemapEntriesQuery
+} from './queries';
 
 // `defineQuery(str)` returns the GROQ string verbatim (with a phantom result type for TypeGen), so
 // these assert the load-bearing bits of each query survive edits: the right `_type`, the ordering,
@@ -54,5 +61,35 @@ describe('sanity GROQ queries', () => {
 		// `!= "external"` (not `== "internal"`) so an unset `kind` still counts as team.
 		expect(peopleQuery).toContain('kind != "external"');
 		expect(peopleQuery).toContain('order(name asc)');
+	});
+
+	// DAR-71: both detail queries must keep selecting `seo` — it carries metaTitle/metaDescription/
+	// ogImage AND the "hide from search engines" flag, and contentSeo() has nothing to read without
+	// it. Word-anchored, so a projection that merely mentions the string (`"seoTitle": …`) can't
+	// satisfy this the way a bare `toContain('seo')` would.
+	it.each([
+		['postBySlugQuery', postBySlugQuery],
+		['paperBySlugQuery', paperBySlugQuery]
+	])('%s selects the seo object that drives the page head', (_name, query) => {
+		expect(query).toMatch(/\bseo\b/);
+	});
+});
+
+// DAR-71: the sitemap is the second surface the "hide from search engines" toggle has to reach —
+// a hidden page must not be ADVERTISED to crawlers, not merely carry a robots meta. This pins the
+// filter's polarity, which is the whole bug: `!= true` includes null, and no document sets `seo`
+// today, so `== false` would silently empty the sitemap of every post and paper on the site.
+describe('sitemapEntriesQuery honors seo.noIndex', () => {
+	it.each([
+		['posts', 'post'],
+		['papers', 'paper']
+	])('excludes hidden %s without excluding unflagged ones', (_key, type) => {
+		expect(sitemapEntriesQuery).toContain(
+			`*[_type == "${type}" && defined(slug.current) && seo.noIndex != true]`
+		);
+	});
+
+	it('never uses the fail-closed comparison', () => {
+		expect(sitemapEntriesQuery).not.toContain('== false');
 	});
 });

@@ -93,9 +93,16 @@ export const paperBySlugQuery = defineQuery(`
 // Everything /sitemap.xml needs in ONE round trip: routable slugs + `_updatedAt` (the sitemap
 // <lastmod>) for both content types. Deliberately minimal — the endpoint runs on every crawler
 // fetch, so it shouldn't pay for bodies/authors/images it never renders.
+//
+// `seo.noIndex != true` honors the Studio's "Hide from search engines" toggle (DAR-71): a hidden
+// page must not be ADVERTISED to crawlers, not just carry a robots meta. Polarity is load-bearing —
+// `!= true` (never `== false`) because GROQ's `!=` includes null, and no document today sets `seo`
+// at all, so the inverse would empty the sitemap of every post and paper on the site. Same fail-open
+// shape as `peopleQuery`'s `kind != "external"`; hiding requires a POSITIVE signal. The robots-meta
+// half of this rule lives in content-seo.ts (`seo?.noIndex === true`) — keep the two in step.
 export const sitemapEntriesQuery = defineQuery(`{
-	"posts": *[_type == "post" && defined(slug.current)]{ "slug": slug.current, _updatedAt },
-	"papers": *[_type == "paper" && defined(slug.current)]{ "slug": slug.current, _updatedAt }
+	"posts": *[_type == "post" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt },
+	"papers": *[_type == "paper" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt }
 }`);
 
 // Team = anyone NOT an external co-author. `kind != "external"` (rather than `== "internal"`) is

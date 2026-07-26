@@ -42,6 +42,13 @@ perspective: 'published', token })`, where `token = readEnv('SANITY_VIEWER_TOKEN
 - **`schema.json` is synced from the Studio.** This repo has no Studio. To refresh after a schema
   change: in `../darcstar-sanity-studio` run `pnpm typegen` (which runs `sanity schema extract`), copy
   its `schema.json` here to `src/lib/sanity/schema.json`, then `pnpm sanity:types`.
+- **Editing a query? Re-run `pnpm sanity:types` and commit `types.ts`.** `overloadClientMethods` keys
+  the result type on the query's literal STRING, so a stale `types.ts` silently degrades
+  `fetch(q)` to untyped — `pnpm check` still passes. Nothing in CI guards this yet.
+- **The Studio's `seo` object reaches `<Seo>` only through
+  [`content-seo.ts`](../src/lib/sanity/content-seo.ts)** (DAR-71). Add new `seo` fields there, not at
+  the detail-page call sites — the previous per-page mapping is how `noIndex` came to be fetched and
+  then dropped. Its sitemap half is a `seo.noIndex != true` filter in `queries.ts`. → [seo](seo.md)
 
 ## Images
 

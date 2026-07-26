@@ -4,7 +4,7 @@
 	// (Portable Text — PortableBody resolves its inline images the same way post bodies do).
 	// `data.paper` is non-null (load 404s a missing slug). Third-party papers (DAR-52: any entry not
 	// explicitly `darcstarAuthored`) carry an origin chip + an explicit not-ours disclaimer.
-	// SEO derives from the paper's `seo` field → abstract → site defaults.
+	// The head comes from the paper's `seo` field via contentSeo() → abstract → site defaults.
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import Seo from '$lib/components/Seo.svelte';
 	import PageHero from '$lib/components/PageHero.svelte';
@@ -18,7 +18,7 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import { formatDate } from '$lib/sanity/date';
-	import { ogImageUrl } from '$lib/sanity/image';
+	import { contentSeo } from '$lib/sanity/content-seo';
 	import { breadcrumbJsonLd, scholarlyArticleJsonLd } from '$lib/jsonld';
 	import { page } from '$app/state';
 	import type { PageServerData } from './$types';
@@ -26,16 +26,23 @@
 	let { data }: { data: PageServerData } = $props();
 	const paper = $derived(data.paper);
 
-	const seoTitle = $derived(paper.seo?.metaTitle ?? m.content_doc_title({ title: paper.title }));
 	// Third-party papers lead their fallback description with the not-ours statement — the social
 	// preview (site-suffixed title + default DarcStar OG card) otherwise carries no origin signal.
-	const seoDescription = $derived(
-		paper.seo?.metaDescription ??
-			(paper.abstract && !paper.darcstarAuthored
-				? `${m.research_external_disclaimer()} ${paper.abstract}`
-				: (paper.abstract ?? undefined))
+	const fallbackDescription = $derived(
+		paper.abstract && !paper.darcstarAuthored
+			? `${m.research_external_disclaimer()} ${paper.abstract}`
+			: (paper.abstract ?? undefined)
 	);
-	const seoImage = $derived(ogImageUrl(paper.seo?.ogImage));
+	// Every <Seo> prop the paper's SEO tab drives — including its "hide from search engines" toggle
+	// (DAR-71) — comes from this one mapper, spread below. Papers have no cover image, so an unset
+	// seo.ogImage falls straight through to the brand OG card.
+	const seo = $derived(
+		contentSeo(paper.seo, {
+			title: m.content_doc_title({ title: paper.title }),
+			description: fallbackDescription,
+			imageAlt: paper.title
+		})
+	);
 
 	// ScholarlyArticle + breadcrumb JSON-LD (DAR-48) — external identities (publisher page,
 	// DOI, arXiv) ride along as sameAs; our detail page stays the mainEntityOfPage.
@@ -50,14 +57,7 @@
 	]);
 </script>
 
-<Seo
-	title={seoTitle}
-	description={seoDescription}
-	type="article"
-	image={seoImage}
-	imageAlt={seoImage ? paper.title : undefined}
-	{jsonLd}
-/>
+<Seo {...seo} type="article" {jsonLd} />
 
 <CosmicBackdrop />
 
