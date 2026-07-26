@@ -71,6 +71,37 @@ describe('organizationJsonLd', () => {
 		expect(org.address).toEqual({ '@type': 'PostalAddress', addressCountry: 'US' });
 		expect(org.logo).toMatch(new RegExp(`^${ORIGIN}/.+`));
 	});
+
+	// `sameAs` became CMS-driven in DAR-73 (siteSettings.socialLinks, via the root layout). The
+	// default has to survive untouched: pages/tests with no CMS data must still publish the GitHub
+	// identity rather than an org with none.
+	it('publishes the CMS social profiles as sameAs when given them', () => {
+		const org = organizationJsonLd(ORIGIN, {
+			sameAs: ['https://github.com/DarcStar-Technologies', 'https://bsky.app/profile/x']
+		});
+		expect(org.sameAs).toEqual([
+			'https://github.com/DarcStar-Technologies',
+			'https://bsky.app/profile/x'
+		]);
+	});
+
+	it.each([
+		['an omitted option', undefined],
+		['an empty list', []],
+		['a list of only unusable URLs', ['/relative', 'javascript:alert(1)']]
+	])('keeps the hardcoded GitHub identity for %s', (_why, sameAs) => {
+		const org = organizationJsonLd(ORIGIN, { sameAs });
+		expect(org.sameAs).toEqual(['https://github.com/DarcStar-Technologies']);
+	});
+
+	// The value is published as the organization's identity, so it gets the same gate the canonical
+	// derivation uses — the Studio's url validation is a UI affordance an API write skips.
+	it('drops unusable URLs from a mixed list', () => {
+		const org = organizationJsonLd(ORIGIN, {
+			sameAs: ['https://bsky.app/profile/x', 'mailto:info@darcstar.tech', 'https://a b.example']
+		});
+		expect(org.sameAs).toEqual(['https://bsky.app/profile/x']);
+	});
 });
 
 describe('peopleJsonLd', () => {

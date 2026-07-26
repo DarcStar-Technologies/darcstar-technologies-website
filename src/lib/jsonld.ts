@@ -46,7 +46,18 @@ export function jsonLdScript(data: object | object[]): string {
 
 // The settled public facts (see $lib/site.ts + the About/Footer copy): trade name only —
 // no legal suffix — located in the United States, reachable via GitHub + the info@ alias.
-export function organizationJsonLd(origin: string) {
+//
+// `sameAs` — the org's other identities on the web — is the one part an editor controls: it takes
+// the site's resolved social row (DAR-73, from `siteSettings.socialLinks` via the root layout), so
+// adding LinkedIn in the Studio adds it to the graph. Passed IN rather than imported, because this
+// module must stay dependency-pure (the root layout imports it, so anything it pulls in rides in
+// every page's initial bundle) — same reason image fields arrive as pre-resolved URL strings.
+// Omitting the option keeps the historical single-GitHub node, so a caller that has no CMS data
+// (or a test) still emits something correct rather than an org with no identities.
+export function organizationJsonLd(origin: string, opts: { sameAs?: string[] } = {}) {
+	// Re-gated even though `resolveSocialLinks` already did: this is a public parameter, and an
+	// unusable URL here is published as the ORGANIZATION's identity, not just a dead footer button.
+	const sameAs = nonEmpty(opts.sameAs?.filter(isHttpUrl)) ?? [GITHUB_URL];
 	return {
 		'@type': 'Organization',
 		'@id': organizationId(origin),
@@ -58,7 +69,7 @@ export function organizationJsonLd(origin: string) {
 		// "https://origindata:image/svg+xml,…".
 		logo: new URL(logoAsset, origin).href,
 		email: CONTACT_EMAIL,
-		sameAs: [GITHUB_URL],
+		sameAs,
 		address: { '@type': 'PostalAddress', addressCountry: 'US' }
 	};
 }

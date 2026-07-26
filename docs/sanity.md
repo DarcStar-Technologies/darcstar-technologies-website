@@ -70,6 +70,50 @@ in a `.prose` container (Tailwind Typography). Default blocks/lists render stand
 only the schema's custom members: `PortableImage` (image block), `PortableCode` (code block), and the
 `link` mark (`PortableLink`).
 
+## What `siteSettings` actually drives (DAR-73)
+
+The `siteSettings` singleton is a five-tab editing surface in the Studio, and for a long time the
+website **never queried it** — every field was editable and inert. That is not a theoretical problem:
+a `socialLinks` edit adding LinkedIn and BlueSky was published in `dev`, promoted to `production`, and
+rendered nowhere, with no feedback. **One field is now wired; the rest are still inert.**
+
+| Field              | Status   | What drives the site                                                                                                |
+| ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------- |
+| `socialLinks`      | **live** | the footer's profile row + the Organization `sameAs`                                                                |
+| `title`            | inert    | `SITE_NAME` (`$lib/site.ts`)                                                                                        |
+| `tagline`          | inert    | Paraglide `footer_tagline`                                                                                          |
+| `description`      | inert    | Paraglide `seo_default_description` (localized; the CMS field isn't)                                                |
+| `contactEmail`     | inert    | `CONTACT_EMAIL` — also the Resend **From:** address on five mailers, so CMS control would break domain verification |
+| `logo` / `favicon` | inert    | `$lib/assets/favicon.svg`, fingerprint-imported                                                                     |
+| `titleTemplate`    | inert    | Paraglide `content_doc_title` (`"{title} — DarcStar Technologies"`)                                                 |
+| `defaultOgImage`   | inert    | build-time `scripts/gen-og.mjs` (DAR-69)                                                                            |
+| `primaryNav`       | inert    | hardcoded nav — and its live value points at `/blog`, `/papers`, `/team`, none of which exist                       |
+
+Trimming the inert fields from the Studio schema is DAR-73's **deferred half**; until then, treat this
+table as the source of truth for what an edit will actually do.
+
+**The read path.** `siteSettingsQuery` projects down to `socialLinks` alone — deliberately, so that a
+field added in the Studio can't silently start shipping to the client, and so the read layer states
+what the CMS drives. `$lib/server/site-settings.ts` performs the fetch and
+`$lib/social-links.ts` sanitizes it (shared with the Footer's prop default, so there's one definition
+of a usable link). URLs pass `isHttpUrl` — the Studio's `rule.uri({scheme})` is a UI affordance an API
+write skips, and these become `target="_blank"` hrefs _and_ published `sameAs` identities.
+
+**This is the only Sanity read on the request path of every page** (the footer lives in the root
+layout, so it also runs on `/admin`, `/login`, and every form POST). Three properties make that
+affordable, and all three are load-bearing:
+
+1. **A 5-minute module-scope TTL cache** — Workers isolates persist, so it's ~one fetch per isolate
+   per window. Safe in module scope _only because_ `siteSettings` is public and identical for every
+   visitor; the same cache over per-user data would be a cross-request leak.
+2. **A 2 s `AbortSignal.timeout`** — without it a hung Sanity stalls every page on the site.
+3. **A floor** — any failure (throw, timeout, missing document, all-junk array) resolves to the
+   hardcoded `GITHUB_URL`. Failures are negative-cached for 30 s, so an outage stays cosmetic instead
+   of buying every request the full timeout.
+
+The floor applies **only to an empty result** and is never merged into a non-empty one — otherwise an
+editor could not remove the GitHub link, which is the same lie in the other direction.
+
 ## Routes
 
 Each is `+page.server.ts` (`getSanityClient().fetch(typedQuery)`) + `+page.svelte` (CosmicBackdrop +
@@ -170,5 +214,6 @@ SANITY_VIEWER_TOKEN --env preview` (the preview Worker). No `wrangler.jsonc` cha
 ## Deferred
 
 Draft/preview (Presentation tool, stega, `useCdn:false` + `previewDrafts`) · a CI `schema.json` drift
-gate · pagination · category filter pages · `siteSettings`-driven nav/branding · `es` translation of
-the new chrome (mirrors `en`, `noindex`).
+gate · pagination · category filter pages · trimming the inert `siteSettings` fields from the Studio
+schema (DAR-73's deferred half — see the table above; wiring them is deliberately **not** planned) ·
+`es` translation of the new chrome (mirrors `en`, `noindex`).
