@@ -30,6 +30,11 @@ defaults to the current pathname), `type` (`og:type`, default `website`),
 `noindex` (force it for gated pages), `jsonLd` (structured data — see below).
 The site-wide default title/description live at the top of the component.
 
+They're declared in a `<script module>` block and **exported as `SeoProps`**, so
+code that _builds_ a prop set can be checked against them (see `contentSeo()`
+below). A Svelte spread silently ignores props the component doesn't declare, so
+`<Seo {...obj} />` gives no such guarantee on its own.
+
 ## How the tags resolve
 
 - **Absolute URLs** (canonical, `og:url`, `og:image`, `twitter:image`) are built
@@ -56,6 +61,34 @@ The site-wide default title/description live at the top of the component.
 
 Error pages (`+error.svelte`) intentionally carry a `<title>` but
 `<meta name="robots" content="noindex">` — they should never be indexed.
+
+### CMS-driven heads: `contentSeo()` (DAR-71)
+
+`/news/[slug]` and `/research/[slug]` do **not** hand-map the Studio's `seo`
+object onto `<Seo>` props. Both call
+[`contentSeo(doc.seo, fallbacks)`](../src/lib/sanity/content-seo.ts) and **spread**
+the result — `<Seo {...seo} type="article" {jsonLd} />` — so every field the SEO
+tab exposes is wired in exactly one place. That indirection is the fix, not
+decoration: while the mapping was copy-pasted per page, the **"Hide from search
+engines"** toggle (`seo.noIndex`) was fetched, typed, and then dropped at both
+render sites — a control that did nothing, with no signal to the editor.
+
+Adding a field to the Studio's `seo` object? Wire it in `contentSeo()` and extend
+`content-seo.spec.ts`; never re-derive one at a call site.
+
+Two guards, and neither covers the other's failure shape — keep both:
+
+- `contentSeo` returns `Pick<SeoProps, …>`, so a **misnamed** key (`noIndex` for
+  `noindex`) is a compile error instead of a prop the component quietly drops.
+- Every `SeoProps` field is optional, so `Pick` of them is too — a key **omitted**
+  entirely still type-checks. `content-seo.spec.ts` asserts each key's value,
+  which is what catches that (the exact shape of the original bug).
+
+`noIndex` composes with the locale rule (`Seo.svelte` ORs the two), and its
+polarity is **fail-open**: hiding requires an explicit `true`, so unset/null — the
+state of every document today — stays indexable. A hidden page is
+`noindex, follow` and stays live and linked from `/news` · `/research`: the toggle
+hides it from search engines, it does not unpublish it.
 
 ## The OG image (1200×630)
 
@@ -103,7 +136,14 @@ Design decisions to preserve:
   `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/logout`) and any
   untranslated locale tree — the sitemap loops `TRANSLATED_LOCALES`
   ([`src/lib/seo.ts`](../src/lib/seo.ts)), the same flag that noindexes `/es`.
-  No per-person URLs: `/people` has no detail routes.
+  No per-person URLs: `/people` has no detail routes. **Plus any post/paper the
+  editor hid** — `sitemapEntriesQuery` filters `seo.noIndex != true` (DAR-71), so
+  a hidden page isn't advertised to crawlers, not just noindexed once they arrive.
+  `!= true` (never `== false`): GROQ's `!=` includes null, and no document sets
+  `seo` at all today, so the inverse would empty the sitemap of every post and
+  paper. That polarity has to match `contentSeo()`'s `=== true`; the two are
+  pinned separately (`queries.spec.ts`, `content-seo.spec.ts`) because one is GROQ
+  and one is TypeScript.
 - **A Sanity outage degrades** to a static-pages-only sitemap plus a log line
   (same posture as the /news · /research · /people list loads) — never a 500.
 - **Adding an indexable page?** Add it to `STATIC_PATHS` _and_ to

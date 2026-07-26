@@ -1,3 +1,39 @@
+<script module lang="ts">
+	// Exported so callers that BUILD a prop set can be type-checked against it — `$lib/sanity/
+	// content-seo.ts` returns `Pick<SeoProps, …>`, which is what makes a renamed/typo'd key a
+	// compile error rather than a silently-ignored prop (a Svelte spread does not reject unknown
+	// props, so `<Seo {...obj} />` alone gives no such guarantee). Keep the `let { … }: SeoProps`
+	// destructure below in step with it.
+	//
+	// This does NOT breach the "shared values live in $lib/*.ts, never a component's <script
+	// module>" rule. That rule is about runtime import coupling — a route wanting one class string
+	// shouldn't have to pull in a form component. A type is erased (`import type` +
+	// verbatimModuleSyntax), so nothing is coupled, and a component's prop contract is the one
+	// thing that genuinely belongs beside the component. Runtime values still don't go here.
+	export interface SeoProps {
+		/** Full <title>. Defaults to the brand + tagline. */
+		title?: string;
+		/** Meta description — aim ≤160 chars. */
+		description?: string;
+		/** Canonical/OG path, root-relative (defaults to the current pathname). */
+		path?: string;
+		/** og:type — 'website' for landing pages, 'article' for posts. */
+		type?: string;
+		/** Root-relative image path (fingerprinted OG card by default). */
+		image?: string;
+		imageAlt?: string;
+		/** Force `robots: noindex` regardless of locale — for gated/internal pages (#69 /admin,
+		 * /login) and for content the editor hid via Sanity's `seo.noIndex` (DAR-71). */
+		noindex?: boolean;
+		/**
+		 * schema.org node(s) for this page (DAR-48) — build with the $lib/jsonld helpers; an array
+		 * becomes one `@graph` script. The site-wide Organization node comes from the root layout,
+		 * so pages only pass their OWN entities (Article, ScholarlyArticle, Person, BreadcrumbList).
+		 */
+		jsonLd?: object | object[];
+	}
+</script>
+
 <script lang="ts">
 	// Per-page document head — title, description, canonical, and the Open Graph +
 	// Twitter card tags a link needs to render a rich preview when shared to
@@ -23,28 +59,8 @@
 	// BCP-47 → OG's underscore locale form. Mirrors project.inlang locales (en, es).
 	const OG_LOCALE: Record<string, string> = { en: 'en_US', es: 'es_ES' };
 
-	interface Props {
-		/** Full <title>. Defaults to the brand + tagline. */
-		title?: string;
-		/** Meta description — aim ≤160 chars. */
-		description?: string;
-		/** Canonical/OG path, root-relative (defaults to the current pathname). */
-		path?: string;
-		/** og:type — 'website' for landing pages, 'article' for posts. */
-		type?: string;
-		/** Root-relative image path (fingerprinted OG card by default). */
-		image?: string;
-		imageAlt?: string;
-		/** Force `robots: noindex` regardless of locale — for gated/internal pages (#69 /admin, /login). */
-		noindex?: boolean;
-		/**
-		 * schema.org node(s) for this page (DAR-48) — build with the $lib/jsonld helpers; an array
-		 * becomes one `@graph` script. The site-wide Organization node comes from the root layout,
-		 * so pages only pass their OWN entities (Article, ScholarlyArticle, Person, BreadcrumbList).
-		 */
-		jsonLd?: object | object[];
-	}
-
+	// Props live in the module block above (exported as SeoProps) so prop-BUILDING callers can be
+	// type-checked against them; this destructure is the only consumer.
 	let {
 		title = m.seo_default_title(),
 		description = m.seo_default_description(),
@@ -54,7 +70,7 @@
 		imageAlt = m.seo_default_image_alt(),
 		noindex: forceNoindex = false,
 		jsonLd
-	}: Props = $props();
+	}: SeoProps = $props();
 
 	// Absolutize against the serving origin — on production this is darcstar.tech,
 	// which is what social scrapers hit and what OG/canonical URLs must be.

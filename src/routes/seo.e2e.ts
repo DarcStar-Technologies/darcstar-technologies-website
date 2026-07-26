@@ -105,6 +105,17 @@ test('every public page route is listed in the sitemap (enumerated from src/rout
 	}
 });
 
+// DAR-71 wired the Studio's "hide from search engines" toggle into the robots meta AND the sitemap,
+// both fail-open (hiding needs an explicit `true`). The failure mode that matters is inverting that
+// polarity — every marketing page would go noindex at once. The positive case can't be e2e'd (CI is
+// hermetic, and no live document sets the flag), so this pins the default: nothing public is noindex.
+test('public pages are indexable — no stray robots meta on the base locale', async ({ page }) => {
+	for (const path of ['/', '/news', '/research']) {
+		await page.goto(path);
+		await expect(page.locator('meta[name="robots"]'), `${path} must stay indexable`).toHaveCount(0);
+	}
+});
+
 test('robots.txt points crawlers at the production sitemap', async ({ request }) => {
 	const res = await request.get('/robots.txt');
 	expect(res.ok()).toBe(true);
