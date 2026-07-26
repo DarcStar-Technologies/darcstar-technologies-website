@@ -40,6 +40,66 @@ describe('contentSeo — hide from search engines', () => {
 	});
 });
 
+// DAR-70: a third-party paper page reproduces the source's abstract, so it canonicalises to the
+// original. Two inputs — the editor's explicit `seo.canonicalUrl`, and the page's derived source
+// URL — with the editor winning. Only the canonical LINK moves; <Seo> keeps og:url on our own URL.
+describe('contentSeo — canonical', () => {
+	const SOURCE = 'https://arxiv.org/abs/1706.03762';
+	const OVERRIDE = 'https://proceedings.example/attention';
+
+	it('lets the editor override the page-derived source URL', () => {
+		const seo = contentSeo(
+			{ _type: 'seo', canonicalUrl: OVERRIDE },
+			{ ...base, canonical: SOURCE }
+		);
+		expect(seo.canonical).toBe(OVERRIDE);
+	});
+
+	it('uses the page-derived source URL when the editor set none', () => {
+		expect(contentSeo({ _type: 'seo' }, { ...base, canonical: SOURCE }).canonical).toBe(SOURCE);
+		expect(contentSeo(null, { ...base, canonical: SOURCE }).canonical).toBe(SOURCE);
+	});
+
+	it('stays self-canonical when neither supplies one', () => {
+		// undefined, not '' — <Seo> falls back to the page's own URL only on undefined.
+		expect(contentSeo(null, base).canonical).toBeUndefined();
+		expect(contentSeo({ _type: 'seo' }, base).canonical).toBeUndefined();
+	});
+
+	it('rejects an unusable override and falls through to the derivation', () => {
+		// The Studio validates canonicalUrl's scheme, but that's a UI affordance — an API write
+		// skips it. A typo'd field must cost the page its best canonical, not its only one.
+		for (const junk of ['not a url', '/research/relative', 'javascript:alert(1)', '   ']) {
+			expect(
+				contentSeo({ _type: 'seo', canonicalUrl: junk }, { ...base, canonical: SOURCE })
+			).toHaveProperty('canonical', SOURCE);
+		}
+	});
+
+	it('emits no canonical at all when neither input is usable', () => {
+		// Never a broken canonical: pointing crawlers somewhere wrong is worse than pointing nowhere.
+		expect(
+			contentSeo({ _type: 'seo', canonicalUrl: 'mailto:x@y.z' }, { ...base, canonical: 'nonsense' })
+				.canonical
+		).toBeUndefined();
+	});
+
+	it('trims surrounding whitespace on an otherwise good override', () => {
+		expect(contentSeo({ _type: 'seo', canonicalUrl: `  ${OVERRIDE}  ` }, base).canonical).toBe(
+			OVERRIDE
+		);
+	});
+
+	it('does not let an editor canonical leak into the other fields', () => {
+		// Guards against a copy-paste in the mapper — canonical is its own slot, not a title/image.
+		const seo = contentSeo({ _type: 'seo', canonicalUrl: OVERRIDE }, base);
+		expect(seo.title).toBe('Fallback title');
+		expect(seo.description).toBeUndefined();
+		expect(seo.image).toBeUndefined();
+		expect(seo.noindex).toBe(false);
+	});
+});
+
 describe('contentSeo — fallbacks', () => {
 	it('prefers the document metaTitle/metaDescription over the page fallbacks', () => {
 		const seo = contentSeo(

@@ -15,8 +15,14 @@
 		title?: string;
 		/** Meta description — aim ≤160 chars. */
 		description?: string;
-		/** Canonical/OG path, root-relative (defaults to the current pathname). */
+		/** This page's own path, root-relative (defaults to the current pathname). Drives `og:url`
+		 * and, unless `canonical` overrides it, the canonical link. */
 		path?: string;
+		/** Replace the canonical link with an ABSOLUTE URL — note the contrast with `path`, which is
+		 * root-relative. For pages that reproduce content published elsewhere: a third-party paper
+		 * whose abstract we quote canonicalises to arXiv/the publisher (DAR-70). Affects ONLY
+		 * `<link rel="canonical">`; `og:url` deliberately stays this page's own URL. */
+		canonical?: string;
 		/** og:type — 'website' for landing pages, 'article' for posts. */
 		type?: string;
 		/** Root-relative image path (fingerprinted OG card by default). */
@@ -65,6 +71,7 @@
 		title = m.seo_default_title(),
 		description = m.seo_default_description(),
 		path,
+		canonical: canonicalOverride,
 		type = 'website',
 		image = ogImage,
 		imageAlt = m.seo_default_image_alt(),
@@ -75,7 +82,12 @@
 	// Absolutize against the serving origin — on production this is darcstar.tech,
 	// which is what social scrapers hit and what OG/canonical URLs must be.
 	const origin = $derived(page.url.origin);
-	const canonical = $derived(origin + (path ?? page.url.pathname));
+	// THIS page's URL. Feeds og:url, always — even when the canonical points elsewhere. The two are
+	// deliberately separate (DAR-70): og:url is the shared object's identity in the social graph, so
+	// pointing it at arxiv.org would hand every share of our page to arXiv. Only the canonical link
+	// makes the "index that one instead" claim.
+	const pageUrl = $derived(origin + (path ?? page.url.pathname));
+	const canonical = $derived(canonicalOverride ?? pageUrl);
 	// Root-relative images (the default fingerprinted brand card) absolutize against the serving
 	// origin; an already-absolute URL (e.g. a Sanity CDN card for a /news or /research detail page)
 	// is used verbatim.
@@ -113,7 +125,8 @@
 	<meta property="og:site_name" content={SITE_NAME} />
 	<meta property="og:title" content={title} />
 	<meta property="og:description" content={description} />
-	<meta property="og:url" content={canonical} />
+	<!-- pageUrl, NOT canonical — see the derivation above. -->
+	<meta property="og:url" content={pageUrl} />
 	<meta property="og:image" content={imageUrl} />
 	<meta property="og:image:width" content="1200" />
 	<meta property="og:image:height" content="630" />

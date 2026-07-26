@@ -131,11 +131,55 @@ interface PaperInput {
 	darcstarAuthored?: boolean | null;
 }
 
+/**
+ * Where a paper lives upstream, most authoritative first: the publisher/landing `url`, then the
+ * DOI (the version of record), then arXiv (usually the preprint). Two consumers, one list — the
+ * `sameAs` below, and `/research/[slug]`'s canonical fallback (DAR-70). Keeping the doi.org and
+ * arxiv.org templates in a single place is the point; a second copy is the drift DAR-71 removed.
+ *
+ * Entries that aren't absolute http(s) URLs are dropped. `doi` and `arxivId` are unvalidated
+ * free text in the Studio (only `url` carries `rule.uri(...)`), and the canonical consumer makes
+ * that matter: a malformed `sameAs` is ignored by crawlers, a malformed canonical actively points
+ * them somewhere wrong. Degrade to "no URL" rather than emit garbage — the posture imageUrl takes
+ * with a broken asset ref.
+ */
+export function paperSourceUrls(paper: Pick<PaperInput, 'url' | 'doi' | 'arxivId'>): string[] {
+	const doi = paper.doi?.trim();
+	const arxivId = paper.arxivId?.trim();
+	return [
+		paper.url?.trim(),
+		doi ? `https://doi.org/${doi}` : undefined,
+		arxivId ? `https://arxiv.org/abs/${arxivId}` : undefined
+	]
+		.filter(isTruthy)
+		.filter(isHttpUrl);
+}
+
+/**
+ * What `/research/[slug]` should canonicalise to, or `undefined` to stay self-canonical (DAR-70).
+ * A third-party page quotes the source's abstract verbatim, so it points at the original rather
+ * than competing with it for that text; our own work keeps the canonical here.
+ *
+ * **Fail-safe polarity**, the same one `darcstarAuthored` carries everywhere else (DAR-52): only an
+ * explicit `true` is treated as ours. An unset or null flag — the default for a hastily-added
+ * document — canonicalises AWAY, so the failure mode is "we under-claim our own page", never "we
+ * claim someone else's work". Lives here rather than inline in the page so that polarity is
+ * unit-testable; the inline version was invisible to every test.
+ */
+export function paperCanonicalUrl(
+	paper: Pick<PaperInput, 'url' | 'doi' | 'arxivId' | 'darcstarAuthored'>
+): string | undefined {
+	if (paper.darcstarAuthored === true) return undefined;
+	return paperSourceUrls(paper)[0];
+}
+
 /** ScholarlyArticle node for a /research/[slug] paper. External identities (publisher page,
- * DOI, arXiv) go in `sameAs` — the mainEntityOfPage stays OUR detail page. The org is claimed
- * as `publisher` ONLY for first-party papers: /research also lists foundational third-party
- * work (DAR-52), and machine-readable misattribution would be worse than the visible-copy kind
- * that issue fixed. Same fail-safe polarity: unset/null `darcstarAuthored` → no claim. */
+ * DOI, arXiv) go in `sameAs` — the mainEntityOfPage stays OUR detail page, and so does `url`:
+ * both describe THIS page, even when the canonical points at the source (DAR-70). The org is
+ * claimed as `publisher` ONLY for first-party papers: /research also lists foundational
+ * third-party work (DAR-52), and machine-readable misattribution would be worse than the
+ * visible-copy kind that issue fixed. Same fail-safe polarity: unset/null `darcstarAuthored`
+ * → no claim. */
 export function scholarlyArticleJsonLd(paper: PaperInput, opts: { url: string }) {
 	const origin = new URL(opts.url).origin;
 	return {
@@ -148,13 +192,7 @@ export function scholarlyArticleJsonLd(paper: PaperInput, opts: { url: string })
 		publisher: paper.darcstarAuthored ? { '@id': organizationId(origin) } : undefined,
 		mainEntityOfPage: opts.url,
 		url: opts.url,
-		sameAs: nonEmpty(
-			[
-				paper.url,
-				paper.doi ? `https://doi.org/${paper.doi}` : undefined,
-				paper.arxivId ? `https://arxiv.org/abs/${paper.arxivId}` : undefined
-			].filter(isTruthy)
-		)
+		sameAs: nonEmpty(paperSourceUrls(paper))
 	};
 }
 
@@ -184,6 +222,24 @@ function authorNodes(authors: AuthorInput[] | null | undefined) {
 
 function isTruthy<T>(value: T | null | undefined | false | ''): value is T {
 	return Boolean(value);
+}
+
+/** Absolute http(s), no embedded whitespace. Both halves earn their place: `new URL` rejects a
+ * relative path or a bare `10.1000/xyz`, but happily ACCEPTS `mailto:`/`javascript:` (hence the
+ * protocol gate) and silently percent-encodes spaces — so a `doi` field someone pasted a sentence
+ * into becomes a perfectly well-formed URL pointing at a 404. No URL, DOI, or arXiv ID contains
+ * whitespace, so rejecting it costs nothing and catches the realistic editor slip.
+ *
+ * Exported for `$lib/sanity/content-seo.ts`, which gates the editor's `seo.canonicalUrl` through
+ * the SAME check — otherwise the two inputs to one canonical would carry different guarantees. */
+export function isHttpUrl(value: string): boolean {
+	if (/\s/.test(value)) return false;
+	try {
+		const { protocol } = new URL(value);
+		return protocol === 'http:' || protocol === 'https:';
+	} catch {
+		return false;
+	}
 }
 
 /** Collapse empty arrays to `undefined` so they serialize away entirely. */

@@ -33,6 +33,7 @@ export type Seo = {
 		crop?: SanityImageCrop;
 		_type: 'image';
 	};
+	canonicalUrl?: string;
 	noIndex?: boolean;
 };
 
@@ -183,6 +184,26 @@ export type Person = {
 	socialLinks?: Array<{
 		label: string;
 		url: string;
+		_key: string;
+	}>;
+	fullBio?: BlockContent;
+	focusAreas?: Array<string>;
+	responsibilities?: Array<string>;
+	experience?: Array<{
+		title: string;
+		organization: string;
+		startYear?: number;
+		endYear?: number;
+		summary?: string;
+		url?: string;
+		_type: 'position';
+		_key: string;
+	}>;
+	education?: Array<{
+		qualification: string;
+		institution: string;
+		year?: number;
+		_type: 'credential';
 		_key: string;
 	}>;
 };

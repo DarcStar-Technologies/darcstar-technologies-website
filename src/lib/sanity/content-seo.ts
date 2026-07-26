@@ -1,4 +1,5 @@
 import { ogImageUrl } from './image';
+import { isHttpUrl } from '$lib/jsonld';
 import type { SeoProps } from '$lib/components/Seo.svelte';
 import type { Seo } from './types';
 
@@ -27,6 +28,9 @@ export interface ContentSeoFallbacks {
 	/** alt for whichever content image wins. Ignored when neither resolves — <Seo> then serves the
 	 * brand OG card, which has its own alt (`seo_default_image_alt`). */
 	imageAlt?: string;
+	/** Absolute URL to canonicalise to when the editor set no `seo.canonicalUrl` — the page's own
+	 * derivation (DAR-70: a third-party paper's source URL). Omit to stay self-canonical. */
+	canonical?: string;
 }
 
 /** The <Seo> props this mapper owns. `path`/`type`/`jsonLd` stay with the page — they're routing
@@ -41,7 +45,7 @@ export interface ContentSeoFallbacks {
  * stay: neither guard covers the other's failure shape. */
 export type ContentSeoProps = Pick<
 	SeoProps,
-	'title' | 'description' | 'image' | 'imageAlt' | 'noindex'
+	'title' | 'description' | 'image' | 'imageAlt' | 'noindex' | 'canonical'
 >;
 
 /**
@@ -60,6 +64,16 @@ export function contentSeo(
 	// but carries no asset must fall THROUGH to the fallback, not shadow it with a broken image.
 	const image = ogImageUrl(seo?.ogImage) ?? ogImageUrl(fallbacks.image);
 
+	// Editor override first, then the page's derivation — but BOTH through the same absolute-http(s)
+	// gate. The derived value is already sanitized inside paperSourceUrls, and the Studio validates
+	// canonicalUrl's scheme; Studio validation is a UI affordance rather than a boundary, though (an
+	// API write skips it), and two inputs to one output must not carry different guarantees. Same
+	// fall-THROUGH shape as the image above: an unusable override drops to the derivation rather than
+	// shadowing it, so a typo'd field costs the page its best canonical, not its only one.
+	const canonical = [seo?.canonicalUrl, fallbacks.canonical]
+		.map((value) => value?.trim())
+		.find((value) => value !== undefined && isHttpUrl(value));
+
 	return {
 		title: seo?.metaTitle ?? fallbacks.title,
 		description: seo?.metaDescription ?? fallbacks.description,
@@ -69,6 +83,9 @@ export function contentSeo(
 		// indexable, so shipping this can't quietly de-index the site. Explicit `=== true` rather
 		// than `??`/truthiness so the boolean coercion happens once, here, at the CMS boundary.
 		// <Seo> ORs this with its untranslated-locale rule, so the two compose.
-		noindex: seo?.noIndex === true
+		noindex: seo?.noIndex === true,
+		// Resolved above. Undefined from both leaves <Seo> self-canonical, and only the canonical
+		// LINK ever moves — og:url stays our own URL.
+		canonical
 	};
 }

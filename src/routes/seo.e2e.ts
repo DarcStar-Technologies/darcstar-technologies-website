@@ -116,6 +116,29 @@ test('public pages are indexable — no stray robots meta on the base locale', a
 	}
 });
 
+// DAR-70 made the canonical link overridable so a third-party paper can point at arXiv. The trap it
+// had to avoid: `canonical` and `og:url` were ONE derived value, so an override would have handed
+// every social share of our page to arXiv as its graph identity. They are separate now — this pins
+// the default, where they must still agree AND both be this page's own URL. The divergent case needs
+// a flagged document, so it isn't reachable from hermetic CI (see the PR for the manual proof).
+test("canonical and og:url are both the page's own URL when nothing overrides them", async ({
+	page
+}) => {
+	for (const path of ['/', '/about', '/research']) {
+		await page.goto(path);
+		const expected = new URL(path, page.url()).href;
+
+		await expect(page.locator('link[rel="canonical"]'), `${path} canonical`).toHaveAttribute(
+			'href',
+			expected
+		);
+		await expect(page.locator('meta[property="og:url"]'), `${path} og:url`).toHaveAttribute(
+			'content',
+			expected
+		);
+	}
+});
+
 test('robots.txt points crawlers at the production sitemap', async ({ request }) => {
 	const res = await request.get('/robots.txt');
 	expect(res.ok()).toBe(true);

@@ -22,6 +22,8 @@
 
 	// Every <Seo> prop the post's SEO tab drives — including its "hide from search engines" toggle
 	// (DAR-71) — comes from this one mapper, spread below. Only the blank-field fallbacks are local.
+	// No `canonical` fallback: a post is our own writing, so it stays self-canonical unless an editor
+	// sets seo.canonicalUrl (e.g. a piece syndicated from elsewhere) — that override rides for free.
 	const seo = $derived(
 		contentSeo(post.seo, {
 			title: m.content_doc_title({ title: post.title }),

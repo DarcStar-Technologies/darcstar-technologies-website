@@ -24,11 +24,13 @@ Any new page must render its own `<Seo>` with page-specific copy:
 <Seo title="Careers — DarcStar Technologies" description="…≤160 chars…" path="/careers" />
 ```
 
-Props (all optional): `title`, `description`, `path` (canonical/OG path,
-defaults to the current pathname), `type` (`og:type`, default `website`),
-`image` (root-relative, defaults to the fingerprinted OG card), `imageAlt`,
-`noindex` (force it for gated pages), `jsonLd` (structured data — see below).
-The site-wide default title/description live at the top of the component.
+Props (all optional): `title`, `description`, `path` (this page's own path,
+root-relative, defaults to the current pathname), `canonical` (an **absolute**
+URL that overrides the canonical link only — see below), `type` (`og:type`,
+default `website`), `image` (root-relative, defaults to the fingerprinted OG
+card), `imageAlt`, `noindex` (force it for gated pages), `jsonLd` (structured
+data — see below). The site-wide default title/description live at the top of
+the component.
 
 They're declared in a `<script module>` block and **exported as `SeoProps`**, so
 code that _builds_ a prop set can be checked against them (see `contentSeo()`
@@ -42,6 +44,18 @@ below). A Svelte spread silently ignores props the component doesn't declare, so
   in production, which is what scrapers hit and what OG requires. Preview
   deploys therefore self-canonicalize to their own preview origin, which is fine
   (previews aren't meant to be indexed).
+- **`canonical` and `og:url` are deliberately separate** (DAR-70). Both default to
+  this page's own URL, but only the canonical link is overridable:
+  - `<link rel="canonical">` = `canonical ?? pageUrl`. Saying "index that one
+    instead of me" — a third-party paper page pointing at arXiv/the publisher.
+  - `<meta property="og:url">` = `pageUrl`, **always**. This is the shared
+    object's identity in the social graph; pointing it off-site would hand every
+    share of our page to arXiv.
+
+  They were one derived value until DAR-70, so an override would have moved both
+  silently. Keep them apart. Note the prop conventions differ: `path` is
+  root-relative, `canonical` is an **absolute** URL.
+
 - **Locale** — `og:locale` is derived from the active Paraglide locale
   (`en`→`en_US`, `es`→`es_ES`). `og:locale:alternate` is emitted **only** for
   locales in `TRANSLATED_LOCALES` (currently `[baseLocale]`), so no alternate is
@@ -89,6 +103,35 @@ polarity is **fail-open**: hiding requires an explicit `true`, so unset/null —
 state of every document today — stays indexable. A hidden page is
 `noindex, follow` and stays live and linked from `/news` · `/research`: the toggle
 hides it from search engines, it does not unpublish it.
+
+### Canonicalising third-party papers (DAR-70)
+
+`/research/[slug]` reproduces a paper's `abstract` verbatim. For work that isn't
+ours that's duplicate content, so the page points search engines at the original
+instead of competing with it:
+
+1. `seo.canonicalUrl` — the editor's explicit override, any document, wins.
+2. Otherwise the page derives one: `paperSourceUrls(paper)[0]`
+   ([`src/lib/jsonld.ts`](../src/lib/jsonld.ts)), ordered `url` → DOI → arXiv.
+3. **First-party papers stay self-canonical.** Same fail-safe polarity as the rest
+   of `darcstarAuthored` (DAR-52): only an explicit `true` keeps the canonical
+   here, so an unset flag can never make us claim someone else's work.
+
+`paperSourceUrls` is shared with the ScholarlyArticle node's `sameAs` — one list,
+so the `doi.org`/`arxiv.org` templates exist once.
+
+**Both inputs pass the same `isHttpUrl` gate** (absolute http(s), no embedded
+whitespace). `doi`/`arxivId` are unvalidated free text in the Studio, and `new URL`
+happily turns a pasted sentence into a well-formed URL that 404s; the Studio does
+validate `canonicalUrl`'s scheme, but that's a UI affordance an API write skips, and
+two inputs to one canonical must not carry different guarantees. An unusable
+override falls **through** to the derivation rather than shadowing it — the same
+shape as the image fallback. A malformed `sameAs` is merely ignored by crawlers; a
+malformed canonical misdirects them, so this never emits one.
+
+Canonicalised pages **stay in the sitemap** — the canonical tag is authoritative,
+and the DarcStar `commentary` on them is original content worth crawling. The JSON-LD
+`mainEntityOfPage`/`url` also stay on our page: they describe _this_ page.
 
 ## The OG image (1200×630)
 

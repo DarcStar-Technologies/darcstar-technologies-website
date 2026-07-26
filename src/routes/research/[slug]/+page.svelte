@@ -19,7 +19,7 @@
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import { formatDate } from '$lib/sanity/date';
 	import { contentSeo } from '$lib/sanity/content-seo';
-	import { breadcrumbJsonLd, scholarlyArticleJsonLd } from '$lib/jsonld';
+	import { breadcrumbJsonLd, paperCanonicalUrl, scholarlyArticleJsonLd } from '$lib/jsonld';
 	import { page } from '$app/state';
 	import type { PageServerData } from './$types';
 
@@ -33,6 +33,10 @@
 			? `${m.research_external_disclaimer()} ${paper.abstract}`
 			: (paper.abstract ?? undefined)
 	);
+	// A third-party page reproduces the source's abstract verbatim, so it points search engines at
+	// the original rather than competing for that text (DAR-70). The rule and its fail-safe polarity
+	// live in paperCanonicalUrl, not here — inline, nothing could test them. An editor still
+	// overrides per-document via the Studio's `seo.canonicalUrl`; contentSeo prefers that.
 	// Every <Seo> prop the paper's SEO tab drives — including its "hide from search engines" toggle
 	// (DAR-71) — comes from this one mapper, spread below. Papers have no cover image, so an unset
 	// seo.ogImage falls straight through to the brand OG card.
@@ -40,7 +44,8 @@
 		contentSeo(paper.seo, {
 			title: m.content_doc_title({ title: paper.title }),
 			description: fallbackDescription,
-			imageAlt: paper.title
+			imageAlt: paper.title,
+			canonical: paperCanonicalUrl(paper)
 		})
 	);
 
