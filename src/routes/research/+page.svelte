@@ -24,7 +24,7 @@
 	import PaperTopics from '$lib/components/PaperTopics.svelte';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
 	import { inlineLinkClass, mutedLinkClass } from '$lib/styles';
-	import { fieldClass } from '$lib/components/ContactFields.svelte';
+	import { fieldClass } from '$lib/styles';
 	import {
 		buildFilterQuery,
 		FILTER_PARAM,

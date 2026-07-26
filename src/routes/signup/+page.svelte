@@ -10,7 +10,7 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
-	import { fieldClass, submitButtonClass } from '$lib/components/ContactFields.svelte';
+	import { fieldClass, submitButtonClass } from '$lib/styles';
 	import { inlineLinkClass } from '$lib/styles';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';

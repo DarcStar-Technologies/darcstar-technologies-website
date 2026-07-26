@@ -10,12 +10,13 @@
 	// Same mechanics as WaitlistStep2: it spreads its own remote form, so with JS it swaps in-place and
 	// without JS it degrades to a native per-step POST; the `token` prop (step 1's continuation handle,
 	// carried forward by the step-2 response) rides along as a hidden field and is the authorization
-	// the server verifies before enriching the row. Continue is FIRST in the DOM so it's the default
-	// submitter — pressing Enter continues, it never accidentally skips.
+	// the server verifies before enriching the row.
 	//
 	// The value/budget answers are internal-only: they're never displayed back or emailed to the
 	// respondent (DAR-58), so nothing here echoes them into the confirmation.
 	import GlassSelect from './GlassSelect.svelte';
+	import WaitlistStepActions from './WaitlistStepActions.svelte';
+	import WaitlistStepHeading from './WaitlistStepHeading.svelte';
 	import GlassCheckboxGroup from './GlassCheckboxGroup.svelte';
 	import { submitWaitlistStep3 } from '$lib/waitlist-steps.remote';
 	import {
@@ -25,10 +26,13 @@
 		WAITLIST_EVIDENCE,
 		WAITLIST_EVIDENCE_MAX
 	} from '$lib/waitlist-qualification';
-	import { waitlistApproachLabel } from '$lib/waitlist-approach-labels';
-	import { waitlistImpactLabel } from '$lib/waitlist-impact-labels';
-	import { waitlistBudgetLabel } from '$lib/waitlist-budget-labels';
-	import { waitlistEvidenceLabel } from '$lib/waitlist-evidence-labels';
+	import {
+		toOptions,
+		waitlistApproachLabel,
+		waitlistImpactLabel,
+		waitlistBudgetLabel,
+		waitlistEvidenceLabel
+	} from '$lib/waitlist-labels';
 	import { m } from '$lib/paraglide/messages.js';
 
 	// `branchClaim` is step 2's SIGNED step-4 branch, passed straight through as a hidden field. Step 3
@@ -39,23 +43,13 @@
 
 	// Slug → {value,label} options. `$derived` so labels re-resolve on locale change (the label
 	// accessors are $state-backed Paraglide messages).
-	const approachOptions = $derived(
-		WAITLIST_APPROACHES.map((v) => ({ value: v, label: waitlistApproachLabel[v]() }))
-	);
-	const impactOptions = $derived(
-		WAITLIST_IMPACTS.map((v) => ({ value: v, label: waitlistImpactLabel[v]() }))
-	);
-	const budgetOptions = $derived(
-		WAITLIST_BUDGETS.map((v) => ({ value: v, label: waitlistBudgetLabel[v]() }))
-	);
-	const evidenceOptions = $derived(
-		WAITLIST_EVIDENCE.map((v) => ({ value: v, label: waitlistEvidenceLabel[v]() }))
-	);
+	const approachOptions = $derived(toOptions(WAITLIST_APPROACHES, waitlistApproachLabel));
+	const impactOptions = $derived(toOptions(WAITLIST_IMPACTS, waitlistImpactLabel));
+	const budgetOptions = $derived(toOptions(WAITLIST_BUDGETS, waitlistBudgetLabel));
+	const evidenceOptions = $derived(toOptions(WAITLIST_EVIDENCE, waitlistEvidenceLabel));
 </script>
 
-<p class="eyebrow text-xs tracking-[0.25em]">{m.waitlist_page_eyebrow()}</p>
-<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">{m.waitlist_step3_heading()}</h1>
-<p class="mt-2 text-sm text-body">{m.waitlist_step3_lead()}</p>
+<WaitlistStepHeading heading={m.waitlist_step3_heading()} lead={m.waitlist_step3_lead()} />
 
 <!-- Spreading {...submitWaitlistStep3} gives the form its method/action (native POST fallback) plus
      the progressive-enhancement attachment when JS is present. -->
@@ -107,22 +101,5 @@
 		max={WAITLIST_EVIDENCE_MAX}
 	/>
 
-	<div class="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
-		<!-- Continue is first in the DOM so it's the default submitter (Enter continues); CSS `order`
-		     places it on the right on wider screens. -->
-		<button
-			{...submitWaitlistStep3.fields.intent.as('submit', 'continue')}
-			disabled={!!submitWaitlistStep3.pending}
-			class="glass-btn order-1 w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 sm:order-2 sm:w-auto"
-		>
-			{m.waitlist_flow_continue()}
-		</button>
-		<button
-			{...submitWaitlistStep3.fields.intent.as('submit', 'skip')}
-			disabled={!!submitWaitlistStep3.pending}
-			class="order-2 rounded-full px-6 py-3 text-sm font-medium text-subtle transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-60 sm:order-1"
-		>
-			{m.waitlist_flow_skip()}
-		</button>
-	</div>
+	<WaitlistStepActions form={submitWaitlistStep3} />
 </form>

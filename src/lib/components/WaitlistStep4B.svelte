@@ -10,9 +10,11 @@
 	// is itself an unverified single-opt-in claim. Picking "technical reports" says what someone would
 	// want if we write to them, not that we may.
 	import GlassCheckboxGroup from './GlassCheckboxGroup.svelte';
+	import WaitlistStepActions from './WaitlistStepActions.svelte';
+	import WaitlistStepHeading from './WaitlistStepHeading.svelte';
 	import { submitWaitlistStep4B } from '$lib/waitlist-steps.remote';
 	import { WAITLIST_RESEARCH_PREFERENCES } from '$lib/waitlist-qualification';
-	import { waitlistResearchPreferenceLabel } from '$lib/waitlist-research-preference-labels';
+	import { toOptions, waitlistResearchPreferenceLabel } from '$lib/waitlist-labels';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { token }: { token: string } = $props();
@@ -20,16 +22,11 @@
 	// Slug → {value,label} options. `$derived` so labels re-resolve on locale change (the label
 	// accessors are $state-backed Paraglide messages).
 	const preferenceOptions = $derived(
-		WAITLIST_RESEARCH_PREFERENCES.map((v) => ({
-			value: v,
-			label: waitlistResearchPreferenceLabel[v]()
-		}))
+		toOptions(WAITLIST_RESEARCH_PREFERENCES, waitlistResearchPreferenceLabel)
 	);
 </script>
 
-<p class="eyebrow text-xs tracking-[0.25em]">{m.waitlist_page_eyebrow()}</p>
-<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">{m.waitlist_step4b_heading()}</h1>
-<p class="mt-2 text-sm text-body">{m.waitlist_step4b_lead()}</p>
+<WaitlistStepHeading heading={m.waitlist_step4b_heading()} lead={m.waitlist_step4b_lead()} />
 
 <!-- Spreading {...submitWaitlistStep4B} gives the form its method/action (native POST fallback) plus
      the progressive-enhancement attachment when JS is present. -->
@@ -48,22 +45,5 @@
 		field={submitWaitlistStep4B.fields.researchPreferences}
 	/>
 
-	<div class="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
-		<!-- Continue is first in the DOM so it's the default submitter (Enter continues); CSS `order`
-		     places it on the right on wider screens. -->
-		<button
-			{...submitWaitlistStep4B.fields.intent.as('submit', 'continue')}
-			disabled={!!submitWaitlistStep4B.pending}
-			class="glass-btn order-1 w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 sm:order-2 sm:w-auto"
-		>
-			{m.waitlist_flow_continue()}
-		</button>
-		<button
-			{...submitWaitlistStep4B.fields.intent.as('submit', 'skip')}
-			disabled={!!submitWaitlistStep4B.pending}
-			class="order-2 rounded-full px-6 py-3 text-sm font-medium text-subtle transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-60 sm:order-1"
-		>
-			{m.waitlist_flow_skip()}
-		</button>
-	</div>
+	<WaitlistStepActions form={submitWaitlistStep4B} />
 </form>

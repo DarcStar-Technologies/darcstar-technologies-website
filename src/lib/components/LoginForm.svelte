@@ -10,7 +10,7 @@
 	import { goto } from '$app/navigation';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
-	import { fieldClass, submitButtonClass } from '$lib/components/ContactFields.svelte';
+	import { fieldClass, submitButtonClass } from '$lib/styles';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 
 	// `form` is the /login action result — present when the page re-renders after a no-JS submit,

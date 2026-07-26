@@ -23,11 +23,12 @@
 	import ContactSuccess from '$lib/components/ContactSuccess.svelte';
 	import FormPrivacyNotice from '$lib/components/FormPrivacyNotice.svelte';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
+	import WaitlistStepHeading from '$lib/components/WaitlistStepHeading.svelte';
 	import WaitlistStep2 from '$lib/components/WaitlistStep2.svelte';
 	import WaitlistStep3 from '$lib/components/WaitlistStep3.svelte';
 	import WaitlistStep4A from '$lib/components/WaitlistStep4A.svelte';
 	import WaitlistStep4B from '$lib/components/WaitlistStep4B.svelte';
-	import { fieldClass } from '$lib/components/ContactFields.svelte';
+	import { fieldClass } from '$lib/styles';
 	import { joinWaitlist } from '$lib/waitlist.remote';
 	import {
 		submitWaitlistStep2,
@@ -36,15 +37,13 @@
 		submitWaitlistStep4B
 	} from '$lib/waitlist-steps.remote';
 	import { WAITLIST_REGIONS } from '$lib/waitlist-qualification';
-	import { waitlistRegionLabel } from '$lib/waitlist-region-labels';
+	import { toOptions, waitlistRegionLabel } from '$lib/waitlist-labels';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 
 	// Slug → {value,label} options for the region select. `$derived` so labels re-resolve on locale
 	// change (the label accessors are $state-backed Paraglide messages).
-	const regionOptions = $derived(
-		WAITLIST_REGIONS.map((v) => ({ value: v, label: waitlistRegionLabel[v]() }))
-	);
+	const regionOptions = $derived(toOptions(WAITLIST_REGIONS, waitlistRegionLabel));
 
 	// Which step to show. Each step endpoint says where the flow goes next (`next`, decided server-side
 	// in waitlist-flow.ts — never here), so the page only obeys. LATER results take precedence: on the
@@ -140,9 +139,7 @@
 			     returned. -->
 			<WaitlistStep2 token={stepToken} />
 		{:else}
-			<p class="eyebrow text-xs tracking-[0.25em]">{m.waitlist_page_eyebrow()}</p>
-			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">{m.waitlist_heading()}</h1>
-			<p class="mt-2 text-sm text-body">{m.waitlist_lead()}</p>
+			<WaitlistStepHeading heading={m.waitlist_heading()} lead={m.waitlist_lead()} />
 
 			<!-- Spreading {...joinWaitlist} gives the form its method/action (native POST fallback) plus
 			     the progressive-enhancement attachment when JS is present. -->

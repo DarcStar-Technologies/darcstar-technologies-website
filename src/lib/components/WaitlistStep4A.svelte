@@ -15,8 +15,10 @@
 	// validator decides what gets stored either way, and it treats a not-shown contact permission as
 	// "never asked" (null) rather than a decline.
 	import { onMount } from 'svelte';
-	import GlassSelect, { fieldLabelClass, fieldHelpClass } from './GlassSelect.svelte';
-	import { fieldClass } from './ContactFields.svelte';
+	import GlassSelect from './GlassSelect.svelte';
+	import WaitlistStepActions from './WaitlistStepActions.svelte';
+	import WaitlistStepHeading from './WaitlistStepHeading.svelte';
+	import { fieldClass, fieldLabelClass, fieldHelpClass } from '$lib/styles';
 	import { submitWaitlistStep4A } from '$lib/waitlist-steps.remote';
 	import {
 		WAITLIST_PILOT_INTERESTS,
@@ -24,19 +26,20 @@
 		WAITLIST_DEPLOYMENT_SCALE_MAX,
 		isPositivePilotInterest
 	} from '$lib/waitlist-qualification';
-	import { waitlistPilotInterestLabel } from '$lib/waitlist-pilot-interest-labels';
-	import { waitlistContactMethodLabel } from '$lib/waitlist-contact-method-labels';
+	import {
+		toOptions,
+		waitlistPilotInterestLabel,
+		waitlistContactMethodLabel
+	} from '$lib/waitlist-labels';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { token }: { token: string } = $props();
 
 	// Slug → {value,label} options. `$derived` so labels re-resolve on locale change (the label
 	// accessors are $state-backed Paraglide messages).
-	const pilotOptions = $derived(
-		WAITLIST_PILOT_INTERESTS.map((v) => ({ value: v, label: waitlistPilotInterestLabel[v]() }))
-	);
+	const pilotOptions = $derived(toOptions(WAITLIST_PILOT_INTERESTS, waitlistPilotInterestLabel));
 	const contactMethodOptions = $derived(
-		WAITLIST_CONTACT_METHODS.map((v) => ({ value: v, label: waitlistContactMethodLabel[v]() }))
+		toOptions(WAITLIST_CONTACT_METHODS, waitlistContactMethodLabel)
 	);
 
 	// The two selects' live values drive the reveals, so they're bound rather than read through
@@ -55,9 +58,7 @@
 	const showPhone = $derived(!mounted || contactMethod === 'phone-video');
 </script>
 
-<p class="eyebrow text-xs tracking-[0.25em]">{m.waitlist_page_eyebrow()}</p>
-<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">{m.waitlist_step4a_heading()}</h1>
-<p class="mt-2 text-sm text-body">{m.waitlist_step4a_lead()}</p>
+<WaitlistStepHeading heading={m.waitlist_step4a_heading()} lead={m.waitlist_step4a_lead()} />
 
 <!-- Spreading {...submitWaitlistStep4A} gives the form its method/action (native POST fallback) plus
      the progressive-enhancement attachment when JS is present. -->
@@ -134,22 +135,5 @@
 		</div>
 	{/if}
 
-	<div class="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
-		<!-- Continue is first in the DOM so it's the default submitter (Enter continues); CSS `order`
-		     places it on the right on wider screens. -->
-		<button
-			{...submitWaitlistStep4A.fields.intent.as('submit', 'continue')}
-			disabled={!!submitWaitlistStep4A.pending}
-			class="glass-btn order-1 w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 sm:order-2 sm:w-auto"
-		>
-			{m.waitlist_flow_continue()}
-		</button>
-		<button
-			{...submitWaitlistStep4A.fields.intent.as('submit', 'skip')}
-			disabled={!!submitWaitlistStep4A.pending}
-			class="order-2 rounded-full px-6 py-3 text-sm font-medium text-subtle transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-60 sm:order-1"
-		>
-			{m.waitlist_flow_skip()}
-		</button>
-	</div>
+	<WaitlistStepActions form={submitWaitlistStep4A} />
 </form>

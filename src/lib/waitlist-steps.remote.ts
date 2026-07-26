@@ -27,6 +27,7 @@
 import { form } from '$app/server';
 import { getDb, type Db } from '$lib/server/db';
 import {
+	hasAnyAnswer,
 	validateWaitlistStep2,
 	validateWaitlistStep3,
 	validateWaitlistStep4A,
@@ -121,10 +122,7 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistStep2Result>
 
 		const cleaned = validateWaitlistStep2(data);
 		const skipped = data.intent === 'skip';
-		const hasAnswer =
-			cleaned.role !== null ||
-			cleaned.primaryApplication !== null ||
-			cleaned.evaluationTimeline !== null;
+		const hasAnswer = hasAnyAnswer(cleaned);
 
 		// Skip (the "Skip for now" button) writes nothing — the general path must not persist partial
 		// junk. A Continue with every select left blank has nothing to write either; short-circuiting it
@@ -180,11 +178,7 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistStepResult>(
 
 		const cleaned = validateWaitlistStep3(data);
 		const skipped = data.intent === 'skip';
-		const hasAnswer =
-			cleaned.currentApproach !== null ||
-			cleaned.economicImpact !== null ||
-			cleaned.budgetRange !== null ||
-			cleaned.adoptionEvidence !== null;
+		const hasAnswer = hasAnyAnswer(cleaned);
 
 		// Same rule as step 2: Skip persists nothing, and an all-blank Continue has nothing to enrich.
 		// The evidence cap is applied inside the validator, so more than WAITLIST_EVIDENCE_MAX boxes
@@ -232,12 +226,7 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 
 		const cleaned = validateWaitlistStep4A(data);
 		const skipped = data.intent === 'skip';
-		const hasAnswer =
-			cleaned.pilotInterest !== null ||
-			cleaned.deploymentScale !== null ||
-			cleaned.contactPermission !== null ||
-			cleaned.contactMethod !== null ||
-			cleaned.phone !== null;
+		const hasAnswer = hasAnyAnswer(cleaned);
 
 		// Same rule as steps 2–3: Skip persists nothing, an all-blank Continue has nothing to enrich.
 		if (!skipped && hasAnswer) {
@@ -268,7 +257,7 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 		const cleaned = validateWaitlistStep4B(data);
 		const skipped = data.intent === 'skip';
 
-		if (!skipped && cleaned.researchPreferences !== null) {
+		if (!skipped && hasAnyAnswer(cleaned)) {
 			await applyStepBestEffort(db, tokenSecret, data.token, { step: '4b', ...cleaned });
 		}
 
