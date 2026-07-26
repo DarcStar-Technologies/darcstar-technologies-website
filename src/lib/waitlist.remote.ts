@@ -14,6 +14,8 @@ import { mintWaitlistToken, mintDecoyWaitlistToken } from '$lib/server/waitlist-
 import { readEnv } from '$lib/server/env';
 import { hashIp } from '$lib/server/contact'; // shared truncated-SHA-256 IP hash (same throttle model)
 import { sendWaitlistEmails } from '$lib/server/waitlist-notify';
+import { captureWaitlistFunnel } from '$lib/server/waitlist-funnel';
+import { echoFlowId } from '$lib/waitlist-funnel';
 import { m } from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime';
 
@@ -33,6 +35,7 @@ type WaitlistInput = {
 	countryRegion: string; // v2 step 1 (DAR-60 renders it; validated slug)
 	consentUpdates: boolean; // v2 step 1 marketing opt-in checkbox (typed boolean so DAR-60 can use .as('checkbox'))
 	website: string; // honeypot — must stay empty
+	flowId: string; // funnel analytics handle minted by the page's load (DAR-66); anonymous, not stored on the row
 };
 
 // `token` is the signed continuation handle for the optional qualification steps (DAR-59): the
@@ -47,7 +50,12 @@ type WaitlistInput = {
 // enrich-by-email (which could only fill null step-1 fields), so each step endpoint must keep that
 // bound — do not add an absolute overwrite of a sensitive field. The embedded row id is an opaque
 // UUID and authorizes nothing without the MAC.
-type WaitlistResult = { success: true; token?: string };
+//
+// `flowId` is echoed for the same reason `token` is: without JS this response IS a page re-render, and
+// the load that runs alongside it mints a NEW flow id. Reflecting the submitted one back lets step 2's
+// hidden field keep the visitor on ONE funnel flow across native per-step POSTs. It's the caller's own
+// value, re-validated (never a new one), so this hands out nothing they didn't already have.
+type WaitlistResult = { success: true; token?: string; flowId: string };
 
 export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 	'unchecked',
@@ -70,12 +78,17 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		// success. The decoy is deterministic per email (a fresh id each submit would itself leak the
 		// trap) and addresses no real row. Note this hides only the body: the honeypot returns before
 		// the DB round-trips a real submit makes, so a timing side-channel remains.
+		//
+		// No funnel event either — a tripped honeypot is a bot, and counting it would corrupt the one
+		// metric this measures. (The e2e drives the flow through this very path, which is a second
+		// reason it must stay silent: the hermetic suite writes no analytics rows.)
 		if (typeof data.website === 'string' && data.website.trim() !== '') {
 			return {
 				success: true,
 				token: tokenSecret
 					? await mintDecoyWaitlistToken(tokenSecret, String(data.email ?? ''))
-					: undefined
+					: undefined,
+				flowId: echoFlowId(data.flowId)
 			};
 		}
 
@@ -119,11 +132,19 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 			if (platform?.ctx) platform.ctx.waitUntil(send);
 		}
 
+		// Funnel: the signup step completed (DAR-66). Fire-and-forget, and deliberately NOT gated on
+		// `isNew` the way the emails above are — a returning visitor completed step 1 just the same,
+		// and the metric this feeds ("of the people who saw the form, how many finished it") would be
+		// wrong if it silently dropped them. It also keeps the two paths indistinguishable, which is
+		// the same anti-enumeration reason the response shape is identical.
+		captureWaitlistFunnel(db, platform, data.flowId, ['waitlist_signup_completed']);
+
 		// New and existing emails get the same shape INCLUDING the token (anti-enumeration); without
 		// a secret (misconfigured env) the signup still succeeds, just without the optional steps.
 		return {
 			success: true,
-			token: tokenSecret ? await mintWaitlistToken(tokenSecret, id) : undefined
+			token: tokenSecret ? await mintWaitlistToken(tokenSecret, id) : undefined,
+			flowId: echoFlowId(data.flowId)
 		};
 	}
 );

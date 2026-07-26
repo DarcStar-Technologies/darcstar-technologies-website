@@ -116,7 +116,17 @@
 			</p>
 			<div class="mt-9 flex flex-wrap justify-center gap-3">
 				<a href="#gide" class="glass-btn btn-pill">{m.hero_cta_explore()}</a>
-				<a href={localizeHref('/waitlist')} class="glass-btn btn-pill">{m.hero_cta_waitlist()}</a>
+				<!-- `tap`, not the body-wide `hover` default: /waitlist's load records the funnel's
+				     `waitlist_viewed` event (DAR-66), and a hover prefetch runs that load for a page the
+				     visitor never opens — every mouse pass over this button would inflate the denominator
+				     of the primary conversion metric with a view that can never convert. Preloading on
+				     pointerdown still starts the fetch before the navigation, so the latency win survives;
+				     a hover-then-click reuses that single request, so a real visitor is counted once. -->
+				<a
+					href={localizeHref('/waitlist')}
+					data-sveltekit-preload-data="tap"
+					class="glass-btn btn-pill">{m.hero_cta_waitlist()}</a
+				>
 				<button
 					type="button"
 					aria-haspopup="dialog"

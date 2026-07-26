@@ -21,7 +21,10 @@ type Signup = PageData['signups'][number];
 // `PageData` also carries the /admin layout's half (a Better Auth `user` + `isAdmin`), which this
 // page reads none of. Pick only this route's own load return, so the fixture still breaks if a
 // column's type changes but doesn't have to fake a session.
-type PageFixture = Pick<PageData, 'signups' | 'counts' | 'filter' | 'total' | 'limit'>;
+type PageFixture = Pick<
+	PageData,
+	'signups' | 'counts' | 'filter' | 'total' | 'limit' | 'funnel' | 'conversion'
+>;
 
 const ROW: Signup = {
 	id: 'row-1',
@@ -67,12 +70,27 @@ const RESEARCHER: Signup = {
 	leadClass: 'research'
 };
 
+// The funnel readout's fixture (DAR-66). Deliberately a shrinking series with 200 views and 50
+// signups, so the rendered conversion is an unambiguous 25%.
+const FUNNEL: PageFixture['funnel'] = {
+	waitlist_viewed: 200,
+	waitlist_signup_completed: 50,
+	qualification_started: 40,
+	use_case_completed: 30,
+	commercial_context_completed: 12,
+	pilot_interest_selected: 8,
+	qualification_completed: 25,
+	evaluation_conversation_requested: 3
+};
+
 const data = (over: Partial<PageFixture> = {}): PageFixture => ({
 	signups: [ROW, RESEARCHER],
 	counts: { 'priority-a': 1, 'priority-b': 0, 'priority-c': 0, research: 1, investor: 0 },
 	filter: null,
 	total: 2,
 	limit: 200,
+	funnel: FUNNEL,
+	conversion: 0.25,
 	...over
 });
 
@@ -139,6 +157,67 @@ describe('/admin/waitlist', () => {
 		);
 		expect(actions).toHaveLength(2);
 		expect(new Set(actions)).toEqual(new Set(['?/delete&class=priority-a']));
+	});
+
+	// DAR-66's readout. It renders every stage including the ones at zero — a stage nobody reached is
+	// information, and a missing row would read as a broken counter.
+	it('renders the funnel counts and the primary conversion rate', async () => {
+		mount();
+
+		await expect.element(page.getByText('Viewed the page')).toBeVisible();
+		await expect.element(page.getByText('200', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('Requested a conversation')).toBeVisible();
+		await expect.element(page.getByText('Signup conversion')).toBeVisible();
+		await expect.element(page.getByText('25%', { exact: true })).toBeVisible();
+	});
+
+	it('renders every funnel stage, including one nobody has reached', async () => {
+		const { container } = mount({
+			funnel: { ...FUNNEL, evaluation_conversation_requested: 0 },
+			conversion: 0.25
+		});
+
+		// Scoped to the readout — each signup's qualification detail is a <dl> of its own.
+		const stages = container.querySelectorAll(
+			'section[aria-labelledby="waitlist-funnel-heading"] dl dt'
+		);
+		expect(stages).toHaveLength(8);
+		await expect.element(page.getByText('0', { exact: true })).toBeVisible();
+	});
+
+	// No views means no denominator, and a rendered "0%" would say "nobody converts" rather than
+	// "nothing measured". The server sends null; this is the view half of that contract.
+	it('shows a dash rather than a rate when nothing has been viewed', async () => {
+		const { container } = mount({
+			funnel: { ...FUNNEL, waitlist_viewed: 0, waitlist_signup_completed: 0 },
+			conversion: null
+		});
+
+		await expect.element(page.getByText('Signup conversion')).toBeVisible();
+		// Scoped to the readout — asserting against the whole body would break the day any unrelated
+		// copy on this page happens to contain a percent sign.
+		const funnel = container.querySelector('section[aria-labelledby="waitlist-funnel-heading"]');
+		expect(funnel?.textContent).not.toContain('%');
+	});
+
+	// A deploy that lands before its migration has no events table at all. The readout says so and the
+	// LEADS STAY ON SCREEN — an analytics aggregate must not take the triage list down with it.
+	it('degrades to a note when the readout is unavailable, keeping the signups', async () => {
+		mount({ funnel: null, conversion: null });
+
+		await expect.element(page.getByText('Funnel counts are unavailable right now.')).toBeVisible();
+		await expect.element(page.getByRole('link', { name: 'lead@example.com' })).toBeVisible();
+		await expect.element(page.getByText('Priority A', { exact: true })).toBeVisible();
+	});
+
+	// The readout sits on the same page as the leads, so it must stay a count of anonymous flows —
+	// never a per-person breakdown, and never anything a row could be joined back to.
+	it('keeps the readout free of any signup identity', async () => {
+		const { container } = mount();
+
+		const funnel = container.querySelector('section[aria-labelledby="waitlist-funnel-heading"]');
+		expect(funnel?.textContent).not.toContain('lead@example.com');
+		expect(funnel?.textContent).toContain('Directional only');
 	});
 
 	it('shows the internal-only and unverified-claim caveats', async () => {

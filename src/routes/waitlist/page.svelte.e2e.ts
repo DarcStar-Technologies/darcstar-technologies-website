@@ -33,6 +33,53 @@ test('waitlist step-1 form renders with required fields and its data-handling no
 	);
 });
 
+// DAR-66: the funnel handle the page's load minted, carried in a hidden field so the signup can be
+// attributed to the same flow as the view. That this page renders at all is the other half of the
+// assertion — the load records the view against the placeholder DB, so the write is failing on every
+// request here, and analytics failing must never cost the visitor the form.
+test('the step-1 form carries an anonymous funnel handle', async ({ page }) => {
+	await page.goto('/waitlist');
+
+	await expect(page.getByRole('main').locator('input[name="flowId"]')).toHaveValue(
+		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+	);
+});
+
+// A LINK TO /waitlist MUST NOT PREFETCH ON HOVER (DAR-66). The app shell sets
+// `data-sveltekit-preload-data="hover"` on <body>, and preloading DATA means running the page's load
+// — which is where `waitlist_viewed` is recorded. Left at the default, every mouse pass over the
+// homepage CTA (or the footer link, which is on every page) would count a view for a page nobody
+// opened, permanently understating the primary conversion metric. The links opt down to `tap`, so the
+// fetch starts on pointerdown instead; a click reuses that single request, so a real visitor is still
+// fetched once and counted once.
+//
+// Asserted at the network layer rather than by reading the attribute, because the attribute is only
+// the mechanism — what matters is that no request reaches the load.
+test('hovering a link to /waitlist does not prefetch it', async ({ page }) => {
+	const dataRequests: string[] = [];
+	page.on('request', (request) => {
+		if (request.url().includes('/waitlist/__data.json')) dataRequests.push(request.url());
+	});
+
+	await page.goto('/');
+	const cta = page
+		.getByRole('main')
+		.getByRole('link', { name: /waitlist/i })
+		.first();
+	await cta.hover();
+	// Kit's hover preload fires more or less immediately; give it well past that before concluding.
+	await page.waitForTimeout(1000);
+	expect(dataRequests).toEqual([]);
+
+	// …and the opt-out is `tap`, not `off`: the click must still work and still fetch exactly once.
+	await cta.click();
+	await expect(page).toHaveURL(/\/waitlist$/);
+	await expect(page.getByRole('main').locator('input[name="flowId"]')).toHaveValue(
+		/^[0-9a-f]{8}-/i
+	);
+	expect(dataRequests).toHaveLength(1);
+});
+
 // Drive a signup via the honeypot (accepted, not persisted → decoy token, no DB) and assert the page
 // advances IN-PLACE to the step-2 questions rather than the confirmation.
 async function advanceToStep2(main: Locator) {
@@ -363,6 +410,12 @@ test.describe('without JavaScript', () => {
 		await page.goto('/waitlist');
 		const main = page.getByRole('main');
 
+		// The funnel handle this render was recorded under. Every step must echo THIS value: without
+		// JS each submit re-renders the page, whose load mints a fresh id, so an unechoed handle would
+		// silently split one visitor across four flows and make every funnel ratio meaningless.
+		const flowId = await main.locator('input[name="flowId"]').inputValue();
+		expect(flowId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
 		await main.getByLabel('Name', { exact: true }).fill('Bot McBotface');
 		await main.getByLabel('Email', { exact: true }).fill('bot@bot');
 		await main.locator('input[name="website"]').fill('bot', { force: true });
@@ -383,6 +436,7 @@ test.describe('without JavaScript', () => {
 		).toBeVisible();
 		await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
 		await expect(main.locator('input[name="flowClaim"]')).toHaveValue(/^f1\./);
+		await expect(main.locator('input[name="flowId"]')).toHaveValue(flowId);
 
 		// Step 3 answers submit natively too (the checkbox group needs no JS at all).
 		await main.getByLabel(/Realistic budget/).selectOption('25k-100k');
@@ -399,6 +453,8 @@ test.describe('without JavaScript', () => {
 		// so a claim that silently stopped being carried would leave no trace in the final assertion.
 		await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
 		await expect(main.locator('input[name="flowClaim"]')).toHaveValue(/^f1\./);
+		// Same handle after THREE native POSTs — one visitor, one funnel flow.
+		await expect(main.locator('input[name="flowId"]')).toHaveValue(flowId);
 		await expect(main.getByLabel(/Deployment scale/)).toBeVisible();
 		await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toBeVisible();
 		await expect(main.getByLabel(/Phone/)).toBeVisible();

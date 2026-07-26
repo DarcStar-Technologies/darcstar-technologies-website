@@ -1,5 +1,12 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+	index,
+	integer,
+	primaryKey,
+	sqliteTable,
+	text,
+	uniqueIndex
+} from 'drizzle-orm/sqlite-core';
 import { user } from './auth.schema';
 
 export const task = sqliteTable('task', {
@@ -172,6 +179,43 @@ export const waitlist = sqliteTable(
 		index('waitlist_created_idx').on(table.createdAt),
 		// Backs the /waitlist datalist frequency query (group by interest having count >= n).
 		index('waitlist_interest_idx').on(table.interest)
+	]
+);
+
+// Waitlist funnel analytics (DAR-66) — first-party, and the whole table is three columns because the
+// privacy posture is structural rather than procedural: an event slug, an anonymous per-page-load
+// `flow_id`, and when. There is no column for an IP, a user agent, an email, a row id or any answer
+// text, so no future writer can quietly start recording one. The free-text answers (deployment scale,
+// the money questions) are internal-only by DAR-58 and have nowhere to land here.
+//
+// `flow_id` is minted by /waitlist's load as a random UUID and carried through the flow in a hidden
+// field. It is NOT the waitlist row id and NOT derived from the email — an analytics row must not be
+// walkable back to a person, and a derived id would be joinable to `waitlist` by anyone who could
+// recompute it. Shape-checked on write (isWaitlistFlowId).
+//
+// THE COMPOSITE PRIMARY KEY IS THE ABUSE CAP. The ticket asks for a per-flow event cap; making
+// (flow_id, event) the key enforces it in the same statement as the insert — with
+// `onConflictDoNothing()` a flow can never hold more than one row per event, so it is bounded to the
+// slug list's length no matter how many times a script replays a submit, and no counting query is
+// needed to enforce it. It also makes every count a count of DISTINCT flows, which is what turns
+// `waitlist_signup_completed / waitlist_viewed` into a conversion rate instead of a ratio of retries.
+// That's why this table has no surrogate `id` column like its siblings: (flow_id, event) IS the key.
+//
+// Writes are fire-and-forget (see src/lib/server/waitlist-funnel.ts) — analytics must never fail a
+// signup, the same posture as the Resend notifications.
+export const waitlistFunnelEvent = sqliteTable(
+	'waitlist_funnel_event',
+	{
+		flowId: text('flow_id').notNull(),
+		event: text('event').notNull(),
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+			.notNull()
+	},
+	(table) => [
+		primaryKey({ columns: [table.flowId, table.event] }),
+		// Backs the admin readout's `group by event` (a narrower scan than the table).
+		index('waitlist_funnel_event_idx').on(table.event)
 	]
 );
 

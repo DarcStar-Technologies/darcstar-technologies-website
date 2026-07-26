@@ -26,7 +26,7 @@
 	} from '$lib/waitlist-labels';
 	import { m } from '$lib/paraglide/messages.js';
 
-	let { token }: { token: string } = $props();
+	let { token, flowId }: { token: string; flowId: string } = $props();
 
 	// Slug → {value,label} options. `$derived` so labels re-resolve on locale change (the label
 	// accessors are $state-backed Paraglide messages).
@@ -43,6 +43,10 @@
 	<!-- The continuation token: authorization the server verifies before enriching the row. Hidden,
 	     carried straight through from step 1's success response. -->
 	<input {...submitWaitlistStep2.fields.token.as('hidden', token)} />
+
+	<!-- The funnel handle (DAR-66): anonymous, authorizes nothing, and never reaches the signup row —
+	     it only ties this submit to the same analytics flow the page view started. -->
+	<input {...submitWaitlistStep2.fields.flowId.as('hidden', flowId)} />
 
 	<GlassSelect
 		id="waitlist-application"

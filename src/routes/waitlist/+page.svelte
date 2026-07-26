@@ -40,6 +40,10 @@
 	import { WAITLIST_REGIONS } from '$lib/waitlist-qualification';
 	import { toOptions, waitlistRegionLabel } from '$lib/waitlist-labels';
 	import { m } from '$lib/paraglide/messages.js';
+	import type { PageData } from './$types';
+
+	// The page's only server data: the funnel's anonymous flow id, minted per render (DAR-66).
+	let { data }: { data: PageData } = $props();
 
 	// Slug → {value,label} options for the region select. `$derived` so labels re-resolve on locale
 	// change (the label accessors are $state-backed Paraglide messages).
@@ -74,6 +78,22 @@
 	// were derived from). Opaque here: the page carries the claim to the next step, never reads it.
 	const flowClaim = $derived(
 		submitWaitlistStep3.result?.flowClaim ?? submitWaitlistStep2.result?.flowClaim ?? ''
+	);
+
+	// The funnel handle (DAR-66) for whichever step is showing. `data.flowId` is the one this render's
+	// load minted and recorded the view under; every step echoes back what it was given, so the whole
+	// funnel stays one flow even on the no-JS path, where each POST re-renders the page and its load
+	// mints a fresh id this chain then ignores.
+	//
+	// `||`, not `??`: an echo is `''` when the submitted value wasn't a well-formed flow id, and that
+	// must fall through to the freshly minted one rather than pin the page to an empty handle.
+	const flowId = $derived(
+		submitWaitlistStep4A.result?.flowId ||
+			submitWaitlistStep4B.result?.flowId ||
+			submitWaitlistStep3.result?.flowId ||
+			submitWaitlistStep2.result?.flowId ||
+			joinWaitlist.result?.flowId ||
+			data.flowId
 	);
 
 	// The confirmation's one call to action (DAR-64), decided server-side by whichever step ended the
@@ -133,20 +153,20 @@
 		{#if stage === 'done'}
 			<!-- Terminal state: the flow routed to the confirmation (a Skip, or the last step submitted).
 			     Value/budget answers are internal-only, so nothing from them is echoed back here. -->
-			<WaitlistConfirmation {cta} />
+			<WaitlistConfirmation {cta} {flowId} />
 		{:else if stage === 'step4a'}
 			<!-- Active commercial interest → pilot details (DAR-63 branch A). -->
-			<WaitlistStep4A token={stepToken} {flowClaim} />
+			<WaitlistStep4A token={stepToken} {flowClaim} {flowId} />
 		{:else if stage === 'step4b'}
 			<!-- Research or general interest → what they'd like to receive (DAR-63 branch B). -->
-			<WaitlistStep4B token={stepToken} {flowClaim} />
+			<WaitlistStep4B token={stepToken} {flowClaim} {flowId} />
 		{:else if stage === 'step3'}
 			<!-- Commercial/operational use case → the optional step-3 questions (DAR-62). -->
-			<WaitlistStep3 token={stepToken} {flowClaim} />
+			<WaitlistStep3 token={stepToken} {flowClaim} {flowId} />
 		{:else if stage === 'step2'}
 			<!-- Step-1 signup succeeded → the optional step-2 questions, authorized by the token step 1
 			     returned. -->
-			<WaitlistStep2 token={stepToken} />
+			<WaitlistStep2 token={stepToken} {flowId} />
 		{:else}
 			<WaitlistStepHeading heading={m.waitlist_heading()} lead={m.waitlist_lead()} />
 
@@ -166,6 +186,11 @@
 						aria-hidden="true"
 					/>
 				</div>
+
+				<!-- The funnel handle (DAR-66) this render's view was recorded under, so the signup can be
+				     attributed to the same flow. Anonymous and authorizes nothing — see
+				     $lib/waitlist-funnel.ts. -->
+				<input {...joinWaitlist.fields.flowId.as('hidden', flowId)} />
 
 				<!-- Whole-form issues (e.g. rate limit); the name/email field issues render under them. -->
 				{#each joinWaitlist.fields.allIssues() as issue (issue.message)}
