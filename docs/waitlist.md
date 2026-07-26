@@ -63,8 +63,9 @@ field and enriches via `applyWaitlistStep` (per-step column map, keep-existing).
 - **Continue is first in the DOM** so it's the default submitter — pressing Enter continues, it
   never accidentally skips.
 
-Routing is server-side: the step-2 response carries `next` (`'step3'` or `'done'`), computed by
-`waitlist-flow.ts` from the answers just submitted — see **Step 3** below.
+Routing is server-side: the step-2 response carries `next` (`'step3'`, `'step4a'`, `'step4b'` or
+`'done'`), computed by `waitlist-flow.ts` from the answers just submitted — see **The routing rules**
+below. Non-commercial visitors skip step 3 and fork straight to a step-4 branch.
 
 ## Step 3 — commercial context (live)
 
@@ -78,10 +79,32 @@ form, `submitWaitlistStep3` (`waitlist-steps.remote.ts`) the write; slugs in
 impact/budget answers are internal-only — never displayed back or emailed to the respondent, and never
 described as pipeline.
 
-### The gate (`src/lib/server/waitlist-flow.ts`)
+## Step 4 — intent branches (live)
 
-The routing rule is implemented ONCE here — DAR-63's step-4 fork and DAR-65's classifier reuse it
-rather than restating it:
+The flow forks (DAR-63). Branch **A** (`WaitlistStep4A.svelte` → `submitWaitlistStep4A`) is for
+active commercial interest: one always-asked question (would you consider a paid evaluation or
+pilot?) and, **only for a positive answer**, a revealed block — deployment scale (free text, capped
+at `WAITLIST_DEPLOYMENT_SCALE_MAX`), contact permission, preferred contact method, and a phone field
+nested behind choosing a call. Branch **B** (`WaitlistStep4B.svelte` → `submitWaitlistStep4B`) is for
+research/general interest: one uncapped multi-select of what to send, and **nothing** about budgets,
+pilots or contact permission. Labels live in `waitlist-{pilot-interest,contact-method,research-preference}-labels.ts`.
+
+- **The reveals are progressive enhancement, never a gate.** `mounted` is false during SSR and until
+  hydration, so a no-JS visitor gets every field rendered and submittable (all optional); JS only
+  collapses what isn't relevant, and it uses `{#if}` so a stale phone number can't ride along after
+  the answer changes. The server decides what's stored either way — `contact_permission` is emitted
+  as `null` ("never asked") unless the pilot answer is positive, on the **same**
+  `isPositivePilotInterest` predicate the component reveals on, so UI and storage can't drift.
+- **Step-4A's free text is internal-only** — `deployment_scale` is never echoed to the submitter (the
+  ack email builder takes `CleanedWaitlist`, which is step-1 fields only; pinned in
+  `waitlist-notify.spec.ts`) and must stay out of DAR-66's analytics events.
+- **Branch B preferences are not consent.** `consent_updates` (step 1) governs whether we may write
+  at all, and is itself an unverified single-opt-in claim.
+
+## The routing rules (`src/lib/server/waitlist-flow.ts`)
+
+Every routing decision is implemented ONCE here — the step endpoints and DAR-65's classifier reuse
+these rather than restating them:
 
 - `isCommercialUseCase({ role, primaryApplication })` — DAR-62's exclusions (`researcher` /
   `student` / `investor-advisor`, or a `research-education` application route past step 3) **plus
@@ -91,13 +114,33 @@ rather than restating it:
   from anyone we can't classify. One answered, non-excluded field is signal enough.
 - `canonicalizeWaitlistRole` — `role` holds both slug sets, so it maps v1 → v2 first; a legacy
   `research` row would otherwise read as "not a researcher" and get asked about budget.
+- `step4BranchFor(evaluationTimeline)` — DAR-63's fork: `evaluating-now` / `within-3-months` /
+  `3-12-months` → **A**, everything else (incl. unanswered, unrecognized) → **B**, the branch that
+  asks nothing sensitive. Keyed on the timeline ALONE — role/application gate step 3, not this fork,
+  so a researcher who is evaluating now still gets asked branch A's question.
 - It lives under **`$lib/server`** on purpose: the decision must never be client-authoritative, and
   the import guard makes that structural (a component physically cannot import it). The browser learns
   the next step only from a step response's `next`.
-- **Not an authorization boundary.** Skipping step 3 is UX, not permission: a crafted POST straight to
-  `submitWaitlistStep3` still gets validated + stored (token permitting), because answering buys no
-  privilege — the classifier judges the submitter by their role either way. Re-checking the predicate
-  at the write would only add a way to lose data.
+- **Not an authorization boundary.** Which step you're shown is UX, not permission: a crafted POST
+  straight to `submitWaitlistStep3` — or to the branch you weren't routed to — still gets validated +
+  stored (token permitting), because answering buys no privilege; the classifier judges the submitter
+  by their answers either way. Re-checking a routing predicate at the write would only add a way to
+  lose data. The one exception is step 4A's `contact_permission`, gated at the validator so a grant
+  can only be recorded from a question that was actually on screen.
+
+### The branch claim — why step 3 doesn't read the row
+
+The fork reads `evaluation_timeline`, answered at **step 2** — but a commercial visitor passes
+through step 3, whose form doesn't re-ask it. Recovering it by **reading the stored row was
+rejected**: `next` would then depend on stored state, and the continuation token deliberately reaches
+any submitter of a known email, so a `next: 'step4a'` would prove "this address is on the list, with a
+near-term timeline" to anyone who guesses it. Instead step 2 **signs** the decided branch
+(`mintWaitlistBranchClaim` — its own domain + `b1` prefix over the same secret, so it can never be
+confused with a continuation token) and returns it as `branchClaim`; step 3's form carries it as a
+hidden field and the endpoint verifies it. The MAC is what makes the hidden field safe — nobody can
+edit their way into branch A's contact-collection — and because the claim is minted from answers the
+visitor just submitted, it tells its holder nothing they didn't already know. It is **not** bound to
+the row id: it authorizes no write, it only chooses which questions render.
 
 ### Two mechanics the later steps inherit
 
@@ -118,9 +161,10 @@ rather than restating it:
 The single form is being replaced by a short progressive flow (step 1 secures the signup; steps 2–4
 gather qualification data from people willing to continue). **DAR-59 shipped the data-model
 foundation** (schema columns, validators, store step-path, continuation token); **DAR-60 shipped
-step 1** (the core signup above), **DAR-61 step 2** (use-case questions) and **DAR-62 step 3**
-(commercial context + the server-side flow gate) — see the sections above. Step 4's branches land in
-DAR-63; the classifier + admin view in DAR-65; funnel analytics in DAR-66.
+step 1** (the core signup above), **DAR-61 step 2** (use-case questions), **DAR-62 step 3**
+(commercial context + the server-side flow gate) and **DAR-63 step 4** (the A/B intent branches) —
+see the sections above. The flow is now complete end to end; the classifier + admin view land in
+DAR-65, funnel analytics in DAR-66.
 
 ### Qualification columns
 
@@ -129,8 +173,8 @@ approach/impact/budget/evidence, pilot details, research prefs). Slug values are
 `$lib/waitlist-qualification.ts` (the single client-safe source shared by the step forms and the
 server validators). Two multi-selects (`adoption_evidence`, `research_preferences`) store JSON string
 arrays. `role` is shared between v1 and v2 slug sets — legacy v1 slugs remain as history, new writes
-use the v2 set; **a consumer that branches on `role` must canonicalize v1→v2 first** (a shared helper
-is expected before DAR-65's classifier lands).
+use the v2 set; **a consumer that branches on `role` must canonicalize v1→v2 first**
+(`canonicalizeWaitlistRole`, in `waitlist-flow.ts`).
 
 `qualification_step` is a monotonic integer high-water mark (1 = signup … 4 = a branch). Which
 step-4 **branch** completed is NOT stored — derive it from the branch-specific columns
@@ -173,13 +217,21 @@ on first grant (provenance). **It must not drive a real send without double-opt-
 
 `null` = the question wasn't shown (pilot interest not positive), `false` = shown and declined,
 `true` = granted. The step-4A validator emits `null` unless the pilot answer is positive (the same
-predicate, `isPositivePilotInterest`, that DAR-63 gates the checkbox's rendering on), and the store
+predicate, `isPositivePilotInterest`, that `WaitlistStep4A` reveals the checkbox on), and the store
 keep-existings a `null` — so a not-shown submit can't silently revoke a standing grant.
+
+Like `consent_updates`, it is an **unverified claim**: the row is identified only by a continuation
+token, which the anti-enumeration success shape hands to _any_ submitter of a known email. So a third
+party who guesses an address on the list can set (or overwrite) that row's `contact_permission`,
+`phone` and `pilot_interest` — the same provided-wins exposure every qualification column has under
+`keepExisting`. Treat step 4A's contact block as a lead-qualification hint, **not** proof that this
+person asked to be called, and confirm by replying to the signed-up address before acting on it.
 
 ### Wire contract for the step forms
 
-A multi-select checkbox group **must** be named `foo[]`, not `foo` (step 3's `adoptionEvidence[]` is
-the live example — `GlassCheckboxGroup` gets the suffix from Kit's `.as('checkbox', value)`). SvelteKit's form-data conversion
+A multi-select checkbox group **must** be named `foo[]`, not `foo` (step 3's `adoptionEvidence[]` and
+step 4B's `researchPreferences[]` are the live examples — `GlassCheckboxGroup` gets the suffix from
+Kit's `.as('checkbox', value)`). SvelteKit's form-data conversion
 throws on a repeated plain name ("Form cannot contain duplicated keys"); only the `[]` suffix yields
 an array (arriving under key `foo`, always `string[]`; zero checks omit the key). Single checkboxes
 (consent, contact permission) are read by presence — any non-empty value is `true` — so the markup

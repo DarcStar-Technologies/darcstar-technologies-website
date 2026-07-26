@@ -31,7 +31,11 @@
 	import { waitlistEvidenceLabel } from '$lib/waitlist-evidence-labels';
 	import { m } from '$lib/paraglide/messages.js';
 
-	let { token }: { token: string } = $props();
+	// `branchClaim` is step 2's SIGNED step-4 branch, passed straight through as a hidden field. Step 3
+	// doesn't re-ask the evaluation timeline the fork reads, so the decision rides along rather than
+	// being re-derived — and it's signed, so editing this field can't opt anyone into branch A (see
+	// waitlist-flow.ts' mintWaitlistBranchClaim).
+	let { token, branchClaim }: { token: string; branchClaim: string } = $props();
 
 	// Slug → {value,label} options. `$derived` so labels re-resolve on locale change (the label
 	// accessors are $state-backed Paraglide messages).
@@ -59,6 +63,7 @@
 	<!-- The continuation token: authorization the server verifies before enriching the row. Hidden,
 	     carried through from the step-2 response (which echoes back what step 1 minted). -->
 	<input {...submitWaitlistStep3.fields.token.as('hidden', token)} />
+	<input {...submitWaitlistStep3.fields.branchClaim.as('hidden', branchClaim)} />
 
 	<GlassSelect
 		id="waitlist-approach"
