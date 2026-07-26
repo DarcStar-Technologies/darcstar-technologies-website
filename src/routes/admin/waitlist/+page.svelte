@@ -1,42 +1,70 @@
 <script lang="ts">
 	// Gated admin view of waitlist signups — sibling of the contact-submissions triage view. Reached
-	// only past the /admin route guard (../+layout.server.ts); rows come newest-first from
-	// +page.server.ts. Same frosted-glass aesthetic. Slug columns (role/size/heard) map to their
-	// localized labels; `interest` is free text, shown verbatim.
+	// only past the /admin route guard (../+layout.server.ts). Same frosted-glass aesthetic.
+	//
+	// DAR-65 turned it from a flat log into a triage surface: every row carries its internal lead
+	// class (decided server-side by `classifyWaitlistLead`, never here), rows sort priority-first, the
+	// chips filter by class through a plain GET so it all works without JS, and each row opens a
+	// <details> with the full v2 qualification answers. Slug columns map to their localized labels;
+	// free text (interest, deployment scale) is shown verbatim.
 	import Seo from '$lib/components/Seo.svelte';
+	import WaitlistLeadClassBadge from '$lib/components/WaitlistLeadClassBadge.svelte';
+	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 	import {
 		waitlistRoleLabel,
 		waitlistV2RoleLabel,
 		waitlistCompanySizeLabel,
-		waitlistReferralLabel
+		waitlistReferralLabel,
+		waitlistRegionLabel,
+		waitlistApplicationLabel,
+		waitlistTimelineLabel,
+		waitlistApproachLabel,
+		waitlistImpactLabel,
+		waitlistBudgetLabel,
+		waitlistEvidenceLabel,
+		waitlistPilotInterestLabel,
+		waitlistContactMethodLabel,
+		waitlistResearchPreferenceLabel,
+		waitlistLeadClassLabel
 	} from '$lib/waitlist-labels';
+	import { WAITLIST_LEAD_CLASSES } from '$lib/waitlist-qualification';
 	import type { WaitlistRole } from '$lib/waitlist-roles';
 	import type { WaitlistV2Role } from '$lib/waitlist-qualification';
-	import type { WaitlistCompanySize } from '$lib/waitlist-company-sizes';
-	import type { WaitlistReferralSource } from '$lib/waitlist-referral-sources';
 	import type { PageData, ActionData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
-	// Slug → localized label, falling back to the raw value for a legacy/unknown slug, em-dash when
-	// absent. Free-text fields (interest) use `orDash` directly. `role` holds BOTH the v1 slug set
-	// (legacy rows) and the v2 set (DAR-61's step 2 writes the same column), so resolve it against
-	// both label maps — v2 first — before the raw-slug fallback.
-	const orDash = (v: string | null): string => v ?? '—';
+	const DASH = '—';
+
+	// Slug → localized label, falling back to the raw value for a legacy/unknown slug and to an
+	// em-dash when the question was never answered. Deliberately keyed on plain strings: these are
+	// nullable free-text columns at the DB layer, so a stored value may predate (or post-date) the
+	// label map, and a triage view should show whatever is actually in the row rather than blank.
+	type SlugLabels = Record<string, () => string>;
+	const labelled = (value: string | null, labels: SlugLabels): string =>
+		value ? (labels[value]?.() ?? value) : DASH;
+	const labelledList = (values: string[] | null, labels: SlugLabels): string =>
+		values && values.length > 0 ? values.map((v) => labels[v]?.() ?? v).join(', ') : DASH;
+	const orDash = (v: string | number | null): string => (v === null ? DASH : String(v));
+
+	// `role` holds BOTH the v1 slug set (legacy rows) and the v2 set (DAR-61's step 2 writes the same
+	// column), so resolve it against both label maps — v2 first — before the raw-slug fallback.
 	const roleFor = (v: string | null) =>
 		v
 			? (waitlistV2RoleLabel[v as WaitlistV2Role]?.() ??
 				waitlistRoleLabel[v as WaitlistRole]?.() ??
 				v)
-			: '—';
-	const sizeFor = (v: string | null) =>
-		v ? (waitlistCompanySizeLabel[v as WaitlistCompanySize]?.() ?? v) : '—';
-	const hearFor = (v: string | null) =>
-		v ? (waitlistReferralLabel[v as WaitlistReferralSource]?.() ?? v) : '—';
+			: DASH;
 
 	const fmt = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' });
-	const atCap = $derived(data.signups.length >= data.limit);
+	const atCap = $derived(data.total >= data.limit);
+
+	const basePath = $derived(localizeHref('/admin/waitlist'));
+	const chipBase =
+		'rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500';
+	const chipActive = 'bg-white/10 text-white';
+	const chipIdle = 'text-faint hover:text-white';
 </script>
 
 <Seo
@@ -44,6 +72,14 @@
 	description={m.admin_waitlist_page_description()}
 	noindex
 />
+
+<!-- One label/value pair in a row's qualification detail. -->
+{#snippet detail(label: string, value: string)}
+	<div>
+		<dt class="text-xs tracking-wide text-faint">{label}</dt>
+		<dd class="text-sm break-words text-body">{value}</dd>
+	</div>
+{/snippet}
 
 <section class="space-y-8">
 	<header>
@@ -55,9 +91,36 @@
 		<p class="text-sm text-error-400" role="alert">{m.admin_delete_error()}</p>
 	{/if}
 
+	<!-- Filter by lead class. Plain links + a GET query, so it needs no JS and every view is
+	     bookmarkable; the counts are over the whole window, not the filtered slice. -->
+	<nav class="flex flex-wrap items-center gap-1" aria-label={m.admin_waitlist_filter_label()}>
+		<a
+			href={basePath}
+			aria-current={data.filter === null ? 'page' : undefined}
+			class="{chipBase} {data.filter === null ? chipActive : chipIdle}"
+			>{m.admin_waitlist_filter_option({
+				label: m.admin_waitlist_filter_all(),
+				count: data.total
+			})}</a
+		>
+		{#each WAITLIST_LEAD_CLASSES as leadClass (leadClass)}
+			<a
+				href={`${basePath}?class=${leadClass}`}
+				aria-current={data.filter === leadClass ? 'page' : undefined}
+				class="{chipBase} {data.filter === leadClass ? chipActive : chipIdle}"
+				>{m.admin_waitlist_filter_option({
+					label: waitlistLeadClassLabel[leadClass](),
+					count: data.counts[leadClass]
+				})}</a
+			>
+		{/each}
+	</nav>
+
 	<div class="glass-card p-4 sm:p-6">
-		{#if data.signups.length === 0}
+		{#if data.total === 0}
 			<p class="px-2 py-12 text-center text-sm text-faint">{m.admin_waitlist_empty()}</p>
+		{:else if data.signups.length === 0}
+			<p class="px-2 py-12 text-center text-sm text-faint">{m.admin_waitlist_filter_empty()}</p>
 		{:else}
 			<div class="flex flex-wrap items-baseline justify-between gap-2 px-2 pb-4">
 				<span class="text-sm text-emphasis"
@@ -71,23 +134,25 @@
 				<table class="w-full border-collapse text-left text-sm">
 					<thead>
 						<tr class="border-b border-hairline text-xs tracking-wide text-faint">
+							<th class="px-3 py-2 font-medium whitespace-nowrap">{m.admin_waitlist_col_class()}</th
+							>
 							<th class="px-3 py-2 font-medium whitespace-nowrap">{m.admin_col_received()}</th>
 							<th class="px-3 py-2 font-medium">{m.admin_col_email()}</th>
 							<th class="px-3 py-2 font-medium">{m.admin_col_name()}</th>
 							<th class="px-3 py-2 font-medium">{m.admin_col_company()}</th>
 							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_role()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_size()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_interest()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_heard()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_phone()}</th>
+							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_outreach()}</th>
 							<th class="px-3 py-2 text-right font-medium">
 								<span class="sr-only">{m.admin_col_actions()}</span>
 							</th>
 						</tr>
 					</thead>
-					<tbody class="divide-y divide-hairline">
-						{#each data.signups as row (row.id)}
+					<!-- One <tbody> per signup: the summary row and its detail row belong together, and
+					     grouping lets the divider fall between signups instead of inside one. -->
+					{#each data.signups as row (row.id)}
+						<tbody class="border-b border-hairline">
 							<tr class="align-top">
+								<td class="px-3 py-3"><WaitlistLeadClassBadge leadClass={row.leadClass} /></td>
 								<td class="px-3 py-3 whitespace-nowrap text-faint">{fmt.format(row.createdAt)}</td>
 								<td class="px-3 py-3">
 									<a
@@ -98,12 +163,20 @@
 								<td class="px-3 py-3 text-emphasis">{orDash(row.name)}</td>
 								<td class="px-3 py-3 text-body">{orDash(row.company)}</td>
 								<td class="px-3 py-3 whitespace-nowrap text-body">{roleFor(row.role)}</td>
-								<td class="px-3 py-3 whitespace-nowrap text-body">{sizeFor(row.companySize)}</td>
-								<td class="max-w-xs px-3 py-3 text-body">
-									<span class="block break-words">{orDash(row.interest)}</span>
+								<td class="px-3 py-3 whitespace-nowrap">
+									<!-- Tri-state: null = never asked (the pilot answer wasn't positive), false =
+									     asked and declined, true = granted. A grant is the one worth spotting. -->
+									{#if row.contactPermission === true}
+										<span
+											class="inline-flex items-center rounded-full bg-success-500/15 px-2 py-0.5 text-xs font-medium text-success-300"
+											>{m.admin_waitlist_outreach_granted()}</span
+										>
+									{:else if row.contactPermission === false}
+										<span class="text-xs text-body">{m.admin_waitlist_outreach_declined()}</span>
+									{:else}
+										<span class="text-xs text-faint">{m.admin_waitlist_outreach_unasked()}</span>
+									{/if}
 								</td>
-								<td class="px-3 py-3 whitespace-nowrap text-body">{hearFor(row.hearAbout)}</td>
-								<td class="px-3 py-3 whitespace-nowrap text-body">{orDash(row.phone)}</td>
 								<td class="px-3 py-3 text-right align-top">
 									<!-- Two-step confirm, no JS: the <summary> reveals the delete button; clicking it
 									     again cancels. Avoids a one-click misclick without needing confirm(). -->
@@ -124,10 +197,91 @@
 									</details>
 								</td>
 							</tr>
-						{/each}
-					</tbody>
+							<tr>
+								<td colspan="8" class="px-3 pb-3">
+									<details>
+										<summary
+											aria-label={m.admin_waitlist_detail_sr({ email: row.email })}
+											class="inline-flex cursor-pointer items-center rounded text-xs text-faint transition-colors hover:text-white focus-visible:ring-1 focus-visible:ring-primary-500 focus-visible:outline-none"
+											>{m.admin_waitlist_detail_show()}</summary
+										>
+										<dl class="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+											{@render detail(
+												m.admin_waitlist_field_region(),
+												labelled(row.countryRegion, waitlistRegionLabel)
+											)}
+											{@render detail(
+												m.admin_waitlist_field_application(),
+												labelled(row.primaryApplication, waitlistApplicationLabel)
+											)}
+											{@render detail(
+												m.admin_waitlist_field_timeline(),
+												labelled(row.evaluationTimeline, waitlistTimelineLabel)
+											)}
+											{@render detail(
+												m.admin_waitlist_field_approach(),
+												labelled(row.currentApproach, waitlistApproachLabel)
+											)}
+											{@render detail(
+												m.admin_waitlist_field_impact(),
+												labelled(row.economicImpact, waitlistImpactLabel)
+											)}
+											{@render detail(
+												m.admin_waitlist_field_budget(),
+												labelled(row.budgetRange, waitlistBudgetLabel)
+											)}
+											{@render detail(
+												m.admin_waitlist_field_evidence(),
+												labelledList(row.adoptionEvidence, waitlistEvidenceLabel)
+											)}
+											{@render detail(
+												m.admin_waitlist_field_pilot(),
+												labelled(row.pilotInterest, waitlistPilotInterestLabel)
+											)}
+											{@render detail(
+												m.admin_waitlist_field_deployment(),
+												orDash(row.deploymentScale)
+											)}
+											{@render detail(
+												m.admin_waitlist_field_contact_method(),
+												labelled(row.contactMethod, waitlistContactMethodLabel)
+											)}
+											{@render detail(m.admin_waitlist_col_phone(), orDash(row.phone))}
+											{@render detail(
+												m.admin_waitlist_field_research_prefs(),
+												labelledList(row.researchPreferences, waitlistResearchPreferenceLabel)
+											)}
+											{@render detail(
+												m.admin_waitlist_field_consent(),
+												row.consentUpdates
+													? m.admin_waitlist_consent_yes()
+													: m.admin_waitlist_consent_no()
+											)}
+											{@render detail(m.admin_waitlist_field_step(), orDash(row.qualificationStep))}
+											{@render detail(m.admin_waitlist_field_updated(), fmt.format(row.updatedAt))}
+											<!-- v1 columns: retired from the form, retained for historical rows. -->
+											{@render detail(
+												m.admin_waitlist_col_size(),
+												labelled(row.companySize, waitlistCompanySizeLabel)
+											)}
+											{@render detail(m.admin_waitlist_col_interest(), orDash(row.interest))}
+											{@render detail(
+												m.admin_waitlist_col_heard(),
+												labelled(row.hearAbout, waitlistReferralLabel)
+											)}
+										</dl>
+									</details>
+								</td>
+							</tr>
+						</tbody>
+					{/each}
 				</table>
 			</div>
+
+			<!-- Two standing caveats, kept next to the data they qualify rather than in a doc nobody
+			     reads at 2am: the priority band is our own guess, and the outreach fields are claims. -->
+			<p class="mt-5 px-2 text-xs text-faint">{m.admin_waitlist_internal_note()}</p>
+			<p class="mt-1.5 px-2 text-xs text-faint">{m.admin_waitlist_unverified_note()}</p>
 		{/if}
 	</div>
 </section>

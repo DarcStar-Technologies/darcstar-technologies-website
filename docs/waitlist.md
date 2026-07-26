@@ -137,6 +137,48 @@ both step-4 branches. It reuses the shared `ContactSuccess` shell (check badge +
   analytics transport yet. Its call site is marked in `WaitlistConfirmation.svelte`; **DAR-66** owns
   it.
 
+## Internal lead classification (live)
+
+`classifyWaitlistLead` (`src/lib/server/waitlist-classify.ts`) reduces the qualification answers to
+one triage bucket for `/admin/waitlist` (DAR-65). Listed here in the order the checks RUN, which is
+deliberately not the order they sort in — `WAITLIST_LEAD_CLASSES` holds the triage order (A, B, C,
+research, investor) and its index is the rank:
+
+| Class        | Wins when                                                                                      |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| `investor`   | an `investor-advisor` role — checked FIRST, so an investor is never scored as a customer       |
+| `research`   | anything non-commercial (`audienceFor` ≠ `commercial`): researchers, students, general signups |
+| `priority-a` | all three of: immediate timeline (≤3 months), authority role, POSITIVE pilot interest          |
+| `priority-b` | commercial, still inside the 12-month window                                                   |
+| `priority-c` | longer-term commercial interest — over 12 months, general interest, or no timeline given       |
+
+- **The money guardrail is the shape of the input type.** `economic_impact` and `budget_range` are
+  absent from `WaitlistLeadSignals`, so the rubric _cannot_ score on a self-reported dollar figure —
+  a $25k prospect with a real system, real authority and a three-month timeline outranks an anonymous
+  ">$1M", and that ordering is unit-pinned. The figures stay visible on the admin row detail, where
+  judgement (not arithmetic) weighs them.
+- **Internal only.** Never rendered on a public page, never emailed to the person classified, never
+  described as committed pipeline. Living under `$lib/server` makes the first of those structural (a
+  public component physically cannot import it); the admin page carries the other two as standing
+  notes above the fold. Only the slug VOCABULARY (`WAITLIST_LEAD_CLASSES`, in
+  `waitlist-qualification.ts`, in triage order so its index IS the rank) is client-safe, because the
+  badge needs a localized label — the same split DAR-64's CTA uses.
+- **Computed on read, never stored.** Every input is a column the flow already persists, so a
+  denormalized copy would buy a migration, a backfill and a recompute obligation on every step write.
+  A rubric change takes effect on the next page view with no rows to migrate.
+- **It reuses the flow rules rather than restating them** (`audienceFor`,
+  `canonicalizeWaitlistRole`, `isActiveEvaluationTimeline`) — a rubric that drifted from the flow
+  would classify people by questions they were never asked. Fail-safe polarity carries through:
+  nobody is promoted by silence, so an empty row lands in `research`, not a priority band.
+- **The step-1 lead email was deliberately left alone.** DAR-65 offered a second internal
+  notification when a signup completes qualification as Priority A; it is **not** built here. The
+  rubric's three signals can only all be present at a **step-4A** submit, and step 4A is authorized
+  by the continuation token — which the anti-enumeration success shape hands to _any_ submitter of a
+  known email. So a stranger who guesses an address on the list could drive unlimited "Priority A!"
+  mail into `info@`: exactly the mailbomb the `isNew` gate exists to close, and closing it again
+  needs a null→positive transition guard the current `keepExisting` UPDATE doesn't report. That is
+  its own ticket, not a rider on the classifier.
+
 ## The routing rules (`src/lib/server/waitlist-flow.ts`)
 
 Every routing decision is implemented ONCE here — the step endpoints and DAR-65's classifier reuse
@@ -153,7 +195,8 @@ these rather than restating them:
 - `step4BranchFor(evaluationTimeline)` — DAR-63's fork: `evaluating-now` / `within-3-months` /
   `3-12-months` → **A**, everything else (incl. unanswered, unrecognized) → **B**, the branch that
   asks nothing sensitive. Keyed on the timeline ALONE — role/application gate step 3, not this fork,
-  so a researcher who is evaluating now still gets asked branch A's question.
+  so a researcher who is evaluating now still gets asked branch A's question. Its 12-month window is
+  exported as `isActiveEvaluationTimeline` because DAR-65's Priority-B floor is the same threshold.
 - `audienceFor({ role, primaryApplication })` — DAR-64's three-way split for the confirmation CTA:
   `commercial` (reusing `isCommercialUseCase`, not restating it), `research` (an answered but
   excluded signal — researcher/student/**investor**/research-education), `general` (nothing
@@ -213,9 +256,9 @@ gather qualification data from people willing to continue). **DAR-59 shipped the
 foundation** (schema columns, validators, store step-path, continuation token); **DAR-60 shipped
 step 1** (the core signup above), **DAR-61 step 2** (use-case questions), **DAR-62 step 3**
 (commercial context + the server-side flow gate), **DAR-63 step 4** (the A/B intent branches) and
-**DAR-64 the confirmation** (one server-chosen CTA) — see the sections above. The flow is now
-complete end to end; the classifier + admin view land in DAR-65, funnel analytics (including the
-confirmation's `evaluation_conversation_requested` event) in DAR-66.
+**DAR-64 the confirmation** (one server-chosen CTA) and **DAR-65 the internal classifier + admin
+triage view** — see the sections above. The flow is complete end to end; funnel analytics (including
+the confirmation's `evaluation_conversation_requested` event) land in DAR-66.
 
 ### Qualification columns
 
@@ -290,10 +333,32 @@ can carry a `value=` attribute without silently dropping the opt-in.
 
 ## Admin
 
-`/admin/waitlist` is the staff triage view (gated by the `/admin` layout). Its `role` column now
-resolves both the v1 and v2 label sets (DAR-61 writes v2 role slugs into that shared column, so the
-roster shows the localized label, not the raw slug); the remaining qualification columns,
-classification, and consent visibility land in DAR-65.
+`/admin/waitlist` is the staff triage view (gated by the `/admin` layout — access rules unchanged by
+DAR-65, which only added what a signed-in staffer sees). It is a triage window, not an archive: the
+read is capped at the 200 most recent, and classification/filtering happen over that window.
+
+- **Priority column** — `WaitlistLeadClassBadge.svelte` paints the class the load computed. Priority
+  A is the only badge with a ring, and rows **sort by rank first** so an A lead can't be buried under
+  199 newer subscribers; `Array.sort` is stable, so newest-first survives as the within-band tiebreak.
+- **Filter chips** are plain links over a `?class=` GET, so filtering works without JS and every view
+  is bookmarkable. Counts are over the whole window, not the filtered slice, so the shape of the list
+  stays visible while a filter is on. An unrecognized `?class=` is "no filter", never an error.
+- **Outreach column** — `contact_permission` rendered as the tri-state it is: `null` = never asked
+  (the pilot answer wasn't positive), `false` = asked and declined, `true` = granted (the only one
+  with a filled badge). Method and phone sit in the row detail beside it.
+- **Row detail** — a no-JS `<details>` per row with every v2 qualification answer (region, consent,
+  application, timeline, approach, impact, budget, adoption evidence, pilot interest, deployment
+  scale, contact method, phone, research preferences, reached step, last updated) plus the retired v1
+  columns for historical rows. `role` resolves against BOTH label sets (v1 slugs survive as history),
+  falling back to the raw slug so nothing renders blank.
+- **Two standing caveats** are printed under the table rather than left to a doc nobody reads at 2am:
+  the priority band is an internal guess and not pipeline, and outreach permission / phone / consent
+  are unverified claims from an unauthenticated form — confirm by replying to the signed-up address
+  before acting on them (see `contact_permission` below for why).
+
+The badge rendering is pinned in `WaitlistLeadClassBadge.svelte.spec.ts` (the client project, where a
+fixture is just a prop). The e2e suite can only assert the guard's redirect — it is hermetic, with
+neither a session cookie nor a reachable DB to seed.
 
 ## Setup
 
