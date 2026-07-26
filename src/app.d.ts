@@ -21,14 +21,16 @@ declare global {
 		}
 
 		// interface Error {}
-		// Minimal auth snapshot exposed to every page by the root `+layout.server.ts`, so shared
-		// UI (the navbar) can reflect sign-in state. `null` when signed out. Not the whole `User`
-		// — the client only needs the email; `isStaff` (Admin-vs-Account link, #96) is a SEPARATE
-		// key so child layouts that override `user` for their own page don't shadow it;
-		// `locals.user` stays server-only.
+		// What the root `+layout.server.ts` exposes to every page, so shared UI can render without
+		// each route re-fetching it. The auth snapshot is `null` when signed out and is NOT the whole
+		// `User` — the client only needs the email; `isStaff` (Admin-vs-Account link, #96) is a
+		// SEPARATE key so child layouts that override `user` for their own page don't shadow it;
+		// `locals.user` stays server-only. `socialLinks` is the CMS-driven footer/`sameAs` row
+		// (DAR-73) — always non-empty, since the server floors it to the site constant.
 		interface PageData {
 			user?: { email: string } | null;
 			isStaff?: boolean;
+			socialLinks?: readonly import('$lib/social-links').SocialLink[];
 		}
 		// interface PageState {}
 	}

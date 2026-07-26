@@ -5,6 +5,7 @@ import {
 	papersQuery,
 	paperBySlugQuery,
 	peopleQuery,
+	siteSettingsQuery,
 	sitemapEntriesQuery
 } from './queries';
 
@@ -72,6 +73,25 @@ describe('sanity GROQ queries', () => {
 		['paperBySlugQuery', paperBySlugQuery]
 	])('%s selects the seo object that drives the page head', (_name, query) => {
 		expect(query).toMatch(/\bseo\b/);
+	});
+
+	// DAR-73: the singleton is projected down to the ONE field the site consumes. The narrowness is
+	// the guard, not an optimisation — the other nine fields are inert, several are stale, and
+	// `contactEmail` is the Resend From: address. Widening this to a bare `siteSettings` select would
+	// ship all of it into `page.data` on every page, where it would look consumed. The floor keeps a
+	// broken query from being visible, so nothing else would fail.
+	it('siteSettingsQuery reads the singleton and selects ONLY socialLinks', () => {
+		expect(siteSettingsQuery).toContain('_id == "siteSettings"');
+		expect(siteSettingsQuery).toContain('socialLinks[]{ label, url }');
+		for (const inert of [
+			'primaryNav',
+			'titleTemplate',
+			'defaultOgImage',
+			'contactEmail',
+			'favicon'
+		]) {
+			expect(siteSettingsQuery, `${inert} is inert — see docs/sanity.md`).not.toContain(inert);
+		}
 	});
 });
 

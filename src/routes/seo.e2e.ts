@@ -160,6 +160,32 @@ test('the homepage carries the site-wide Organization JSON-LD', async ({ page })
 	expect(parsed.sameAs).toContain('https://github.com/DarcStar-Technologies');
 });
 
+// DAR-73 made the social profiles CMS data (siteSettings.socialLinks) feeding TWO surfaces: the
+// footer's button row and the Organization node's `sameAs`. WHICH links come back depends on the live
+// dataset — and on whether this run can reach Sanity at all, since the server floors the list to the
+// hardcoded GitHub URL on any failure. So this pins the invariant instead of the content: whatever
+// the answer is, both surfaces must render the SAME set. Wiring one and not the other (the bug this
+// issue was filed for, in miniature) fails here regardless of what the CMS holds.
+test('the footer social row and the Organization sameAs render one list', async ({ page }) => {
+	await page.goto('/');
+
+	// The social buttons are the footer's only new-tab links; the mailto and the legal links aren't.
+	const footerHrefs = await page
+		.locator('footer a[target="_blank"]')
+		.evaluateAll((anchors) => anchors.map((anchor) => anchor.getAttribute('href') ?? ''));
+	// The floor guarantees at least one — an empty row means the fallback itself broke.
+	expect(footerHrefs.length).toBeGreaterThanOrEqual(1);
+	for (const href of footerHrefs) {
+		expect(href, `${href} should be an absolute http(s) profile URL`).toMatch(/^https?:\/\/\S+$/);
+	}
+	expect(footerHrefs).toContain('https://github.com/DarcStar-Technologies');
+
+	const org = JSON.parse(
+		(await page.locator('script[type="application/ld+json"]').first().textContent()) ?? 'null'
+	);
+	expect([...org.sameAs].sort()).toEqual([...footerHrefs].sort());
+});
+
 test('structured data on /people parses and every node is typed', async ({ page }) => {
 	await page.goto('/people');
 	const contents = await page.locator('script[type="application/ld+json"]').allTextContents();

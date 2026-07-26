@@ -12,8 +12,16 @@
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { jsonLdScript, organizationJsonLd } from '$lib/jsonld';
+	import { FALLBACK_SOCIAL_LINKS } from '$lib/social-links';
 
 	let { children } = $props();
+
+	// CMS-driven social profiles from the root `+layout.server.ts` (DAR-73). One resolved list feeds
+	// BOTH the footer's button row and the Organization node's `sameAs`, so the rendered links and
+	// the machine-readable identities can't disagree. The server already floors this; the `??` covers
+	// the one case where layout data is absent entirely — an error page rendered before the load ran
+	// — and must be the FLOOR, not `[]`, or that page would ship an empty social row.
+	const socialLinks = $derived(page.data.socialLinks ?? FALLBACK_SOCIAL_LINKS);
 
 	// One coherent light source across all frosted glass (see `.sheen-plane`). The sync
 	// keeps the plane's clip-path tracking the glass windows; re-clip when a modal (contact or
@@ -42,7 +50,9 @@
 	     because duplicated OG tags corrupt scrapes; a second, differently-typed head entry doesn't.
 	     Inert data block (never executed), safely serialized — see $lib/jsonld.ts. -->
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-	{@html jsonLdScript(organizationJsonLd(page.url.origin))}
+	{@html jsonLdScript(
+		organizationJsonLd(page.url.origin, { sameAs: socialLinks.map((link) => link.url) })
+	)}
 </svelte:head>
 
 <div class="flex min-h-dvh flex-col">
@@ -50,7 +60,7 @@
 	<main class="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-10">
 		{@render children()}
 	</main>
-	<Footer />
+	<Footer {socialLinks} />
 </div>
 
 <!-- Fixed void-coloured gradient below the header: content dissolves into the

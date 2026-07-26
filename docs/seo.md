@@ -208,6 +208,14 @@ blocks:
   `{origin}/#organization`, and every other node references it (`publisher`,
   `worksFor`) instead of re-stating the org. Facts are the settled public ones
   (`$lib/site.ts`): trade name only, United States, GitHub + `info@` email.
+  **`sameAs` is the one editable part** (DAR-73): it takes the site's resolved
+  social row — the same list the footer renders — so adding LinkedIn in the
+  Studio adds it to the graph. It is passed **in** (`organizationJsonLd(origin,
+{ sameAs })`) rather than imported, to keep this module dependency-pure;
+  omitting it keeps the historical single-GitHub identity, and every URL is
+  re-gated through `isHttpUrl`, because an unusable value here is published as
+  the **organization's identity**, not merely a dead link. See
+  [sanity.md](sanity.md#what-sitesettings-actually-drives-dar-73).
 - **Per-page nodes** go through the `<Seo jsonLd={...}>` prop (an array becomes
   one `@graph` script; empty arrays render nothing): `Person` on `/people`
   (the index is the profile surface), `Article` + `BreadcrumbList` on
