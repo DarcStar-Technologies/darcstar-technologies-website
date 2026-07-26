@@ -16,10 +16,13 @@
 	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import { waitlistCtaLabel } from '$lib/waitlist-labels';
 	import type { WaitlistCta } from '$lib/waitlist-qualification';
+	import { recordWaitlistFunnelEvent } from '$lib/waitlist-funnel.remote';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 
-	let { cta }: { cta: WaitlistCta } = $props();
+	// `flowId` is the funnel handle (DAR-66) carried from the page. It is anonymous and authorizes
+	// nothing — the only thing this screen does with it is attribute the pilot-CTA click.
+	let { cta, flowId }: { cta: WaitlistCta; flowId: string } = $props();
 
 	// Where each variant points. All four are real links — the `pilot` one is the site's /contact page,
 	// which JS upgrades into the global modal below.
@@ -59,9 +62,21 @@
 		}
 		event.preventDefault();
 		contactDialog.show();
-		// DAR-66 (funnel analytics) fires `evaluation_conversation_requested` HERE — this is the single
-		// point in the flow where a qualified lead asks for a conversation. The site has no analytics
-		// transport yet, so the event is deliberately not faked in the meantime.
+
+		// The funnel's terminal event (DAR-66) — the single point in the flow where a qualified lead
+		// asks for a conversation, and the only one with no server request of its own to ride on.
+		//
+		// Fired AFTER the dialog is open and never awaited: opening the modal is what the visitor
+		// asked for, and it must not wait on (or be undone by) an analytics write. `.catch` because an
+		// unhandled rejection from a fire-and-forget command would surface in the console of a page
+		// that is working perfectly.
+		//
+		// A modifier-click leaves earlier via the guard above, so this only counts real activations;
+		// with JS off nothing here runs and the anchor just navigates to /contact — that visitor is
+		// counted at `qualification_completed` and no further, which the readout says plainly.
+		recordWaitlistFunnelEvent({ event: 'evaluation_conversation_requested', flowId }).catch(
+			() => {}
+		);
 	}
 </script>
 

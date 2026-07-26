@@ -4,6 +4,7 @@ import { getDb } from '$lib/server/db';
 import { waitlist } from '$lib/server/db/schema';
 import { isStaff } from '$lib/server/admin-access';
 import { classifyWaitlistLead } from '$lib/server/waitlist-classify';
+import { readWaitlistFunnelCounts, signupConversionRate } from '$lib/server/waitlist-funnel';
 import { readEnv } from '$lib/server/env';
 import {
 	WAITLIST_LEAD_CLASSES,
@@ -26,6 +27,20 @@ const asLeadClass = (value: string | null): WaitlistLeadClass | null =>
 export const load: PageServerLoad = async ({ url }) => {
 	// getDb() reads platform.env via getRequestEvent(), so it must run before the first await.
 	const db = getDb();
+	// The funnel readout (DAR-66) — independent of the signup rows below, and issued first so the two
+	// round-trips overlap rather than queue. It's an aggregate over an anonymous events table: no row
+	// here can be tied to any signup in the list, by construction.
+	//
+	// FAIL-SOFT, and it's the same rule the write path follows: this page exists to show leads, and
+	// analytics is the nice-to-have sitting on top of them. A failing aggregate must not take the
+	// triage list down with it — which is not hypothetical, since a deploy that lands before its
+	// migration has no `waitlist_funnel_event` table at all. Null (not zeros) so the view can say
+	// "unavailable" rather than quietly report a funnel where nobody has ever done anything.
+	const funnel = readWaitlistFunnelCounts(db).catch((err: unknown) => {
+		console.error('waitlist funnel readout failed', err);
+		return null;
+	});
+
 	const rows = await db
 		.select({
 			id: waitlist.id,
@@ -81,7 +96,20 @@ export const load: PageServerLoad = async ({ url }) => {
 		// stable, so the SQL's newest-first ordering survives as the within-band tiebreak.
 		.sort((a, b) => waitlistLeadClassRank(a.leadClass) - waitlistLeadClassRank(b.leadClass));
 
-	return { signups, counts, filter, total: classified.length, limit: WAITLIST_LIMIT };
+	const funnelCounts = await funnel;
+
+	return {
+		signups,
+		counts,
+		filter,
+		total: classified.length,
+		limit: WAITLIST_LIMIT,
+		funnel: funnelCounts,
+		// The primary metric, resolved server-side beside the counts it comes from so the view can't
+		// compute a different one. Null when nothing has been viewed yet — a rate needs a denominator —
+		// and equally null when the readout itself is unavailable.
+		conversion: funnelCounts === null ? null : signupConversionRate(funnelCounts)
+	};
 };
 
 export const actions: Actions = {

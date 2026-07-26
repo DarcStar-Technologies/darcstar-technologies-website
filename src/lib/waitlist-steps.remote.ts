@@ -26,8 +26,10 @@
 // here would only add a way to lose data. The one thing that IS re-decided server-side at the write
 // is step 4A's `contact_permission`, which the validator gates on the pilot answer so a grant can
 // only be recorded from a question that was actually on screen.
-import { form } from '$app/server';
+import { form, getRequestEvent } from '$app/server';
 import { getDb, type Db } from '$lib/server/db';
+import { captureWaitlistFunnel } from '$lib/server/waitlist-funnel';
+import { echoFlowId, type WaitlistFunnelEvent } from '$lib/waitlist-funnel';
 import {
 	hasAnyAnswer,
 	validateWaitlistStep2,
@@ -63,12 +65,16 @@ import { readEnv } from '$lib/server/env';
  *   response terminates the flow. Chosen server-side from the same flow state that routes the steps,
  *   so the page renders a decision rather than making one; it names a DESTINATION and never echoes
  *   an answer.
+ * - `flowId` echoes the submitted funnel handle (DAR-66) for exactly the reason `token` does — a
+ *   no-JS step POST re-renders the page, whose load mints a fresh id — so one visitor stays one flow.
+ *   Validated on the way out (`echoFlowId`), never re-minted.
  */
 type WaitlistStepResult = {
 	success: true;
 	next: WaitlistNextStep;
 	token: string;
 	cta: WaitlistCta | null;
+	flowId: string;
 };
 
 /**
@@ -123,6 +129,8 @@ async function applyStepBestEffort(
 type WaitlistStep2Input = {
 	token: string;
 	intent: string;
+	/** Funnel handle (DAR-66) — anonymous, carried through the flow, never stored on the signup row. */
+	flowId: string;
 	role: string;
 	primaryApplication: string;
 	evaluationTimeline: string;
@@ -136,6 +144,7 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 		// getDb() only CONSTRUCTS the client here (sync, no network) — the enrich below is the only
 		// thing that touches the DB, and it runs only on the write path.
 		const db = getDb();
+		const { platform } = getRequestEvent();
 		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 
 		const cleaned = validateWaitlistStep2(data);
@@ -153,18 +162,31 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 
 		// Route on the answers just submitted: commercial/operational use cases get step 3, everyone
 		// else forks straight to a step-4 branch. Decided server-side, never from stored state.
-		//
+		const next = nextStepAfterStep2({
+			skipped,
+			role: cleaned.role,
+			primaryApplication: cleaned.primaryApplication,
+			evaluationTimeline: cleaned.evaluationTimeline
+		});
+
+		// Funnel (DAR-66). `qualification_started` fires for EITHER button — reaching this endpoint at
+		// all is the visitor engaging with the optional flow, and the gap between it and
+		// `waitlist_signup_completed` is therefore the people who were shown step 2 and never touched
+		// it, which is the drop-off worth knowing. `use_case_completed` is the narrower claim: they
+		// pressed Continue AND answered something. A Skip fires the first and not the second, which is
+		// the whole distinction between the two slugs.
+		const events: WaitlistFunnelEvent[] = ['qualification_started'];
+		if (!skipped && hasAnswer) events.push('use_case_completed');
+		if (next === 'done') events.push('qualification_completed');
+		captureWaitlistFunnel(db, platform, data.flowId, events);
+
 		// The flow claim is minted on EVERY path (not just the step-3 one) so the response shape
 		// doesn't vary, and it costs one HMAC. It carries only what the visitor just told us.
 		return {
 			success: true,
-			next: nextStepAfterStep2({
-				skipped,
-				role: cleaned.role,
-				primaryApplication: cleaned.primaryApplication,
-				evaluationTimeline: cleaned.evaluationTimeline
-			}),
+			next,
 			token: echoSigned(data.token),
+			flowId: echoFlowId(data.flowId),
 			flowClaim: tokenSecret
 				? await mintWaitlistFlowClaim(tokenSecret, {
 						branch: step4BranchFor(cleaned.evaluationTimeline),
@@ -188,6 +210,8 @@ type WaitlistStep3Input = {
 	intent: string;
 	/** The signed step-2 decisions (branch + CTA audience) — carried through, never re-derived here. */
 	flowClaim: string;
+	/** Funnel handle (DAR-66) — anonymous, carried through the flow, never stored on the signup row. */
+	flowId: string;
 	currentApproach: string;
 	economicImpact: string;
 	budgetRange: string;
@@ -199,6 +223,7 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 	async (data) => {
 		// Request-scoped handles first — see the note in submitWaitlistStep2.
 		const db = getDb();
+		const { platform } = getRequestEvent();
 		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 
 		const cleaned = validateWaitlistStep3(data);
@@ -220,10 +245,19 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 		const flow = tokenSecret ? await verifyWaitlistFlowClaim(tokenSecret, data.flowClaim) : null;
 		const next = nextStepAfterStep3({ skipped, branch: flow?.branch ?? null });
 
+		// Funnel (DAR-66). Only the money questions being ANSWERED counts as commercial context — a
+		// Skip through step 3 is the opposite signal. No answer VALUE is recorded, here or anywhere:
+		// the event says the stage was reached, never what was in it.
+		const events: WaitlistFunnelEvent[] = [];
+		if (!skipped && hasAnswer) events.push('commercial_context_completed');
+		if (next === 'done') events.push('qualification_completed');
+		captureWaitlistFunnel(db, platform, data.flowId, events);
+
 		return {
 			success: true,
 			next,
 			token: echoSigned(data.token),
+			flowId: echoFlowId(data.flowId),
 			// Echoed verbatim, like the token: step 4's hidden field has to survive a no-JS re-render,
 			// and re-minting here would be a second place that decides what the claim says.
 			flowClaim: echoSigned(data.flowClaim),
@@ -243,6 +277,8 @@ type WaitlistStep4AInput = {
 	intent: string;
 	/** Carried from step 2 (via step 3 when there was one) — read for the CTA audience, nothing else. */
 	flowClaim: string;
+	/** Funnel handle (DAR-66) — anonymous, carried through the flow, never stored on the signup row. */
+	flowId: string;
 	pilotInterest: string;
 	deploymentScale: string;
 	contactPermission: boolean; // typed boolean so the markup can use `.as('checkbox')`
@@ -255,6 +291,7 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 	async (data) => {
 		// Request-scoped handles first — see the note in submitWaitlistStep2.
 		const db = getDb();
+		const { platform } = getRequestEvent();
 		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 
 		const cleaned = validateWaitlistStep4A(data);
@@ -272,10 +309,20 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 		// The audience behind it comes from step 2's signed claim, never from a stored read.
 		const flow = tokenSecret ? await verifyWaitlistFlowClaim(tokenSecret, data.flowClaim) : null;
 
+		// Funnel (DAR-66). `pilot_interest_selected` records that the pilot question was ANSWERED —
+		// with the validated slug, so a tampered value is no answer — and deliberately not WHICH
+		// answer: `not-currently` is as much a completed question as a yes, and the split between them
+		// is what DAR-65's classifier and the row detail are for. A Skip answered nothing.
+		const events: WaitlistFunnelEvent[] = [];
+		if (!skipped && cleaned.pilotInterest !== null) events.push('pilot_interest_selected');
+		events.push('qualification_completed'); // terminal step: both buttons land on the confirmation
+		captureWaitlistFunnel(db, platform, data.flowId, events);
+
 		return {
 			success: true,
 			next: 'done',
 			token: echoSigned(data.token),
+			flowId: echoFlowId(data.flowId),
 			cta: confirmationCtaFor({
 				audience: flow?.audience ?? null,
 				pilotInterest: skipped ? null : cleaned.pilotInterest
@@ -292,6 +339,8 @@ type WaitlistStep4BInput = {
 	intent: string;
 	/** Carried from step 2 (via step 3 when there was one) — read for the CTA audience, nothing else. */
 	flowClaim: string;
+	/** Funnel handle (DAR-66) — anonymous, carried through the flow, never stored on the signup row. */
+	flowId: string;
 	researchPreferences: string[];
 };
 
@@ -300,6 +349,7 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 	async (data) => {
 		// Request-scoped handles first — see the note in submitWaitlistStep2.
 		const db = getDb();
+		const { platform } = getRequestEvent();
 		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 
 		const cleaned = validateWaitlistStep4B(data);
@@ -314,10 +364,15 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 		// we decided not to ask for a conversation.
 		const flow = tokenSecret ? await verifyWaitlistFlowClaim(tokenSecret, data.flowClaim) : null;
 
+		// Funnel (DAR-66): terminal step, so the flow completed either way. No branch-B-specific event
+		// exists — `pilot_interest_selected` is branch A's, and this branch is never asked.
+		captureWaitlistFunnel(db, platform, data.flowId, ['qualification_completed']);
+
 		return {
 			success: true,
 			next: 'done',
 			token: echoSigned(data.token),
+			flowId: echoFlowId(data.flowId),
 			cta: confirmationCtaFor({ audience: flow?.audience ?? null })
 		};
 	}

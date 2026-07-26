@@ -33,6 +33,18 @@ test('waitlist step-1 form renders with required fields and its data-handling no
 	);
 });
 
+// DAR-66: the funnel handle the page's load minted, carried in a hidden field so the signup can be
+// attributed to the same flow as the view. That this page renders at all is the other half of the
+// assertion — the load records the view against the placeholder DB, so the write is failing on every
+// request here, and analytics failing must never cost the visitor the form.
+test('the step-1 form carries an anonymous funnel handle', async ({ page }) => {
+	await page.goto('/waitlist');
+
+	await expect(page.getByRole('main').locator('input[name="flowId"]')).toHaveValue(
+		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+	);
+});
+
 // Drive a signup via the honeypot (accepted, not persisted → decoy token, no DB) and assert the page
 // advances IN-PLACE to the step-2 questions rather than the confirmation.
 async function advanceToStep2(main: Locator) {
@@ -363,6 +375,12 @@ test.describe('without JavaScript', () => {
 		await page.goto('/waitlist');
 		const main = page.getByRole('main');
 
+		// The funnel handle this render was recorded under. Every step must echo THIS value: without
+		// JS each submit re-renders the page, whose load mints a fresh id, so an unechoed handle would
+		// silently split one visitor across four flows and make every funnel ratio meaningless.
+		const flowId = await main.locator('input[name="flowId"]').inputValue();
+		expect(flowId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
 		await main.getByLabel('Name', { exact: true }).fill('Bot McBotface');
 		await main.getByLabel('Email', { exact: true }).fill('bot@bot');
 		await main.locator('input[name="website"]').fill('bot', { force: true });
@@ -383,6 +401,7 @@ test.describe('without JavaScript', () => {
 		).toBeVisible();
 		await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
 		await expect(main.locator('input[name="flowClaim"]')).toHaveValue(/^f1\./);
+		await expect(main.locator('input[name="flowId"]')).toHaveValue(flowId);
 
 		// Step 3 answers submit natively too (the checkbox group needs no JS at all).
 		await main.getByLabel(/Realistic budget/).selectOption('25k-100k');
@@ -399,6 +418,8 @@ test.describe('without JavaScript', () => {
 		// so a claim that silently stopped being carried would leave no trace in the final assertion.
 		await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
 		await expect(main.locator('input[name="flowClaim"]')).toHaveValue(/^f1\./);
+		// Same handle after THREE native POSTs — one visitor, one funnel flow.
+		await expect(main.locator('input[name="flowId"]')).toHaveValue(flowId);
 		await expect(main.getByLabel(/Deployment scale/)).toBeVisible();
 		await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toBeVisible();
 		await expect(main.getByLabel(/Phone/)).toBeVisible();

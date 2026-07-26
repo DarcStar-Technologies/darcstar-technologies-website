@@ -179,6 +179,83 @@ research, investor) and its index is the rank:
   needs a null→positive transition guard the current `keepExisting` UPDATE doesn't report. That is
   its own ticket, not a rider on the classifier.
 
+## Funnel analytics (live)
+
+**DAR-66.** The site had no analytics at all, so this is first-party and deliberately small: a
+`waitlist_funnel_event` row is `(flow_id, event, created_at)` and nothing else. Slugs and the two
+write guards are client-safe (`$lib/waitlist-funnel.ts`); the write path and the readout are
+server-only (`$lib/server/waitlist-funnel.ts`).
+
+**No third party, and no new CSP origin.** A hosted script would need a `vite.config.ts` allowlist
+entry plus a synthetic probe (see [security-headers](security-headers.md)), would ship an identifier
+to someone else's server, and would be blocked for a good share of exactly this audience. The one
+client-fired event goes through a SvelteKit remote **`command`** — same-origin, already covered by
+`connect-src 'self'`.
+
+### The flow id
+
+A random UUID minted per render by `/waitlist`'s `+page.server.ts` load, carried through the flow in
+a hidden field. It is **not** the waitlist row id and **not** derived from the email — an analytics
+row must not be walkable back to a person, and a derived id would be joinable to `waitlist` by anyone
+who could recompute it. It is shape-checked on write (`isWaitlistFlowId`), so the column can only ever
+hold UUIDs, and each step **echoes it verbatim** exactly as it echoes the continuation token: without
+JS every step is a native POST that re-renders the page, whose load mints a fresh id, so an unechoed
+handle would split one visitor across four flows.
+
+### The events
+
+`waitlist_viewed` (a GET of the page) · `waitlist_signup_completed` (step 1 accepted) ·
+`qualification_started` (step 2 submitted, either button) · `use_case_completed` (step 2 answered) ·
+`commercial_context_completed` (step 3 answered) · `pilot_interest_selected` (step 4A answered, any
+answer) · `qualification_completed` (the confirmation reached, from any step) ·
+`evaluation_conversation_requested` (the pilot CTA activated).
+
+`qualification_started` vs `use_case_completed` is the useful pair: a Skip fires the first and not the
+second. And because step-1 success **always** shows step 2, the gap between
+`waitlist_signup_completed` and `qualification_started` is precisely the people who saw the questions
+and closed the tab.
+
+### Four decisions worth keeping
+
+1. **The view event rides a GET, not `navigator.sendBeacon`.** The ticket sketched a beacon to a small
+   endpoint; capturing it in the load instead means no second public write endpoint to abuse-proof, no
+   view lost to a blocker or a bounce before hydration, and the no-JS visitor counted like everyone
+   else — which matters when the primary metric's denominator is "people who saw the form". It is
+   guarded on `request.method === 'GET'`, because Kit re-runs loads when it re-renders the page after
+   a native step POST (`render_page` → `handle_remote_form_post` → loads, same request) and counting
+   those would inflate the denominator by one view per step, for exactly the visitors least able to
+   convert.
+2. **The per-flow cap is the composite primary key.** `(flow_id, event)` + `onConflictDoNothing()`
+   bounds a flow to one row per event in the same statement as the insert — no counting query — so a
+   replay, a double-click or a bot re-POSTing a step is a no-op. It also makes every count a count of
+   **distinct flows**, which is what turns signups/views into a conversion rate rather than a ratio of
+   retries.
+3. **The privacy rule is the table's shape.** There is no column for an IP, a user agent, an email, a
+   row id or any answer text, so a future writer cannot quietly start recording one; the free-text
+   answers (deployment scale, the money questions) are internal-only by DAR-58 and have nowhere to
+   land. A unit spec asserts the column list, so adding one is a failing test, not a code review.
+4. **Client-fired events are allowlisted separately.** `recordWaitlistFunnelEvent` accepts only
+   `CLIENT_FIREABLE_FUNNEL_EVENTS` — today just `evaluation_conversation_requested`, the one funnel
+   moment with no server request of its own — not the full vocabulary. It's the same mass-assignment
+   guard `applyWaitlistStep` puts on columns: being able to POST `qualification_completed` would mean
+   being able to inflate the numbers this exists to report. What remains, and is accepted, is that a
+   script can mint fresh flow ids and add a row each time — true of any anonymous counter, including
+   the view GET, which is why the readout is labelled directional.
+
+### Failure is silent, everywhere
+
+`captureWaitlistFunnel` returns **void** — that is the contract, so no caller can accidentally await
+analytics — swallows every failure, and hands the insert to `ctx.waitUntil`. The same posture as the
+Resend sends: the signup is the product, the row about it is not. The admin readout is the one
+awaited query, so it is **fail-soft too** (`.catch` → `null` → an "unavailable" note), because a
+deploy that lands before its migration has no table and must not take the triage list down.
+
+### Caveats the readout states
+
+Views include bots and repeat visits; `evaluation_conversation_requested` needs JS, so it
+undercounts; and the honeypot path records **nothing**, so a tripped bot never reaches the numbers
+(which is also why the hermetic e2e writes no analytics rows). Directional, not a source of record.
+
 ## The routing rules (`src/lib/server/waitlist-flow.ts`)
 
 Every routing decision is implemented ONCE here — the step endpoints and DAR-65's classifier reuse
@@ -256,9 +333,9 @@ gather qualification data from people willing to continue). **DAR-59 shipped the
 foundation** (schema columns, validators, store step-path, continuation token); **DAR-60 shipped
 step 1** (the core signup above), **DAR-61 step 2** (use-case questions), **DAR-62 step 3**
 (commercial context + the server-side flow gate), **DAR-63 step 4** (the A/B intent branches) and
-**DAR-64 the confirmation** (one server-chosen CTA) and **DAR-65 the internal classifier + admin
-triage view** — see the sections above. The flow is complete end to end; funnel analytics (including
-the confirmation's `evaluation_conversation_requested` event) land in DAR-66.
+**DAR-64 the confirmation** (one server-chosen CTA), **DAR-65 the internal classifier + admin
+triage view** and **DAR-66 first-party funnel analytics** — see the sections above. The flow is
+complete end to end and instrumented.
 
 ### Qualification columns
 
@@ -272,8 +349,8 @@ use the v2 set; **a consumer that branches on `role` must canonicalize v1→v2 f
 
 `qualification_step` is a monotonic integer high-water mark (1 = signup … 4 = a branch). Which
 step-4 **branch** completed is NOT stored — derive it from the branch-specific columns
-(`pilot_interest` set → branch A; `research_preferences` set → branch B), so DAR-65/66 need no extra
-column and no backfill.
+(`pilot_interest` set → branch A; `research_preferences` set → branch B), which is why DAR-65's
+classifier and DAR-66's funnel needed no extra column and no backfill.
 
 ### Continuation token (`waitlist-token.ts`)
 
@@ -351,6 +428,11 @@ read is capped at the 200 most recent, and classification/filtering happen over 
   scale, contact method, phone, research preferences, reached step, last updated) plus the retired v1
   columns for historical rows. `role` resolves against BOTH label sets (v1 slugs survive as history),
   falling back to the raw slug so nothing renders blank.
+- **Funnel readout** (DAR-66) — distinct anonymous flows per stage, in funnel order, plus the primary
+  metric (`waitlist_signup_completed / waitlist_viewed`) resolved server-side so the view can't
+  compute a different one. A null rate (nothing viewed yet, or the readout unavailable) renders as the
+  page's usual em-dash, never a `0%` that would read as "nobody converts". Zero-filled, so a stage
+  nobody has reached shows a `0` rather than vanishing.
 - **Two standing caveats** are printed under the table rather than left to a doc nobody reads at 2am:
   the priority band is an internal guess and not pipeline, and outreach permission / phone / consent
   are unverified claims from an unauthenticated form — confirm by replying to the signed-up address

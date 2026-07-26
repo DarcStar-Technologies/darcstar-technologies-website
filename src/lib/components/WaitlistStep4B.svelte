@@ -20,7 +20,7 @@
 	// `flowClaim` carries step 2's signed decisions. This is the terminal step, so what it needs from
 	// them is the CTA audience the confirmation is personalized on (DAR-64) — passed straight through
 	// as a hidden field, never read here.
-	let { token, flowClaim }: { token: string; flowClaim: string } = $props();
+	let { token, flowClaim, flowId }: { token: string; flowClaim: string; flowId: string } = $props();
 
 	// Slug → {value,label} options. `$derived` so labels re-resolve on locale change (the label
 	// accessors are $state-backed Paraglide messages).
@@ -38,6 +38,10 @@
 	     carried through from whichever step routed here (step 2 directly, or step 3). -->
 	<input {...submitWaitlistStep4B.fields.token.as('hidden', token)} />
 	<input {...submitWaitlistStep4B.fields.flowClaim.as('hidden', flowClaim)} />
+
+	<!-- The funnel handle (DAR-66): anonymous, authorizes nothing, and never reaches the signup row —
+	     it only ties this submit to the same analytics flow the page view started. -->
+	<input {...submitWaitlistStep4B.fields.flowId.as('hidden', flowId)} />
 
 	<!-- No `max`: the whole list is selectable (the list length is the natural ceiling, which the
 	     validator applies). -->

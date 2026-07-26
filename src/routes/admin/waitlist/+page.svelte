@@ -26,9 +26,11 @@
 		waitlistPilotInterestLabel,
 		waitlistContactMethodLabel,
 		waitlistResearchPreferenceLabel,
-		waitlistLeadClassLabel
+		waitlistLeadClassLabel,
+		waitlistFunnelEventLabel
 	} from '$lib/waitlist-labels';
 	import { WAITLIST_LEAD_CLASSES } from '$lib/waitlist-qualification';
+	import { WAITLIST_FUNNEL_EVENTS } from '$lib/waitlist-funnel';
 	import type { WaitlistRole } from '$lib/waitlist-roles';
 	import type { WaitlistV2Role } from '$lib/waitlist-qualification';
 	import type { PageData, ActionData } from './$types';
@@ -65,6 +67,16 @@
 	const fmt = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 	const atCap = $derived(data.total >= data.limit);
 
+	// Funnel readout (DAR-66). The rate is decided server-side (`signupConversionRate`); this only
+	// formats it. A null rate — nothing viewed yet, so no denominator — renders as the same em-dash
+	// every unanswered value on this page uses, rather than a "0%" that would read as "nobody
+	// converts" instead of "nothing measured".
+	const countFmt = new Intl.NumberFormat('en-US');
+	const rateFmt = new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 1 });
+	const conversionLabel = $derived(
+		data.conversion === null ? DASH : rateFmt.format(data.conversion)
+	);
+
 	const basePath = $derived(localizeHref('/admin/waitlist'));
 	// SvelteKit reads the action name from the `?/name` key, so extra params ride alongside it.
 	const deleteAction = $derived(data.filter ? `?/delete&class=${data.filter}` : '?/delete');
@@ -97,6 +109,41 @@
 	{#if form && 'error' in form}
 		<p class="text-sm text-error-400" role="alert">{m.admin_delete_error()}</p>
 	{/if}
+
+	<!-- Funnel readout (DAR-66). Distinct anonymous flows per stage, in funnel order, so the drop-off
+	     reads top-to-bottom — these rows are an events table with no link to any signup below, which
+	     is why a count can sit on the same page as the leads without being a profile of anyone. The
+	     caveat under it is load-bearing: bots inflate the view count and the last stage needs JS, so
+	     this is directional, not a source of record. -->
+	<section class="glass-card p-4 sm:p-6" aria-labelledby="waitlist-funnel-heading">
+		<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+			<h2 id="waitlist-funnel-heading" class="text-sm font-medium text-white">
+				{m.admin_waitlist_funnel_heading()}
+			</h2>
+			<p class="text-sm">
+				<span class="text-faint">{m.admin_waitlist_funnel_conversion()}</span>
+				<span class="ml-2 font-medium text-emphasis tabular-nums">{conversionLabel}</span>
+			</p>
+		</div>
+
+		{#if data.funnel}
+			<dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+				{#each WAITLIST_FUNNEL_EVENTS as event (event)}
+					<div>
+						<dt class="text-xs tracking-wide text-faint">{waitlistFunnelEventLabel[event]()}</dt>
+						<dd class="text-lg text-white tabular-nums">{countFmt.format(data.funnel[event])}</dd>
+					</div>
+				{/each}
+			</dl>
+
+			<p class="mt-4 text-xs text-faint">{m.admin_waitlist_funnel_note()}</p>
+		{:else}
+			<!-- The aggregate failed (a deploy ahead of its migration, a DB blip). Say so rather than
+			     render a funnel of zeros, which would read as "nobody has ever visited" — and the leads
+			     below stay on screen either way, which is the point of the load catching it. -->
+			<p class="mt-4 text-sm text-faint">{m.admin_waitlist_funnel_unavailable()}</p>
+		{/if}
+	</section>
 
 	<!-- Filter by lead class. Plain links + a GET query, so it needs no JS and every view is
 	     bookmarkable; the counts are over the whole window, not the filtered slice.

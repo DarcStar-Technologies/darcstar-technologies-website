@@ -1,6 +1,5 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
-
 	"nav_about": "About",
 	"nav_news": "News",
 	"nav_research": "Research",
@@ -13,7 +12,6 @@
 	"nav_primary_label": "Primary",
 	"nav_menu_open": "Open menu",
 	"nav_menu_close": "Close menu",
-
 	"hero_kicker": "GIDE · Guaranteed Intelligent Dynamics Engine",
 	"hero_heading_lead": "Autonomous control you can",
 	"hero_heading_emphasis": "prove",
@@ -22,20 +20,17 @@
 	"hero_cta_explore": "Explore GIDE",
 	"hero_cta_contact": "Get in touch →",
 	"hero_cta_waitlist": "Join the waitlist",
-
 	"readout_cfc_label": "CfC inference",
 	"readout_realtime_label": "faster than real-time",
 	"readout_theorems_label": "theorems machine-checked",
 	"readout_domains_label": "domains running end-to-end",
 	"readout_evidence_link": "How we verify these numbers →",
-
 	"pillar_safe_title": "Machine-checked safety",
 	"pillar_safe_body": "Control Barrier Functions verified as theorems in Lean 4 and Isabelle — over the mathematical model, not inferred from passing test runs.",
 	"pillar_realtime_title": "Real-time",
 	"pillar_realtime_body": "Closed-form continuous-time inference — the reference kernel measures {latency} per forward pass, {multiple} inside a 100 Hz control budget.",
 	"pillar_selfimproving_title": "Self-improving",
 	"pillar_selfimproving_body": "Neuroevolution, plus a Self-Dev loop that writes and checks its own code — not yet fully autonomous.",
-
 	"section_gide_kicker": "// intelligence with guarantees",
 	"section_gide_heading": "Verified, real-time, and self-improving.",
 	"section_domains_kicker": "// one engine, infinite domains",
@@ -48,7 +43,6 @@
 	"section_cta_heading": "Let's build something you can verify.",
 	"section_cta_body": "Safety-critical control, autonomous systems, formal methods — we'd like to hear from you.",
 	"section_cta_button": "Contact Us",
-
 	"domain_cartpole_name": "Cart-pole control",
 	"domain_cartpole_desc": "3D cart-pole balancing with machine-checked CBF safety proofs.",
 	"domain_quadrotor_name": "Quadrotor flight",
@@ -59,7 +53,6 @@
 	"domain_llm_desc": "Entropy, grounding, and safety regulation for LLM control.",
 	"domain_selfdev_name": "Autonomous software",
 	"domain_selfdev_desc": "A Self-Dev loop that specs, builds, and checks its own code — approaching its first fully autonomous cycle.",
-
 	"footer_tagline": "Real-time intelligent control with formal safety guarantees.",
 	"footer_nav_label": "Footer",
 	"footer_nav_heading": "Navigate",
@@ -72,18 +65,15 @@
 	"footer_social_email": "Email",
 	"footer_copyright": "© {year} DarcStar Technologies · All rights reserved.",
 	"footer_location": "United States",
-
 	"error_title": "{status} — DarcStar Technologies",
 	"error_404_heading": "Lost in the void",
 	"error_generic_heading": "Something went wrong",
 	"error_404_detail": "That page drifted off the map — the link may be broken, or the page may have moved.",
 	"error_generic_detail": "An unexpected error occurred.",
 	"error_home_link": "Return home →",
-
 	"seo_default_title": "DarcStar Technologies — Formally verified autonomous control",
 	"seo_default_description": "GIDE is a real-time control engine whose safety properties are formally verified in Lean 4 and Isabelle, against stated system and environment assumptions.",
 	"seo_default_image_alt": "DarcStar Technologies — GIDE, formally verified autonomous control",
-
 	"about_page_title": "About — DarcStar Technologies",
 	"about_page_description": "DarcStar Technologies builds GIDE — a real-time control engine with safety properties formally verified against stated system and environment assumptions.",
 	"about_eyebrow": "About",
@@ -109,19 +99,16 @@
 	"about_cta_heading": "Working on something safety-critical?",
 	"about_cta_body": "If you are building autonomous systems where a safety guarantee has to hold, we would like to hear from you.",
 	"about_cta_button": "Get in touch",
-
 	"evidence_page_title": "Evidence — DarcStar Technologies",
 	"evidence_page_description": "Every major claim on darcstar.tech, scoped: what was measured or proven, how, under which assumptions — and what remains outside the claim.",
 	"evidence_eyebrow": "Evidence",
 	"evidence_heading": "Claims you can",
 	"evidence_heading_emphasis": "check",
 	"evidence_lead": "Every number and safety claim on this site, stated precisely: what was measured or proven, how it was measured, under which assumptions — and where the boundary of the claim sits.",
-
 	"evidence_read_heading": "How to read this page",
 	"evidence_read_body": "Each card states one claim exactly as the site makes it, with its date or release version, the environment and methodology behind it, and — just as deliberately — what it does not cover. When a figure is re-measured, the card is updated with it: these are dated claims, not slogans.",
 	"evidence_boundary_heading": "Measured vs. proven",
 	"evidence_boundary_body": "We keep two vocabularies apart. Proven means machine-checked in a proof assistant, over exact real arithmetic, about the mathematical model. Measured means benchmarked on hardware, with the sample counts and environment on record. Latency numbers are measured, never proven; safety theorems are proven, never inferred from test runs. The bridge between the real-number model and the floating-point implementation is checked numerically at runtime by an SMT solver portfolio — it is not itself a theorem.",
-
 	"evidence_label_environment": "Environment",
 	"evidence_label_method": "Methodology",
 	"evidence_label_proved": "What is proved",
@@ -129,7 +116,6 @@
 	"evidence_label_not_covered": "Not covered",
 	"evidence_label_artifacts": "Artifacts & verification",
 	"evidence_label_provers": "Provers & checkers",
-
 	"evidence_cfc_title": "CfC kernel inference",
 	"evidence_cfc_dated": "Measured December 2025 · GIDE benchmark corpus",
 	"evidence_cfc_claim": "A single closed-form continuous-time (CfC) cell — the reference inference kernel — completes one forward pass in {latency} on average.",
@@ -138,13 +124,11 @@
 	"evidence_cfc_not_covered": "This is the reference kernel, not a deployed controller — deployed controllers are substantially larger and complete in the tens of microseconds, still inside the real-time budget. And no latency figure is formally proven: timing is measured, never a theorem.",
 	"evidence_cfc_artifacts": "The benchmark harness, per-run logs, and a hardware-attribution ledger live in the GIDE repository; nightly CI re-runs the suite on attributed runners and publishes the results.",
 	"evidence_cfc_more": "Hardware runs & full methodology →",
-
 	"evidence_realtime_title": "Faster than real time",
 	"evidence_realtime_dated": "Derived from the measured {latency} · 100 Hz control budget",
 	"evidence_realtime_claim": "{multiple} is a derived margin, not a separate measurement: a 100 Hz control loop budgets 10 ms per tick, and 10 ms ÷ {latency} ≈ {multiple}.",
 	"evidence_realtime_method": "The numerator is the control-loop period GIDE targets (100 Hz); the denominator is the measured mean kernel latency above. The margin therefore inherits every scope caveat of the 0.767 µs figure.",
 	"evidence_realtime_not_covered": "The multiple applies to the reference kernel. Deployed controllers are larger and slower — see the hardware runs — yet still clear the same 10 ms budget by roughly two orders of magnitude. No real-time bound is formally proven.",
-
 	"evidence_theorems_title": "Theorems machine-checked",
 	"evidence_theorems_dated": "As of GIDE release v2026.07.1 · July 2026",
 	"evidence_theorems_claim": "{checked} theorems in the GIDE framework are machine-checked. {complete} of those are complete — mechanized end-to-end in both Lean 4 and Isabelle/HOL with zero local axioms. The other {axiomBacked} are machine-checked modulo explicitly declared local axioms: named real-analysis backbones, each documented and tracked for discharge.",
@@ -153,14 +137,12 @@
 	"evidence_theorems_method": "Zero sorry placeholders across the corpus. Headline theorems must check in both provers independently; a negative-control suite of deliberately false variants must fail to compile; proof mutation testing and catalog-conformance gates run in CI on every change.",
 	"evidence_theorems_not_covered": "The proofs are over exact real arithmetic: they cover the mathematical model, not the compiled floating-point implementation — that bridge is checked numerically at runtime, and closing it formally is open, tracked work. Framework assumptions (Lipschitz continuity, compact sets, bounded disturbance, hardware isolation) are declared inputs, not theorems.",
 	"evidence_theorems_artifacts": "The theorem catalog and the runtime conformance registry are kept consistent by a CI census gate; tagged releases ship with a SHA-256 checksum manifest.",
-
 	"evidence_safety_title": "Formal safety guarantees",
 	"evidence_safety_dated": "Complete, zero-axiom theorem cluster · Lean 4 + Isabelle/HOL",
 	"evidence_safety_claim": "The safety core is a cluster of complete theorems — machine-checked end-to-end in both provers with zero local axioms — covering forward invariance of the safety set and Control Barrier Function filtering.",
 	"evidence_safety_proved": "Nagumo forward invariance: a barrier that starts non-negative and satisfies the inward-rate condition stays non-negative for all forward time. Existence of a safe control under the CBF condition, and that the minimally-invasive CBF-QP leaves an already-feasible nominal control unmodified. Robustness of the invariance argument under learning updates, effective safety margin under measured latency, and keep-out-set feasibility including preservation under zero-order hold.",
 	"evidence_safety_assumptions": "Controllability is carried as a named hypothesis, not re-proven. Safety margins are constant or linear-rate — general nonlinear class-K rates are out of scope. Dynamics are deterministic with bounded disturbance; the keep-out results are static state bounds, not general obstacle avoidance.",
 	"evidence_safety_not_covered": "No microsecond or latency bound is proven anywhere in the proof corpus — any \"proven microsecond safety\" phrasing would be false, and we do not use it. Stochastic settings are out of scope. As above, the theorems govern the real-number model; the floating-point implementation is checked numerically at runtime.",
-
 	"evidence_domains_title": "Domains shipped",
 	"evidence_domains_dated": "One verified core, specialized at compile time",
 	"evidence_domains_claim": "Every domain listed here builds and runs end-to-end against the same verified core. Shipped means the domain exists as a working subsystem with its own harness — maturity varies and is stated per domain below, not rounded up.",
@@ -169,14 +151,12 @@
 	"evidence_domain_markets_body": "Live FX market data and paper trading against the Oanda API, driven by a 36-objective training curriculum.",
 	"evidence_domain_llm_body": "Entropy, grounding, and safety regulation for language-model control behind a multi-tier governance pipeline.",
 	"evidence_domain_selfdev_body": "The youngest domain: an autonomous spec → build → verify loop, currently approaching its first fully autonomous cycle — we say so rather than round up.",
-
 	"evidence_ip_heading": "What we deliberately do not publish",
 	"evidence_ip_body": "The cards above are designed to make our claims falsifiable without opening the engine. The following stay private: core source code, proof-generation automation, model weights, the controller architecture, optimization methods, customer data, and complete proof scripts.",
 	"evidence_ip_access_heading": "For qualified partners",
 	"evidence_ip_access_body": "Under NDA we can provide an evaluation dossier, run a black-box benchmark on hardware you control, or arrange supervised inspection of sensitive artifacts in a controlled environment.",
 	"evidence_ip_cta": "Start that conversation",
 	"evidence_back": "← All evidence",
-
 	"evidence_bench_page_heading": "Benchmarks",
 	"evidence_bench_page_title": "Benchmarks — DarcStar Technologies",
 	"evidence_bench_page_description": "Every benchmark figure behind darcstar.tech, run by run: methodology, environment, and attribution.",
@@ -193,7 +173,6 @@
 	"evidence_bench_controller_heading": "The deployed controller",
 	"evidence_bench_controller_body": "A deployed end-to-end controller measures ≈52 µs p50 / ≈94 µs p99 — the figure to cite for whole-controller latency. It clears the 10 ms real-time budget by roughly 190×.",
 	"evidence_bench_artifacts_heading": "Artifacts",
-
 	"evidence_proofs_page_heading": "Proof methodology",
 	"evidence_proofs_page_title": "Proof methodology — DarcStar Technologies",
 	"evidence_proofs_page_description": "What machine-checked means at DarcStar: the definition of proven, the provers and checkers behind it, the verification methodology, and the trust boundary.",
@@ -203,9 +182,7 @@
 	"evidence_proofs_definition_heading": "What counts as proven",
 	"evidence_proofs_definition_body": "A theorem counts as machine-checked only when a proof assistant accepts it end-to-end. Complete theorems are mechanized independently in both Lean 4 and Isabelle/HOL with zero local axioms. Axiom-backed theorems are machine-checked modulo explicitly declared local axioms — named real-analysis backbones, each documented and tracked for discharge. Nothing in between is counted as proven.",
 	"evidence_proofs_boundary_heading": "The trust boundary",
-
 	"back_to_top": "Back to top",
-
 	"contact_dialog_title": "Get in touch",
 	"contact_dialog_description": "Tell us about your project — safety-critical control, autonomous systems, or formal methods. We read every message.",
 	"contact_field_name_label": "Name",
@@ -396,7 +373,6 @@
 	"waitlist_ack_greeting_generic": "Hi there,",
 	"waitlist_ack_body": "Thanks for joining the DarcStar Technologies waitlist. You're on the list, and we'll email you the moment early access opens. This is an automated confirmation — no need to reply.",
 	"waitlist_ack_signoff": "— The DarcStar Technologies team",
-
 	"login_page_title": "Sign in — DarcStar Technologies",
 	"login_page_description": "Sign in to DarcStar Technologies.",
 	"login_eyebrow": "Account",
@@ -417,10 +393,8 @@
 	"login_resend_button": "Resend verification email",
 	"login_resend_sending": "Sending…",
 	"login_resend_sent": "If that email still needs verifying, a fresh link is on its way. Check your inbox and spam folder.",
-
 	"login_forgot_prompt": "Forgot your password?",
 	"login_forgot_link": "Reset it",
-
 	"forgot_password_page_title": "Reset your password — DarcStar Technologies",
 	"forgot_password_page_description": "Request a link to reset your DarcStar Technologies account password.",
 	"forgot_password_eyebrow": "Account",
@@ -437,7 +411,6 @@
 	"forgot_password_error": "We couldn't send a reset link. Please try again.",
 	"forgot_password_error_missing": "Please enter your email.",
 	"forgot_password_error_ratelimit": "Too many attempts. Please wait a moment and try again.",
-
 	"reset_password_page_title": "Set a new password — DarcStar Technologies",
 	"reset_password_page_description": "Choose a new password for your DarcStar Technologies account.",
 	"reset_password_eyebrow": "Account",
@@ -458,7 +431,6 @@
 	"reset_password_error_missing": "Please enter a new password.",
 	"reset_password_error_password_short": "Your password must be at least 8 characters.",
 	"reset_password_error_ratelimit": "Too many attempts. Please wait a moment and try again.",
-
 	"admin_page_title": "Submissions — DarcStar Technologies",
 	"admin_page_description": "Contact-form submissions for DarcStar Technologies staff.",
 	"admin_eyebrow": "Admin",
@@ -530,6 +502,18 @@
 	"admin_waitlist_consent_no": "No",
 	"admin_waitlist_internal_note": "Priority is an internal triage signal computed from the qualification answers. It is never shown to the signup and is not committed pipeline.",
 	"admin_waitlist_unverified_note": "Outreach permission, phone and marketing consent are unverified claims from an unauthenticated form. Confirm by replying to the signed-up address before acting on them.",
+	"admin_waitlist_funnel_heading": "Funnel",
+	"admin_waitlist_funnel_conversion": "Signup conversion",
+	"admin_waitlist_funnel_note": "First-party counts of distinct anonymous flows, all time. Views include bots and repeat visits, and the conversation request needs JavaScript, so it undercounts. Directional only — not a source of record.",
+	"admin_waitlist_funnel_unavailable": "Funnel counts are unavailable right now.",
+	"admin_waitlist_funnel_viewed": "Viewed the page",
+	"admin_waitlist_funnel_signup_completed": "Completed signup",
+	"admin_waitlist_funnel_qualification_started": "Started qualification",
+	"admin_waitlist_funnel_use_case_completed": "Answered use case",
+	"admin_waitlist_funnel_commercial_context_completed": "Answered commercial context",
+	"admin_waitlist_funnel_pilot_interest_selected": "Answered pilot interest",
+	"admin_waitlist_funnel_qualification_completed": "Reached confirmation",
+	"admin_waitlist_funnel_conversation_requested": "Requested a conversation",
 	"admin_waitlist_delete_sr": "Confirm delete — signup from {email}",
 	"admin_audit_page_title": "Login audit — DarcStar Technologies",
 	"admin_audit_page_description": "Sign-in attempts for DarcStar Technologies staff.",
@@ -618,7 +602,6 @@
 	"admin_users_delete_confirm_label": "I understand this permanently deletes the account.",
 	"admin_users_note_self": "You can't change your own role, password, or account status here.",
 	"admin_users_note_owner": "This is an owner account (managed via ADMIN_USER_IDS) and can't be changed here.",
-
 	"account_eyebrow": "Account",
 	"account_signed_in_as": "Signed in as {email}",
 	"account_signout": "Sign out",
@@ -686,7 +669,6 @@
 	"verify_email_expiry": "This link expires in one hour.",
 	"verify_email_ignore": "If you didn't create an account, you can safely ignore this email.",
 	"verify_email_signoff": "— The DarcStar Technologies team",
-
 	"reset_email_subject": "Reset your DarcStar Technologies password",
 	"reset_email_greeting": "Hi {name},",
 	"reset_email_body": "We received a request to reset the password for your DarcStar Technologies account. Choose a new one below.",
@@ -695,10 +677,8 @@
 	"reset_email_expiry": "This link expires in one hour.",
 	"reset_email_ignore": "If you didn't request a password reset, you can safely ignore this email — your password won't change.",
 	"reset_email_signoff": "— The DarcStar Technologies team",
-
 	"content_by": "By",
 	"content_doc_title": "{title} — DarcStar Technologies",
-
 	"news_page_title": "News — DarcStar Technologies",
 	"news_page_description": "Updates, research notes, and announcements from DarcStar Technologies.",
 	"news_eyebrow": "News",
@@ -709,7 +689,6 @@
 	"news_read_article": "Read article →",
 	"news_back": "← All news",
 	"news_related_heading": "Related papers",
-
 	"research_page_title": "Research — DarcStar Technologies",
 	"research_page_description": "Original research from DarcStar Technologies, alongside annotated third-party work on formally verified autonomous control.",
 	"research_eyebrow": "Research",
@@ -754,7 +733,6 @@
 	"research_link_pdf": "PDF",
 	"research_link_code": "Code",
 	"research_link_url": "Link",
-
 	"people_page_title": "People — DarcStar Technologies",
 	"people_page_description": "The team building GIDE at DarcStar Technologies.",
 	"people_eyebrow": "People",
@@ -762,7 +740,6 @@
 	"people_heading_emphasis": "team",
 	"people_lead": "The people building formally verified autonomous control at DarcStar Technologies.",
 	"people_empty": "Team details coming soon.",
-
 	"privacy_page_title": "Privacy policy — DarcStar Technologies",
 	"privacy_page_description": "How DarcStar Technologies collects, uses, and protects the personal information you share through this site.",
 	"privacy_eyebrow": "Legal",
@@ -806,7 +783,6 @@
 	"privacy_changes_body": "If we change how we handle personal information, we'll update this page and its date. Significant changes will be called out on the page itself.",
 	"privacy_contact_heading": "Contact",
 	"privacy_contact_body": "For privacy questions or data requests, reach us at:",
-
 	"terms_page_title": "Terms of service — DarcStar Technologies",
 	"terms_page_description": "The terms that govern use of the DarcStar Technologies website, waitlist, and accounts.",
 	"terms_eyebrow": "Legal",
@@ -833,10 +809,8 @@
 	"terms_changes_body": "We may update these terms as the site evolves; the date above reflects the latest revision. Continuing to use the site after a change means you accept the updated terms.",
 	"terms_contact_heading": "Contact",
 	"terms_contact_body": "Questions about these terms? Reach us at:",
-
 	"footer_legal_privacy": "Privacy",
 	"footer_legal_terms": "Terms",
-
 	"contact_privacy_notice": "We use these details only to respond to your message — never for ads, and we never sell them.",
 	"contact_privacy_link": "How we handle your data",
 	"waitlist_privacy_notice": "We use this only to manage the waitlist and send your invite — never for ads, and we never sell it.",

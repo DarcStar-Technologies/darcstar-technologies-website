@@ -28,6 +28,7 @@ import type {
 	WaitlistCta,
 	WaitlistLeadClass
 } from '$lib/waitlist-qualification';
+import type { WaitlistFunnelEvent } from '$lib/waitlist-funnel';
 import type { WaitlistRole } from '$lib/waitlist-roles';
 import type { WaitlistCompanySize } from '$lib/waitlist-company-sizes';
 import type { WaitlistReferralSource } from '$lib/waitlist-referral-sources';
@@ -192,6 +193,20 @@ export const waitlistLeadClassLabel: Record<WaitlistLeadClass, () => string> = {
 	'priority-c': m.admin_waitlist_class_priority_c,
 	research: m.admin_waitlist_class_research,
 	investor: m.admin_waitlist_class_investor
+};
+
+/** The funnel readout's stage names on /admin/waitlist (DAR-66). Staff-only copy, like the badge
+ *  above: these describe our measurement of a visitor, not anything they're ever shown. Keyed to the
+ *  event union, so adding a slug without labelling it is a compile error. */
+export const waitlistFunnelEventLabel: Record<WaitlistFunnelEvent, () => string> = {
+	waitlist_viewed: m.admin_waitlist_funnel_viewed,
+	waitlist_signup_completed: m.admin_waitlist_funnel_signup_completed,
+	qualification_started: m.admin_waitlist_funnel_qualification_started,
+	use_case_completed: m.admin_waitlist_funnel_use_case_completed,
+	commercial_context_completed: m.admin_waitlist_funnel_commercial_context_completed,
+	pilot_interest_selected: m.admin_waitlist_funnel_pilot_interest_selected,
+	qualification_completed: m.admin_waitlist_funnel_qualification_completed,
+	evaluation_conversation_requested: m.admin_waitlist_funnel_conversation_requested
 };
 
 // --- v1 (retired from the form, still rendered by /admin/waitlist for historical rows) ----------

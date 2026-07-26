@@ -40,7 +40,7 @@
 	// fork reads nor the role the audience reads, so they ride along rather than being re-derived — and
 	// they're signed, so editing this field can't opt anyone into branch A (see waitlist-flow.ts'
 	// mintWaitlistFlowClaim).
-	let { token, flowClaim }: { token: string; flowClaim: string } = $props();
+	let { token, flowClaim, flowId }: { token: string; flowClaim: string; flowId: string } = $props();
 
 	// Slug → {value,label} options. `$derived` so labels re-resolve on locale change (the label
 	// accessors are $state-backed Paraglide messages).
@@ -59,6 +59,10 @@
 	     carried through from the step-2 response (which echoes back what step 1 minted). -->
 	<input {...submitWaitlistStep3.fields.token.as('hidden', token)} />
 	<input {...submitWaitlistStep3.fields.flowClaim.as('hidden', flowClaim)} />
+
+	<!-- The funnel handle (DAR-66): anonymous, authorizes nothing, and never reaches the signup row —
+	     it only ties this submit to the same analytics flow the page view started. -->
+	<input {...submitWaitlistStep3.fields.flowId.as('hidden', flowId)} />
 
 	<GlassSelect
 		id="waitlist-approach"
