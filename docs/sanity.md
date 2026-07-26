@@ -45,6 +45,11 @@ perspective: 'published', token })`, where `token = readEnv('SANITY_VIEWER_TOKEN
 - **Editing a query? Re-run `pnpm sanity:types` and commit `types.ts`.** `overloadClientMethods` keys
   the result type on the query's literal STRING, so a stale `types.ts` silently degrades
   `fetch(q)` to untyped — `pnpm check` still passes. Nothing in CI guards this yet.
+- **The synced `schema.json` can be ahead of what the site consumes.** It's a whole-file copy, so a
+  sync pulls in every Studio change since the last one — DAR-70's re-sync also brought
+  `person.{fullBio, focusAreas, responsibilities, experience, education}` (DAR-47's schema half).
+  Those land as types only; `peopleQuery` doesn't select them, so nothing renders until that ticket
+  wires them. Expect unrelated additions in a `types.ts` diff and check they're additive.
 - **The Studio's `seo` object reaches `<Seo>` only through
   [`content-seo.ts`](../src/lib/sanity/content-seo.ts)** (DAR-71). Add new `seo` fields there, not at
   the detail-page call sites — the previous per-page mapping is how `noIndex` came to be fetched and

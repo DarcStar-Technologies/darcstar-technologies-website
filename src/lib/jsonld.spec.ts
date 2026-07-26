@@ -5,6 +5,8 @@ import {
 	jsonLdScript,
 	organizationId,
 	organizationJsonLd,
+	paperCanonicalUrl,
+	paperSourceUrls,
 	peopleJsonLd,
 	scholarlyArticleJsonLd
 } from './jsonld';
@@ -136,6 +138,101 @@ describe('articleJsonLd', () => {
 		for (const absent of ['description', 'datePublished', 'dateModified', 'image', 'author']) {
 			expect(absent in parsed, `${absent} should be absent`).toBe(false);
 		}
+	});
+});
+
+// DAR-70: this list has two consumers — `sameAs` below, and /research/[slug]'s canonical fallback,
+// which takes [0]. So ORDER is load-bearing in a way it never was for sameAs alone: `url` (the
+// publisher/landing page) first, then the DOI (version of record), and only then arXiv (usually the
+// preprint). Getting it wrong points crawlers at a preprint over the published paper.
+describe('paperSourceUrls', () => {
+	const full = {
+		url: 'https://proceedings.example/on-things',
+		doi: '10.1234/abcd',
+		arxivId: '2605.01234'
+	};
+
+	it('orders url → doi → arxiv, building the doi.org and arxiv.org URLs', () => {
+		expect(paperSourceUrls(full)).toEqual([
+			'https://proceedings.example/on-things',
+			'https://doi.org/10.1234/abcd',
+			'https://arxiv.org/abs/2605.01234'
+		]);
+	});
+
+	it('closes the gaps rather than leaving holes, so [0] is always the best available source', () => {
+		expect(paperSourceUrls({ doi: '10.1234/abcd', arxivId: '2605.01234' })[0]).toBe(
+			'https://doi.org/10.1234/abcd'
+		);
+		expect(paperSourceUrls({ arxivId: '2605.01234' })[0]).toBe('https://arxiv.org/abs/2605.01234');
+		expect(paperSourceUrls({ url: full.url, arxivId: '2605.01234' })).toEqual([
+			full.url,
+			'https://arxiv.org/abs/2605.01234'
+		]);
+	});
+
+	it('returns [] when the paper names no source at all', () => {
+		// The canonical caller reads [0] — undefined here, which keeps the page self-canonical.
+		expect(paperSourceUrls({})).toEqual([]);
+		expect(paperSourceUrls({ url: null, doi: null, arxivId: null })).toEqual([]);
+		expect(paperSourceUrls({})[0]).toBeUndefined();
+	});
+
+	it('drops anything that is not an absolute http(s) URL', () => {
+		// `doi`/`arxivId` are unvalidated free text in the Studio, and this list now feeds a
+		// canonical — where a malformed value actively misdirects crawlers instead of being ignored.
+		expect(paperSourceUrls({ url: 'javascript:alert(1)' })).toEqual([]);
+		expect(paperSourceUrls({ url: 'mailto:someone@example.com' })).toEqual([]);
+		expect(paperSourceUrls({ url: '/research/relative-path' })).toEqual([]);
+		expect(paperSourceUrls({ url: 'not a url at all' })).toEqual([]);
+	});
+
+	it('drops a prose-filled doi/arxiv field, which `new URL` alone would accept', () => {
+		// The trap: `new URL('https://doi.org/see the paper')` does NOT throw — it percent-encodes
+		// the spaces into a well-formed URL that 404s. Protocol-checking alone misses this entirely.
+		expect(paperSourceUrls({ doi: 'see the paper for details' })).toEqual([]);
+		expect(paperSourceUrls({ arxivId: 'not published yet' })).toEqual([]);
+		// And one bad field can't take a good one down with it.
+		expect(paperSourceUrls({ url: full.url, doi: 'see the paper' })).toEqual([full.url]);
+	});
+
+	it('tolerates surrounding whitespace on an otherwise good value', () => {
+		expect(paperSourceUrls({ url: `  ${full.url}  `, doi: ' 10.1234/abcd ' })).toEqual([
+			full.url,
+			'https://doi.org/10.1234/abcd'
+		]);
+	});
+});
+
+// DAR-70's polarity, extracted out of the page component precisely so it can be asserted: a
+// mutation that dropped the first-party exemption altogether passed `pnpm check` and every test
+// while the rule was inline, because nothing could reach it.
+describe('paperCanonicalUrl', () => {
+	const source = { url: 'https://arxiv.org/abs/1706.03762' };
+
+	it('keeps our own work self-canonical', () => {
+		expect(paperCanonicalUrl({ ...source, darcstarAuthored: true })).toBeUndefined();
+	});
+
+	it.each([
+		['explicitly false', false],
+		['null', null],
+		['absent', undefined]
+	])('canonicalises to the source when darcstarAuthored is %s', (_case, darcstarAuthored) => {
+		// Fail-safe: only an explicit `true` counts as ours, so the failure mode of a half-filled
+		// document is under-claiming our own page — never claiming someone else's work.
+		expect(paperCanonicalUrl({ ...source, darcstarAuthored })).toBe(source.url);
+	});
+
+	it('stays self-canonical when a third-party paper names no usable source', () => {
+		expect(paperCanonicalUrl({ darcstarAuthored: false })).toBeUndefined();
+		expect(paperCanonicalUrl({ darcstarAuthored: false, url: 'not a url' })).toBeUndefined();
+	});
+
+	it('takes the most authoritative source available', () => {
+		expect(
+			paperCanonicalUrl({ darcstarAuthored: false, doi: '10.1234/abcd', arxivId: '2605.01234' })
+		).toBe('https://doi.org/10.1234/abcd');
 	});
 });
 
