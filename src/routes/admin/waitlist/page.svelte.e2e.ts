@@ -16,8 +16,10 @@ test('unauthenticated /admin/waitlist redirects to the login page', async ({ pag
 	await expect(page).toHaveURL(/\/login$/);
 	await expect(page.getByRole('heading', { level: 1, name: 'Sign in' })).toBeVisible();
 
-	// Nothing from the triage view leaked into the redirect target.
-	const body = (await response?.text()) ?? '';
+	// Nothing from the triage view leaked into the redirect target. Assert the response exists first,
+	// or a null response would make the two absence checks pass vacuously.
+	expect(response).not.toBeNull();
+	const body = await response!.text();
 	expect(body).not.toContain('Priority A');
 	expect(body).not.toContain('Qualification detail');
 });

@@ -44,8 +44,13 @@
 	type SlugLabels = Record<string, () => string>;
 	const labelled = (value: string | null, labels: SlugLabels): string =>
 		value ? (labels[value]?.() ?? value) : DASH;
+	// `Array.isArray`, not a truthiness check: the two multi-selects are `mode: 'json'` columns whose
+	// `$type<string[]>()` is an assertion, not a validation. A row holding valid-but-not-array JSON
+	// would otherwise throw inside .map() and take the WHOLE triage page down over one bad row.
 	const labelledList = (values: string[] | null, labels: SlugLabels): string =>
-		values && values.length > 0 ? values.map((v) => labels[v]?.() ?? v).join(', ') : DASH;
+		Array.isArray(values) && values.length > 0
+			? values.map((v) => labels[v]?.() ?? v).join(', ')
+			: DASH;
 	const orDash = (v: string | number | null): string => (v === null ? DASH : String(v));
 
 	// `role` holds BOTH the v1 slug set (legacy rows) and the v2 set (DAR-61's step 2 writes the same
@@ -119,6 +124,13 @@
 				})}</a
 			>
 		{/each}
+		<!-- The window note lives WITH the chips, not in the table header, because the counts are
+		     windowed too: "Priority A (0)" means none in the most recent slice, not none on the list.
+		     Keeping it here also means a filtered-to-empty view still discloses the window, which it
+		     wouldn't if the note only rendered alongside a populated table. -->
+		{#if atCap}
+			<span class="ml-1 text-xs text-faint">{m.admin_cap_note({ limit: data.limit })}</span>
+		{/if}
 	</nav>
 
 	<div class="glass-card p-4 sm:p-6">
@@ -127,14 +139,9 @@
 		{:else if data.signups.length === 0}
 			<p class="px-2 py-12 text-center text-sm text-faint">{m.admin_waitlist_filter_empty()}</p>
 		{:else}
-			<div class="flex flex-wrap items-baseline justify-between gap-2 px-2 pb-4">
-				<span class="text-sm text-emphasis"
-					>{m.admin_waitlist_count({ count: data.signups.length })}</span
-				>
-				{#if atCap}
-					<span class="text-xs text-faint">{m.admin_cap_note({ limit: data.limit })}</span>
-				{/if}
-			</div>
+			<p class="px-2 pb-4 text-sm text-emphasis">
+				{m.admin_waitlist_count({ count: data.signups.length })}
+			</p>
 			<div class="overflow-x-auto">
 				<table class="w-full border-collapse text-left text-sm">
 					<thead>

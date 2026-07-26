@@ -97,8 +97,11 @@ export function classifyWaitlistLead(signals: WaitlistLeadSignals): WaitlistLead
 	if (audienceFor(signals) !== 'commercial') return 'research';
 
 	const hasAuthority = role !== null && AUTHORITY_ROLES.includes(role);
+	// `!= null` (not `!== null`) to match isActiveEvaluationTimeline: the column is nullable and a
+	// caller outside the type could hand over undefined, and the two windows must agree on what
+	// "unanswered" means or A and B could disagree about the same row.
 	const isImmediate =
-		signals.evaluationTimeline !== null &&
+		signals.evaluationTimeline != null &&
 		(IMMEDIATE_TIMELINES as readonly string[]).includes(signals.evaluationTimeline);
 
 	if (isImmediate && hasAuthority && isPositivePilotInterest(signals.pilotInterest)) {

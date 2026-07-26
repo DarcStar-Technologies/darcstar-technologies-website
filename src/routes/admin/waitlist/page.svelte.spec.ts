@@ -111,6 +111,25 @@ describe('/admin/waitlist', () => {
 		await expect.element(page.getByText('No signups in this band.')).toBeVisible();
 	});
 
+	// The counts are windowed too, so "Priority A (0)" means none in the most recent slice — not
+	// none on the list. An empty band is exactly where that distinction matters most, and it's the
+	// one view with no table to hang the note off.
+	it('discloses the read cap even when a filter leaves nothing to show', async () => {
+		mount({ filter: 'priority-b', signups: [], total: 200, limit: 200 });
+
+		await expect.element(page.getByText('No signups in this band.')).toBeVisible();
+		await expect.element(page.getByText('Showing the 200 most recent.')).toBeVisible();
+	});
+
+	// `mode: 'json'` columns are typed by assertion, not validation. One row holding
+	// valid-but-not-array JSON must not take the whole triage page down.
+	it('survives a multi-select column that is not an array', async () => {
+		mount({
+			signups: [{ ...ROW, adoptionEvidence: 'corrupted' as unknown as string[] }]
+		});
+		await expect.element(page.getByText('Priority A', { exact: true })).toBeVisible();
+	});
+
 	// A bare `?/delete` resolves to /admin/waitlist?/delete and drops `class=`, bouncing the operator
 	// out of the band they were working in.
 	it('carries the active filter into every delete action', () => {
