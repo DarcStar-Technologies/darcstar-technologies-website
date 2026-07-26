@@ -188,13 +188,16 @@ describe('/admin/waitlist', () => {
 	// No views means no denominator, and a rendered "0%" would say "nobody converts" rather than
 	// "nothing measured". The server sends null; this is the view half of that contract.
 	it('shows a dash rather than a rate when nothing has been viewed', async () => {
-		mount({
+		const { container } = mount({
 			funnel: { ...FUNNEL, waitlist_viewed: 0, waitlist_signup_completed: 0 },
 			conversion: null
 		});
 
 		await expect.element(page.getByText('Signup conversion')).toBeVisible();
-		expect(document.body.textContent).not.toContain('%');
+		// Scoped to the readout — asserting against the whole body would break the day any unrelated
+		// copy on this page happens to contain a percent sign.
+		const funnel = container.querySelector('section[aria-labelledby="waitlist-funnel-heading"]');
+		expect(funnel?.textContent).not.toContain('%');
 	});
 
 	// A deploy that lands before its migration has no events table at all. The readout says so and the

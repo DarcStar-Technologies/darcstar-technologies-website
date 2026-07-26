@@ -61,7 +61,6 @@ export function captureWaitlistFunnel(
 		// double-click, or a bot re-POSTing the same step is a no-op rather than a duplicate, so every
 		// count stays a count of distinct flows.
 		.onConflictDoNothing()
-		.then(() => undefined)
 		.catch((err: unknown) => {
 			console.error('waitlist funnel capture failed', slugs.join(','), err);
 		});

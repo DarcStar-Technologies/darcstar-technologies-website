@@ -17,11 +17,19 @@
 	// localizeHref keeps internal links locale-correct; `$derived` so the labels
 	// track the active locale. Contact is a separate button that opens the contact
 	// modal (issue #11); the footer email icon below stays a direct mailto.
-	const nav = $derived([
+	// `preload: 'tap'` opts a link out of the body-wide `hover` prefetch. Only /waitlist needs it, and
+	// for a measurement reason rather than a performance one: that page's load records the funnel's
+	// `waitlist_viewed` event (DAR-66), so a hover prefetch would count a view for a page the visitor
+	// never opened — and this footer is on EVERY page, so incidental mouse drift over it would be a
+	// standing inflation of the primary conversion metric's denominator. On pointerdown the fetch still
+	// starts before the navigation, and a click reuses it, so a real visitor is fetched once and
+	// counted once.
+	type FooterLink = { label: string; href: string; preload?: 'tap' };
+	const nav: FooterLink[] = $derived([
 		{ label: m.footer_nav_home(), href: localizeHref('/') },
 		{ label: m.footer_nav_gide(), href: `${localizeHref('/')}#gide` },
 		{ label: m.footer_nav_evidence(), href: localizeHref('/evidence') },
-		{ label: m.footer_nav_waitlist(), href: localizeHref('/waitlist') }
+		{ label: m.footer_nav_waitlist(), href: localizeHref('/waitlist'), preload: 'tap' }
 	]);
 </script>
 
@@ -78,6 +86,7 @@
 						<li>
 							<a
 								href={link.href}
+								data-sveltekit-preload-data={link.preload}
 								class="text-sm text-body transition-colors hover:text-primary-500"
 							>
 								{link.label}

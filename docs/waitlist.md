@@ -250,11 +250,27 @@ Resend sends: the signup is the product, the row about it is not. The admin read
 awaited query, so it is **fail-soft too** (`.catch` → `null` → an "unavailable" note), because a
 deploy that lands before its migration has no table and must not take the triage list down.
 
+### Links to /waitlist must not prefetch on hover
+
+`app.html` sets `data-sveltekit-preload-data="hover"` on `<body>`, and preloading **data** means
+running the page's load — which is where the view is recorded. Left at the default, every mouse pass
+over the homepage CTA or the footer link (present on every page) would count a view for a page nobody
+opened, permanently understating the primary metric. Both links opt down to
+`data-sveltekit-preload-data="tap"`: the fetch starts on pointerdown, so the latency win survives, and
+a hover-then-click reuses that single request — a real visitor is fetched once and counted once.
+**A new link to /waitlist needs the same attribute**; `page.svelte.e2e.ts` asserts at the network
+layer that a hover triggers no `/waitlist/__data.json`, and that a click still triggers exactly one.
+
 ### Caveats the readout states
 
-Views include bots and repeat visits; `evaluation_conversation_requested` needs JS, so it
-undercounts; and the honeypot path records **nothing**, so a tripped bot never reaches the numbers
-(which is also why the hermetic e2e writes no analytics rows). Directional, not a source of record.
+Views include bots and repeat visits, and `evaluation_conversation_requested` needs JS, so it
+undercounts. The honeypot path records **no signup event**, so a tripped bot never enters the
+conversion metric — but a bot that tripped the honeypot and then drove the rest of the flow with its
+decoy token would still emit the later stages, so `qualification_started` can exceed
+`waitlist_signup_completed` (our own e2e does exactly this, which is why running it against a real
+database leaves step rows behind). Gating the step events on a verified non-decoy token would close
+that, at the cost of an HMAC per step and of dropping events for anyone whose token expired mid-flow;
+it wasn't worth it for a readout that is directional by design. Directional, not a source of record.
 
 ## The routing rules (`src/lib/server/waitlist-flow.ts`)
 

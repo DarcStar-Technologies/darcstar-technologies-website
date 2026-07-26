@@ -45,6 +45,41 @@ test('the step-1 form carries an anonymous funnel handle', async ({ page }) => {
 	);
 });
 
+// A LINK TO /waitlist MUST NOT PREFETCH ON HOVER (DAR-66). The app shell sets
+// `data-sveltekit-preload-data="hover"` on <body>, and preloading DATA means running the page's load
+// — which is where `waitlist_viewed` is recorded. Left at the default, every mouse pass over the
+// homepage CTA (or the footer link, which is on every page) would count a view for a page nobody
+// opened, permanently understating the primary conversion metric. The links opt down to `tap`, so the
+// fetch starts on pointerdown instead; a click reuses that single request, so a real visitor is still
+// fetched once and counted once.
+//
+// Asserted at the network layer rather than by reading the attribute, because the attribute is only
+// the mechanism — what matters is that no request reaches the load.
+test('hovering a link to /waitlist does not prefetch it', async ({ page }) => {
+	const dataRequests: string[] = [];
+	page.on('request', (request) => {
+		if (request.url().includes('/waitlist/__data.json')) dataRequests.push(request.url());
+	});
+
+	await page.goto('/');
+	const cta = page
+		.getByRole('main')
+		.getByRole('link', { name: /waitlist/i })
+		.first();
+	await cta.hover();
+	// Kit's hover preload fires more or less immediately; give it well past that before concluding.
+	await page.waitForTimeout(1000);
+	expect(dataRequests).toEqual([]);
+
+	// …and the opt-out is `tap`, not `off`: the click must still work and still fetch exactly once.
+	await cta.click();
+	await expect(page).toHaveURL(/\/waitlist$/);
+	await expect(page.getByRole('main').locator('input[name="flowId"]')).toHaveValue(
+		/^[0-9a-f]{8}-/i
+	);
+	expect(dataRequests).toHaveLength(1);
+});
+
 // Drive a signup via the honeypot (accepted, not persisted → decoy token, no DB) and assert the page
 // advances IN-PLACE to the step-2 questions rather than the confirmation.
 async function advanceToStep2(main: Locator) {
