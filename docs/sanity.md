@@ -216,4 +216,5 @@ SANITY_VIEWER_TOKEN --env preview` (the preview Worker). No `wrangler.jsonc` cha
 Draft/preview (Presentation tool, stega, `useCdn:false` + `previewDrafts`) · a CI `schema.json` drift
 gate · pagination · category filter pages · trimming the inert `siteSettings` fields from the Studio
 schema (DAR-73's deferred half — see the table above; wiring them is deliberately **not** planned) ·
-`es` translation of the new chrome (mirrors `en`, `noindex`).
+`es` translation of the new chrome (untranslated today — `es.json` carries translated keys only and
+everything else falls back to `en`; `noindex`).

@@ -464,5 +464,6 @@ in `wrangler.jsonc`).
 Pagination for the submissions **and roster** lists (both capped at 200, newest-first); GitHub OAuth
 is configured in the CLI but not enabled in `auth.ts`; owner-vs-admin protection at the endpoint level
 (a promoted admin can still target an owner via the raw admin API) is out of scope — admins are
-trusted; see "User management". Sign-up UI copy (like all `es` strings) mirrors `en` untranslated
-(#18); email-change self-service in `/account` stays deferred (email is the sign-in + backfill key).
+trusted; see "User management". Sign-up UI copy is untranslated, like every other `es` string —
+`es.json` holds translated keys only, so it falls back to `en` (#18, DAR-53); email-change
+self-service in `/account` stays deferred (email is the sign-in + backfill key).
