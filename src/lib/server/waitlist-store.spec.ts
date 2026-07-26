@@ -7,8 +7,8 @@ import { waitlist } from './db/schema';
 import {
 	applyWaitlistStep,
 	upsertWaitlist,
-	STEP_WRITE_MAX,
-	STEP_WRITE_WINDOW_MS
+	WAITLIST_STEP_WRITE_MAX,
+	WAITLIST_STEP_WRITE_WINDOW_MS
 } from './waitlist-store';
 import type { CleanedWaitlist } from './waitlist';
 
@@ -326,7 +326,7 @@ describe('applyWaitlistStep step-write budget', () => {
 	const expireWindow = (id: string) =>
 		client.execute({
 			sql: 'UPDATE waitlist SET step_write_window_at = ? WHERE id = ?',
-			args: [Date.now() - STEP_WRITE_WINDOW_MS - 60_000, id]
+			args: [Date.now() - WAITLIST_STEP_WRITE_WINDOW_MS - 60_000, id]
 		});
 
 	it('opens a window on the first step write and spends one unit per write', async () => {
@@ -336,17 +336,28 @@ describe('applyWaitlistStep step-write budget', () => {
 		expect(first.stepWriteCount).toBe(1);
 		expect(first.stepWriteWindowAt).toBeInstanceOf(Date);
 
+		// Move the window start to a known moment still INSIDE the window before the second write.
+		// Without this the next assertion is intermittently blind: two consecutive writes can land in
+		// the same millisecond, and then "the start didn't move" is true of a SLIDING window too —
+		// measured, it misses the sliding mutation about one run in three. Pinning it half a window
+		// back makes the two behaviours differ by half an hour.
+		const pinned = Date.now() - WAITLIST_STEP_WRITE_WINDOW_MS / 2;
+		await client.execute({
+			sql: 'UPDATE waitlist SET step_write_window_at = ? WHERE id = ?',
+			args: [pinned, id]
+		});
+
 		await step2(id);
 		const [second] = await rows();
 		expect(second.stepWriteCount).toBe(2);
 		// Fixed window, not sliding: a write inside a live window must not push its start forward, or
 		// a steady drip would hold the window open indefinitely and the cap would never reset.
-		expect(second.stepWriteWindowAt).toEqual(first.stepWriteWindowAt);
+		expect(second.stepWriteWindowAt?.getTime()).toBe(pinned);
 	});
 
 	it('refuses the write past the cap, and refuses it the SAME way a missing row is refused', async () => {
 		const id = await insert();
-		for (let i = 0; i < STEP_WRITE_MAX; i++) expect((await step2(id)).updated).toBe(true);
+		for (let i = 0; i < WAITLIST_STEP_WRITE_MAX; i++) expect((await step2(id)).updated).toBe(true);
 
 		// Over budget. `updated: false` is the identical answer applyWaitlistStep gives for an id that
 		// matches no row (the decoy-token path above), which is what keeps the throttle from being a
@@ -356,25 +367,28 @@ describe('applyWaitlistStep step-write budget', () => {
 
 		const [row] = await rows();
 		expect(row.role).toBe('engineering-leader'); // the refused answer was not applied
-		expect(row.stepWriteCount).toBe(STEP_WRITE_MAX); // …and refusing did not spend budget either
+		expect(row.stepWriteCount).toBe(WAITLIST_STEP_WRITE_MAX); // …and refusing did not spend budget either
 	});
 
-	it('does not let a refused write extend its own lockout', async () => {
+	it('leaves the row byte-identical when it refuses — including the window start', async () => {
 		const id = await insert();
-		for (let i = 0; i < STEP_WRITE_MAX; i++) await step2(id);
+		for (let i = 0; i < WAITLIST_STEP_WRITE_MAX; i++) await step2(id);
 		const [before] = await rows();
 
-		await step2(id);
+		await step2(id, 'researcher');
 		const [after] = await rows();
-		// A refused write touches nothing — including the window start. Were it to stamp the window,
-		// hammering would keep resetting the clock and the row could never recover its budget.
-		expect(after.stepWriteWindowAt).toEqual(before.stepWriteWindowAt);
-		expect(after.updatedAt).toEqual(before.updatedAt);
+		// Whole-row equality, not a field or two: a refusal is a zero-row UPDATE, so NOTHING may move —
+		// not the answers, not qualification_step, not updated_at, and above all not step_write_window_at
+		// (were a refusal to stamp the window, hammering would keep resetting the clock and the row could
+		// never recover its budget). Comparing the whole row is also what makes this test able to fail:
+		// the window start alone can't detect a broken guard, since a PERMITTED in-window write leaves it
+		// untouched too.
+		expect(after).toEqual(before);
 	});
 
 	it('restores the budget once the window expires', async () => {
 		const id = await insert();
-		for (let i = 0; i < STEP_WRITE_MAX; i++) await step2(id);
+		for (let i = 0; i < WAITLIST_STEP_WRITE_MAX; i++) await step2(id);
 		expect((await step2(id)).updated).toBe(false);
 
 		await expireWindow(id);

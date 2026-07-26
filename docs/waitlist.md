@@ -408,7 +408,7 @@ change) — a cost one.
 
 The cap is **per row**, not per IP: a token addresses exactly one row, which makes the row the thing
 being abused, and keying on it doesn't punish everyone behind a shared NAT for one of them. It is
-**`STEP_WRITE_MAX` (20) step writes per row per hour**, and it lives as a **`WHERE` predicate on the
+**`WAITLIST_STEP_WRITE_MAX` (20) step writes per row per hour**, and it lives as a **`WHERE` predicate on the
 `UPDATE` `applyWaitlistStep` was already making**, with the counter in two columns on the row
 (`step_write_count`, `step_write_window_at`). Three properties follow, and each is why it's built
 that way:
@@ -420,8 +420,11 @@ that way:
   gets worse.
 - **No oracle, structurally.** The constraint was that a throttle must not leak token validity. There
   is no code path that could: the guard isn't a check that runs before the write and returns a
-  verdict, it **is** the write. A refused step, a decoy token, an expired token, a deleted row and a
-  success are one indistinguishable generic response.
+  verdict, it **is** the write. In the **response** — the only thing a caller sees — a refused step, a
+  decoy token, an expired token, a deleted row and a success are one generic success. (Timing still
+  separates "the DB was touched" from "it wasn't", since an invalid or decoy token short-circuits
+  before the round trip; that channel predates this and is accepted at the token layer, and the budget
+  adds nothing to it because a refusal takes the same round trip a write does.)
 - **Nothing is lost.** A refusal drops one enrichment, never a signup.
 
 The cap is deliberately far above a real ceiling (the whole flow is three writes) rather than snug
@@ -435,7 +438,18 @@ own lockout).
 **What this does not bound**, stated plainly: request _volume_ (a refused POST still costs a Worker
 round trip), and an attacker holding tokens for N rows gets N budgets. Neither is fixable at this
 layer — volumetric defense against a distributed or multi-token flood belongs at the edge (a
-Cloudflare rate-limiting rule on `/waitlist`), where rotating tokens can't sidestep it. The
+Cloudflare rate-limiting rule on `/waitlist`), where rotating tokens can't sidestep it.
+
+**Targeted exhaustion is accepted, not overlooked.** Since the token reaches any submitter of a known
+address, someone can spend a specific person's budget and silently block that person's own enrichment
+for the rest of the window. It costs the attacker a sustained 20 writes/hour aimed at one row, and
+the same token already lets them write that row's answers outright (the surface DAR-72 tracks), so
+denying an optional enrich is the lesser of what they can already do. A per-submitter budget isn't
+available — the point of these endpoints is that there's no identity behind them. Related trade-off:
+a refusal is **not observable** (no log, no metric), because telling "refused" apart from "row gone"
+would take the extra read the design exists to avoid.
+
+The
 **funnel-event insert on these same endpoints is a separate, still-unbounded vector** — `flow_id` is
 client-minted, so rotating it defeats the composite-key cap, and it doesn't even need a valid token;
 the fix is to sign the flow id (DAR-86), not to gate analytics on the step write, which would stop

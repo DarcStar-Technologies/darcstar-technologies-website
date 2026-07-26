@@ -74,19 +74,32 @@ const DB_NOW = sql`(cast(unixepoch('subsecond') * 1000 as integer))`;
 //   NO ORACLE, STRUCTURALLY. The ticket's constraint is that a throttle must not become a token
 //   validity oracle. There is no code path here that could leak one: the guard is not a check that
 //   runs before the write and returns a verdict, it IS the write, so nothing branches on it and
-//   nothing can be surfaced. A refused step is indistinguishable from a decoy token, an expired
-//   token, a deleted row and a successful write — all of them are the same generic success.
+//   nothing can be surfaced. In the RESPONSE — the only thing a caller sees — a refused step, a
+//   decoy token, an expired token, a deleted row and a successful write are one generic success.
+//   (Timing still separates "the DB was touched" from "it wasn't", since an invalid or decoy token
+//   short-circuits before the round trip. That channel predates this and is accepted at the token
+//   layer; the budget adds nothing to it, because a refusal takes the same round trip a write does.)
 //
 //   NOTHING IS LOST. A refusal drops one enrichment, never a signup: the row was persisted at step
 //   1 and these columns are optional extras.
 //
-// What this does NOT bound is request VOLUME — a refused POST still reaches the Worker and still
-// costs one round trip, and an attacker holding tokens for N rows gets N budgets. Neither is fixable
-// here: volumetric defense against a distributed or multi-token flood belongs at the edge (a
-// Cloudflare rate-limiting rule on /waitlist), where it can't be sidestepped by rotating tokens.
+// Two things this does NOT bound, both deliberate:
+//
+//   REQUEST VOLUME. A refused POST still reaches the Worker and still costs one round trip, and an
+//   attacker holding tokens for N rows gets N budgets. Not fixable here — volumetric defense against
+//   a distributed or multi-token flood belongs at the edge (a Cloudflare rate-limiting rule on
+//   /waitlist), where it can't be sidestepped by rotating tokens.
+//
+//   TARGETED EXHAUSTION. Because the token reaches any submitter of a known address, someone can
+//   spend a specific person's budget and silently block that person's own enrichment for the rest of
+//   the window. Accepted: it costs the attacker a sustained 20 writes/hour aimed at one row, and the
+//   same token already lets them write that row's qualification answers outright (the surface DAR-72
+//   tracks), so denying an optional enrich is strictly the lesser of what they can already do. A
+//   per-submitter budget isn't available — the whole point of these endpoints is that there is no
+//   identity behind them.
 
 /** Window length for the per-row step-write budget. */
-export const STEP_WRITE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+export const WAITLIST_STEP_WRITE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 /**
  * Step writes allowed per row per window.
@@ -98,11 +111,11 @@ export const STEP_WRITE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
  * no way to tell. A generous cap still turns "unbounded" into a fixed small number, which is the
  * entire ask; buying a tighter one with silent data loss would be a bad trade.
  */
-export const STEP_WRITE_MAX = 20;
+export const WAITLIST_STEP_WRITE_MAX = 20;
 
 // Start of the current window, on the DB clock. Both the predicate and the stamp derive from this
 // one expression, so the comparison and the value it writes can never come from different clocks.
-const STEP_WINDOW_START = sql`(${DB_NOW} - ${STEP_WRITE_WINDOW_MS})`;
+const STEP_WINDOW_START = sql`(${DB_NOW} - ${WAITLIST_STEP_WRITE_WINDOW_MS})`;
 
 // True when the row's window is still live. Null (never step-written, or a pre-DAR-68 row) is false,
 // so the else-branch of each CASE below opens a fresh window — no backfill needed.
@@ -285,9 +298,9 @@ export async function applyWaitlistStep(
 			and(
 				eq(waitlist.id, id),
 				// The budget check (DAR-68), as a predicate rather than a prior query — see the block
-				// comment above STEP_WRITE_MAX. Expired or never-opened window ⇒ allowed (and the SET
+				// comment above WAITLIST_STEP_WRITE_MAX. Expired or never-opened window ⇒ allowed (and the SET
 				// above opens a fresh one); otherwise allowed only while the count is under the cap.
-				sql`(not ${IN_WINDOW} or coalesce(step_write_count, 0) < ${STEP_WRITE_MAX})`
+				sql`(not ${IN_WINDOW} or coalesce(step_write_count, 0) < ${WAITLIST_STEP_WRITE_MAX})`
 			)
 		)
 		.returning({ id: waitlist.id });
