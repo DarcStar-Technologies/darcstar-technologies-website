@@ -1,6 +1,7 @@
 import { expect, test, type Locator } from '@playwright/test';
 
-// /waitlist (DAR-60 step 1 · DAR-61 step 2 · DAR-62 step 3 · DAR-63 step 4) through the Cloudflare
+// /waitlist (DAR-60 step 1 · DAR-61 step 2 · DAR-62 step 3 · DAR-63 step 4 · DAR-64 the
+// confirmation and its server-chosen CTA) through the Cloudflare
 // worker build. Hermetic against the placeholder DB (DATABASE_URL=…invalid in CI): step 1's honeypot
 // short-circuit accepts-but-does-not-persist and hands back a decoy continuation token (pure crypto,
 // no DB) — that's what lets these specs reach and drive the later steps without a real database. The
@@ -57,6 +58,27 @@ async function chooseOption(main: Locator, field: RegExp, option: RegExp | strin
 	await main.getByRole('option', { name: option }).click();
 }
 
+// The terminal confirmation (DAR-64). Its single CTA is chosen SERVER-side from the flow state, so
+// asserting which one each path lands on is what pins the whole routing chain end to end — including
+// the signed claim that carries the step-2 decisions through steps 3 and 4.
+//
+// Every variant is a real <a href>: that IS the no-JS contract (the pilot one is a /contact link that
+// JS upgrades into the site-wide modal), so an href assertion holds with or without hydration.
+async function expectConfirmation(main: Locator, cta: string, href: RegExp) {
+	await expect(main.getByRole('heading', { name: "You're on the waitlist" })).toBeVisible();
+	await expect(main.getByRole('link', { name: cta })).toHaveAttribute('href', href);
+
+	// Exactly ONE call to action — a second link would defeat the point of choosing one.
+	await expect(main.getByRole('link')).toHaveCount(1);
+
+	// Nothing the visitor answered is echoed back. The step-3 value/budget answers are internal-only
+	// (DAR-58), so a currency figure or a "budget" label on this screen is a leak, not a cosmetic bug.
+	await expect(main.getByText(/budget/i)).toHaveCount(0);
+	await expect(main.getByText(/\$/)).toHaveCount(0);
+	await expect(main.getByText(/economic impact/i)).toHaveCount(0);
+	await expect(main.getByText(/deployment scale/i)).toHaveCount(0);
+}
+
 // Signup → step 2 → answer with a commercial role AND a near-term timeline → step 3. The role is what
 // routes Continue into step 3; the timeline is what the (signed) step-4 branch will be chosen from
 // once step 3 is done — see waitlist-flow.ts.
@@ -100,8 +122,12 @@ test('signup advances to the step-2 questions, and "Skip for now" reaches the co
 	// Skip persists nothing (no DB) and lands on the terminal confirmation, inline — no navigation to
 	// the raw remote action, and no duplicate-attach / other runtime error. Skip means "stop asking
 	// me things", so it terminates instead of forking to step 4.
+	//
+	// Skipping step 2 leaves us knowing nothing about them, so the CTA is the least-committal one
+	// (DAR-64's "general signup"). Note the selects were never touched here — but a skip AFTER
+	// answering would land in the same place, because a skip persists nothing either way.
 	await main.getByRole('button', { name: 'Skip for now' }).click();
-	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
+	await expectConfirmation(main, 'Return to DarcStar', /\/$/);
 	await expect(page).toHaveURL(/\/waitlist$/);
 	expect(errors).toEqual([]);
 });
@@ -128,8 +154,10 @@ test('"Continue" with no answers selected forks to branch B and finishes', async
 	await expect(main.getByText('Realistic budget')).toHaveCount(0);
 	await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toHaveCount(0);
 
+	// Nothing was classifiable, so the confirmation offers the least-committal CTA — not the evidence
+	// or publications link, and certainly not a conversation.
 	await main.getByRole('button', { name: 'Continue' }).click();
-	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
+	await expectConfirmation(main, 'Return to DarcStar', /\/$/);
 	await expect(page).toHaveURL(/\/waitlist$/);
 });
 
@@ -155,7 +183,7 @@ test('a commercial use case continues from step 2 into the step-3 questions', as
 	// SIGNED step-4 branch: step 3 doesn't re-ask the timeline the fork reads, so step 2's decision is
 	// carried here rather than re-derived (and a MAC, not trust, is what makes the hidden field safe).
 	await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
-	await expect(main.locator('input[name="branchClaim"]')).toHaveValue(/^b1\./);
+	await expect(main.locator('input[name="flowClaim"]')).toHaveValue(/^f1\./);
 
 	// The ≤3 cap is an enhancement: once three are ticked the rest disable, and unticking frees a slot.
 	// (The server truncates regardless — see the step-3 validator.)
@@ -187,7 +215,11 @@ test('"Skip for now" on step 3 reaches the confirmation', async ({ page }) => {
 	// doesn't fall through to step 4 either.
 	await main.getByRole('checkbox', { name: 'Production references' }).check();
 	await main.getByRole('button', { name: 'Skip for now' }).click();
-	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
+
+	// DAR-64's "technical evaluator": skipping the money questions doesn't unlearn the commercial role
+	// given at step 2, so the evidence CTA still stands. That audience survived a step the form never
+	// re-asks it in — it rode along inside the signed flow claim.
+	await expectConfirmation(main, 'View the GIDE evidence overview', /\/evidence$/);
 	await expect(page).toHaveURL(/\/waitlist$/);
 });
 
@@ -216,7 +248,10 @@ test('a non-commercial role routes past step 3 into branch B', async ({ page }) 
 	await main.getByRole('checkbox', { name: 'Technical reports' }).check();
 	await main.getByRole('checkbox', { name: 'Open-source releases' }).check();
 	await main.getByRole('button', { name: 'Continue' }).click();
-	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
+
+	// A researcher gets publications — branch B can't reach the pilot CTA at all, because it never
+	// asks the question that earns it.
+	await expectConfirmation(main, 'Explore technical publications', /\/research$/);
 });
 
 // DAR-63 branch A: the contact block is revealed only by a POSITIVE pilot answer, and the phone field
@@ -233,10 +268,13 @@ test('step 4A reveals the contact block only while the pilot answer is positive'
 
 	await advanceToStep4A(main);
 
-	// The token survived TWO echoes to get here (step 2 → step 3 → step 4). Worth asserting: the
-	// enrich is best-effort and silent, so a broken chain would lose every step-4 answer without a
-	// single visible symptom.
+	// Both signed values survived TWO echoes to get here (step 2 → step 3 → step 4). Worth asserting
+	// directly: the enrich is best-effort and silent, so a broken token chain would lose every step-4
+	// answer without a visible symptom — and a broken CLAIM chain is invisible on THIS path in
+	// particular, because a positive pilot answer earns the `pilot` CTA whether or not the audience
+	// arrived. (The A-negative test below is where the audience itself is proven.)
 	await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
+	await expect(main.locator('input[name="flowClaim"]')).toHaveValue(/^f1\./);
 
 	// Unanswered: only the one question.
 	await expect(main.getByText('Evaluation interest')).toBeVisible();
@@ -258,7 +296,19 @@ test('step 4A reveals the contact block only while the pilot answer is positive'
 	await main.getByRole('checkbox', { name: /contact me directly/ }).check();
 	await main.getByLabel(/Deployment scale/).fill('Two inspection cells, about 40 units.');
 	await main.getByRole('button', { name: 'Continue' }).click();
-	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
+
+	// A positive pilot answer is the only thing that earns the conversation CTA (DAR-64's "strong
+	// pilot prospect"). It renders as a /contact link so it works without JS.
+	await expectConfirmation(main, 'Request an evaluation conversation', /\/contact$/);
+	// …and the free text they just typed is internal-only — it must not come back at them.
+	await expect(main.getByText('Two inspection cells')).toHaveCount(0);
+
+	// With JS the link opens the site-wide contact modal in place instead of navigating away, so the
+	// lead doesn't lose the confirmation. (The dialog lives outside <main>, hence the page-level
+	// locator.)
+	await main.getByRole('link', { name: 'Request an evaluation conversation' }).click();
+	await expect(page.getByRole('dialog')).toBeVisible();
+	await expect(page).toHaveURL(/\/waitlist$/);
 	expect(errors).toEqual([]);
 });
 
@@ -280,7 +330,10 @@ test('step 4A hides the contact block again for a negative answer', async ({ pag
 	await expect(main.getByLabel(/Phone/)).toHaveCount(0);
 
 	await main.getByRole('button', { name: 'Continue' }).click();
-	await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
+
+	// The A-negative CTA: they're still a commercial evaluator (that came from step 2), but declining
+	// a pilot must not be answered with an invitation to talk about one.
+	await expectConfirmation(main, 'View the GIDE evidence overview', /\/evidence$/);
 });
 
 // Without JavaScript every step must still submit: each remote form degrades to a native per-step
@@ -299,7 +352,7 @@ test.describe('without JavaScript', () => {
 	});
 
 	// The whole chain, unhydrated: each step is a full-page POST that re-renders the next one. This is
-	// what the response's `token` echo (and step 2's signed branch claim) are FOR — after a native POST
+	// what the response's `token` echo (and step 2's signed flow claim) are FOR — after a native POST
 	// the previous step's result is gone, so without them step 4 would render with no authorization to
 	// carry and no idea which branch it is. Runs on the honeypot's decoy token like the hydrated specs,
 	// so no real row is involved. GlassSelect serves its native <select> here (never hydrated), which
@@ -329,7 +382,7 @@ test.describe('without JavaScript', () => {
 			main.getByRole('heading', { level: 1, name: 'Help us understand the opportunity' })
 		).toBeVisible();
 		await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
-		await expect(main.locator('input[name="branchClaim"]')).toHaveValue(/^b1\./);
+		await expect(main.locator('input[name="flowClaim"]')).toHaveValue(/^f1\./);
 
 		// Step 3 answers submit natively too (the checkbox group needs no JS at all).
 		await main.getByLabel(/Realistic budget/).selectOption('25k-100k');
@@ -341,7 +394,11 @@ test.describe('without JavaScript', () => {
 		await expect(
 			main.getByRole('heading', { level: 1, name: 'Would you consider an evaluation?' })
 		).toBeVisible();
+		// Both signed values made it through THREE native POSTs. Asserting the claim explicitly matters
+		// most here: this chain ends on a positive pilot answer, which earns the `pilot` CTA on its own,
+		// so a claim that silently stopped being carried would leave no trace in the final assertion.
 		await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
+		await expect(main.locator('input[name="flowClaim"]')).toHaveValue(/^f1\./);
 		await expect(main.getByLabel(/Deployment scale/)).toBeVisible();
 		await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toBeVisible();
 		await expect(main.getByLabel(/Phone/)).toBeVisible();
@@ -350,6 +407,10 @@ test.describe('without JavaScript', () => {
 		await main.getByRole('checkbox', { name: /contact me directly/ }).check();
 		await main.getByLabel(/Preferred contact method/).selectOption('phone-video');
 		await main.getByRole('button', { name: 'Continue' }).click();
-		await expect(main.getByRole('heading', { name: "You're on the list" })).toBeVisible();
+
+		// The confirmation personalizes without JS too: its CTA is a server decision carried in the
+		// response, and the pilot variant degrades to exactly what it is — a link to /contact. The
+		// audience behind it survived two native POSTs inside the signed flow claim.
+		await expectConfirmation(main, 'Request an evaluation conversation', /\/contact$/);
 	});
 });

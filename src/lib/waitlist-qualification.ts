@@ -147,3 +147,12 @@ export type WaitlistResearchPreference = (typeof WAITLIST_RESEARCH_PREFERENCES)[
 
 /** Step 4A free-text ceiling — "approximate system type and scale", not a design document. */
 export const WAITLIST_DEPLOYMENT_SCALE_MAX = 500;
+
+/**
+ * The confirmation screen's one call to action (DAR-64). A vocabulary, not a decision: WHICH of these
+ * a submitter gets is chosen server-side by `confirmationCtaFor` ($lib/server/waitlist-flow.ts) from
+ * the flow state, and arrives at the page as a resolved value. It lives out here for the same reason
+ * every other slug list does — the component that renders it can't import from `$lib/server`.
+ */
+export const WAITLIST_CTAS = ['pilot', 'evidence', 'research', 'home'] as const;
+export type WaitlistCta = (typeof WAITLIST_CTAS)[number];

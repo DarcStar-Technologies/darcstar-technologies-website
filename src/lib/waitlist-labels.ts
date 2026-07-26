@@ -24,7 +24,8 @@ import type {
 	WaitlistEvidence,
 	WaitlistPilotInterest,
 	WaitlistContactMethod,
-	WaitlistResearchPreference
+	WaitlistResearchPreference,
+	WaitlistCta
 } from '$lib/waitlist-qualification';
 import type { WaitlistRole } from '$lib/waitlist-roles';
 import type { WaitlistCompanySize } from '$lib/waitlist-company-sizes';
@@ -167,6 +168,17 @@ export const waitlistResearchPreferenceLabel: Record<WaitlistResearchPreference,
 	'product-demos': m.waitlist_prefs_demos,
 	'open-source-releases': m.waitlist_prefs_open_source,
 	'company-announcements': m.waitlist_prefs_announcements
+};
+
+// --- Confirmation ------------------------------------------------------------------------------
+
+/** The label on the confirmation's single CTA (DAR-64). Which one a submitter sees is a SERVER
+ *  decision (`confirmationCtaFor`); `WaitlistConfirmation.svelte` owns where each one points. */
+export const waitlistCtaLabel: Record<WaitlistCta, () => string> = {
+	pilot: m.waitlist_cta_pilot,
+	evidence: m.waitlist_cta_evidence,
+	research: m.waitlist_cta_research,
+	home: m.waitlist_cta_home
 };
 
 // --- v1 (retired from the form, still rendered by /admin/waitlist for historical rows) ----------
