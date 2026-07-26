@@ -126,11 +126,17 @@ describe('mintActivationLink', () => {
 
 		const before = Date.now();
 		const link = await mintActivationLink(auth, userId);
+		const after = Date.now();
 		const ttlMs = link.expiresAt.getTime() - before;
 
 		expect(ACTIVATION_TOKEN_TTL_SECONDS).toBe(604_800);
-		expect(ttlMs).toBeGreaterThan(ACTIVATION_TOKEN_TTL_SECONDS * 1000 - 5_000);
-		expect(ttlMs).toBeLessThanOrEqual(ACTIVATION_TOKEN_TTL_SECONDS * 1000);
+		// The mint stamps `its own Date.now() + TTL`, and that clock read happens somewhere between
+		// `before` and `after`. So the lifetime measured from `before` is TTL plus however long the mint
+		// took: never less, and never more than the elapsed time. Bounding it by the measured elapsed
+		// window is both tighter than a fixed slack and correct — the original `<= TTL` required the
+		// mint to complete inside one millisecond, which it usually but not always does (~1 run in 100).
+		expect(ttlMs).toBeGreaterThanOrEqual(ACTIVATION_TOKEN_TTL_SECONDS * 1000);
+		expect(ttlMs).toBeLessThanOrEqual(ACTIVATION_TOKEN_TTL_SECONDS * 1000 + (after - before));
 		// The two are deliberately different numbers: an unrequested invitation gets a week, a reset the
 		// visitor just asked for keeps its hour. If someone collapses them back into one constant, this
 		// is the assertion that should stop them.
