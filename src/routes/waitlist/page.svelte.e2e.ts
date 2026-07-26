@@ -268,10 +268,13 @@ test('step 4A reveals the contact block only while the pilot answer is positive'
 
 	await advanceToStep4A(main);
 
-	// The token survived TWO echoes to get here (step 2 → step 3 → step 4). Worth asserting: the
-	// enrich is best-effort and silent, so a broken chain would lose every step-4 answer without a
-	// single visible symptom.
+	// Both signed values survived TWO echoes to get here (step 2 → step 3 → step 4). Worth asserting
+	// directly: the enrich is best-effort and silent, so a broken token chain would lose every step-4
+	// answer without a visible symptom — and a broken CLAIM chain is invisible on THIS path in
+	// particular, because a positive pilot answer earns the `pilot` CTA whether or not the audience
+	// arrived. (The A-negative test below is where the audience itself is proven.)
 	await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
+	await expect(main.locator('input[name="flowClaim"]')).toHaveValue(/^f1\./);
 
 	// Unanswered: only the one question.
 	await expect(main.getByText('Evaluation interest')).toBeVisible();
@@ -391,7 +394,11 @@ test.describe('without JavaScript', () => {
 		await expect(
 			main.getByRole('heading', { level: 1, name: 'Would you consider an evaluation?' })
 		).toBeVisible();
+		// Both signed values made it through THREE native POSTs. Asserting the claim explicitly matters
+		// most here: this chain ends on a positive pilot answer, which earns the `pilot` CTA on its own,
+		// so a claim that silently stopped being carried would leave no trace in the final assertion.
 		await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
+		await expect(main.locator('input[name="flowClaim"]')).toHaveValue(/^f1\./);
 		await expect(main.getByLabel(/Deployment scale/)).toBeVisible();
 		await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toBeVisible();
 		await expect(main.getByLabel(/Phone/)).toBeVisible();

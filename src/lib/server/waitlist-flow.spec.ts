@@ -3,6 +3,7 @@ import {
 	canonicalizeWaitlistRole,
 	isCommercialUseCase,
 	audienceFor,
+	WAITLIST_AUDIENCES,
 	confirmationCtaFor,
 	nextStepAfterStep2,
 	nextStepAfterStep3,
@@ -16,7 +17,8 @@ import {
 	WAITLIST_V2_ROLES,
 	WAITLIST_APPLICATIONS,
 	WAITLIST_TIMELINES,
-	WAITLIST_PILOT_INTERESTS
+	WAITLIST_PILOT_INTERESTS,
+	WAITLIST_CTAS
 } from '$lib/waitlist-qualification';
 
 describe('canonicalizeWaitlistRole', () => {
@@ -189,6 +191,22 @@ describe('confirmationCtaFor', () => {
 			expect(confirmationCtaFor({ audience, pilotInterest }), `${audience}/${pilotInterest}`).toBe(
 				positive ? 'pilot' : WITHOUT_PILOT[audience]
 			);
+		}
+	});
+
+	// The function's RANGE, not just its mapping: whatever it returns must be a slug the label map and
+	// the component's href map actually cover. Both of those are `Record<WaitlistCta, …>`, so a new
+	// variant is a type error there — this is the other half, catching a return value that drifts out
+	// of the vocabulary those Records are keyed by.
+	it('only ever returns a value from the published CTA vocabulary', () => {
+		const audiences = [...WAITLIST_AUDIENCES, null];
+		const pilots = [...WAITLIST_PILOT_INTERESTS, null, undefined, 'made-up'];
+		for (const audience of audiences) {
+			for (const pilotInterest of pilots) {
+				expect(WAITLIST_CTAS, `${audience}/${pilotInterest}`).toContain(
+					confirmationCtaFor({ audience, pilotInterest })
+				);
+			}
 		}
 	});
 
