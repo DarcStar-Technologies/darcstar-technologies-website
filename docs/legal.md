@@ -11,8 +11,9 @@ footer legal bar (`Footer.svelte`).
   sections rendered through the shared `LegalSection.svelte`. The contact block is the
   shared `ContactLinks.svelte` (also used by `/about`), fed from `src/lib/site.ts`.
 - **Copy**: all Paraglide messages — `privacy_*` and `terms_*` prefixes in
-  `messages/en.json` (`es.json` mirrors en until it's really translated). The trade
-  name and domain are necessarily written into the prose too, so a rename/domain move
+  `messages/en.json` (`es.json` holds only translated keys — none yet, so `/es` falls
+  back to the English copy; see [i18n](i18n.md)). The trade name and domain are
+  necessarily written into the prose too, so a rename/domain move
   must sweep the `privacy_*`/`terms_*` messages, not just `site.ts`.
 - **Dates**: `src/lib/legal.ts` (`PRIVACY_UPDATED` / `TERMS_UPDATED`, ISO) → the shared
   `legal_updated` message's `{date}` param, formatted per-locale via `formatDate` — one
