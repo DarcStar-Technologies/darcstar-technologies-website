@@ -2,11 +2,11 @@
 
 Better Auth gates an **internal admin area** at `/admin` (#69) — contact-submission triage plus
 operator-roster management (`/admin/users`) — **and** an end-user portal at `/account` (#96).
-Email/password sign-in exists, and **public sign-up is open but gated** (#96 PR 2, reversing the #48
-lockdown): a `/signup` form behind **Cloudflare Turnstile** that creates an **unverified** account,
-which `requireEmailVerification` keeps out of sign-in until the email is confirmed. The FIRST
-operator is still made by the provisioning script (public sign-up only ever mints a least-privileged
-`user`); further operators come from the roster UI. This doc maps what's wired and why.
+Email/password sign-in exists, and **accounts are invite-only** (DAR-67, re-closing what #96 PR 2 had
+opened): `disableSignUp` rejects `POST /sign-up/email` at the router, `/signup` is now a notice
+pointing at the waitlist, and an account comes into existence in exactly **two** ways — staff invite a
+prospect from `/admin/waitlist`, or an admin creates one on the roster (`/admin/users`). The FIRST
+operator is still made by the provisioning script. This doc maps what's wired and why.
 
 ## What's wired
 
@@ -18,20 +18,27 @@ operator is still made by the provisioning script (public sign-up only ever mint
   hosts.
 - **`src/lib/server/auth-options.ts`** — the env-free options shared by `auth.ts`, the CLI config,
   and unit tests (so they can't drift and tests import them without `$app/server`/the DB client):
-  - `emailAndPassword` — `enabled`, **`disableSignUp: false`** + **`requireEmailVerification: true`**
-    (#96 PR 2; both behavioral, so shared with the CLI config without adding a table).
+  - `emailAndPassword` — `enabled`, **`disableSignUp: true`** (DAR-67 — the invite-only boundary) +
+    **`requireEmailVerification: true`** (#96 PR 2; both behavioral, so shared with the CLI config
+    without adding a table). Also exports the two token lifetimes:
+    **`RESET_PASSWORD_TOKEN_TTL_SECONDS`** (3600 — better-auth's `resetPasswordTokenExpiresIn`, and the
+    "expires in one hour" copy in the reset email) and **`ACTIVATION_TOKEN_TTL_SECONDS`** (604800 — a
+    week, for DAR-67's invitations). Two numbers, not one: see "Invite-only onboarding" for why, and why
+    they can be different at all.
   - `rateLimit` — `{ enabled: true, storage: 'database', customRules: { '/sign-up/email': { window:
 3600, max: 3 }, '/send-verification-email': { window: 3600, max: 5 } } }` (#69, #96, #115). DB-backed
     so counters survive Cloudflare isolate churn; adds the **`rate_limit`** table (schema-affecting →
-    mirrored in the CLI config). The `customRules` caps tighten the reopened sign-up (3/hour/IP) and
+    mirrored in the CLI config). The `customRules` cap sign-up (3/hour/IP — kept after DAR-67 closed
+    the endpoint, since the limiter runs first and so bounds probing of a permanently-400ing route) and
     the #115 resend-verification trigger (5/hour/IP — a touch looser, since resending is a legitimate
     repeat) past the defaults. Only requests through Better Auth's **router** are limited, which is why
-    the login/signup actions forward to `auth.handler()` rather than calling `auth.api.*` directly.
+    the login action forwards to `auth.handler()` rather than calling `auth.api.*` directly — and
+    conversely why DAR-67's invite calls `auth.api.*`, to stay OFF the public reset limiter.
   - `emailVerification` (env-bound → in `auth.ts`, not `auth-options.ts`) — `sendOnSignUp`,
     `autoSignInAfterVerification`, `expiresIn: 3600`, a `sendVerificationEmail` that Resends the link
     (`verification-email.ts`), and an `afterEmailVerification` that runs the ownership backfill
-    (`linkSubmissionsToUser`) once ownership is proven. Plus the **`captcha`** plugin
-    (`cloudflare-turnstile`, `endpoints: ['/sign-up/email']`) — see "Public sign-up" below.
+    (`linkSubmissionsToUser`) once ownership is proven. Also `emailAndPassword.onPasswordReset` —
+    DAR-67's activation stamp (see below). The **`captcha`** plugin was removed with public sign-up.
   - `session` — `{ cookieCache: { enabled: true, maxAge: 300 } }`. Better Auth writes a **signed**
     (HMAC) snapshot of the session+user into a short-lived `session_data` cookie; within `maxAge`
     seconds `getSession` serves from that cookie (signature verify only) instead of querying the DB.
@@ -62,7 +69,7 @@ operator is still made by the provisioning script (public sign-up only ever mint
   (a standalone config the Better Auth CLI can load without SvelteKit's virtual modules). Keep
   `auth-cli.ts` in sync with `auth.ts` for **schema-affecting** options only (adapter provider,
   methods, table-adding plugins, `rateLimit.storage: 'database'`) — `disableSignUp`,
-  `requireEmailVerification`, `emailVerification`, and the `captcha` plugin are all behavioral (the
+  `requireEmailVerification`, `emailVerification` and `onPasswordReset` are all behavioral (the
   `verification` table + `user.emailVerified` already exist), so they stay out of the CLI config. The
   `admin` plugin is schema-affecting (adds
   `user.role/banned/ban_reason/ban_expires` + `session.impersonated_by`), so a **bare `admin()`**
@@ -73,82 +80,152 @@ operator is still made by the provisioning script (public sign-up only ever mint
 - **Secrets** — `BETTER_AUTH_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` via
   `wrangler secret` + local `.env`. See [deployment.md](deployment.md).
 
-## Public sign-up, verification & Turnstile (#96 PR 2)
+## Invite-only onboarding (DAR-67)
 
-Originally (#48) public sign-up was closed (`disableSignUp: true`) because `POST /api/auth/sign-up/email`
-was reachable with no UI, no rate limiting, and nothing consuming the session — anyone could create
-rows in the production `user` table. That lockdown is now **reopened, scoped** behind three controls,
-so the sign-up surface can't be abused:
+Public sign-up has now been closed twice. #48 closed it because `POST /api/auth/sign-up/email` was
+reachable with no UI, no rate limiting and nothing consuming the session; #96 PR 2 reopened it behind
+Turnstile + email verification + a 3/hour cap; **DAR-67 closes it again**, this time as a product
+decision rather than a security one — early access is something we hand out, not something a stranger
+takes. The mechanism is different too: the door is shut and there is a **staff-operated side entrance**.
 
-1. **Cloudflare Turnstile** on `POST /sign-up/email` — the `captcha` plugin (`auth.ts`, provider
-   `cloudflare-turnstile`) validates the challenge in its `onRequest`, before any DB write. `endpoints`
-   is pinned to **`['/sign-up/email']`**: the plugin's defaults also guard `/sign-in/email` +
-   `/request-password-reset`, which have no widget and would break the no-JS `/login`. Registered only
-   when `TURNSTILE_SECRET_KEY` is set (dev without keys signs up challenge-free — graceful, like the
-   Resend skip). The `/signup` action forwards the widget token as the `x-captcha-response` header.
-   **Local `pnpm preview` is always captcha-ACTIVE**: it bakes Cloudflare's always-pass **test**
-   keypair via `--var` (DAR-45 — a real sitekey rejects localhost), so a preview POST to
-   `/sign-up/email` without a token now 400s, and real-key siteverify behavior can't be observed
-   through local preview — only on the deployed preview/prod Workers, whose secrets are real.
-2. **`requireEmailVerification: true`** — a sign-up creates an **unverified** account and does NOT sign
-   the visitor in (no session token); Better Auth rejects sign-**in** for any unverified user with
-   **403 `EMAIL_NOT_VERIFIED`** until they click the emailed link. On verify, `autoSignInAfterVerification`
-   drops them into `/account`, and `afterEmailVerification` runs the ownership backfill.
-3. **Tighter rate limit** — `rateLimit.customRules['/sign-up/email'] = { window: 3600, max: 3 }` (and
-   `['/send-verification-email'] = { window: 3600, max: 5 }` for the #115 resend affordance below).
+**The boundary is `emailAndPassword.disableSignUp: true`** (`auth-options.ts`). Better Auth rejects
+the endpoint with `EMAIL_PASSWORD_SIGN_UP_DISABLED` before any DB write (`api/routes/sign-up.mjs`).
+Hiding the page is cosmetic; this line is the gate. The admin plugin's `create-user` is a **different
+endpoint that never consults the flag**, which is what keeps both staff paths working — pinned by
+`auth.spec.ts`, which drives the shipped config and asserts the refusal, the surviving staff path, and
+a control with the flag flipped off.
 
-**Staff-lockout guard (load-bearing):** `requireEmailVerification` blocks sign-in for **every**
-`email_verified = 0` user, and all pre-#96 staff were created unverified. Three things keep the roster
-in: (a) migration **`drizzle/0003_verify_existing_users`** flips existing rows to verified — it runs on
-prod through the deploy-prod migrate-**before**-deploy step, so staff are verified before this code goes
-live; (b) roster `createUser` now passes `data: { emailVerified: true }`; (c) `scripts/create-admin.ts`
-sets `emailVerified: true`. Verify no staff account is left unverified before merge → deploy. **Caveat:**
-`db:push` (the dev-DB apply path) does NOT run `drizzle/*.sql`, so a dev DB that already holds unverified
-staff needs the backfill run once by hand (`pnpm db:migrate`, or a one-off `UPDATE user SET
-email_verified = 1`) — otherwise local staff sign-in 403s. Prod is covered by the deploy-prod migrate.
+**`/signup` survives as a notice.** Deleting the route would 404 every bookmark, emailed link and
+stale search result — exactly the audience that needs to be told the door moved rather than that it
+vanished. It has **no actions at all** (asserted by `auth-named-actions.spec.ts`, so a future re-open
+has to make the default-vs-named decision deliberately) and links to `/waitlist`. The three
+"need an account?" links — the `/login` page, the navbar `LoginDialog`, and the navbar itself
+("Request access") — now point **straight at `/waitlist`** rather than at the notice, since a notice
+in the middle is one click of nothing. All of them carry `data-sveltekit-preload-data="tap"`: they are
+links to `/waitlist`, whose load records the DAR-66 funnel's `waitlist_viewed`, and the navbar one is
+on every page (see docs/waitlist.md).
 
-An unverified account that later returns to `/login` isn't a dead-end: the sign-in 403s but
-`emailVerification.sendOnSignIn` re-mails a fresh link, and the `/login` action surfaces a distinct
-"verify your email" message (safe — the 403 fires only after the password check passes, so a wrong
-password still returns the generic error and can't enumerate accounts). That "verify your email" state
-also shows an explicit **"Resend verification email"** control (`LoginForm.svelte`, shared by the
-`/login` page and the navbar `LoginDialog`) → a sibling `resend` action (`login/+page.server.ts`)
-forwarding to the same `/send-verification-email` endpoint described below, so a user who never got the
-auto-remailed link has a visible way to request another without re-entering their password. It works
-no-JS on the `/login` page; in the JS dialog the enhance callback keeps the result local (no
-`applyAction`) so the dialog stays open and the sign-in state is untouched.
+**Turnstile is gone.** The `captcha` plugin was scoped to `['/sign-up/email']` and that endpoint now
+rejects everything, so it guarded nothing — and keeping it would have been worse than dead weight,
+because its `onRequest` runs _before_ the sign-up check, so a probe would have come back "solve the
+captcha" instead of "sign-up is disabled". What was **kept** so re-opening is a one-line plugin
+re-registration rather than an infrastructure change: `TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY` in
+the env, the `challenges.cloudflare.com` CSP allowlist in `vite.config.ts`, and the preview's
+always-pass test keys. `security-headers.e2e.ts` lost only its `/signup` **widget-ready hook** (there
+is no widget to wait for); the origin stays covered by that suite's synthetic probes.
 
-**Resend from the "check your email" panel (#115).** The `/login` recovery above needs the password.
-The other dead-end has none: an unverified account that signs up **again** hits better-auth's
-anti-enumeration path — a generic "check your email" that sends **no** mail (the duplicate never
-re-triggers a send) — and still can't sign in. So the `form?.ok` panel offers a **"Resend
-verification email"** button (`signup/+page.svelte`) posting to a `resend` action
-(`signup/+page.server.ts`) that forwards to **`POST /api/auth/send-verification-email`**. That
-endpoint is **already non-enumerating**: a 500 ms constant-time floor and an identical `{ status:
-true }` whether the address is unverified / already-verified / absent — it mails **only** an existing
-unverified account (better-auth `email-verification.mjs`). The action keeps the client outcome uniform
-to match (any non-429 → the same neutral "if it needs verifying, a link is on its way" confirmation;
-429 → "too many attempts"), and always returns `ok: true` so the panel stays put. It's **outside** the
-captcha scope (`endpoints: ['/sign-up/email']`), so **no widget/token is needed — resend works no-JS**
-(unlike sign-up itself), rate-limited at 5/hour/IP. Pinned by `auth.spec.ts` (identical response for
-absent/unverified/verified; a mail fires only for the real unverified account).
+### The invite (staff → prospect)
 
-The routes mirror `/login`: `/signup` (`src/routes/signup/`) is a form action forwarding a clean
-sub-request to `getAuth().handler()` (so it rides the rate limiter + captcha), showing a **"check your
-email"** panel on success (duplicate emails return the same generic 200 — better-auth genericizes them
-under `requireEmailVerification`, so the form can't enumerate accounts). **Sign-up requires JS** — the
-Turnstile widget (rendered via an `{@attach}`, the repo's DOM pattern) has no no-JS path; this is the one
-accepted deviation from the no-JS `/login`/`/contact`.
+An `invite` form action on `/admin/waitlist`, gated on **`isStaff`** like the rest of the area
+(operators too — the account it creates is always the least-privileged `user`, so there is no
+escalation to reach through it). No JS required; two-step `<details>` confirm, same as delete.
 
-Hermetic unit test (`src/lib/server/auth.spec.ts`, server project): it feeds the shared
-`emailAndPassword` config (`auth-options.ts`) to a throwaway in-memory instance and asserts sign-up now
-succeeds (unverified, no token) **and** that unverified sign-in is rejected, with a control (verification
-off) proving `requireEmailVerification` is what blocks it. The email builder is unit-tested
-(`verification-email.spec.ts`); anon `/signup` renders is an e2e (`signup/page.svelte.e2e.ts`). **Not an
-endpoint e2e:** Better Auth's `isAuthPath()` drops any request whose origin ≠ `ORIGIN`, and the preview
-serves on `localhost:4173`, so `/api/auth/*` 404s there before any auth logic runs. **Turnstile keys** —
-create a widget in the Cloudflare dashboard for darcstar.tech (public site key + secret); set
-`TURNSTILE_SECRET_KEY` via `wrangler secret put` (+ `--env preview`) and `TURNSTILE_SITE_KEY` per env.
+1. **Find or create the account.** `findAccountByEmail` (`waitlist-invite.ts`) queries the `user`
+   table directly rather than via `auth.api.listUsers`, which is admin-only and would 403 an operator
+   on a read. If the address already holds a **staff** account the invite is refused
+   (`staff_account`): the link is a password-reset token, and the button must not become a way to
+   fire credential mail at a colleague. Otherwise `auth.api.createUser` mints it with role `user`,
+   `emailVerified: true` (staff vouch by choosing the row; without it `requireEmailVerification`
+   would 403 the invitee with no way out) and **no password at all** — better-auth treats it as
+   optional and simply omits the credential record, so there is never a server-generated password
+   nobody chose. Headers are deliberately **not** forwarded, making it a trusted server-side call
+   authorized by our own `isStaff` gate (with a request attached the endpoint demands an _admin_
+   session). Then `linkSubmissionsToUser` claims their earlier anonymous contact submissions, the
+   same vouch the roster path makes.
+2. **Mint the link.** `mintActivationLink` (`activation.ts`) writes a `verification` row under
+   better-auth's own `reset-password:<token>` identifier, so the emailed link is redeemable by the
+   existing `/reset-password` flow — single-use, session-revoking — instead of needing a second
+   credential-setting path. It carries a **week-long** expiry rather than the reset flow's hour (see
+   below). **Not** `auth.api.requestPasswordReset`, for two reasons: it is
+   capped at 3/hour/IP (right for a public trigger, wrong for a staff batch), and it _swallows send
+   failures_ — `runInBackgroundOrAwait` logs and returns `{ status: true }` regardless.
+3. **Send it, awaited.** `sendActivationEmail` (`activation-email.ts`, Resend, mirrors
+   `password-reset-email.ts`). This is the **one outbound mail in the codebase that is awaited and
+   whose failure surfaces**: fire-and-forget is right when dropping a visitor's own submission would
+   be worse, but here the operator is the only person who can retry.
+4. **Stamp, then log.** Only now does `markWaitlistInvited` set `invited_at`/`invited_by`, so the
+   column means "a message was accepted by Resend", never "we tried" — a send failure leaves the row
+   looking un-invited and the button still saying Invite, which is the correct next move. Retrying is
+   safe: the account from the failed attempt is found, not duplicated. A structured
+   `[invite] activation.sent` line goes to Workers Logs (mirroring the login-audit posture) and is the
+   only durable history of who invited whom, since a resend overwrites `invited_at`.
+
+**Why an invitation lasts a week and a reset lasts an hour.** They answer different questions. A reset
+is minted seconds after someone asks for it, with the tab still open — an hour is generous. An
+invitation arrives _unrequested_, and the recipient may not open that mailbox until the weekend; an hour
+would mean most invitations were dead on arrival, and the recovery path (a fresh link from
+`/forgot-password`) requires guessing that you have an account at all.
+
+The two can differ because `resetPasswordTokenExpiresIn` governs only what better-auth's own
+`requestPasswordReset` endpoint _stamps_. Expiry is **enforced from the verification row's
+`expiresAt`** — at the GET callback and again in `consumeVerificationValue` — so a hand-minted token
+carries its own lifetime while the public reset flow keeps its short one. That is the property the whole
+scheme rests on, so `activation.spec.ts` ages a minted row through the context adapter and proves
+better-auth rejects it; without that test, a change in better-auth could silently cut every invitation
+back to an hour while the email still promised a week, and a fresh-token test would keep passing.
+
+**Known trade-off.** The invite mints the same kind of token for an address that ALREADY has an account
+(a resend to someone who activated long ago), and there a week-long token is a week-long password-reset
+window on a live credential rather than on an empty account. It still only ever goes to the account's
+own address and it's a deliberate staff action, so the exposure is a mailbox compromise within the week.
+Scoping the TTL by whether the account was just created was considered and rejected: the email copy
+would then have to state two different lifetimes, and copy that lies about expiry is worse than the
+wider window.
+
+**Local dev without Resend.** With no `RESEND_API_KEY` the invite logs the activation link and returns
+a FAILURE rather than claiming success, because nothing was mailed — so `invited_at` stays null. That is
+deliberate, but it has a consequence worth knowing before you go looking for a bug: since
+`markWaitlistActivated` requires `invited_at IS NOT NULL`, clicking the logged link and setting a
+password will **not** flip the badge to Activated locally. To exercise that path end to end you need a
+real Resend key (send to a throwaway address, not your own inbox), or to set `invited_at` by hand.
+
+### Activation state
+
+Three columns on `waitlist` (**not** on `user` — the un-invited majority has no `user` row to hang
+them off): `invited_at`, `invited_by` (a staff id, deliberately not an FK: an audit breadcrumb must
+not cascade away with a departed operator), `activated_at`. The badge state is **derived on read**
+(`waitlistInviteState`, `$lib/waitlist-invite.ts`), like DAR-65's lead class.
+
+`activated_at` is stamped by better-auth's **`onPasswordReset`** hook (`auth.ts`) — the only place
+that sees the event, since `/reset-password` goes through better-auth, which knows nothing about the
+waitlist. The hook fires for **every** reset on the site, so the discrimination lives in the query:
+`markWaitlistActivated` stamps only where `invited_at IS NOT NULL` (an ordinary reset by someone never
+invited must not claim an onboarding that never happened) **and** `activated_at IS NULL` (monotonic —
+it records when they _first_ set a password, not the last time they changed it). It leaves
+`updated_at` alone, which tracks the visitor's own edits. Best-effort and fully swallowed: a
+reporting timestamp must never fail someone's password reset. Pinned by `waitlist-invite.spec.ts`
+against in-memory libsql, because the guarantees are in the WHERE clause.
+
+### What the invitee sees
+
+The link lands on **`/reset-password?invite=1&token=…`** — the same page, same action, same token;
+only the copy changes ("Set your password", not "Set a _new_ password"). The flag is **cosmetic
+only**: anyone can append it, and it selects wording, never a capability. The invalid/expired panel
+still points at `/forgot-password`, and correctly — their account exists, so the ordinary reset flow
+will mail them a fresh link with no staff involvement. Setting the password does not sign them in
+(it's an anonymous token flow), so they land at `/login`, and their linked submissions are waiting at
+`/account`.
+
+### What survived the lockdown
+
+`requireEmailVerification` stays **on**, and the #115 resend-verification affordance in
+`LoginForm.svelte` stays with it: accounts that predate DAR-67 include self-registrants who never
+clicked their link, who still 403 at sign-in and still need a way back in. The signup-panel variant of
+that affordance went with the page. `emailVerification.sendOnSignUp` is now unreachable (there are no
+sign-ups) and kept only so re-opening registration doesn't silently ship without it. The
+`/sign-up/email` rate-limit rule is likewise kept: the limiter runs first, so it is what stops a script
+hammering a permanently-400ing endpoint for free.
+
+**Tests.** `auth.spec.ts` (the boundary + the surviving staff path + controls); `activation.spec.ts`
+(mint here, redeem through better-auth's own `resetPassword`, prove the new password signs in — this
+is the pin for the `reset-password:` prefix coupling, plus the no-password-account path production
+actually uses); `activation-email.spec.ts` (wire shape, escaping, and that it doesn't read as a
+password reset); `waitlist-invite.spec.ts` × 2 (the derivation, and the UPDATE predicates);
+`admin/waitlist/page.svelte.spec.ts` (badges, Invite-vs-Resend, outcome banners);
+`signup/page.svelte.e2e.ts` (the notice renders, no form, and a direct sign-up POST creates no
+session). **Note on that last one:** the preview can't test the boundary — `isAuthPath()` drops any
+request whose origin ≠ `ORIGIN` and the preview serves `localhost:4173`, so `/api/auth/*` 404s there
+before any auth logic runs. `auth.spec.ts` is the real guard.
 
 ## Password reset (self-service)
 
@@ -180,8 +257,9 @@ redirectTo: '/reset-password' }`. That endpoint is **anti-enumerating** (better-
 
 Entry point: a **"Forgot your password?"** link in the login chrome — duplicated in `login/+page.svelte`
 and `LoginDialog.svelte` (the dialog closes on click), the same pattern as the sign-up prompt. The whole
-flow is **no-JS friendly** (no Turnstile — the reset endpoints are outside the captcha scope) and works
-for staff and end-users alike.
+flow is **no-JS friendly** and works for staff and end-users alike. Since DAR-67 it carries more weight
+than its name suggests: invitations are password-reset tokens, so this is also how every NEW account
+gets its first password. Disabling reset would disable onboarding.
 
 Hermetic tests (`auth.spec.ts`): request-password-reset is anti-enumerating (identical response for
 absent vs existing; a mail fires only for the real account), a valid token sets the new password (the old
@@ -212,9 +290,9 @@ The gated surface #48 fenced off:
   longer owns a sign-out action; it just reads the newest `contact_submission` rows (capped,
   newest-first). This replaces `pnpm db:studio` for triaging leads. Pages are `noindex` (a `Seo`
   prop).
-- **First-admin provisioning** — `scripts/create-admin.ts` (`pnpm admin:create`). Public sign-up
-  only ever mints an unverified `user`, so this is still the **only** way to create the FIRST
-  operator: it builds a throwaway Better Auth instance (same Turso DB + schema) and calls
+- **First-admin provisioning** — `scripts/create-admin.ts` (`pnpm admin:create`). Public sign-up is
+  closed and both staff paths need a signed-in admin, so this is still the **only** way to create the
+  FIRST operator: it builds a throwaway Better Auth instance (same Turso DB + schema) and calls
   `signUpEmail`, writing the `user`/`account` rows with Better Auth's own password hashing, then
   promotes the row to `role: 'admin'` **and `emailVerified: true`** (so `requireEmailVerification`
   doesn't lock the owner out). It's **idempotent**: if the email already exists it **resets that
@@ -236,8 +314,8 @@ logout across all sessions, reversibly disable/enable, and hard-delete.
   until the portal (#96). `/admin` is gated by **`isStaff`** (admin **or** operator), not mere
   authentication, so a `user`/role-less account is bounced home; `/admin/users` stays
   `isRosterAdmin`-only. Roster-created accounts **default to `user`** (least privilege — no `/admin`
-  until promoted to `operator`/`admin`), matching `defaultRole: 'user'` (which otherwise applies only
-  to disabled public sign-up). The `/admin/users` page is worded as general **user** management, not
+  until promoted to `operator`/`admin`), matching `defaultRole: 'user'` (which since DAR-67 also covers
+  the waitlist invite path — see "Invite-only onboarding"). The `/admin/users` page is worded as general **user** management, not
   "operators". Roles are plugin-
   default free strings (no access-control statements), so **`admin-access.ts`** is the single place
   that constrains + gates them — `ROLES`/`coerceRole` (validate what the roster writes), `isStaff`
@@ -261,8 +339,10 @@ logout across all sessions, reversibly disable/enable, and hard-delete.
   account. All actions
   are **no-JS server form actions** → `auth.api.*` (`createUser`, `adminUpdateUser`, `setRole`,
   `setUserPassword`, `revokeUserSessions`, `banUser`/`unbanUser`, `removeUser`). `createUser` is an
-  admin op (it bypasses the public sign-up captcha/verification path) and passes
-  `data: { emailVerified: true }` so the vouched account can sign in immediately (#96 PR 2). Delete is
+  admin op (it does not consult `disableSignUp`, which is what keeps account creation possible at all
+  since DAR-67) and passes `data: { emailVerified: true }` so the vouched account can sign in
+  immediately (#96 PR 2). Unlike the roster, DAR-67's invite calls it WITHOUT forwarding headers — a
+  trusted server-side call, so operators can invite; the role is pinned to `user` there. Delete is
   gated by a required "I understand" checkbox (no JS `confirm()` — worker globals aren't typed for
   svelte-check).
 - **Authorization is authoritative.** Every admin endpoint runs `adminMiddleware` →
@@ -317,7 +397,8 @@ works on any origin/port. It writes a session, so — like the contact happy-pat
 
 Activates the dormant `user` role — a self-service surface for **end-users** (leads), entirely
 separate from the staff `/admin` UI. **PR 1:** message ownership + the portal. **PR 2:** public
-sign-up + email verification + Turnstile (see "Public sign-up, verification & Turnstile" above). A
+sign-up + email verification + Turnstile — since **closed again** by DAR-67, which replaced
+self-registration with staff invitations (see "Invite-only onboarding" above). A
 signed-in end-user who lands on `/admin` (e.g. via a `/login` success, which 303s to `/admin`) is
 bounced to `/account`, so self-registered users reach their portal rather than the marketing home.
 

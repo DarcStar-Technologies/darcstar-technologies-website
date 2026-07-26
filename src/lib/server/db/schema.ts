@@ -161,6 +161,25 @@ export const waitlist = sqliteTable(
 		// columns (pilot_interest set → branch A; research_preferences set → branch B), so DAR-65/66
 		// need no extra column and no backfill.
 		qualificationStep: integer('qualification_step'),
+		// --- Invite-only onboarding (DAR-67) ---
+		// Public self-signup is closed, so an account exists only because staff invited this prospect
+		// from /admin/waitlist. These three columns are the invite's state machine, and they live HERE
+		// rather than on `user` because the un-invited majority has no `user` row to hang them off —
+		// "not invited" is the default state of a waitlist entry, not of an account.
+		//
+		// `invited_at` is the MOST RECENT send, not the first: the operational question a triage view
+		// answers is "did I already email them, and when", and a resend that left the timestamp stale
+		// would answer it wrongly. The full history is the per-invite Workers Logs line.
+		invitedAt: integer('invited_at', { mode: 'timestamp_ms' }),
+		// The staff account id that sent it. A plain text column, deliberately NOT a foreign key to
+		// `user`: this is an audit breadcrumb, and deleting a departed operator must not either cascade
+		// away the record of who invited whom or block the delete.
+		invitedBy: text('invited_by'),
+		// When the invitee actually set their password — stamped by auth.ts's `onPasswordReset` hook,
+		// and MONOTONIC (only ever fills a null). The hook additionally requires `invited_at` to be
+		// set, so an ordinary self-service reset by someone who was never invited can't backfill this
+		// and make the badge claim an activation that never happened.
+		activatedAt: integer('activated_at', { mode: 'timestamp_ms' }),
 		ipHash: text('ip_hash'),
 		userAgent: text('user_agent'),
 		createdAt: integer('created_at', { mode: 'timestamp_ms' })

@@ -80,6 +80,42 @@ test('hovering a link to /waitlist does not prefetch it', async ({ page }) => {
 	expect(dataRequests).toHaveLength(1);
 });
 
+// The structural companion to the test above. That one proves the mechanism works on ONE link; this
+// one enumerates every `/waitlist` anchor the site renders and insists each carries the opt-out — the
+// regression it guards is a new link arriving without it.
+//
+// Not hypothetical: DAR-67 added three (`/signup`'s CTA, the `/login` prompt, and the navbar "Request
+// access") as a side effect of closing public sign-up, a change with no obvious connection to
+// analytics. Two of them — the navbar link and the login dialog's prompt — render on EVERY page, so
+// one missing attribute would put a phantom view behind every mouse-drift across the header.
+test('every link to /waitlist opts out of hover prefetch', async ({ page }) => {
+	const assertAllTap = async (where: string) => {
+		// Locale-prefixed hrefs (/es/waitlist) need the attribute just as much, so match on the suffix.
+		const links = page.locator('a[href$="/waitlist"]');
+		const count = await links.count();
+		expect(count, `${where}: expected at least one /waitlist link`).toBeGreaterThan(0);
+		for (let i = 0; i < count; i++) {
+			await expect(
+				links.nth(i),
+				`${where}: link ${i} (${await links.nth(i).getAttribute('href')})`
+			).toHaveAttribute('data-sveltekit-preload-data', 'tap');
+		}
+	};
+
+	// The homepage covers the hero CTA + navbar + footer; /login and /signup add their own prompts.
+	for (const path of ['/', '/login', '/signup']) {
+		await page.goto(path);
+		await assertAllTap(path);
+	}
+
+	// The login dialog is rendered in the layout and its prompt links to /waitlist, so it can appear
+	// over any route. It only mounts while open — hence driving the navbar's JS-upgraded "Sign in".
+	await page.goto('/');
+	await page.getByRole('navigation').getByRole('link', { name: 'Sign in' }).click();
+	await expect(page.getByRole('dialog')).toBeVisible();
+	await assertAllTap('login dialog');
+});
+
 // Drive a signup via the honeypot (accepted, not persisted → decoy token, no DB) and assert the page
 // advances IN-PLACE to the step-2 questions rather than the confirmation.
 async function advanceToStep2(main: Locator) {

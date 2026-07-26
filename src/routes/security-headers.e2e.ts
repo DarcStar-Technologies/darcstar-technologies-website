@@ -86,57 +86,51 @@ function flushFrames(page: Page) {
 
 /** Best-effort settle: violations fire at request-ATTEMPT time, so once the network goes quiet,
  * every loader that was going to run has already either loaded or violated. Never fails a test on
- * its own — per-page `ready` waits are the deterministic part. */
+ * its own. */
 async function settle(page: Page) {
 	await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 	await flushFrames(page);
 }
 
 // Every public surface, rendered under the enforced CSP: Kit's hydration bootstrap (script
-// nonce), Svelte transitions + SSR'd style attributes ('unsafe-inline' styles), the localized
-// /es tree (paraglide reroute + transformPageChunk), and the live Turnstile widget on /signup.
+// nonce), Svelte transitions + SSR'd style attributes ('unsafe-inline' styles), and the localized
+// /es tree (paraglide reroute + transformPageChunk).
 // Each test also asserts the worker header set arrived — a page that starts prerendering moves to
 // the assets layer, silently losing these headers (and frame-ancestors), and fails here.
-const AUDITED_PAGES: { path: string; ready?: (page: Page) => Promise<void> }[] = [
-	{ path: '/' },
-	{ path: '/es' },
-	{ path: '/about' },
-	{ path: '/evidence' },
-	{ path: '/evidence/benchmarks' },
-	{ path: '/evidence/proofs' },
-	{ path: '/news' },
-	{ path: '/research' },
-	{ path: '/people' },
-	{ path: '/contact' },
-	{ path: '/waitlist' },
-	{ path: '/privacy' },
-	{ path: '/terms' },
-	{ path: '/forgot-password' },
-	{ path: '/login' },
-	{
-		path: '/signup',
-		// The preview's always-pass TEST sitekey mounts the real widget on any host, exercising
-		// script-src + the challenge platform live. Turnstile hides its iframe inside a CLOSED
-		// shadow root (invisible to selectors), so the deterministic "widget ran" signal is the
-		// hidden token input `turnstile.render()` injects into the form.
-		ready: (page) =>
-			page.locator('input[name="cf-turnstile-response"]').first().waitFor({ state: 'attached' })
-	}
+//
+// /signup used to be the exception here: it carried a per-page `ready` hook that waited on a LIVE
+// Turnstile widget, exercising script-src + frame-src against the real challenge platform, because
+// Turnstile holds connections open and networkidle never quiesces. DAR-67 closed public sign-up, so
+// that page is now a notice with no form and no widget — the hook would have waited forever on a token
+// input that is never injected, and with no page left needing it the whole `ready` mechanism went with
+// it. The Turnstile origin is still covered, deterministically, by the synthetic probes below, and its
+// CSP allowlist is deliberately retained so re-opening sign-up needs no CSP change. If a future page
+// loads third-party script/frame content that keeps the network busy, reinstate a per-page wait.
+const AUDITED_PAGES = [
+	'/',
+	'/es',
+	'/about',
+	'/evidence',
+	'/evidence/benchmarks',
+	'/evidence/proofs',
+	'/news',
+	'/research',
+	'/people',
+	'/contact',
+	'/waitlist',
+	'/privacy',
+	'/terms',
+	'/forgot-password',
+	'/login',
+	'/signup'
 ];
 
-for (const { path, ready } of AUDITED_PAGES) {
+for (const path of AUDITED_PAGES) {
 	test(`no CSP violations on ${path}`, async ({ page }) => {
 		await trackCspViolations(page);
 		const response = await page.goto(path);
 		expect(response!.headers()['x-frame-options']).toBe('DENY');
-		if (ready) {
-			// The ready signal IS the settle for widget pages: Turnstile holds connections open, so
-			// networkidle never quiesces and settle() would just burn its full 10s cap.
-			await ready(page);
-			await flushFrames(page);
-		} else {
-			await settle(page);
-		}
+		await settle(page);
 		expect(await readCspViolations(page)).toEqual([]);
 	});
 }

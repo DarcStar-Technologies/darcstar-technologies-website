@@ -2,10 +2,14 @@
 // so a `user` can see "their own messages" at /account. Kept as one small, db-handle-taking helper
 // (no env, no $app import) so it's shared by every place a link becomes justified — and unit-testable.
 //
-// Three call sites, each a moment the email→account identity is trustworthy:
+// Four call sites, each a moment the email→account identity is trustworthy:
 //   1. signed-in submit         — the submitter IS the account (contact.remote.ts).
 //   2. admin creates an account — the admin vouches for the email (admin/users create action).
 //   3. self-registered verify   — email verification PROVES ownership (auth.ts afterEmailVerification, #96 PR2).
+//   4. staff invites a prospect — staff vouch by choosing the waitlist row (DAR-67, admin/waitlist
+//      invite action). Runs for a found account as well as a created one: an account predating the
+//      invite-only lockdown may be an unverified self-registrant whose (3) never fired, so the
+//      invitation is the first moment anyone vouched for them.
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { getDb } from '$lib/server/db';
 import { contactSubmission } from '$lib/server/db/schema';

@@ -23,11 +23,16 @@
 		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">{m.login_heading()}</h1>
 		<p class="mt-2 text-sm text-body">{m.login_lead()}</p>
 		<LoginForm {form} />
+		<!-- DAR-67: points at /waitlist, not /signup. Accounts are invite-only, so /signup is now just a
+		     notice saying so — sending someone there first would be one click of nothing before the
+		     place they actually need to go. `preload-data="tap"` because /waitlist's load records the
+		     funnel's `waitlist_viewed` event (DAR-66) and a hover prefetch would count a phantom view. -->
 		<p class="mt-6 text-sm text-body">
 			{m.login_need_account_prompt()}
 			<a
 				class="font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline"
-				href={localizeHref('/signup')}>{m.login_need_account_link()}</a
+				href={localizeHref('/waitlist')}
+				data-sveltekit-preload-data="tap">{m.login_need_account_link()}</a
 			>
 		</p>
 		<p class="mt-3 text-sm text-body">

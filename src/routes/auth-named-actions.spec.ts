@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { actions as signupActions } from './signup/+page.server';
+import * as signupPage from './signup/+page.server';
 import { actions as loginActions } from './login/+page.server';
 import { actions as forgotActions } from './forgot-password/+page.server';
 import { actions as resetActions } from './reset-password/+page.server';
@@ -21,13 +21,16 @@ function assertNoMixedActions(actions: Record<string, unknown>) {
 }
 
 describe('auth pages never mix `default` + named actions — #119/#121/#122 regression', () => {
-	// signup/login are named-only (each has a `resend` beside the sign-up/sign-in action), so their
-	// forms post to `?/<name>` (signup/+page.svelte, LoginForm.svelte).
-	test('/signup is named-only', () => {
-		assertNoMixedActions(signupActions);
-		expect(Object.keys(signupActions).sort()).toEqual(['resend', 'signup']);
+	// DAR-67 emptied /signup: registration is invite-only, so the page is a notice with nothing to
+	// submit and exports no `actions` at all. Asserted rather than deleted, because "it has no actions"
+	// is exactly the state a future re-opening would end: whoever adds a form back has to come here and
+	// decide default-vs-named deliberately, which is the whole point of this guard.
+	test('/signup exports no actions at all', () => {
+		expect('actions' in signupPage).toBe(false);
 	});
 
+	// login is named-only (a `resend` beside the sign-in action), so its forms post to `?/<name>`
+	// (LoginForm.svelte).
 	test('/login is named-only', () => {
 		assertNoMixedActions(loginActions);
 		expect(Object.keys(loginActions).sort()).toEqual(['resend', 'signin']);

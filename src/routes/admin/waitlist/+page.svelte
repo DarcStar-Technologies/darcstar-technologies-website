@@ -31,6 +31,7 @@
 	} from '$lib/waitlist-labels';
 	import { WAITLIST_LEAD_CLASSES } from '$lib/waitlist-qualification';
 	import { WAITLIST_FUNNEL_EVENTS } from '$lib/waitlist-funnel';
+	import { isWaitlistResend } from '$lib/waitlist-invite';
 	import type { WaitlistRole } from '$lib/waitlist-roles';
 	import type { WaitlistV2Role } from '$lib/waitlist-qualification';
 	import type { PageData, ActionData } from './$types';
@@ -80,6 +81,33 @@
 	const basePath = $derived(localizeHref('/admin/waitlist'));
 	// SvelteKit reads the action name from the `?/name` key, so extra params ride alongside it.
 	const deleteAction = $derived(data.filter ? `?/delete&class=${data.filter}` : '?/delete');
+	const inviteAction = $derived(data.filter ? `?/invite&class=${data.filter}` : '?/invite');
+
+	// Invite outcome (DAR-67). `form` is a union across both actions, so narrow on the namespace key
+	// rather than on `ok`/`error` — a delete result carries those too.
+	const invite = $derived(form && 'invite' in form ? form.invite : null);
+	// The action's return is a discriminated union of one success and several failures; `in` is what
+	// narrows it, since `fail()` and the success shape share no key.
+	const inviteOk = $derived(invite && 'ok' in invite ? invite : null);
+	const inviteError = $derived(invite && 'error' in invite ? invite.error : null);
+	function inviteErrorMessage(code: string): string {
+		switch (code) {
+			case 'staff_account':
+				return m.admin_waitlist_invite_error_staff();
+			// Both of these need the operator to go and DO something else first, so they get their own
+			// copy — "try again" would send them round the same loop.
+			case 'account_disabled':
+				return m.admin_waitlist_invite_error_disabled();
+			// The account exists but nothing was mailed, so the row is still un-invited and the button
+			// still reads Invite. Worth its own message: "try again" is genuinely the right next move,
+			// unlike the generic failure where something may be structurally wrong.
+			case 'email_failed':
+			case 'email_unconfigured':
+				return m.admin_waitlist_invite_error_email();
+			default:
+				return m.admin_waitlist_invite_error();
+		}
+	}
 	const chipBase =
 		'rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500';
 	const chipActive = 'bg-white/10 text-white';
@@ -108,6 +136,18 @@
 
 	{#if form && 'error' in form}
 		<p class="text-sm text-error-400" role="alert">{m.admin_delete_error()}</p>
+	{/if}
+
+	<!-- Invite outcome (DAR-67). Both branches sit at the top of the page rather than in the row: a
+	     no-JS submit re-renders the whole table, and hunting for a status message inside 200 rows is
+	     not a confirmation. Success names the address so the operator can see they hit the row they
+	     meant to. -->
+	{#if inviteOk}
+		<p class="text-sm text-success-400" role="status">
+			{m.admin_waitlist_invite_sent({ email: inviteOk.email })}
+		</p>
+	{:else if inviteError}
+		<p class="text-sm text-error-400" role="alert">{inviteErrorMessage(inviteError)}</p>
 	{/if}
 
 	<!-- Funnel readout (DAR-66). Distinct anonymous flows per stage, in funnel order, so the drop-off
@@ -201,6 +241,7 @@
 							<th class="px-3 py-2 font-medium">{m.admin_col_company()}</th>
 							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_role()}</th>
 							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_outreach()}</th>
+							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_access()}</th>
 							<th class="px-3 py-2 text-right font-medium">
 								<span class="sr-only">{m.admin_col_actions()}</span>
 							</th>
@@ -209,6 +250,9 @@
 					<!-- One <tbody> per signup: the summary row and its detail row belong together, and
 					     grouping lets the divider fall between signups instead of inside one. -->
 					{#each data.signups as row (row.id)}
+						<!-- One named rule for "is this a repeat invitation", shared with the server side
+						     ($lib/waitlist-invite.ts) rather than re-derived per label below. -->
+						{@const resend = isWaitlistResend(row.inviteState)}
 						<tbody class="border-b border-hairline">
 							<tr class="align-top">
 								<td class="px-3 py-3"><WaitlistLeadClassBadge leadClass={row.leadClass} /></td>
@@ -236,7 +280,51 @@
 										<span class="text-xs text-faint">{m.admin_waitlist_outreach_unasked()}</span>
 									{/if}
 								</td>
+								<td class="px-3 py-3 whitespace-nowrap">
+									<!-- Invite state (DAR-67), derived server-side from invited_at/activated_at. Three
+									     states, and only the last is self-evidently good news: "invited" means an email
+									     went out, not that anyone acted on it. -->
+									{#if row.inviteState === 'activated'}
+										<span
+											class="inline-flex items-center rounded-full bg-success-500/15 px-2 py-0.5 text-xs font-medium text-success-300"
+											>{m.admin_waitlist_invite_activated()}</span
+										>
+									{:else if row.inviteState === 'invited'}
+										<span
+											class="inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-xs font-medium text-body"
+											>{m.admin_waitlist_invite_invited()}</span
+										>
+									{:else}
+										<span class="text-xs text-faint">{m.admin_waitlist_invite_not_invited()}</span>
+									{/if}
+								</td>
 								<td class="px-3 py-3 text-right align-top">
+									<!-- Invite / resend. Same two-step <details> confirm as delete below, and for the
+									     same reason rather than for symmetry: one click here puts a real email in a
+									     prospect's inbox. A row that has already been invited says "Resend" — DAR-67
+									     requires a re-invite to be an explicit act, never an accidental duplicate. -->
+									<details class="mb-1.5 inline-block text-right">
+										<summary
+											class="inline-flex cursor-pointer list-none items-center rounded px-2 py-1 text-xs font-medium text-primary-500 transition-colors [&::-webkit-details-marker]:hidden hover:bg-primary-500/10 focus-visible:ring-1 focus-visible:ring-primary-500 focus-visible:outline-none"
+											>{resend
+												? m.admin_waitlist_invite_resend()
+												: m.admin_waitlist_invite()}</summary
+										>
+										<form method="post" action={inviteAction} class="mt-1.5">
+											<input type="hidden" name="id" value={row.id} />
+											<button
+												type="submit"
+												class="rounded bg-primary-500/20 px-2 py-1 text-xs font-medium text-primary-200 transition-colors hover:bg-primary-500/30 focus-visible:ring-1 focus-visible:ring-primary-500 focus-visible:outline-none"
+												aria-label={resend
+													? m.admin_waitlist_invite_resend_sr({ email: row.email })
+													: m.admin_waitlist_invite_sr({ email: row.email })}
+												>{resend
+													? m.admin_waitlist_invite_resend_confirm()
+													: m.admin_waitlist_invite_confirm()}</button
+											>
+										</form>
+									</details>
+
 									<!-- Two-step confirm, no JS: the <summary> reveals the delete button; clicking it
 									     again cancels. Avoids a one-click misclick without needing confirm(). -->
 									<details class="inline-block text-right">
@@ -260,7 +348,7 @@
 								</td>
 							</tr>
 							<tr>
-								<td colspan="8" class="px-3 pb-3">
+								<td colspan="9" class="px-3 pb-3">
 									<details>
 										<summary
 											aria-label={m.admin_waitlist_detail_sr({ email: row.email })}
@@ -321,6 +409,19 @@
 											)}
 											{@render detail(m.admin_waitlist_field_step(), orDash(row.qualificationStep))}
 											{@render detail(m.admin_waitlist_field_updated(), fmt.format(row.updatedAt))}
+											<!-- Invite audit (DAR-67). `invited_at` is the LAST send, not the first — a
+											     resend overwrites it — so the durable history is the per-invite Workers
+											     Logs line, not this. `invited_by` is a staff user id: the roster is a
+											     different query, and resolving a name per row would cost one. -->
+											{@render detail(
+												m.admin_waitlist_field_invited(),
+												row.invitedAt ? fmt.format(row.invitedAt) : DASH
+											)}
+											{@render detail(m.admin_waitlist_field_invited_by(), orDash(row.invitedBy))}
+											{@render detail(
+												m.admin_waitlist_field_activated(),
+												row.activatedAt ? fmt.format(row.activatedAt) : DASH
+											)}
 											<!-- v1 columns: retired from the form, retained for historical rows. -->
 											{@render detail(
 												m.admin_waitlist_col_size(),

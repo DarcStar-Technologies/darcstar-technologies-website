@@ -76,13 +76,22 @@
 	</a>
 {/snippet}
 
-<!-- Sign-up link: a plain /signup anchor for anonymous visitors (issue #96). Unlike the login link
-     it never opens a dialog — /signup is a full page (Turnstile has no no-JS path), so a normal
-     navigation is correct with or without JS. Sits beside "Sign in" so sign-up is reachable from the
-     nav, not only via the login dialog's prompt. -->
-{#snippet signupLink(className: string)}
-	<a href={localizeHref('/signup')} onclick={() => (open = false)} class={className}>
-		{m.nav_signup()}
+<!-- Request-access link: a plain anchor for anonymous visitors (issue #96). Unlike the login link it
+     never opens a dialog, so a normal navigation is correct with or without JS. Sits beside "Sign in"
+     so the path to an account is reachable from the nav, not only via the login dialog's prompt.
+     DAR-67 pointed it at /waitlist rather than /signup: registration is closed, /signup is now only a
+     notice saying so, and the waitlist is where a would-be account holder actually needs to arrive.
+     `preload-data="tap"` overrides the body-wide `hover` — this link is on EVERY page, and /waitlist's
+     load records the funnel's `waitlist_viewed` event (DAR-66), so hover-prefetching it would count a
+     view for every incidental mouse pass across the navbar. -->
+{#snippet requestAccessLink(className: string)}
+	<a
+		href={localizeHref('/waitlist')}
+		data-sveltekit-preload-data="tap"
+		onclick={() => (open = false)}
+		class={className}
+	>
+		{m.nav_request_access()}
 	</a>
 {/snippet}
 
@@ -161,7 +170,7 @@
 							)}
 						</li>
 						<li>
-							{@render signupLink(
+							{@render requestAccessLink(
 								'rounded px-3 py-2 text-sm font-medium text-primary-500 transition-colors hover:text-primary-400'
 							)}
 						</li>
@@ -221,7 +230,7 @@
 						)}
 					</li>
 					<li>
-						{@render signupLink(
+						{@render requestAccessLink(
 							'block rounded px-3 py-2 text-base font-medium text-primary-500 transition-colors hover:preset-tonal-primary'
 						)}
 					</li>
