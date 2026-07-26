@@ -57,9 +57,11 @@ function createAuth() {
 		// password. Disabling reset would disable onboarding.
 		emailAndPassword: {
 			...emailAndPassword,
-			// Shared with DAR-67's activation links, which stamp their own expiry on a hand-minted token
-			// (activation.ts) — one constant so the token, the config and the "expires in an hour" copy
-			// can't drift apart. Also matches the verification token's expiresIn below.
+			// One constant so this, the reset email's "expires in one hour" copy and the verification
+			// token's expiresIn below can't drift apart. NOTE it governs only what better-auth's own
+			// `requestPasswordReset` stamps: DAR-67's invitations hand-mint their verification row with a
+			// week-long expiry (ACTIVATION_TOKEN_TTL_SECONDS), and consumption honours the row rather
+			// than this value — so raising or lowering this does NOT change how long an invitation lasts.
 			resetPasswordTokenExpiresIn: RESET_PASSWORD_TOKEN_TTL_SECONDS,
 			revokeSessionsOnPasswordReset: true,
 			sendResetPassword: async ({ user, url }) => {

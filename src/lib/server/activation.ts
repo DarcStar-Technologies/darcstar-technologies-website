@@ -6,6 +6,11 @@
 // already-hardened /reset-password flow (single-use, TTL-bounded, other-sessions-revoking), and this
 // module owns nothing but the minting. Server-only — it hands out account-takeover-grade links.
 //
+// The one thing it does NOT inherit from that flow is the lifetime: an invitation is unrequested mail
+// that may sit unread for days, so it carries `ACTIVATION_TOKEN_TTL_SECONDS` (a week) rather than the
+// self-service reset's hour. That works because expiry is enforced from the verification row, not from
+// better-auth's config — see the constant's comment in auth-options.ts.
+//
 // WHY NOT `auth.api.requestPasswordReset`, which would mint the same token for us — two reasons, both
 // load-bearing:
 //
@@ -23,7 +28,7 @@
 //
 // It would also mail the wrong thing: `sendResetPassword` is globally bound to the "reset your
 // password" copy, and an invitee has no password to reset.
-import { RESET_PASSWORD_TOKEN_TTL_SECONDS } from '$lib/server/auth-options';
+import { ACTIVATION_TOKEN_TTL_SECONDS } from '$lib/server/auth-options';
 
 /**
  * The slice of a Better Auth instance this module needs. Structural rather than
@@ -81,7 +86,7 @@ function randomActivationToken(): string {
 export interface ActivationLink {
 	/** The absolute link to email. Validates the token, then redirects to ACTIVATION_CALLBACK_PATH. */
 	url: string;
-	/** When the token stops working — the invite email's expiry copy must agree with this. */
+	/** When the token stops working — a week out, and the invite email's copy must agree with this. */
 	expiresAt: Date;
 }
 
@@ -95,7 +100,7 @@ export interface ActivationLink {
 export async function mintActivationLink(auth: AuthLike, userId: string): Promise<ActivationLink> {
 	const ctx = await auth.$context;
 	const token = randomActivationToken();
-	const expiresAt = new Date(Date.now() + RESET_PASSWORD_TOKEN_TTL_SECONDS * 1000);
+	const expiresAt = new Date(Date.now() + ACTIVATION_TOKEN_TTL_SECONDS * 1000);
 
 	await ctx.internalAdapter.createVerificationValue({
 		identifier: `${RESET_TOKEN_IDENTIFIER_PREFIX}${token}`,

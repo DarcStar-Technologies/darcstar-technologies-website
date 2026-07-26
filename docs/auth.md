@@ -20,9 +20,11 @@ operator is still made by the provisioning script. This doc maps what's wired an
   and unit tests (so they can't drift and tests import them without `$app/server`/the DB client):
   - `emailAndPassword` — `enabled`, **`disableSignUp: true`** (DAR-67 — the invite-only boundary) +
     **`requireEmailVerification: true`** (#96 PR 2; both behavioral, so shared with the CLI config
-    without adding a table). Also exports **`RESET_PASSWORD_TOKEN_TTL_SECONDS`** (3600), shared by
-    better-auth's `resetPasswordTokenExpiresIn` and DAR-67's hand-minted activation tokens so the
-    token, the config and the "expires in an hour" email copy can't drift apart.
+    without adding a table). Also exports the two token lifetimes:
+    **`RESET_PASSWORD_TOKEN_TTL_SECONDS`** (3600 — better-auth's `resetPasswordTokenExpiresIn`, and the
+    "expires in one hour" copy in the reset email) and **`ACTIVATION_TOKEN_TTL_SECONDS`** (604800 — a
+    week, for DAR-67's invitations). Two numbers, not one: see "Invite-only onboarding" for why, and why
+    they can be different at all.
   - `rateLimit` — `{ enabled: true, storage: 'database', customRules: { '/sign-up/email': { window:
 3600, max: 3 }, '/send-verification-email': { window: 3600, max: 5 } } }` (#69, #96, #115). DB-backed
     so counters survive Cloudflare isolate churn; adds the **`rate_limit`** table (schema-affecting →
@@ -132,8 +134,9 @@ escalation to reach through it). No JS required; two-step `<details>` confirm, s
    same vouch the roster path makes.
 2. **Mint the link.** `mintActivationLink` (`activation.ts`) writes a `verification` row under
    better-auth's own `reset-password:<token>` identifier, so the emailed link is redeemable by the
-   existing `/reset-password` flow — single-use, 1-hour TTL, session-revoking — instead of needing a
-   second credential-setting path. **Not** `auth.api.requestPasswordReset`, for two reasons: it is
+   existing `/reset-password` flow — single-use, session-revoking — instead of needing a second
+   credential-setting path. It carries a **week-long** expiry rather than the reset flow's hour (see
+   below). **Not** `auth.api.requestPasswordReset`, for two reasons: it is
    capped at 3/hour/IP (right for a public trigger, wrong for a staff batch), and it _swallows send
    failures_ — `runInBackgroundOrAwait` logs and returns `{ status: true }` regardless.
 3. **Send it, awaited.** `sendActivationEmail` (`activation-email.ts`, Resend, mirrors
@@ -146,6 +149,28 @@ escalation to reach through it). No JS required; two-step `<details>` confirm, s
    safe: the account from the failed attempt is found, not duplicated. A structured
    `[invite] activation.sent` line goes to Workers Logs (mirroring the login-audit posture) and is the
    only durable history of who invited whom, since a resend overwrites `invited_at`.
+
+**Why an invitation lasts a week and a reset lasts an hour.** They answer different questions. A reset
+is minted seconds after someone asks for it, with the tab still open — an hour is generous. An
+invitation arrives _unrequested_, and the recipient may not open that mailbox until the weekend; an hour
+would mean most invitations were dead on arrival, and the recovery path (a fresh link from
+`/forgot-password`) requires guessing that you have an account at all.
+
+The two can differ because `resetPasswordTokenExpiresIn` governs only what better-auth's own
+`requestPasswordReset` endpoint _stamps_. Expiry is **enforced from the verification row's
+`expiresAt`** — at the GET callback and again in `consumeVerificationValue` — so a hand-minted token
+carries its own lifetime while the public reset flow keeps its short one. That is the property the whole
+scheme rests on, so `activation.spec.ts` ages a minted row through the context adapter and proves
+better-auth rejects it; without that test, a change in better-auth could silently cut every invitation
+back to an hour while the email still promised a week, and a fresh-token test would keep passing.
+
+**Known trade-off.** The invite mints the same kind of token for an address that ALREADY has an account
+(a resend to someone who activated long ago), and there a week-long token is a week-long password-reset
+window on a live credential rather than on an empty account. It still only ever goes to the account's
+own address and it's a deliberate staff action, so the exposure is a mailbox compromise within the week.
+Scoping the TTL by whether the account was just created was considered and rejected: the email copy
+would then have to state two different lifetimes, and copy that lies about expiry is worse than the
+wider window.
 
 **Local dev without Resend.** With no `RESEND_API_KEY` the invite logs the activation link and returns
 a FAILURE rather than claiming success, because nothing was mailed — so `invited_at` stays null. That is

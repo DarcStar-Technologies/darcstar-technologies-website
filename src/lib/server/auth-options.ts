@@ -30,11 +30,33 @@ export const emailAndPassword = {
 	requireEmailVerification: true
 };
 
-// How long a password-reset token stays valid. Shared rather than inlined because DAR-67's activation
-// links are password-reset tokens minted directly (activation.ts) — the invite email's "expires in an
-// hour" copy, better-auth's `resetPasswordTokenExpiresIn`, and the expiry stamped on the verification
-// row all have to be the same number or one of them is lying.
+// How long a SELF-SERVICE password-reset token stays valid: an hour, matching the verification token
+// and the "expires in one hour" copy in the reset email. Exported rather than inlined so the config
+// value and the copy have one source.
 export const RESET_PASSWORD_TOKEN_TTL_SECONDS = 3600;
+
+// How long an INVITATION stays valid (DAR-67). A week, deliberately much longer than a self-service
+// reset, because the two are answers to different questions. A reset is minted seconds after someone
+// asks for it, with the tab still open — an hour is generous. An invitation arrives unrequested, and
+// the recipient may not read that mailbox until the weekend; an hour would mean most invitations were
+// dead on arrival, and the recovery path (a fresh link from /forgot-password) requires guessing that
+// you have an account at all.
+//
+// This is a SEPARATE number rather than a bump to the constant above because better-auth's
+// `resetPasswordTokenExpiresIn` governs only what its own `requestPasswordReset` endpoint stamps.
+// Expiry is enforced from the verification row's `expiresAt` at both the GET callback and
+// `consumeVerificationValue` (api/routes/password.mjs), so a hand-minted token carries its own
+// lifetime and the public reset flow keeps its short one. Pinned by activation.spec.ts, which expires
+// a minted row and proves better-auth rejects it — the property this whole scheme rests on.
+//
+// Known trade-off: the invite mints the same kind of token for an address that ALREADY has an account
+// (a resend to someone who activated long ago), and there a week-long token is a week-long
+// password-reset window on a live credential rather than on an empty account. It still only ever goes
+// to the account's own address, and it's a deliberate staff action, so the exposure is a mailbox
+// compromise within the week. Scoping the TTL by whether the account was just created was rejected:
+// the email copy would then have to state two different lifetimes, and copy that lies about expiry is
+// worse than the wider window.
+export const ACTIVATION_TOKEN_TTL_SECONDS = 604_800; // 7 days
 
 // #69: the admin login (`/login`) makes sign-in publicly reachable for the first time, so
 // rate-limit the auth endpoints. `storage: 'database'` persists the counters in a `rateLimit`

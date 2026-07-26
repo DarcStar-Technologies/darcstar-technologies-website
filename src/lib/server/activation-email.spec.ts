@@ -51,10 +51,13 @@ describe('buildActivationEmail', () => {
 		expect(activation.text).not.toMatch(/we received a request/i);
 	});
 
-	// The token's TTL is an hour (auth-options.ts RESET_PASSWORD_TOKEN_TTL_SECONDS); copy that says
-	// anything else sends people to a dead link and support to a wild goose chase.
-	test('states the one-hour expiry that the token actually has', () => {
+	// The token's TTL is a week (auth-options.ts ACTIVATION_TOKEN_TTL_SECONDS) — NOT the hour that
+	// self-service resets get. Copy that says anything else sends people to a dead link and support to
+	// a wild goose chase, and "an hour" is the specific wrong answer to expect here, since this builder
+	// was cloned from the password-reset one.
+	test('states the seven-day expiry that the token actually has', () => {
 		const email = buildActivationEmail({ to: 'lead@example.com', name: 'Ada', url: URL }, 'en');
-		expect(email.text).toMatch(/one hour/i);
+		expect(email.text).toMatch(/seven days/i);
+		expect(email.text).not.toMatch(/hour/i);
 	});
 });

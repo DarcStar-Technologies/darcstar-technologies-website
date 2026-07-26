@@ -3,7 +3,7 @@ import { betterAuth } from 'better-auth/minimal';
 import { memoryAdapter } from 'better-auth/adapters/memory';
 import { admin } from 'better-auth/plugins';
 import { ACTIVATION_CALLBACK_PATH, mintActivationLink } from './activation';
-import { RESET_PASSWORD_TOKEN_TTL_SECONDS } from './auth-options';
+import { ACTIVATION_TOKEN_TTL_SECONDS, RESET_PASSWORD_TOKEN_TTL_SECONDS } from './auth-options';
 
 // THIS SPEC IS THE PIN FOR A DELIBERATE COUPLING. `mintActivationLink` writes a `verification` row
 // under better-auth's own `reset-password:<token>` identifier convention — an internal detail, not a
@@ -119,8 +119,8 @@ describe('mintActivationLink', () => {
 		expect(res.status).toBe(true);
 	});
 
-	// The email tells the recipient "expires in one hour". This is the other end of that sentence.
-	test('expiry matches the shared reset-token TTL', async () => {
+	// The email tells the recipient "expires in seven days". This is the other end of that sentence.
+	test('expiry is the week-long activation TTL, not the hour-long reset one', async () => {
 		const auth = buildAuth();
 		const userId = await inviteeAccount(auth, 'ttl@example.com');
 
@@ -128,9 +128,49 @@ describe('mintActivationLink', () => {
 		const link = await mintActivationLink(auth, userId);
 		const ttlMs = link.expiresAt.getTime() - before;
 
-		expect(RESET_PASSWORD_TOKEN_TTL_SECONDS).toBe(3600);
-		expect(ttlMs).toBeGreaterThan(RESET_PASSWORD_TOKEN_TTL_SECONDS * 1000 - 5_000);
-		expect(ttlMs).toBeLessThanOrEqual(RESET_PASSWORD_TOKEN_TTL_SECONDS * 1000);
+		expect(ACTIVATION_TOKEN_TTL_SECONDS).toBe(604_800);
+		expect(ttlMs).toBeGreaterThan(ACTIVATION_TOKEN_TTL_SECONDS * 1000 - 5_000);
+		expect(ttlMs).toBeLessThanOrEqual(ACTIVATION_TOKEN_TTL_SECONDS * 1000);
+		// The two are deliberately different numbers: an unrequested invitation gets a week, a reset the
+		// visitor just asked for keeps its hour. If someone collapses them back into one constant, this
+		// is the assertion that should stop them.
+		expect(ACTIVATION_TOKEN_TTL_SECONDS).toBeGreaterThan(RESET_PASSWORD_TOKEN_TTL_SECONDS);
+	});
+
+	// THE PROPERTY THE WEEK-LONG TTL RESTS ON. `resetPasswordTokenExpiresIn` (an hour) is still what
+	// better-auth's own `requestPasswordReset` stamps, so if consumption recomputed expiry from that
+	// config instead of reading the row, every invitation would silently die after an hour while the
+	// email promised a week — and nothing else in this suite would notice, because a fresh token passes
+	// either way. Age the row past its expiry and prove better-auth rejects it.
+	test('better-auth enforces expiry from the row, so the longer lifetime is real', async () => {
+		const auth = buildAuth();
+		const userId = await inviteeAccount(auth, 'expiry@example.com');
+
+		const link = await mintActivationLink(auth, userId);
+		const token = tokenFromUrl(link.url);
+		const identifier = `reset-password:${token}`;
+
+		// Reached through the context's own adapter rather than by holding a reference to the array
+		// handed to `memoryAdapter`: that store is cloned on the first transactional write, so the
+		// caller's array is orphaned as soon as anything else writes (the sign-up above does).
+		const ctx = await auth.$context;
+		const stored = await ctx.internalAdapter.findVerificationValue(identifier);
+		expect(stored).not.toBeNull();
+		// Stamped a week out — well past what `resetPasswordTokenExpiresIn` would have given it.
+		expect(stored!.expiresAt.getTime() - Date.now()).toBeGreaterThan(
+			RESET_PASSWORD_TOKEN_TTL_SECONDS * 1000
+		);
+
+		// Now age the row. If expiry came from anywhere but this field, the reset below would still
+		// succeed — and every invitation would quietly die after an hour while the email promised a week.
+		await ctx.adapter.update({
+			model: 'verification',
+			where: [{ field: 'identifier', value: identifier }],
+			update: { expiresAt: new Date(Date.now() - 1_000) }
+		});
+		await expect(auth.api.resetPassword({ body: { newPassword: CHOSEN, token } })).rejects.toThrow(
+			/token/i
+		);
 	});
 
 	// THE PRODUCTION PATH, end to end. The invite action creates the account with NO password at all
