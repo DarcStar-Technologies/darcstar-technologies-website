@@ -352,16 +352,45 @@ Current set: homepage CTA · footer · navbar · `LoginDialog` · `/login` · `/
 `page.svelte.e2e.ts` asserts at the network layer that a hover triggers no `/waitlist/__data.json`, and
 that a click still triggers exactly one.
 
+### The honeypot writes no funnel events either (DAR-83)
+
+Step 1 has always withheld `waitlist_signup_completed` when the trap trips, so a bot never enters the
+conversion metric. Steps 2–4 were the exception: the honeypot hands back a **decoy continuation
+token**, and a bot that drove the rest of the flow with it still emitted `qualification_started` and
+every stage after — so the later stages could exceed the signups they descend from, an impossible
+sequence that sends whoever next reads the funnel hunting a bug that isn't there. (Our own hermetic
+e2e reaches the token-gated steps _via_ that decoy token, so a run against a reachable database was
+one of the sources.) The step endpoints now capture through `captureWaitlistStepFunnel`, which drops
+everything for a decoy id — the trap's effect is uniform across both surfaces it can reach: no
+submission row, no funnel row.
+
+Three things worth keeping:
+
+- **The gate is free, and the cost DAR-66 weighed was already being paid.** It priced this at "an HMAC
+  per step", but every step already verifies the continuation token before it can enrich, and since
+  DAR-75 the resume cookie needs the resolved id too. What was left to add is a string comparison.
+- **Decoy only, never a null id.** Absent / malformed / expired / tampered / no signing secret all
+  arrive as `null`, and none of them is evidence of a bot: the visitor whose token aged out mid-flow
+  really did reach that stage, and gating on validity would take the whole step funnel dark on a
+  deploy with no `BETTER_AUTH_SECRET` rather than merely stop enriching. The decoy is the one id that
+  carries a positive signal, because it exists only for someone who filled a field no human can see.
+- **Suppressing is safe here and nowhere else on the honeypot path.** The insert is fire-and-forget
+  inside `ctx.waitUntil` and the counts live behind `/admin`, so a row that never gets written is
+  invisible to the caller — which is exactly what isn't true of the decoy token or the resume cookie,
+  both of which the trap mints because their absence would be a detectable response difference.
+
+No type can force the step endpoints through the gate (`captureWaitlistFunnel` stays exported for step
+1 and the page load), so `waitlist-funnel.spec.ts` reads `waitlist-steps.remote.ts` and pins both
+halves: no bare call, and at least one gated call per exported step form.
+
 ### Caveats the readout states
 
 Views include bots and repeat visits, and `evaluation_conversation_requested` needs JS, so it
-undercounts. The honeypot path records **no signup event**, so a tripped bot never enters the
-conversion metric — but a bot that tripped the honeypot and then drove the rest of the flow with its
-decoy token would still emit the later stages, so `qualification_started` can exceed
-`waitlist_signup_completed` (our own e2e does exactly this, which is why running it against a real
-database leaves step rows behind). Gating the step events on a verified non-decoy token would close
-that, at the cost of an HMAC per step and of dropping events for anyone whose token expired mid-flow;
-it wasn't worth it for a readout that is directional by design. Directional, not a source of record.
+undercounts. Two ways a later stage can still outrun `waitlist_signup_completed`, neither closed here:
+an unauthenticated POST straight at a step endpoint with a self-minted flow id (the flow id is
+client-minted and unsigned — DAR-86), and `evaluation_conversation_requested` from a decoy flow, whose
+row id the resume cookie has deliberately dropped by the time the confirmation renders, so the command
+that fires it cannot know. Directional, not a source of record.
 
 ## The routing rules (`src/lib/server/waitlist-flow.ts`)
 
@@ -431,7 +460,8 @@ closed vocabularies and `verifyWaitlistFlowClaim` narrows against them rather th
   lives with `mintDecoyWaitlistToken`): the honeypot's token addresses no real row, so the UPDATE
   could only ever match zero rows — a trap-tripping bot shouldn't get to spend DB writes. Nothing
   observable changes (the response is generic either way), and it's what keeps the step e2e specs
-  DB-free even on the answered paths.
+  DB-free even on the answered paths. The funnel capture carries the **same** decoy gate (DAR-83), one
+  level up: a Skip or an all-blank Continue records events without reaching this function at all.
 
 ## Resuming after a reload (DAR-75)
 
@@ -634,7 +664,9 @@ The
 **funnel-event insert on these same endpoints is a separate, still-unbounded vector** — `flow_id` is
 client-minted, so rotating it defeats the composite-key cap, and it doesn't even need a valid token;
 the fix is to sign the flow id (DAR-86), not to gate analytics on the step write, which would stop
-counting the skips the funnel exists to measure.
+counting the skips the funnel exists to measure. DAR-83 narrowed it by one case only: a **decoy** token
+records nothing, so a bot that trips the honeypot writes no analytics either. One that never trips it
+is untouched, which is why this stays DAR-86's.
 
 The sibling hole this section used to name — the **step-1 enrich** being throttle-exempt, because a
 known email enriched an existing row and so never trips the row-count check (DAR-87) — **was closed by

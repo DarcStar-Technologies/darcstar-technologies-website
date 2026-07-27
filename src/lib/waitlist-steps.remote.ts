@@ -36,7 +36,10 @@
 // only be recorded from a question that was actually on screen.
 import { form, getRequestEvent } from '$app/server';
 import { getDb, type Db } from '$lib/server/db';
-import { captureWaitlistFunnel } from '$lib/server/waitlist-funnel';
+// The STEP entry point, never the bare `captureWaitlistFunnel`: these are the endpoints a
+// honeypot decoy token can reach, so their funnel writes go through the gate that drops them
+// (DAR-83). A spec pins that this module calls no other one.
+import { captureWaitlistStepFunnel } from '$lib/server/waitlist-funnel';
 import { echoFlowId, type WaitlistFunnelEvent } from '$lib/waitlist-funnel';
 import {
 	hasAnyAnswer,
@@ -116,11 +119,13 @@ const echoSigned = (v: unknown): string =>
  * The submission the presented token authorizes, or null for ANY failure (no secret, malformed,
  * expired, tampered, or a value signed for something else). Never throws.
  *
- * Resolved ONCE per step rather than inside the enrich, because two things want it now: the write
- * below, and the resume cookie (DAR-75), which stores the row id so a reload can re-mint a token for
- * it. A DECOY id (the honeypot's) comes back as-is — the caller decides what to do with it, and the
- * two callers differ: the enrich skips it, the cookie keeps it so the trap's responses stay
- * byte-identical to a real signup's.
+ * Resolved ONCE per step rather than inside the enrich, because three things want it now: the write
+ * below, the funnel capture (DAR-83), and the resume cookie (DAR-75), which stores the row id so a
+ * reload can re-mint a token for it. A DECOY id (the honeypot's) comes back as-is — the caller decides
+ * what to do with it, and the three differ for one reason: whether the absence is OBSERVABLE. The
+ * enrich and the funnel row aren't (nothing in the response depends on them), so both skip it; the
+ * cookie is a response header, so it is written around the decoy like everything else the trap
+ * returns, keeping its responses byte-identical to a real signup's.
  */
 async function resolveStepRow(tokenSecret: string | undefined, token: unknown) {
 	if (!tokenSecret) return null; // misconfigured env: the flow still works, it just can't enrich
@@ -169,6 +174,10 @@ async function applyStepBestEffort(
 	// (the honeypot's token) is skipped too: it addresses no real row, so the UPDATE could only match
 	// zero rows, and a trap-tripping bot shouldn't get to spend DB writes. Both look identical to the
 	// caller. applyWaitlistStep also no-ops on an id whose row is simply gone.
+	//
+	// The decoy half of that has a sibling in `captureWaitlistStepFunnel` — the same id drops the
+	// analytics row too (DAR-83). It can't live HERE, because a Skip or an all-blank Continue records
+	// funnel events without reaching this function at all.
 	if (!rowId || isDecoyWaitlistId(rowId)) return;
 	try {
 		const { outcome } = await applyWaitlistStep(ctx.db, rowId, data);
@@ -265,10 +274,14 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 		// it, which is the drop-off worth knowing. `use_case_completed` is the narrower claim: they
 		// pressed Continue AND answered something. A Skip fires the first and not the second, which is
 		// the whole distinction between the two slugs.
+		//
+		// The row id goes in because a DECOY one records nothing at all (DAR-83): step 1's honeypot
+		// already withholds the signup event, and a trap that stopped there would let a bot inflate
+		// every stage after it.
 		const events: WaitlistFunnelEvent[] = ['qualification_started'];
 		if (!skipped && hasAnswer) events.push('use_case_completed');
 		if (next === 'done') events.push('qualification_completed');
-		captureWaitlistFunnel(ctx.db, ctx.platform, data.flowId, events);
+		captureWaitlistStepFunnel(ctx.db, ctx.platform, rowId, data.flowId, events);
 
 		// Step 2 only terminates by SKIP, which persists nothing — so it leaves us knowing nothing, and
 		// `audience: null` is the honest input (DAR-64's "general signup, skipped early"). On every
@@ -356,7 +369,7 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 		const events: WaitlistFunnelEvent[] = [];
 		if (!skipped && hasAnswer) events.push('commercial_context_completed');
 		if (next === 'done') events.push('qualification_completed');
-		captureWaitlistFunnel(ctx.db, ctx.platform, data.flowId, events);
+		captureWaitlistStepFunnel(ctx.db, ctx.platform, rowId, data.flowId, events);
 
 		// Step 3 terminates by SKIP only. Skipping the money questions doesn't unlearn who they told us
 		// they were at step 2, so the audience still stands.
@@ -436,7 +449,7 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 		const events: WaitlistFunnelEvent[] = [];
 		if (!skipped && cleaned.pilotInterest !== null) events.push('pilot_interest_selected');
 		events.push('qualification_completed'); // terminal step: both buttons land on the confirmation
-		captureWaitlistFunnel(ctx.db, ctx.platform, data.flowId, events);
+		captureWaitlistStepFunnel(ctx.db, ctx.platform, rowId, data.flowId, events);
 
 		const cta = confirmationCtaFor({
 			audience: flow?.audience ?? null,
@@ -502,7 +515,9 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 
 		// Funnel (DAR-66): terminal step, so the flow completed either way. No branch-B-specific event
 		// exists — `pilot_interest_selected` is branch A's, and this branch is never asked.
-		captureWaitlistFunnel(ctx.db, ctx.platform, data.flowId, ['qualification_completed']);
+		captureWaitlistStepFunnel(ctx.db, ctx.platform, rowId, data.flowId, [
+			'qualification_completed'
+		]);
 
 		const cta = confirmationCtaFor({ audience: flow?.audience ?? null });
 

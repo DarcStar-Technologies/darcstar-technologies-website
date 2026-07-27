@@ -14,6 +14,7 @@
 import { count } from 'drizzle-orm';
 import { waitlistFunnelEvent } from './db/schema';
 import type { Db } from './db';
+import { isDecoyWaitlistId } from './waitlist-token';
 import {
 	WAITLIST_FUNNEL_EVENTS,
 	isWaitlistFlowId,
@@ -68,6 +69,46 @@ export function captureWaitlistFunnel(
 	// waitUntil keeps the Worker alive until the insert settles without holding up the response. The
 	// promise already has its own .catch, so an unhandled rejection can't escape either way.
 	platform?.ctx?.waitUntil(write);
+}
+
+/**
+ * The token-gated steps' entry point (DAR-83) — `captureWaitlistFunnel` plus the honeypot gate.
+ *
+ * Step 1 has always recorded NO signup event when the honeypot trips, so bots stay out of the
+ * conversion metric. Steps 2–4 were the exception: a bot that tripped the trap and then drove the
+ * rest of the flow on its decoy token still emitted `qualification_started` and everything after it,
+ * so the later stages could exceed `waitlist_signup_completed` — a sequence that cannot happen, which
+ * sends whoever next reads /admin/waitlist hunting a bug that isn't there. Our own hermetic e2e does
+ * exactly that, since it reaches the token-gated steps VIA the decoy token. The honeypot's effect is
+ * now uniform across both surfaces: no row in `waitlist_submission`, no row in `waitlist_funnel_event`.
+ *
+ * THE GATE IS THE ROW ID THE STEP ALREADY RESOLVED. DAR-66 weighed this and priced it at "an HMAC per
+ * step", but that HMAC is unavoidable and already paid — every step verifies the continuation token
+ * before it can enrich, and since DAR-75 the resume cookie needs the id too. What is left is a string
+ * comparison.
+ *
+ * DECOY ONLY, NEVER A NULL ID. A null id (absent, malformed, expired, tampered, or no signing secret)
+ * is NOT a bot signal: it covers the visitor whose token aged out mid-flow, who really did reach this
+ * stage, and a deploy with no `BETTER_AUTH_SECRET` would take the entire step funnel dark rather than
+ * merely stop enriching. A decoy is the one id that carries a positive signal — it exists only because
+ * someone filled a field no human can see.
+ *
+ * Suppressing is safe HERE and nowhere else on the honeypot path: the insert is fire-and-forget inside
+ * `ctx.waitUntil` and the counts live behind /admin, so a row that never gets written is invisible to
+ * the caller. That is precisely what isn't true of the decoy token or the resume cookie, which the trap
+ * mints and sets because their absence WOULD be a detectable response difference.
+ *
+ * @param rowId  the submission this step's token authorizes, straight from `verifyWaitlistToken`
+ */
+export function captureWaitlistStepFunnel(
+	db: Db | undefined,
+	platform: App.Platform | undefined,
+	rowId: string | null,
+	flowId: unknown,
+	events: readonly WaitlistFunnelEvent[]
+): void {
+	if (rowId !== null && isDecoyWaitlistId(rowId)) return;
+	captureWaitlistFunnel(db, platform, flowId, events);
 }
 
 /** One event slug → how many distinct flows reached it. Every slug is present, zero included. */
