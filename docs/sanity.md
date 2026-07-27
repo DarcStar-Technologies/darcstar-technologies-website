@@ -292,9 +292,13 @@ The **Studio's `pnpm promote`** derives it (`scripts/lib/sort-key.ts`, `SORT_KEY
   look odd, it falls off the response.
 - **`Ł` is why `NFD` alone isn't enough.** NFD decomposes `é` into `e` + a combining mark that
   `\p{Diacritic}` then strips, but stroke and ligature letters carry no decomposition at all — hence
-  an explicit folding map (`ł→l · ø→o · đ→d · ð→d · þ→th · ß→ss · æ→ae · œ→oe`). It is an
-  approximation of base-sensitivity collation for **Latin** scripts, not ICU: non-Latin still sorts
-  by code point after ASCII, exactly as it does today.
+  an explicit folding map (`ł→l · ø→o · đ→d · ð→d · þ→th · ß→ss · æ→ae · œ→oe`). Eight of its
+  eleven entries reproduce base-sensitivity collation exactly (measured: `localeCompare(c, fold,
+{sensitivity:'base'}) === 0`); `ı`, `þ` and `ŧ` deliberately go **further** than ICU, which treats
+  them as primary-distinct — a judgement about who reads this index, pinned by the self-test so
+  "match ICU exactly" stays a decision rather than a silent regression. Either way it is an
+  approximation for **Latin** scripts, not ICU: non-Latin still sorts by code point after ASCII,
+  exactly as it does today.
 - **Keep the `coalesce` fallback.** A document with no key sorts exactly as it did before — measured,
   not assumed: against the corpus as it stands (no keys yet), `coalesce(titleSortKey, lower(title))`
   returns the 18 titles **byte-identically** to `lower(title)`. That is what lets the two repos ship

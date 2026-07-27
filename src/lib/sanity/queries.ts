@@ -97,6 +97,16 @@ const PAPER_CARD = `
 			"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),
 			"topics": array::compact(topics[]->{ _id, title, "slug": slug.current })`;
 
+// Every by-name ordering on the site — the facet seed below, the author type-ahead, /people — goes
+// through ONE expression so they cannot drift apart, and it carries DAR-95's stored sort key with
+// the same fallback `ORDER_TITLE` uses (see there for why the key has to be stored at all).
+//
+// This is the ordering the dataset can actually exercise TODAY, which is why DAR-95 covers people
+// and not only papers: no paper title carries a diacritic, but `Łukasz Kaiser` sorted last of 123
+// authors, after every Z, because `Ł` (U+0141) is above `Z` in code-point order. Two of the three
+// call sites were not even `lower()`ed before this.
+const ORDER_PERSON_NAME = `coalesce(nameSortKey, lower(name)) asc`;
+
 // Everything the /research chrome needs that ISN'T the current page. This is the half that makes
 // pagination possible at all: the facets used to be derived from the fetched papers, so slicing the
 // fetch would have shrunk the Topic select and the topic guide to whatever happened to be on the
@@ -115,16 +125,6 @@ const PAPER_CARD = `
 // Dao" in the box. It matches on the SLUG ONLY — never the `match` form the filter accepts —
 // because a broad term like `?author=da` would otherwise label the control with one person while
 // the results legitimately contained several.
-// Every by-name ordering on the site — this facet seed, the author type-ahead, /people — goes
-// through ONE expression so they cannot drift apart, and it carries DAR-95's stored sort key with
-// the same fallback `ORDER_TITLE` uses (see there for why the key has to be stored at all).
-//
-// This is the ordering the dataset can actually exercise TODAY, which is why DAR-95 covers people
-// and not only papers: no paper title carries a diacritic, but `Łukasz Kaiser` sorted last of 123
-// authors, after every Z, because `Ł` (U+0141) is above `Z` in code-point order. Two of the three
-// call sites were not even `lower()`ed before this.
-const ORDER_PERSON_NAME = `coalesce(nameSortKey, lower(name)) asc`;
-
 const PAPER_PAGE_META = `
 		"total": count(*[${PAPER_MATCH}]),
 		"totalAll": count(*[_type == "paper" && defined(slug.current)]),
