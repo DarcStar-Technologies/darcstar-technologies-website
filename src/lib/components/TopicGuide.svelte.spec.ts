@@ -62,6 +62,24 @@ describe('TopicGuide legend', () => {
 		await expect.element(page.getByText('Faster attention kernels.')).toBeVisible();
 	});
 
+	// A real regression, caught in review rather than by a test — which is why it now has one.
+	// `glass-sheen.ts` clips the sheen beam to every `glass-*` element's getBoundingClientRect(),
+	// and a closed <details> hides its body with `content-visibility: hidden`, which does NOT zero
+	// that rect. With `glass-card` on the <dl>, the hidden panel reported a full 768x689 box and
+	// the sheen cut a window that size straight over the paper cards below it. The card wraps the
+	// whole disclosure now, so the lit surface is always the visible one.
+	//
+	// Asserted structurally rather than by measuring the sheen, because the sheen needs a laid-out
+	// page and this needs to fail for the NEXT person who reaches for `glass-card` in here.
+	it('puts no glass surface inside the collapsed disclosure', () => {
+		const { container } = render(TopicGuide, { topics: TOPICS });
+		const disclosure = container.querySelector('details');
+		expect(disclosure?.querySelector('[class*="glass-"]')).toBeNull();
+		// ...and the guard is only meaningful if the card is actually there, outside it.
+		expect(container.querySelector('.glass-card')).not.toBeNull();
+		expect(container.querySelector('.glass-card')?.contains(disclosure)).toBe(true);
+	});
+
 	it('renders nothing at all when no topic carries a description', () => {
 		// Not an empty wrapper: /research spaces its children with `space-y-8` (`> * + *`), so a div
 		// that always renders would leave a gap wherever this component has nothing to say.

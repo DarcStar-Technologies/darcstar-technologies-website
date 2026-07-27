@@ -18,16 +18,17 @@
 	import { researchTopicHref, type TopicEntry } from '$lib/research-filters';
 	import { m } from '$lib/paraglide/messages.js';
 
+	// No `class` passthrough, deliberately: the one caller drops this into a `space-y-8` column, so
+	// spacing comes from the parent. An unused prop is an API to keep working — add it when a second
+	// caller actually needs it.
 	let {
 		topics,
-		activeSlug = null,
-		class: klass
+		activeSlug = null
 	}: {
 		/** Every topic in use by the index — NOT the filtered subset. See `described` below. */
 		topics: TopicEntry[];
 		/** The `?topic=` filter in force, if any. */
 		activeSlug?: string | null;
-		class?: string;
 	} = $props();
 
 	// An undescribed topic has nothing to render — it would be a title echoing the facet select.
@@ -37,43 +38,59 @@
 	const described = $derived(topics.filter((t) => t.description));
 	const active = $derived(described.find((t) => t.slug === activeSlug) ?? null);
 
-	// `list-none` + the -webkit- rule replace the native disclosure triangle with the caret below.
-	// Both are needed: Chrome drops the marker anyway once `display` isn't `list-item`, Firefox
-	// needs `list-style`, and older WebKit needs its pseudo-element hidden.
+	// What actually suppresses the native disclosure triangle here is the `flex` display — measured
+	// in both chromium and firefox, where reverting `list-style` changes neither the summary's
+	// width nor where its first child starts. So `list-none` and the `-webkit-` rule are belt and
+	// braces, not the mechanism: they cost one class each and keep the caret from doubling up if
+	// this summary is ever given a display that generates a marker box (`block`, `list-item`).
 	// One literal, never concatenated: Tailwind's scanner reads raw source text, so a class split
 	// across a `+` boundary would silently never compile.
+	// `flex w-full`, not `inline-flex`: the summary sits in a card-shaped bar, so a target that
+	// only spans its own text would leave most of a row that plainly looks clickable inert —
+	// and it makes the focus ring outline the row rather than a fragment of it.
 	const summaryClass =
-		'inline-flex cursor-pointer list-none items-center gap-1.5 rounded text-xs text-muted transition-colors hover-focus:text-white [&::-webkit-details-marker]:hidden';
+		'flex w-full cursor-pointer list-none items-center gap-1.5 rounded text-xs text-muted transition-colors hover-focus:text-white [&::-webkit-details-marker]:hidden';
 </script>
 
 <!-- Renders NOTHING (not an empty wrapper) when no topic carries a description: the parent's
      `space-y-8` is `> * + *`, so an always-present wrapper div would leave a gap where this
      component is invisible. Same guard-free-caller convention as PaperTopics/SanityImage. -->
 {#if described.length > 0}
-	<div class={['space-y-4', klass]}>
-		<details class="group">
-			<summary class={summaryClass}>
-				<span class="text-tertiary-400 transition-transform group-open:rotate-90" aria-hidden="true"
-					>▸</span
-				>
-				{m.research_topics_legend_summary()}
-			</summary>
-			<dl class="glass-card mt-3 space-y-3 p-5 text-sm">
-				{#each described as topic (topic.slug)}
-					<div>
-						<dt class="font-medium text-tertiary-400">
-							<a
-								href={researchTopicHref(topic.slug)}
-								class="underline-offset-4 transition-colors hover-focus:text-tertiary-300 hover-focus:underline"
-							>
-								{topic.title}
-							</a>
-						</dt>
-						<dd class="mt-0.5 leading-relaxed text-body">{topic.description}</dd>
-					</div>
-				{/each}
-			</dl>
-		</details>
+	<div class="space-y-4">
+		<!-- The `glass-card` wraps the WHOLE disclosure, never just the open body — measured, not
+		     taste. `glass-sheen.ts` clips the beam to every `glass-*` element's
+		     getBoundingClientRect(), and a closed <details> hides its body with
+		     `content-visibility: hidden`, which does NOT zero that rect: a `glass-card` on the <dl>
+		     reported a full 768x689 box while invisible, and the sheen duly cut a window that size
+		     over the paper cards below. Wrapping instead means the lit surface is always the
+		     visible one, and opening it just GROWS a panel — the case the sheen's ResizeObserver
+		     already handles. Rule: never put a `glass-*` surface inside a collapsed container. -->
+		<div class="glass-card px-5 py-4">
+			<details class="group">
+				<summary class={summaryClass}>
+					<span
+						class="text-tertiary-400 transition-transform group-open:rotate-90"
+						aria-hidden="true">▸</span
+					>
+					{m.research_topics_legend_summary()}
+				</summary>
+				<dl class="mt-4 space-y-3 border-t border-hairline pt-4 text-sm">
+					{#each described as topic (topic.slug)}
+						<div>
+							<dt class="font-medium text-tertiary-400">
+								<a
+									href={researchTopicHref(topic.slug)}
+									class="underline-offset-4 transition-colors hover-focus:text-tertiary-300 hover-focus:underline"
+								>
+									{topic.title}
+								</a>
+							</dt>
+							<dd class="mt-0.5 leading-relaxed text-body">{topic.description}</dd>
+						</div>
+					{/each}
+				</dl>
+			</details>
+		</div>
 
 		<!-- The filtered view's own header. Deliberately NOT a `glass-card`: the cards below are the
 		     papers, and a third frosted panel between the filter bar and them would read as one
