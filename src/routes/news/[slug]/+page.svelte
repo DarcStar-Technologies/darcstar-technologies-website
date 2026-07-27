@@ -57,7 +57,7 @@
 		<div class="flex flex-col gap-4">
 			<a
 				href={localizeHref('/news')}
-				class="text-sm font-medium text-primary-500 transition-colors hover:text-primary-400"
+				class="text-sm font-medium text-primary-500 transition-colors hover-focus:text-primary-400"
 				>{m.news_back()}</a
 			>
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
@@ -100,7 +100,7 @@
 							<li class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
 								<a
 									href={localizeHref(`/research/${paper.slug}`)}
-									class="text-sm text-primary-500 transition-colors hover:text-primary-400 hover:underline"
+									class="text-sm text-primary-500 transition-colors hover-focus:text-primary-400 hover-focus:underline"
 								>
 									{paper.title}{#if paper.venue}<span class="text-muted">
 											· {paper.venue}</span

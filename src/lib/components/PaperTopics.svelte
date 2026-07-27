@@ -29,7 +29,7 @@
 			{#if topicHref && topic.slug}
 				<a
 					href={topicHref(topic.slug)}
-					class="{tagClass} transition-colors hover:border-tertiary-400 hover:text-tertiary-300"
+					class="{tagClass} transition-colors hover-focus:border-tertiary-400 hover-focus:text-tertiary-300"
 					title={topic.description ?? undefined}
 				>
 					{topic.title}

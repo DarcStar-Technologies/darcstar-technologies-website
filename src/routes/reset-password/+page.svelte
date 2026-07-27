@@ -8,7 +8,7 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
-	import { fieldClass, submitButtonClass } from '$lib/styles';
+	import { fieldClass, inlineLinkClass, submitButtonClass } from '$lib/styles';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 	import type { PageProps } from './$types';
@@ -64,9 +64,8 @@
 				{invite ? m.reset_password_invite_success_body() : m.reset_password_success_body()}
 			</p>
 			<p class="mt-6 text-sm text-body">
-				<a
-					class="font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline"
-					href={localizeHref('/login')}>{m.reset_password_success_signin_link()}</a
+				<a class={inlineLinkClass} href={localizeHref('/login')}
+					>{m.reset_password_success_signin_link()}</a
 				>
 			</p>
 		{:else if showInvalid}
@@ -80,9 +79,8 @@
 				{invite ? m.reset_password_invite_invalid_body() : m.reset_password_invalid_body()}
 			</p>
 			<p class="mt-6 text-sm text-body">
-				<a
-					class="font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline"
-					href={localizeHref('/forgot-password')}>{m.reset_password_invalid_request_link()}</a
+				<a class={inlineLinkClass} href={localizeHref('/forgot-password')}
+					>{m.reset_password_invalid_request_link()}</a
 				>
 			</p>
 		{:else}

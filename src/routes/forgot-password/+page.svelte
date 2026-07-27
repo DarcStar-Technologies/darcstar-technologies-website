@@ -8,7 +8,7 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
-	import { fieldClass, submitButtonClass } from '$lib/styles';
+	import { fieldClass, inlineLinkClass, submitButtonClass } from '$lib/styles';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 	import type { PageProps } from './$types';
@@ -51,9 +51,8 @@
 			</p>
 			<p class="mt-2 text-xs text-body/70">{m.forgot_password_check_email_hint()}</p>
 			<p class="mt-6 text-sm text-body">
-				<a
-					class="font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline"
-					href={localizeHref('/login')}>{m.forgot_password_back_to_login()}</a
+				<a class={inlineLinkClass} href={localizeHref('/login')}
+					>{m.forgot_password_back_to_login()}</a
 				>
 			</p>
 		{:else}
@@ -98,9 +97,8 @@
 			</form>
 
 			<p class="mt-6 text-sm text-body">
-				<a
-					class="font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline"
-					href={localizeHref('/login')}>{m.forgot_password_back_to_login()}</a
+				<a class={inlineLinkClass} href={localizeHref('/login')}
+					>{m.forgot_password_back_to_login()}</a
 				>
 			</p>
 		{/if}

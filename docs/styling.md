@@ -93,6 +93,24 @@ Two `@utility` blocks in `layout.css` (built with `@apply`) capture copy-pasted 
 - **`eyebrow`** = `font-mono uppercase text-muted` — the mono/caps/muted kicker label. Consumers add their own **size + tracking** (they legitimately vary: `eyebrow text-xs tracking-widest` for labels, the hero kicker is larger/looser).
 - **`btn-pill`** = `rounded-full px-6 py-2.5 text-sm font-medium text-white` — the default pill CTA; pair it with the surface: `glass-btn btn-pill`. The large hero CTA and the full-width submit stay hand-written (deliberate one-off sizes).
 
+### Keyboard focus — one ring, plus `hover-focus:` (DAR-57)
+
+Two rules in `layout.css`, and they answer different questions:
+
+- **The ring says WHERE focus is.** One `@layer base` rule gives `a`/`button`/`summary`/`input`/`select`/`textarea` a `2px solid var(--color-primary-400)` outline at `:focus-visible`, offset 2px. Before it, nothing in the repo defined a focus style at all and every link fell back to the UA ring — Skeleton leaves this to the app on purpose (its `base/globals.css` ships the reminder and a commented example). Scope is **every interactive element**, not just anchors: branding the link ring and leaving buttons on the UA default trades a missing indicator for an inconsistent one.
+- **`hover-focus:` says the thing IS interactive.** A `hover:`-only treatment — the research pills' fill, a card title's underline — tells a mouse user that and tells a keyboard user nothing. The custom variant fires on both. Its `@media (hover: hover)` guard is not decoration: Tailwind's own `hover:` compiles with it, so a raw `&:hover` would silently start applying hover styles on touch. It composes, so the news card's `group-hover:` became `group-hover-focus:`.
+
+Three things worth keeping:
+
+- **The ring is `@layer base` so a surface that owns its focus state still wins.** Tailwind utilities are a later layer, which is what leaves `glass-field`'s recessed ring and `/admin`'s `focus-visible:ring-*` chips untouched. The rule that makes safe: **opt out only by REPLACING it** — an `outline-none` with nothing behind it is the defect this fixed.
+- **It's an explicit element list, not a bare `:focus-visible`.** SvelteKit focuses `<body>` after a client-side navigation (asking for `focusVisible: false`, which isn't honoured everywhere); a bare selector would outline the whole page after a keyboard-driven one.
+- **A global rule has no call sites, so only a browser can prove it fires.** `src/routes/focus-visible.e2e.ts` walks `/`, `/evidence` and `/login` with real **Tab** presses (`:focus-visible` is a heuristic under `element.focus()`), asserts every link/button stop carries the ring, and asserts a **minimum stop count** so a walk that finds nothing fails instead of passing. Colour is compared against a probe element resolving the same `var()` — not a literal, because how a browser serializes `oklch()` in a computed style is its business.
+- **Tailwind v4's `transition-colors` includes `outline-color`**, and most links here carry it — so the ring does not appear at its final colour, it interpolates there from `currentColor` over 150ms. Harmless to look at (a 2px solid ring is fully drawn from the first frame; only its hue settles) but it will lie to anything that reads the computed style right after focusing, which is why the walk waits for each stop's transitions to finish first.
+
+Two things about verifying this by eye, both learned the slow way: a `pnpm preview` serves the **last build**, so `pnpm build` first or you are looking at whatever the previous command compiled; and a browser extension in the **`data-darkreader-*` family rewrites colours in the page**, which makes every colour reading in that profile fiction. Playwright's chromium runs a clean profile and is the authority on colour; a normal browser is for geometry, clipping and decoration.
+
+The corollary for new code: an interactive element needs **no** focus markup — it already has the ring. Reach for `hover-focus:` (never bare `hover:`) whenever the treatment's job is to say "this is interactive".
+
 ### The color-charge triad — one source of truth
 
 The homepage's RGB "color-charge" motif (the nucleon triple helix) is **the same three colours as the brand triad**, defined once in the theme and consumed everywhere via derivation — never re-typed as hex:

@@ -6,12 +6,12 @@
 	import { CONTACT_EMAIL, GITHUB_URL, GITHUB_HANDLE } from '$lib/site';
 </script>
 
-<a href={`mailto:${CONTACT_EMAIL}`} class="text-body transition-colors hover:text-primary-500"
+<a href={`mailto:${CONTACT_EMAIL}`} class="text-body transition-colors hover-focus:text-primary-500"
 	>{CONTACT_EMAIL}</a
 >
 <a
 	href={GITHUB_URL}
 	target="_blank"
 	rel="noreferrer"
-	class="text-body transition-colors hover:text-primary-500">{GITHUB_HANDLE}</a
+	class="text-body transition-colors hover-focus:text-primary-500">{GITHUB_HANDLE}</a
 >

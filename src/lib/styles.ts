@@ -4,13 +4,15 @@
 
 /** The site's one inline-link treatment (the login/signup cross-link style): primary-colored,
  * underline on hover. Content links (research card titles, in-copy CTAs) share it so the
- * affordance can't drift. */
+ * affordance can't drift. `hover-focus:` (DAR-57) so a keyboard reaching the link sees the same
+ * state change a pointer does — on top of the site-wide focus ring, which is the separate
+ * guarantee that focus is VISIBLE (both in layout.css). */
 export const inlineLinkClass =
-	'font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline';
+	'font-medium text-primary-500 underline-offset-4 transition-colors hover-focus:text-primary-400 hover-focus:underline';
 
 /** The quiet utility-link treatment (clear-filters, "how we verify" — actions that support the
- * content rather than being it): muted until hover. */
-export const mutedLinkClass = 'text-xs text-muted transition-colors hover:text-white';
+ * content rather than being it): muted until hover or keyboard focus. */
+export const mutedLinkClass = 'text-xs text-muted transition-colors hover-focus:text-white';
 
 // --- Form chrome -----------------------------------------------------------------------------
 // Every form in the site (contact, waitlist steps, login/signup/reset, admin, the /research

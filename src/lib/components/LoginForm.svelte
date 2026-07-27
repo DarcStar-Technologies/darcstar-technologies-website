@@ -10,7 +10,7 @@
 	import { goto } from '$app/navigation';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
-	import { fieldClass, submitButtonClass } from '$lib/styles';
+	import { fieldClass, inlineLinkClass, submitButtonClass } from '$lib/styles';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 
 	// `form` is the /login action result — present when the page re-renders after a no-JS submit,
@@ -138,11 +138,7 @@
 	>
 		<input type="hidden" name="email" value={email} />
 		<span>{m.login_resend_prompt()}</span>
-		<button
-			type="submit"
-			disabled={resending}
-			class="font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline disabled:opacity-60"
-		>
+		<button type="submit" disabled={resending} class="{inlineLinkClass} disabled:opacity-60">
 			{resending ? m.login_resend_sending() : m.login_resend_button()}
 		</button>
 	</form>

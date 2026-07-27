@@ -27,6 +27,16 @@
 	const user = $derived(page.data.user);
 	const isStaff = $derived(page.data.isStaff ?? false);
 
+	// The two nav-item treatments, one const each. Every item in a list wears the identical string,
+	// retyped at all ten call sites until DAR-57 had to touch each of them — so they're one const
+	// per list now, and `hover-focus:` gives the keyboard the same state change the pointer gets
+	// (the ring itself is site-wide, in layout.css). Component-local, so NOT $lib/styles.ts:
+	// nothing outside this file renders a nav item.
+	const desktopLinkClass =
+		'rounded px-3 py-2 text-sm font-medium text-primary-500 transition-colors hover-focus:text-primary-400';
+	const mobileLinkClass =
+		'block rounded px-3 py-2 text-base font-medium text-primary-500 transition-colors hover-focus:preset-tonal-primary';
+
 	let open = $state(false);
 	let stuck = $state(false);
 
@@ -146,33 +156,22 @@
 				<ul class="hidden items-center gap-1 sm:flex">
 					{#each links as link (link.id)}
 						<li>
-							{@render navLink(
-								link,
-								'rounded px-3 py-2 text-sm font-medium text-primary-500 transition-colors hover:text-primary-400'
-							)}
+							{@render navLink(link, desktopLinkClass)}
 						</li>
 					{/each}
 					{#if user}
 						<li>
-							{@render (isStaff ? adminLink : accountLink)(
-								'rounded px-3 py-2 text-sm font-medium text-primary-500 transition-colors hover:text-primary-400'
-							)}
+							{@render (isStaff ? adminLink : accountLink)(desktopLinkClass)}
 						</li>
 						<li>
-							{@render signoutForm(
-								'rounded px-3 py-2 text-sm font-medium text-primary-500 transition-colors hover:text-primary-400'
-							)}
+							{@render signoutForm(desktopLinkClass)}
 						</li>
 					{:else}
 						<li>
-							{@render loginLink(
-								'rounded px-3 py-2 text-sm font-medium text-primary-500 transition-colors hover:text-primary-400'
-							)}
+							{@render loginLink(desktopLinkClass)}
 						</li>
 						<li>
-							{@render requestAccessLink(
-								'rounded px-3 py-2 text-sm font-medium text-primary-500 transition-colors hover:text-primary-400'
-							)}
+							{@render requestAccessLink(desktopLinkClass)}
 						</li>
 					{/if}
 				</ul>
@@ -180,7 +179,7 @@
 				<!-- Mobile menu toggle -->
 				<button
 					type="button"
-					class="btn-icon hover:preset-tonal sm:hidden"
+					class="btn-icon hover-focus:preset-tonal sm:hidden"
 					aria-label={open ? m.nav_menu_close() : m.nav_menu_open()}
 					aria-expanded={open}
 					aria-controls="mobile-nav"
@@ -206,33 +205,22 @@
 			>
 				{#each links as link (link.id)}
 					<li>
-						{@render navLink(
-							link,
-							'block rounded px-3 py-2 text-base font-medium text-primary-500 transition-colors hover:preset-tonal-primary'
-						)}
+						{@render navLink(link, mobileLinkClass)}
 					</li>
 				{/each}
 				{#if user}
 					<li>
-						{@render (isStaff ? adminLink : accountLink)(
-							'block rounded px-3 py-2 text-base font-medium text-primary-500 transition-colors hover:preset-tonal-primary'
-						)}
+						{@render (isStaff ? adminLink : accountLink)(mobileLinkClass)}
 					</li>
 					<li>
-						{@render signoutForm(
-							'block w-full rounded px-3 py-2 text-left text-base font-medium text-primary-500 transition-colors hover:preset-tonal-primary'
-						)}
+						{@render signoutForm(`${mobileLinkClass} w-full text-left`)}
 					</li>
 				{:else}
 					<li>
-						{@render loginLink(
-							'block rounded px-3 py-2 text-base font-medium text-primary-500 transition-colors hover:preset-tonal-primary'
-						)}
+						{@render loginLink(mobileLinkClass)}
 					</li>
 					<li>
-						{@render requestAccessLink(
-							'block rounded px-3 py-2 text-base font-medium text-primary-500 transition-colors hover:preset-tonal-primary'
-						)}
+						{@render requestAccessLink(mobileLinkClass)}
 					</li>
 				{/if}
 			</ul>

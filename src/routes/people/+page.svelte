@@ -67,7 +67,7 @@
 										href={link.url}
 										target="_blank"
 										rel="noreferrer noopener"
-										class="text-xs font-medium text-primary-500 transition-colors hover:text-primary-400"
+										class="text-xs font-medium text-primary-500 transition-colors hover-focus:text-primary-400"
 										>{link.label}</a
 									>
 								{/each}

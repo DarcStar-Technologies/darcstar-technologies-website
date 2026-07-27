@@ -68,6 +68,50 @@ html {
 	h6 {
 		font-family: var(--heading-font-family);
 	}
+
+	/* Keyboard focus (DAR-57) — the site's ONE focus indicator, and the floor under every
+	   interactive element. Nothing in the repo defined a focus style before this, so a keyboard
+	   user got the UA ring on surfaces where every other state is designed. Skeleton leaves this
+	   to the app deliberately (its base/globals.css ships the reminder + an example, commented out).
+	   Note the theme's `--anchor-text-decoration-focus` is NOT the lever: it only feeds Skeleton's
+	   `.anchor` utility class, which this site never uses — every link is a bare <a>.
+
+	   Written in `@layer base` on purpose: Tailwind utilities are a later layer, so a surface that
+	   owns its own focus state still wins — `glass-field`'s recessed ring below, and /admin's
+	   `focus-visible:ring-*` chips. That makes the rule "opt out only by REPLACING it", never by
+	   leaving nothing.
+
+	   An explicit element list rather than a bare `:focus-visible`: SvelteKit focuses <body> after
+	   a client-side navigation (it asks for `focusVisible: false`, but that option isn't honoured
+	   everywhere), and a bare selector would outline the whole page after a keyboard-driven one.
+	   2px clears WCAG 2.2 SC 2.4.13's thickness floor. A browser without `:focus-visible` drops the
+	   whole rule and keeps its UA ring — no worse than before. */
+	a:focus-visible,
+	button:focus-visible,
+	summary:focus-visible,
+	input:focus-visible,
+	select:focus-visible,
+	textarea:focus-visible {
+		outline: 2px solid var(--color-primary-400);
+		outline-offset: 2px;
+	}
+}
+
+/* `hover-focus:` — an affordance that answers to the pointer AND the keyboard (DAR-57). The ring
+   above says WHERE focus is; this says the thing under it is interactive, which is what a
+   `hover:`-only treatment tells a mouse user and nobody else (the research pills' fill, a card
+   title's underline). One token so a call site can't wire up half of it.
+   The `(hover: hover)` guard is load-bearing, not decoration: Tailwind's own `hover:` compiles
+   with it, so a raw `&:hover` here would quietly start applying hover styles on touch. */
+@custom-variant hover-focus {
+	@media (hover: hover) {
+		&:hover {
+			@slot;
+		}
+	}
+	&:focus-visible {
+		@slot;
+	}
 }
 
 /* Smooth in-page anchor scrolling — e.g. the header's About → #about footer
@@ -274,12 +318,15 @@ html {
 		0 12px 28px -18px color-mix(in oklab, var(--charge-b) 30%, transparent),
 		inset 0 1px 0 rgb(255 255 255 / 0.14);
 	/* The border/background hover lift was repeated on every call site — bake it in.
-	   Consumers add `hover:text-*` themselves where the label/icon also lightens. */
+	   Consumers add `hover-focus:text-*` themselves where the label/icon also lightens. */
 	transition:
 		border-color 150ms ease,
 		background-color 150ms ease,
 		color 150ms ease;
-	&:hover {
+	/* Keyboard focus gets the same lift as the pointer (DAR-57) — the `hover-focus` variant's
+	   behaviour, written out because this is plain CSS rather than a utility class. */
+	&:hover,
+	&:focus-visible {
 		border-color: rgb(255 255 255 / 0.3);
 		background-color: rgb(255 255 255 / 0.1);
 	}

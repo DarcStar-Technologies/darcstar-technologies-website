@@ -18,7 +18,7 @@
 {#if safe}
 	<a
 		{href}
-		class="text-primary-500 underline underline-offset-4 transition-colors hover:text-primary-400"
+		class="text-primary-500 underline underline-offset-4 transition-colors hover-focus:text-primary-400"
 		target={external ? '_blank' : undefined}
 		rel={external ? 'noreferrer noopener' : undefined}>{@render children()}</a
 	>
