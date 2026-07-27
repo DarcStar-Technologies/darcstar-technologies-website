@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 import { SANITY_IMAGE_CDN_ORIGIN, TURNSTILE_ORIGIN } from './src/lib/security-headers';
+import { FailureReportReporter } from './scripts/vitest-failure-report';
 
 const dirname =
 	typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
@@ -82,11 +83,31 @@ export default defineConfig({
 	],
 	test: {
 		expect: { requireAssertions: true },
+		// A red run writes itself to test-failures/ (DAR-90). The default reporter's output is the
+		// terminal's, and the terminal is exactly what got lost: a run piped through `grep` and then
+		// re-run left a failure with no name attached, which is why that ticket exists. Root-level on
+		// purpose — `reporters` is not a per-project option, and one run should produce one report
+		// across all three projects.
+		reporters: ['default', new FailureReportReporter()],
+		// Off by default in vitest (a small collection-time cost). On, because it is what turns a
+		// recorded failure into a `file:line` you can click — the report exists to be acted on by
+		// someone who cannot reproduce the run it describes.
+		includeTaskLocation: true,
 		projects: [
 			{
 				extends: './vite.config.ts',
 				test: {
 					name: 'client',
+					// Headroom, measured (DAR-90). The slowest test here ran 914ms and 2346ms in two runs on
+					// the SAME machine — 2.6x run-to-run variance, leaving only 2.1x margin against vitest's
+					// 5s default at the slow end. That is the tightest margin in the suite, and the variance
+					// is the point: browser startup is what stretches when the box is loaded. The server
+					// project's slowest is 1268ms and keeps the default, because a tight default is what
+					// catches a genuinely hung node test.
+					// This is NOT a retry and hides nothing: a broken browser test still fails, 10s later.
+					// It closes a real fragility, but it is not a confirmed fix for the original DAR-90
+					// failure — that one is still unidentified, which is what the reporter above is for.
+					testTimeout: 15_000,
 					browser: {
 						enabled: true,
 						provider: playwright(),
@@ -114,6 +135,8 @@ export default defineConfig({
 				plugins: [storybookTest({ configDir: path.join(dirname, '.storybook') })],
 				test: {
 					name: 'storybook',
+					// Same browser-startup variance as the client project above; slowest here is 1476ms.
+					testTimeout: 15_000,
 					browser: {
 						enabled: true,
 						headless: true,
