@@ -89,10 +89,11 @@ export const isClientFireableFunnelEvent = (value: unknown): value is ClientFire
  * Canonical UUID form — what `crypto.randomUUID()` produces, which is the only thing that ever mints
  * a flow id (`+page.server.ts`).
  *
- * Anchored and case-insensitive. This is a WRITE GUARD, not a parser: the flow id arrives from a
- * hidden form field or a public command, so it is attacker-controlled, and without a shape check the
- * column would accept arbitrary text of arbitrary length from anyone. Rejecting anything that isn't a
- * UUID keeps the table to fixed-width opaque ids and gives a bot nothing to smuggle in.
+ * Anchored and case-insensitive. This is the STORED shape, and since DAR-86 it is no longer what
+ * arrives on the wire: a flow id travels signed (`n1.<uuid>.<exp>.<mac>`, minted and verified in
+ * `$lib/server/waitlist-funnel.ts`) and only its verified payload reaches the column. The check
+ * survives as the guard on that payload — it is what keeps "this table holds fixed-width opaque ids"
+ * a property of the code rather than of whoever calls the minter.
  *
  * Deliberately NOT version-pinned (`[1-5]`/`[89ab]`): the value carries no meaning beyond "one
  * visitor's pass through the flow", so a future runtime's v7 id should keep working. Shape is the
@@ -101,26 +102,49 @@ export const isClientFireableFunnelEvent = (value: unknown): value is ClientFire
 const FLOW_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * A flow id WE vouch for — freshly minted, or recovered from a handle whose signature verified.
+ *
+ * The brand is the point (DAR-86). The wire carries a signed handle and the column holds this, so
+ * every request has to cross from one to the other exactly once, at `resolveWaitlistFlowId`; making
+ * the two DIFFERENT TYPES turns "did anyone forget?" into a compile error rather than a convention a
+ * sixth call site can quietly break. It is erased at runtime, so `isWaitlistFlowId` still stands
+ * behind it — a cast would compile, and is the one thing to question in review.
+ */
+export type WaitlistFlowId = string & { readonly __waitlistFlowId: unique symbol };
+
+/**
  * Is this a well-formed flow id?
  *
  * A flow id is an ANONYMOUS, per-page-load random value. It is explicitly NOT the waitlist row id and
  * NOT derived from the email — it must not be possible to walk back from an analytics row to a person,
  * and a derived (rather than random) id would be exactly that, joinable to the signups table by anyone
- * who could recompute it.
+ * who could recompute it. Signing the transport (DAR-86) changed nothing about that: the payload is
+ * still the same random value, so the row still identifies nobody.
  */
-export const isWaitlistFlowId = (value: unknown): value is string =>
+export const isWaitlistFlowId = (value: unknown): value is WaitlistFlowId =>
 	typeof value === 'string' && FLOW_ID_RE.test(value);
 
 /**
- * A submitted flow id, reflected back for the next step's hidden field, or `''` if it wasn't one.
+ * Longest signed flow id we will reflect or verify. A real one is ~94 characters; the cap keeps a
+ * junk submission from having its payload echoed back wholesale, and — because `verifyWaitlistFlowId`
+ * rejects at the SAME number before spending an HMAC — anything an echo can produce still verifies,
+ * while anything longer was never ours. (`SIGNED_ECHO_MAX` in waitlist-steps.remote.ts is the same
+ * cap for the continuation token and the flow claim, for the same reason.)
+ */
+export const SIGNED_FLOW_ID_MAX = 256;
+
+/**
+ * A submitted flow id, reflected back for the next step's hidden field.
  *
  * The step responses echo the flow id exactly as they echo the continuation token, and for the same
  * reason: without JS each step is a native POST that re-renders the page, and the load re-runs and
- * mints a fresh id. Echoing keeps one visitor on one flow across the whole funnel.
+ * mints a fresh handle. Echoing keeps one visitor on one flow across the whole funnel.
  *
- * Unlike the token's echo — which caps length and lets junk through to fail verification later — this
- * one drops a malformed value outright. There's no downstream check to defer to, and the page treats
- * `''` as "no echo" and falls back to the id its load just minted, so a bad submission costs that
- * visitor a split funnel rather than anything worse.
+ * Since DAR-86 the value is the SIGNED handle, so this echoes it the way the token's echo does —
+ * capped, otherwise verbatim, junk included. Reflecting is not vouching: the handle is verified again
+ * at the next write, and a value that doesn't verify simply records nothing. Re-minting instead would
+ * put a second minter in the flow, which is the one thing "a page load is required to obtain a handle"
+ * depends on there not being.
  */
-export const echoFlowId = (value: unknown): string => (isWaitlistFlowId(value) ? value : '');
+export const echoFlowId = (value: unknown): string =>
+	typeof value === 'string' ? value.slice(0, SIGNED_FLOW_ID_MAX) : '';

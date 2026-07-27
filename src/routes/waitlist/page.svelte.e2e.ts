@@ -13,6 +13,15 @@ import { expect, test, type Locator } from '@playwright/test';
 // Selectors are scoped to <main> for consistency with the contact spec (the layout mounts the hidden
 // contact modal outside <main>).
 
+// The funnel handle is `n1.<flow id>.<exp>.<mac>` (DAR-86), and the load MINTS ONE PER RENDER — the
+// expiry moves, so two renders of the same flow carry two different strings. Anything comparing
+// renders therefore has to compare the flow id inside the handle; comparing the handles themselves
+// would pass or fail on whether the two happened to land in the same second.
+//
+// Two ECHOED handles are still byte-identical (a step reflects what it was given, never re-mints),
+// which is why the no-JS chain below can and does compare them whole.
+const flowIdOf = (handle: string) => handle.split('.')[1];
+
 // Step 1 — the required core signup: Name + Email, the "Join the waitlist" submit, and the DAR-44
 // data-handling notice beside it.
 test('waitlist step-1 form renders with required fields and its data-handling notice', async ({
@@ -37,12 +46,14 @@ test('waitlist step-1 form renders with required fields and its data-handling no
 // attributed to the same flow as the view. That this page renders at all is the other half of the
 // assertion — the load records the view against the placeholder DB, so the write is failing on every
 // request here, and analytics failing must never cost the visitor the form.
-test('the step-1 form carries an anonymous funnel handle', async ({ page }) => {
+//
+// SIGNED since DAR-86 (`n1.` like the token's `v1.` and the claim's `f1.`), which is the end-to-end
+// form of "a page load is required to obtain a handle": the field no longer holds a value a script
+// could have produced for itself.
+test('the step-1 form carries an anonymous, signed funnel handle', async ({ page }) => {
 	await page.goto('/waitlist');
 
-	await expect(page.getByRole('main').locator('input[name="flowId"]')).toHaveValue(
-		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-	);
+	await expect(page.getByRole('main').locator('input[name="flowId"]')).toHaveValue(/^n1\./);
 });
 
 // A LINK TO /waitlist MUST NOT PREFETCH ON HOVER (DAR-66). The app shell sets
@@ -74,9 +85,7 @@ test('hovering a link to /waitlist does not prefetch it', async ({ page }) => {
 	// …and the opt-out is `tap`, not `off`: the click must still work and still fetch exactly once.
 	await cta.click();
 	await expect(page).toHaveURL(/\/waitlist$/);
-	await expect(page.getByRole('main').locator('input[name="flowId"]')).toHaveValue(
-		/^[0-9a-f]{8}-/i
-	);
+	await expect(page.getByRole('main').locator('input[name="flowId"]')).toHaveValue(/^n1\./);
 	expect(dataRequests).toHaveLength(1);
 });
 
@@ -448,12 +457,16 @@ test.describe('resuming after a reload', () => {
 	test('a reload keeps the visitor on ONE funnel flow', async ({ page }) => {
 		await page.goto('/waitlist');
 		const main = page.getByRole('main');
-		const flowId = await main.locator('input[name="flowId"]').inputValue();
+		const flowId = flowIdOf(await main.locator('input[name="flowId"]').inputValue());
 
 		await advanceToStep2(main);
 		await page.reload();
 
-		await expect(main.locator('input[name="flowId"]')).toHaveValue(flowId);
+		// The flow id, not the handle: the reload re-mints from the id the cookie carried, so the
+		// string differs while the flow — the thing every funnel count is keyed on — does not.
+		await expect(main.locator('input[name="flowId"]')).toHaveValue(
+			new RegExp(`^n1\\.${flowId}\\.`)
+		);
 	});
 
 	// Deeper in: the branch and CTA audience step 2 decided are carried by the cookie as well as by
@@ -582,7 +595,7 @@ test.describe('resuming after a reload', () => {
 	test('the load Kit re-runs after a submit reports the same flow id', async ({ page }) => {
 		await page.goto('/waitlist');
 		const main = page.getByRole('main');
-		const flowId = await main.locator('input[name="flowId"]').inputValue();
+		const flowId = flowIdOf(await main.locator('input[name="flowId"]').inputValue());
 
 		await main.getByLabel('Name', { exact: true }).fill('Bot McBotface');
 		await main.getByLabel('Email', { exact: true }).fill('bot@bot');
@@ -593,6 +606,9 @@ test.describe('resuming after a reload', () => {
 			main.getByRole('button', { name: 'Join the waitlist' }).click()
 		]);
 
+		// The re-run load mints its own handle around the SAME flow id, which is the whole claim here:
+		// the id is what every funnel count is keyed on, and it came from the resume cookie rather than
+		// from a fresh `crypto.randomUUID()`.
 		expect(await invalidation.text()).toContain(flowId);
 	});
 
@@ -688,7 +704,7 @@ test.describe('without JavaScript', () => {
 		// JS each submit re-renders the page, whose load mints a fresh id, so an unechoed handle would
 		// silently split one visitor across four flows and make every funnel ratio meaningless.
 		const flowId = await main.locator('input[name="flowId"]').inputValue();
-		expect(flowId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+		expect(flowId).toMatch(/^n1\./);
 
 		await main.getByLabel('Name', { exact: true }).fill('Bot McBotface');
 		await main.getByLabel('Email', { exact: true }).fill('bot@bot');

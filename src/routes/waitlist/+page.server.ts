@@ -1,9 +1,14 @@
 import { getDb, type Db } from '$lib/server/db';
-import { captureWaitlistFunnel } from '$lib/server/waitlist-funnel';
+import {
+	captureWaitlistFunnel,
+	mintWaitlistFlowId,
+	newWaitlistFlowId
+} from '$lib/server/waitlist-funnel';
 import { readEnv } from '$lib/server/env';
 import { mintWaitlistFlowClaim } from '$lib/server/waitlist-flow';
 import { mintWaitlistToken } from '$lib/server/waitlist-token';
 import { verifyWaitlistResume, WAITLIST_RESUME_COOKIE } from '$lib/server/waitlist-resume';
+import type { WaitlistFlowId } from '$lib/waitlist-funnel';
 import type { PageServerLoad } from './$types';
 
 // /waitlist's server load does two things, and touches the database for neither of them:
@@ -48,16 +53,32 @@ export const load: PageServerLoad = async ({ request, cookies, platform, setHead
 
 	const state = tokenSecret ? await verifyWaitlistResume(tokenSecret, cookie) : null;
 
-	// A resumed visitor keeps the flow id their earlier steps were recorded under; only a genuinely
-	// fresh arrival gets a new one. This is the same rule the step responses follow by echoing the
-	// submitted handle, and for the same reason: without it a mid-flow reload would split one visitor
-	// across two flows, stranding `qualification_completed` on a flow that never recorded a view and
-	// quietly corrupting every ratio the funnel exists to report.
+	// THIS LOAD IS THE FUNNEL'S ONLY MINTER (DAR-86). Every other surface that records an event takes
+	// a SIGNED handle it cannot produce, which is what turns the composite primary key into a real
+	// bound: a handle costs a page view, and buys one row per event. `flowId` here is the bare id (the
+	// column's form, and the cookie's); `flowHandle` is what the page ships to the browser.
 	//
-	// Re-recording `waitlist_viewed` under a handle that already has one is a no-op — the composite
+	// A resumed visitor keeps the flow their earlier steps were recorded under; only a genuinely fresh
+	// arrival gets a new one. This is the same rule the step responses follow by echoing the submitted
+	// handle, and for the same reason: without it a mid-flow reload would split one visitor across two
+	// flows, stranding `qualification_completed` on a flow that never recorded a view and quietly
+	// corrupting every ratio the funnel exists to report.
+	//
+	// Re-recording `waitlist_viewed` under a flow that already has one is a no-op — the composite
 	// primary key makes the count a count of DISTINCT flows (see $lib/server/waitlist-funnel.ts) — so
 	// a reload no longer inflates the denominator either.
-	const flowId = state?.flowId || crypto.randomUUID();
+	//
+	// Without a signing secret there is no handle, so the funnel goes dark UNIFORMLY rather than
+	// counting views against zero conversions — a readout that misleads worse than an absent one. Same
+	// posture as the rest of the flow there: no continuation token, no resume, no enrich. The id and
+	// the handle are therefore minted TOGETHER OR NOT AT ALL: leaving the id usable and guarding the
+	// capture separately would make uniform darkness one deletable `&&` rather than a shape.
+	let flowId: WaitlistFlowId | null = null;
+	let flowHandle = '';
+	if (tokenSecret) {
+		flowId = state?.flowId || newWaitlistFlowId();
+		flowHandle = await mintWaitlistFlowId(tokenSecret, flowId);
+	}
 
 	// GET only. Kit re-runs loads when it re-renders the page after a native (no-JS) remote-form POST,
 	// and counting those would inflate the funnel's denominator by one view per step — turning the
@@ -68,7 +89,7 @@ export const load: PageServerLoad = async ({ request, cookies, platform, setHead
 		captureWaitlistFunnel(db, platform, flowId, ['waitlist_viewed']);
 	}
 
-	if (!state || !tokenSecret) return { flowId, resume: null };
+	if (!state || !tokenSecret) return { flowId: flowHandle, resume: null };
 
 	// A resumed render is the ONLY cacheable response in this flow that carries a continuation token:
 	// every in-flight step is rendered as the answer to a POST, and POSTs aren't cached. So say so
@@ -87,7 +108,7 @@ export const load: PageServerLoad = async ({ request, cookies, platform, setHead
 	// on its own. `submissionId` is null once the flow is `done`, which is exactly when there is
 	// nothing left to authorize.
 	return {
-		flowId,
+		flowId: flowHandle,
 		resume: {
 			stage: state.stage,
 			token: state.submissionId ? await mintWaitlistToken(tokenSecret, state.submissionId) : '',

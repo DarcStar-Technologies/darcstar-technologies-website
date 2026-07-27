@@ -8,6 +8,7 @@ import {
 } from './waitlist-resume';
 import { mintSignedValue, mintWaitlistToken, verifyWaitlistToken } from './waitlist-token';
 import { mintWaitlistFlowClaim } from './waitlist-flow';
+import type { WaitlistFlowId } from '$lib/waitlist-funnel';
 
 // The resume value (DAR-75) is what a RELOAD of /waitlist is rebuilt from, so everything the page
 // then renders — which step, which CTA, which row the re-minted continuation token addresses — comes
@@ -18,7 +19,9 @@ import { mintWaitlistFlowClaim } from './waitlist-flow';
 const SECRET = 'test-secret-not-a-real-one';
 const NOW = 1_800_000_000_000; // fixed ms clock — determinism, no Date.now() flake
 const ROW = '01890a5c-1111-4222-8333-444455556666';
-const FLOW = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+// The BARE flow id, which is what the cookie carries — never the signed handle the hidden fields hold
+// (DAR-86): the signing core splits on '.', so a signed value can't be a field inside another one.
+const FLOW = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' as WaitlistFlowId;
 
 const state = (overrides: Partial<WaitlistResumeState> = {}): WaitlistResumeState => ({
 	stage: 'step3',
@@ -163,9 +166,11 @@ describe('verifyWaitlistResume vocabulary narrowing', () => {
 		).resolves.toBeNull();
 	});
 
-	// The flow id is shape-checked on the way OUT for the same reason the funnel checks it on the way
-	// in: the page hands it straight to the next request's hidden field. A junk one degrades to '' —
-	// the load then mints a fresh handle — rather than taking the whole resume down with it.
+	// The flow id is shape-checked on the way OUT because the load SIGNS it into the handle it hands
+	// the page (DAR-86), and only ids of the column's own shape should ever be signed. A junk one
+	// degrades to '' — the load then starts a fresh flow — rather than taking the whole resume down
+	// with it, which is the one field where that trade is right: a lost handle costs a split funnel,
+	// a lost resume costs the visitor their place in the form.
 	it('drops a malformed flow id without discarding the rest of the state', async () => {
 		await expect(
 			verifyWaitlistResume(SECRET, await resign(`step2|${ROW}||||not-a-uuid`), NOW)

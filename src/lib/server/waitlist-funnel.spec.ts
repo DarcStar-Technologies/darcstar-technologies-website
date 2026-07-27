@@ -9,12 +9,21 @@ import type { Db } from './db';
 import {
 	captureWaitlistFunnel,
 	captureWaitlistStepFunnel,
+	mintWaitlistFlowId,
+	newWaitlistFlowId,
 	readWaitlistFunnelCounts,
+	resolveWaitlistFlowId,
 	signupConversionRate,
+	verifyWaitlistFlowId,
 	type WaitlistFunnelCounts
 } from './waitlist-funnel';
-import { decoyWaitlistId } from './waitlist-token';
-import { WAITLIST_FUNNEL_EVENTS, type WaitlistFunnelEvent } from '$lib/waitlist-funnel';
+import { decoyWaitlistId, mintWaitlistToken, verifyWaitlistToken } from './waitlist-token';
+import {
+	WAITLIST_FUNNEL_EVENTS,
+	isWaitlistFlowId,
+	type WaitlistFlowId,
+	type WaitlistFunnelEvent
+} from '$lib/waitlist-funnel';
 
 // The funnel write path (DAR-66), against a real in-memory libsql — because the two properties worth
 // testing are both properties of the DATABASE, not of the TypeScript: the composite primary key is
@@ -37,10 +46,20 @@ const rows = () =>
 		.select({ flowId: waitlistFunnelEvent.flowId, event: waitlistFunnelEvent.event })
 		.from(waitlistFunnelEvent);
 
-const FLOW = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
-const OTHER_FLOW = '9c858901-8a57-4791-81fe-4c455b099bc9';
+// The signing secret every handle below is minted with. Any string works — what matters is that the
+// handles are the real thing the load mints rather than hand-written `n1.…` strings.
+const SECRET = 'spec-secret-not-a-real-one';
+
+// The two forms a flow id takes since DAR-86: the BARE id — branded, what the capture takes and what
+// the column holds — and the signed HANDLE that carries it on the wire. The casts are the honest way
+// to state a fixture; production code earns a branded id from `newWaitlistFlowId` or a signature.
+const FLOW = '3f2504e0-4f89-41d3-9a0c-0305e82c3301' as WaitlistFlowId;
+const OTHER_FLOW = '9c858901-8a57-4791-81fe-4c455b099bc9' as WaitlistFlowId;
+let HANDLE: string;
 
 beforeAll(async () => {
+	HANDLE = await mintWaitlistFlowId(SECRET, FLOW);
+
 	await client.execute(
 		`CREATE TABLE waitlist_funnel_event (
 			flow_id text NOT NULL,
@@ -72,11 +91,122 @@ describe('the events table', () => {
 	});
 });
 
+// DAR-86. The flow id used to travel as a bare UUID, so the composite primary key capped a flow the
+// caller CHOSE — a fresh `crypto.randomUUID()` per POST defeated it outright, and the step endpoints
+// and the public command reached the insert with no continuation token at all. Signing the transport
+// makes /waitlist's load the only minter, so a row costs a page view.
+describe('the signed flow id', () => {
+	it('round-trips the bare id it carries', async () => {
+		expect(await verifyWaitlistFlowId(SECRET, HANDLE)).toBe(FLOW);
+	});
+
+	// THE VECTOR THE TICKET IS ABOUT, at its smallest: what an attacker can produce unaided is a
+	// well-formed UUID, and that is now worth nothing.
+	it('rejects the bare id, which is all an attacker can mint', async () => {
+		expect(await verifyWaitlistFlowId(SECRET, FLOW)).toBeNull();
+	});
+
+	it.each([
+		['junk', 'not-a-handle'],
+		['an empty string', ''],
+		['a non-string', 42],
+		['a missing value', undefined],
+		// Longer than the echo will ever reflect, so it cannot be ours — rejected before the HMAC.
+		['an over-long value', 'n1.' + 'x'.repeat(400)]
+	])('rejects %s', async (_label, value) => {
+		expect(await verifyWaitlistFlowId(SECRET, value)).toBeNull();
+	});
+
+	it('rejects a handle signed with a different secret', async () => {
+		const foreign = await mintWaitlistFlowId('some-other-deployments-secret', FLOW);
+		expect(await verifyWaitlistFlowId(SECRET, foreign)).toBeNull();
+	});
+
+	it('rejects a handle whose 24h window has passed', async () => {
+		const minted = Date.UTC(2026, 0, 1);
+		const handle = await mintWaitlistFlowId(SECRET, FLOW, minted);
+
+		expect(await verifyWaitlistFlowId(SECRET, handle, minted + 23 * 3600_000)).toBe(FLOW);
+		expect(await verifyWaitlistFlowId(SECRET, handle, minted + 25 * 3600_000)).toBeNull();
+	});
+
+	// Domain separation, both directions. All four of the flow's signed values key off the same
+	// BETTER_AUTH_SECRET, so nothing but the domain and prefix inside the MAC keeps a funnel handle
+	// from being presented as a row-authorizing continuation token, or vice versa.
+	it('is not interchangeable with a continuation token', async () => {
+		const token = await mintWaitlistToken(SECRET, FLOW);
+
+		expect(await verifyWaitlistFlowId(SECRET, token)).toBeNull();
+		expect(await verifyWaitlistToken(SECRET, HANDLE)).toBeNull();
+	});
+
+	// The minter trusts its one caller (the load, which passes `newWaitlistFlowId()`); the verifier does
+	// not. It is what keeps "this column holds fixed-width opaque ids" a property of the code rather
+	// than of who happens to call the minter.
+	it('rejects a validly signed handle whose payload is not a UUID', async () => {
+		const wrong = await mintWaitlistFlowId(SECRET, 'not-a-uuid' as WaitlistFlowId);
+		expect(await verifyWaitlistFlowId(SECRET, wrong)).toBeNull();
+	});
+
+	// Fresh ids are ids, and distinct ones. The one place a flow id is created without a signature to
+	// earn it, so it is worth saying out loud what it produces.
+	it('mints fresh ids of the column’s own shape', () => {
+		const a = newWaitlistFlowId();
+		expect(isWaitlistFlowId(a)).toBe(true);
+		expect(a).not.toBe(newWaitlistFlowId());
+	});
+});
+
+// The crossing every public entry point makes — the signup, the four steps, the confirmation's
+// command. Its answers are all the same `null`, deliberately: nothing downstream could act on the
+// distinction, and no visitor should see one.
+describe('resolveWaitlistFlowId', () => {
+	it('hands back the id a valid handle carries', async () => {
+		expect(await resolveWaitlistFlowId(SECRET, HANDLE)).toBe(FLOW);
+	});
+
+	// Uniformly dark, never partially. A deploy missing BETTER_AUTH_SECRET cannot mint handles either,
+	// so the alternative to this is `waitlist_viewed` climbing against zero conversions — a readout
+	// that misleads worse than an absent one.
+	it('is null without a signing secret, which takes the whole funnel dark together', async () => {
+		expect(await resolveWaitlistFlowId(undefined, HANDLE)).toBeNull();
+		expect(await resolveWaitlistFlowId('', HANDLE)).toBeNull();
+	});
+
+	it.each([
+		// THE VECTOR: a well-formed UUID is all an attacker can produce unaided, and it buys nothing.
+		['a bare, unsigned flow id', FLOW],
+		['junk', 'not-a-handle'],
+		['an empty string', ''],
+		['a missing value', undefined],
+		['an object', { flowId: FLOW }]
+	])('is null for %s', async (_label, value) => {
+		expect(await resolveWaitlistFlowId(SECRET, value)).toBeNull();
+	});
+
+	// Analytics may fail, and a visitor must never find out — the same contract `resolveStepRow` keeps
+	// for the continuation token beside it. A throwing crypto layer degrades to "not measured".
+	it('never throws', async () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const verify = vi.spyOn(crypto.subtle, 'verify').mockRejectedValue(new Error('no subtle'));
+
+		await expect(resolveWaitlistFlowId(SECRET, HANDLE)).resolves.toBeNull();
+		expect(error).toHaveBeenCalled();
+
+		verify.mockRestore();
+		error.mockRestore();
+	});
+});
+
 describe('captureWaitlistFunnel', () => {
 	it('writes one row per event for the flow', async () => {
 		captureWaitlistFunnel(db, platform, FLOW, ['waitlist_viewed', 'waitlist_signup_completed']);
 		await flush();
 
+		// The call passed the signed HANDLE and the column holds the bare FLOW — the transport/storage
+		// split (DAR-86), which is what makes this a change with no migration behind it: every stored
+		// row and every count means exactly what it did before.
+		//
 		// Compared as a set: row order is the primary key's, not the call's, and nothing depends on it.
 		expect(await rows()).toEqual(
 			expect.arrayContaining([
@@ -122,15 +252,39 @@ describe('captureWaitlistFunnel', () => {
 		]);
 	});
 
+	// FAIL-CLOSED UNDER A CAST. The brand makes skipping `resolveWaitlistFlowId` a compile error, but a
+	// cast would get past it, so the shape check underneath has to be the thing that decides — and a
+	// signed handle is not UUID-shaped, so the mistake records NOTHING rather than filling the column
+	// with attacker-supplied text. `null` is the ordinary case: no secret, or a handle that didn't
+	// verify.
 	it.each([
-		['a malformed flow id', 'not-a-uuid'],
-		['an empty flow id', ''],
-		['a missing flow id', undefined]
-	])('writes nothing for %s', async (_label, flowId) => {
-		captureWaitlistFunnel(db, platform, flowId, ['waitlist_viewed']);
+		['a signed handle passed straight through', () => HANDLE],
+		['a malformed id', () => 'not-a-uuid'],
+		['an empty id', () => ''],
+		['nothing at all', () => null]
+	])('writes nothing for %s', async (_label, value) => {
+		captureWaitlistFunnel(db, platform, value() as WaitlistFlowId | null, ['waitlist_viewed']);
 		await flush();
 
 		expect(await rows()).toEqual([]);
+	});
+
+	// THE CAP KEYS ON THE FLOW, NOT THE HANDLE. Two distinct signed strings for one flow still collapse
+	// to a single row, so re-signing is no way around the composite key — which is what makes "a page
+	// load buys one row per event" the bound rather than "a MINT buys one".
+	it('collapses two handles for the same flow into one row', async () => {
+		const later = await mintWaitlistFlowId(SECRET, FLOW, Date.now() + 5000);
+		expect(later).not.toBe(HANDLE);
+
+		captureWaitlistFunnel(db, platform, await resolveWaitlistFlowId(SECRET, HANDLE), [
+			'waitlist_viewed'
+		]);
+		captureWaitlistFunnel(db, platform, await resolveWaitlistFlowId(SECRET, later), [
+			'waitlist_viewed'
+		]);
+		await flush();
+
+		expect(await rows()).toEqual([{ flowId: FLOW, event: 'waitlist_viewed' }]);
 	});
 
 	it('writes nothing for an empty event list', async () => {
@@ -193,9 +347,6 @@ describe('captureWaitlistFunnel', () => {
 // exceed the signups they descend from. The gate makes the trap's effect uniform across the two
 // surfaces it can reach: no submission row, no funnel row.
 describe('captureWaitlistStepFunnel', () => {
-	// Any secret works — `decoyWaitlistId` is an HMAC over the email, and what matters is that the id
-	// is the real thing the honeypot mints rather than a hand-written `decoy_…` string.
-	const SECRET = 'spec-secret-not-a-real-one';
 	const ROW = '5b1f2c3d-9e8a-4b7c-8d6e-1f2a3b4c5d6e'; // a submission id, as verifyWaitlistToken returns
 
 	it('records a step’s events for a real submission id', async () => {
