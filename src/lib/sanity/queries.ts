@@ -115,6 +115,16 @@ const PAPER_CARD = `
 // Dao" in the box. It matches on the SLUG ONLY — never the `match` form the filter accepts —
 // because a broad term like `?author=da` would otherwise label the control with one person while
 // the results legitimately contained several.
+// Every by-name ordering on the site — this facet seed, the author type-ahead, /people — goes
+// through ONE expression so they cannot drift apart, and it carries DAR-95's stored sort key with
+// the same fallback `ORDER_TITLE` uses (see there for why the key has to be stored at all).
+//
+// This is the ordering the dataset can actually exercise TODAY, which is why DAR-95 covers people
+// and not only papers: no paper title carries a diacritic, but `Łukasz Kaiser` sorted last of 123
+// authors, after every Z, because `Ł` (U+0141) is above `Z` in code-point order. Two of the three
+// call sites were not even `lower()`ed before this.
+const ORDER_PERSON_NAME = `coalesce(nameSortKey, lower(name)) asc`;
+
 const PAPER_PAGE_META = `
 		"total": count(*[${PAPER_MATCH}]),
 		"totalAll": count(*[_type == "paper" && defined(slug.current)]),
@@ -123,7 +133,7 @@ const PAPER_PAGE_META = `
 			title,
 			description
 		},
-		"teamAuthors": *[_type == "person" && kind != "external" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(name asc) {
+		"teamAuthors": *[_type == "person" && kind != "external" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(${ORDER_PERSON_NAME}) {
 			"value": slug.current,
 			"label": name
 		},
@@ -148,11 +158,20 @@ const ORDER_DATE_ASC = `${ORIGIN_MAJOR}, coalesce(publishedDate, "9999-12-31") a
 // read as broken), which is what the page already did for this sort.
 //
 // `lower()` rather than a bare `title`: GROQ orders strings by code point, so without it "eDiffi"
-// would sort after "Efficient". This is a deliberate, documented step down from the
-// `localeCompare(…, { sensitivity: 'base' })` it replaces — that was also accent-insensitive, and
-// GROQ has no locale collation, so accented titles now sort after all ASCII. Measured: zero visible
-// change on today's corpus (GROQ's ordering of the real titles is identical to localeCompare's).
-const ORDER_TITLE = `lower(title) asc`;
+// would sort after "Efficient".
+//
+// `titleSortKey` (DAR-95) restores the other half — the accent-insensitivity `localeCompare(…,
+// { sensitivity: 'base' })` had. It has to be a STORED field because GROQ cannot normalize a string
+// at query time: the `string::` namespace has only `startsWith` and `split`, there is no replace or
+// normalize, and custom GROQ functions are projection-shaped. The Studio's promote script derives it
+// (lowercased, NFD-stripped, and Latin-folded for the stroke letters NFD leaves alone).
+//
+// KEEP THE `coalesce` FALLBACK. A document without a key sorts exactly as it did before, which is
+// measured rather than assumed: against the current corpus — where no paper carries a key yet — this
+// expression returns the 18 real titles byte-identically to `lower(title)`. That is what lets the
+// two repos ship in either order and what makes an un-promoted document degrade instead of jumping
+// to the front of the index under a null.
+const ORDER_TITLE = `coalesce(titleSortKey, lower(title)) asc`;
 
 export const papersPageByDateQuery = defineQuery(`{
 		"papers": *[${PAPER_MATCH}] | order(${ORDER_DATE}) ${PAGE_SLICE} {${PAPER_CARD}
@@ -173,13 +192,17 @@ export const papersPageByTitleQuery = defineQuery(`{
 export const AUTHOR_SUGGESTION_LIMIT = 12;
 
 // Backs the author input's type-ahead (GET /research/authors.json). Team members sort first, so the
-// people this site is about lead the list however many co-authors match. The caller enforces a
-// minimum query length and strips `match` wildcards, and BOTH are load-bearing rather than
-// defensive: measured, `q = ""` and `q = "*"` each match all 123 people, so without them this
-// endpoint would hand out the whole vocabulary the page exists to avoid shipping.
+// people this site is about lead the list however many co-authors match. The name ordering being
+// correct matters more here than anywhere else on the site, because this list is CAPPED: a name
+// that mis-sorts to the end is not merely in an odd place, it can fall off the response entirely.
+//
+// The caller enforces a minimum query length and strips `match` wildcards, and BOTH are
+// load-bearing rather than defensive: measured, `q = ""` and `q = "*"` each match all 123 people,
+// so without them this endpoint would hand out the whole vocabulary the page exists to avoid
+// shipping.
 export const authorSuggestionsQuery = defineQuery(`
 	*[_type == "person" && defined(slug.current) && name match ($q + "*") && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0]
-		| order(select(kind != "external" => 0, 1) asc, name asc) [0...${AUTHOR_SUGGESTION_LIMIT}] {
+		| order(select(kind != "external" => 0, 1) asc, ${ORDER_PERSON_NAME}) [0...${AUTHOR_SUGGESTION_LIMIT}] {
 			"value": slug.current,
 			"label": name
 		}
@@ -284,7 +307,7 @@ export const siteSettingsQuery = defineQuery(`
 // kind (the schema's initialValue isn't applied to programmatic seeds) still counts as team. GROQ's
 // `!=` includes null here, so a person with no `kind` shows on /people.
 export const peopleQuery = defineQuery(`
-	*[_type == "person" && kind != "external"] | order(name asc) {
+	*[_type == "person" && kind != "external"] | order(${ORDER_PERSON_NAME}) {
 		_id,
 		name,
 		"slug": slug.current,

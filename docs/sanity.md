@@ -213,10 +213,9 @@ doesn't), topic `description` left the list projection (it was 15 copies of one 
   a filter matching nothing look identical from the component — and gating the filter bar on the
   page's rows would take the bar away with the results, stranding the visitor on a "no matches"
   message with no control left to undo it.
-- **Title collation changed, deliberately.** GROQ orders strings by code point, so `lower(title)`
-  buys back case-insensitivity but not the accent-insensitivity `localeCompare(…, {sensitivity:
-'base'})` had. Measured: zero visible change on today's corpus. Fixing it properly means a
-  normalized `titleSortKey` in the Studio.
+- **Title collation stepped down here and was restored by DAR-95** — see _Sort keys_ below. GROQ
+  orders strings by code point, so `lower(title)` bought back case-insensitivity but not the
+  accent-insensitivity `localeCompare(…, {sensitivity: 'base'})` had.
 - **`defined(abstract)` as a FILTER disagrees with the same expression in a projection.** Measured on
   production, reproducibly and across two API versions: `count(*[_type == "paper" &&
 defined(abstract)])` answers **6** while all **18** papers return `defined(abstract): true` from a
@@ -227,6 +226,14 @@ defined(abstract)])` answers **6** while all **18** papers return `defined(abstr
   the guard every list query depends on), `title`, `venue` and `darcstarAuthored` all **agree**
   filter-vs-projection. So nothing shipped is affected; the oddity is confined to `abstract`, the
   one long-text field. Treat `defined()` on a large text field as suspect, not `defined()` at large.
+
+  **DAR-95 found the cause, and it is documented rather than a bug**: Sanity's GROQ functions
+  reference states that `defined()` "will not provide the expected result" for string fields longer
+  than 1024 characters, and recommends `match` instead. Confirmed on the data — the flagged papers'
+  abstracts measure 1186, 1452 and 1664 characters, all over the line, while every abstract under it
+  behaves. So the rule now has a threshold rather than a shrug: **never `defined()` a field that can
+  exceed 1024 characters.** (The Studio's own `paper-no-abstract` content-lint check still does, and
+  falsely flags 12 of 18 papers — filed separately, it is not this repo's file.)
 
 - **A facet TTL cache was considered and rejected.** The vocabulary rides the page's existing round
   trip, so a cache would buy nothing and add a staleness window plus a second failure mode. It
@@ -264,6 +271,46 @@ authors[]->name match ($author + "*")`), so existing shareable links keep workin
 - Named `authors.json` (mirroring `sitemap.xml/+server.ts`): a dotted segment can't shadow
   `/research/[slug]`. `reroute` de-localizes, so one path serves every locale, and `connect-src
 'self'` already covers the lookup — no CSP change.
+
+### Sort keys — accent-aware ordering in GROQ (DAR-95)
+
+DAR-94 moved ordering server-side, and GROQ has no locale collation: it orders strings by code
+point. That is not a gap you can close in the query. The `string::` namespace offers only
+`startsWith` and `split` — no replace, no normalize — `order()` takes no collation argument, and
+custom GROQ functions are projection-shaped (`$param{...}`), so they cannot compute a string. The
+normalized value has to be **stored**.
+
+The **Studio's `pnpm promote`** derives it (`scripts/lib/sort-key.ts`, `SORT_KEYS` in
+`scripts/promote.ts`) into two hidden, read-only fields — `paper.titleSortKey`, `person.nameSortKey`
+— and this repo orders by `coalesce(<key>, lower(<source>))`.
+
+- **The reachable defect was people, not papers.** No paper title in the corpus carries a diacritic,
+  but `Łukasz Kaiser` sorted **last of 123 authors**, after every Z. So `ORDER_PERSON_NAME` covers
+  all three by-name orderings (the `teamAuthors` facet seed, `authorSuggestionsQuery`, `peopleQuery`)
+  through **one** const — two of which weren't even `lower()`ed before. It matters most on the
+  suggestion endpoint, which is **capped at 12**: there a name that mis-sorts to the end doesn't just
+  look odd, it falls off the response.
+- **`Ł` is why `NFD` alone isn't enough.** NFD decomposes `é` into `e` + a combining mark that
+  `\p{Diacritic}` then strips, but stroke and ligature letters carry no decomposition at all — hence
+  an explicit folding map (`ł→l · ø→o · đ→d · ð→d · þ→th · ß→ss · æ→ae · œ→oe`). It is an
+  approximation of base-sensitivity collation for **Latin** scripts, not ICU: non-Latin still sorts
+  by code point after ASCII, exactly as it does today.
+- **Keep the `coalesce` fallback.** A document with no key sorts exactly as it did before — measured,
+  not assumed: against the corpus as it stands (no keys yet), `coalesce(titleSortKey, lower(title))`
+  returns the 18 titles **byte-identically** to `lower(title)`. That is what lets the two repos ship
+  in either order, and what makes an un-promoted document degrade rather than jump to the front under
+  a null. `queries.spec.ts` pins it by **counting**: every mention of a key must sit inside its
+  coalesce, because `order(titleSortKey asc)` would type-check and break every un-keyed row.
+- **Derived at promote, so it cannot go stale.** Promote is the chokepoint every published document
+  crosses on its way to the dataset this site reads, and it recomputes the key from the document's
+  own text rather than copying one through. A stale key would be **worse than none** — it sorts a
+  renamed document under its old name, where `lower(title)` is at least always self-consistent.
+  Consequences, all deliberate: `dev` never carries a key (it is a publication artifact); a document
+  written straight to `production` gets none and falls back; a `VITE_SANITY_DATASET=dev` build falls
+  back too. `pnpm check:content` warns on drift and self-checks the normalizer.
+- **`topic.title` is deliberately left un-keyed** — a bounded ten-term vocabulary, all ASCII, in a
+  `<select>` that is scanned rather than searched. Asserted in the spec so "skipped" stays
+  distinguishable from "forgotten".
 
 ### Paper meta-rail charge mapping
 
@@ -346,7 +393,7 @@ SANITY_VIEWER_TOKEN --env preview` (the preview Worker). No `wrangler.jsonc` cha
 ## Deferred
 
 Draft/preview (Presentation tool, stega, `useCdn:false` + `previewDrafts`) · a CI `schema.json` drift
-gate · a normalized `titleSortKey` in the Studio (GROQ has no locale collation — see DAR-94 above) ·
+gate ·
 category filter pages · trimming the inert `siteSettings` fields from the Studio
 schema (DAR-73's deferred half — see the table above; wiring them is deliberately **not** planned) ·
 `es` translation of the new chrome (untranslated today — `es.json` carries translated keys only and
