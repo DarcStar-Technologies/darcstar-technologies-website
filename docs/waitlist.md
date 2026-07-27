@@ -403,6 +403,18 @@ The state now rides a **signed, httpOnly resume cookie** — `waitlist_resume`,
 - **One flow, not two** (DAR-66). A resumed visitor keeps the flow id their earlier events were
   recorded under; re-recording `waitlist_viewed` under it is a no-op thanks to the composite key, so
   a reload no longer inflates the denominator _or_ strands `qualification_completed` on a second flow.
+- **It also closed a `waitlist_viewed` over-count nobody had spotted.** Kit **auto-invalidates loads
+  after a remote-`form` submission, and does it with a real `GET /waitlist/__data.json`** — which
+  lands on the `request.method === 'GET'` branch where the view is recorded. Every hydrated step
+  submit was therefore minting a fresh flow id and writing another view: one visitor working the full
+  flow produced ~5 rows, understating the primary conversion rate several-fold. (The no-JS path was
+  always correct — its steps are native POSTs, which the method guard already excluded.) Reusing the
+  cookie's id makes each of those a no-op, and an e2e now asserts the invalidation response carries
+  the _same_ flow id. Residual, accepted: a visitor who triggers an invalidation on `/waitlist`
+  before signing up — submitting the layout-mounted contact modal, say — still books a second view.
+  Distinguishing a data re-fetch from a page view would mean keying on `x-sveltekit-invalidated`, a
+  Kit internal, and `Sec-Fetch-Dest` is no good either — it would drop every client-side navigation
+  to the page, undercounting real visitors.
 - **`?restart` is the escape hatch**, and it is load-bearing. Without it, someone who finished the
   flow and came back to sign up a colleague would meet the confirmation with no form at all — a worse
   dead end than the original bug. The load drops the cookie on the param and **redirects to the bare

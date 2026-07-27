@@ -110,6 +110,13 @@ const RESUME_FIELDS = 6;
  * visitor into a step whose writes then silently fail.
  *
  * Every step re-issues it, so the window is 24h from the last interaction rather than from signup.
+ *
+ * KNOWN AND ACCEPTED: a resume mints a FRESH token, so one can outlive the cookie that produced it by
+ * up to another TTL (resume at hour 23 → a token good until hour 47, while the cookie dies at 24).
+ * Bounding it would mean carrying the original expiry and minting for the remainder, which buys
+ * nothing here: since DAR-88 a token addresses the submission its own holder created, so the whole
+ * capability is "edit the answers you gave yourself", and DAR-68's per-row budget caps the volume
+ * either way. It is the same guarantee a visitor who simply left the tab open already has.
  */
 export const WAITLIST_RESUME_TTL_SECONDS = WAITLIST_TOKEN_TTL_SECONDS;
 

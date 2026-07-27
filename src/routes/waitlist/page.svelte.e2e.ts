@@ -562,6 +562,57 @@ test.describe('resuming after a reload', () => {
 		).toBeVisible();
 	});
 
+	// A REMOTE-FORM SUBMIT RE-RUNS THIS PAGE'S LOAD OVER A GET. Kit auto-invalidates loads after a
+	// `form` submission, and it does so with a real `GET /waitlist/__data.json` — which lands squarely on
+	// the `request.method === 'GET'` branch where `waitlist_viewed` is recorded (DAR-66). Before the
+	// resume cookie existed that load minted a FRESH flow id every time, so a hydrated visitor working
+	// through the flow recorded a new view per step: one visitor, ~5 rows, and a conversion denominator
+	// inflated several-fold. Reusing the cookie's id makes each of those a no-op against the composite
+	// key instead.
+	//
+	// Asserted on the invalidation response itself rather than on the rendered field, because the field
+	// shows the value the step RESPONSE echoed — which was always right. It was the load running beside
+	// it that disagreed.
+	test('the load Kit re-runs after a submit reports the same flow id', async ({ page }) => {
+		await page.goto('/waitlist');
+		const main = page.getByRole('main');
+		const flowId = await main.locator('input[name="flowId"]').inputValue();
+
+		await main.getByLabel('Name', { exact: true }).fill('Bot McBotface');
+		await main.getByLabel('Email', { exact: true }).fill('bot@bot');
+		await main.locator('input[name="website"]').fill('bot', { force: true });
+
+		const [invalidation] = await Promise.all([
+			page.waitForResponse((r) => r.url().includes('/waitlist/__data.json')),
+			main.getByRole('button', { name: 'Join the waitlist' }).click()
+		]);
+
+		expect(await invalidation.text()).toContain(flowId);
+	});
+
+	// Branch A specifically. The step-3 reload above proves a resumed CLAIM still routes; this proves a
+	// resumed claim still picks the right CTA — step 4A is where the audience inside it is finally read,
+	// and it is the only branch that can reach the pilot CTA.
+	test('a reload at step 4A comes back to step 4A and still earns the pilot CTA', async ({
+		page
+	}) => {
+		await page.goto('/waitlist');
+		const main = page.getByRole('main');
+		await advanceToStep4A(main);
+
+		await page.reload();
+
+		await expect(
+			main.getByRole('heading', { level: 1, name: 'Would you consider an evaluation?' })
+		).toBeVisible();
+		await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
+		await expect(main.locator('input[name="flowClaim"]')).toHaveValue(/^f1\./);
+
+		await chooseOption(main, /Evaluation interest/, /within 3 months/);
+		await main.getByRole('button', { name: 'Continue' }).click();
+		await expectConfirmation(main, 'Request an evaluation conversation', /\/contact$/);
+	});
+
 	test('the in-flight flow offers no restart link', async ({ page }) => {
 		await page.goto('/waitlist');
 		const main = page.getByRole('main');
