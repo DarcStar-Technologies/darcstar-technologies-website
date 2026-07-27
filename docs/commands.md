@@ -107,7 +107,11 @@ first failed assertion. Start `pnpm build && pnpm preview` in one shell, then in
   [auth](auth.md#invite-only-onboarding-dar-67).
 
 `SMOKE_BASE` overrides the target for both; the default follows [this checkout's preview
-port](#the-preview-port-dar-79). Shared HTTP plumbing lives in `scripts/smoke-http.mjs`. Note the
+port](#the-preview-port-dar-79). Shared HTTP plumbing lives in `scripts/smoke-http.mjs`, including
+one behaviour worth knowing: Better Auth caps `/sign-in/email` at **3 per short window**, and each
+script spends two sign-ins, so running two back to back trips it on the fourth. A 429 is waited out
+**once**, loudly (`… sign-in rate-limited; waiting 15s`); a second one is reported as a failure,
+because by then something other than your own cadence is holding the bucket down. Note the
 asymmetry in what checks them: `scripts/**/*.ts` is inside `tsconfig`'s `include`, so `pnpm check`
 type-checks `smoke-invite.ts` against the real drizzle schema on every PR — the `.mjs` scripts get no
 such guard, which is a reason to reach for `.ts` (run under `tsx`, as `admin:create` does) in a new

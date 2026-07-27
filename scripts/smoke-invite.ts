@@ -116,6 +116,15 @@ const RESET_TOKEN_PREFIX = 'reset-password:';
 const EARLIEST_NAME = 'Ada Smoke';
 const LATER_NAME = 'Mallory Smoke';
 
+// The staff-refusal case (step 10) needs a lead whose address holds a staff account, i.e. the
+// operator's OWN address — which may legitimately already be on the waitlist. So that lead is
+// borrowed when it exists and seeded when it doesn't, and the seeded one carries this FIXED id rather
+// than a random one. That is what makes it recoverable: only this script ever writes this id, so a run
+// that dies before its teardown can be cleaned up by id on the next run, with no way to mistake a real
+// lead for ours. (A random id would be unfindable, and matching on the email would risk deleting a
+// genuine signup.)
+const SMOKE_STAFF_LEAD_ID = '5304e0ff-0000-4000-8000-5304e0ff5304';
+
 const findUser = async (email: string) =>
 	(
 		await db
@@ -160,6 +169,10 @@ const credentialAccounts = async (userId: string) =>
  *
  * Children are deleted explicitly rather than left to the schema's `on delete cascade`. The cascade
  * is real, but this is the path that has to work when the database is in a state nobody predicted.
+ *
+ * NOT deleted: the `login_audit` rows the run's sign-ins produce. They record attempts that genuinely
+ * happened, which is the whole point of an audit table, and the FK is `on delete set null`, so they
+ * survive the account's removal as anonymous history rather than blocking it.
  */
 async function purgeInvitee(email: string): Promise<void> {
 	const existing = await findUser(email);
@@ -182,16 +195,44 @@ async function purgeInvitee(email: string): Promise<void> {
 		.select({ id: schema.waitlistLead.id })
 		.from(schema.waitlistLead)
 		.where(eq(lowerLeadEmail, email));
-	for (const lead of leads) {
-		await db.delete(schema.waitlistSubmission).where(eq(schema.waitlistSubmission.leadId, lead.id));
-		await db.delete(schema.waitlistLead).where(eq(schema.waitlistLead.id, lead.id));
-	}
+	for (const lead of leads) await deleteLead(lead.id);
+}
+
+/** Delete a lead and its submissions. Explicit, for the reason `purgeInvitee` gives. */
+async function deleteLead(id: string): Promise<void> {
+	await db.delete(schema.waitlistSubmission).where(eq(schema.waitlistSubmission.leadId, id));
+	await db.delete(schema.waitlistLead).where(eq(schema.waitlistLead.id, id));
 }
 
 // ---------------------------------------------------------------------------------------------
-// 1. A clean slate, then one prospect with two submissions.
+// 1. Reach the preview FIRST, before writing anything. Signing in is the cheapest way to check both
+//    things that have to be true — the server answers and the credentials work — and doing it before
+//    the seed is what keeps an unreachable preview from leaving rows behind.
+// ---------------------------------------------------------------------------------------------
+// `die` returns never, so the rejection branch contributes nothing to the type — no annotation, and
+// no dependence on which `Response` global this file resolves.
+const signedIn = await signIn(BASE, staffEmail, staffPassword).catch((err: unknown) =>
+	die(`could not reach ${BASE} — is \`pnpm build && pnpm preview\` running? (${String(err)})`)
+);
+if (signedIn.status === 429) {
+	die('sign-in got 429 even after waiting out the window — try again in a minute.');
+}
+if (signedIn.status !== 303) {
+	die(`sign-in: expected 303, got ${signedIn.status} (wrong credentials?)`);
+}
+const staffCookie = cookieHeader(signedIn);
+if (!/session_token=/.test(staffCookie)) die('sign-in: 303 but no session cookie was set');
+const staffUser = await findUser(staffEmail);
+if (!staffUser) die(`sign-in succeeded but no user row for ${staffEmail} — wrong database?`);
+ok(`signed in as ${staffEmail} (id ${staffUser.id})`);
+
+// ---------------------------------------------------------------------------------------------
+// 2. A clean slate, then one prospect with two submissions.
 // ---------------------------------------------------------------------------------------------
 await purgeInvitee(inviteeEmail);
+// Any staff lead a previous run seeded and didn't get to delete (see SMOKE_STAFF_LEAD_ID). A no-op
+// on the normal path, and it can only ever match this script's own row.
+await deleteLead(SMOKE_STAFF_LEAD_ID);
 
 const leadId = randomUUID();
 await db.insert(schema.waitlistLead).values({ id: leadId, email: inviteeEmail });
@@ -225,22 +266,6 @@ await db.insert(schema.waitlistSubmission).values([
 ok(`seeded lead ${leadId} for ${inviteeEmail} with two submissions`);
 
 // ---------------------------------------------------------------------------------------------
-// 2. Sign in as the staff account that will press Invite.
-// ---------------------------------------------------------------------------------------------
-const signedIn = await signIn(BASE, staffEmail, staffPassword);
-if (signedIn.status === 429) {
-	die('sign-in got 429 — rate-limited by a prior run; wait ~1 min and retry.');
-}
-if (signedIn.status !== 303) {
-	die(`sign-in: expected 303, got ${signedIn.status} (wrong credentials?)`);
-}
-const staffCookie = cookieHeader(signedIn);
-if (!/session_token=/.test(staffCookie)) die('sign-in: 303 but no session cookie was set');
-const staffUser = await findUser(staffEmail);
-if (!staffUser) die(`sign-in succeeded but no user row for ${staffEmail} — wrong database?`);
-ok(`signed in as ${staffEmail} (id ${staffUser.id})`);
-
-// ---------------------------------------------------------------------------------------------
 // 3. The seeded prospect reaches the triage view. Also the proof that the worker under test and this
 //    script are reading the same database — every assertion below straddles the two.
 // ---------------------------------------------------------------------------------------------
@@ -260,6 +285,10 @@ ok('/admin/waitlist lists the seeded prospect');
 // 4. Invite. A 200 re-render carrying the confirmation means the WHOLE action ran: account created,
 //    link minted, and the Resend send awaited without throwing — the send is the only outbound mail
 //    in the codebase whose failure surfaces, so a red here is a genuine "nothing was emailed".
+//
+//    Outcomes are matched against the RENDERED English copy, here and below, like smoke-signin's
+//    assertions. That couples this script to the message catalog on purpose: what the operator has to
+//    see is a sentence, not a status code, and a copy change is a thing worth re-reading a smoke over.
 // ---------------------------------------------------------------------------------------------
 const invited = await formPost(BASE, '/admin/waitlist?/invite', { id: leadId }, staffCookie);
 const invitedBody = await invited.text();
@@ -390,6 +419,11 @@ ok('credential created, token consumed, lead stamped activated');
 //    the outside. /login always 303s to /admin; the /admin guard is what bounces a non-staff account.
 // ---------------------------------------------------------------------------------------------
 const inviteeSignIn = await signIn(BASE, inviteeEmail, inviteePassword);
+if (inviteeSignIn.status === 429) {
+	// `signIn` has already waited the window out once, so this is a bucket somebody else is holding
+	// down. Say so rather than reporting it as "the password we just set does not work".
+	die('invitee sign-in got 429 even after waiting out the window — try again in a minute.');
+}
 if (inviteeSignIn.status !== 303) {
 	die(`invitee sign-in: expected 303, got ${inviteeSignIn.status}`);
 }
@@ -426,7 +460,7 @@ const [existingStaffLead] = await db
 	.limit(1);
 // Reuse a real lead if the staff address is genuinely on the waitlist — a refused invite writes
 // nothing, so borrowing it is safe, and deleting someone's row would not be.
-const staffLeadId = existingStaffLead?.id ?? randomUUID();
+const staffLeadId = existingStaffLead?.id ?? SMOKE_STAFF_LEAD_ID;
 if (!existingStaffLead) {
 	await db.insert(schema.waitlistLead).values({ id: staffLeadId, email: staffEmail });
 	await db.insert(schema.waitlistSubmission).values({
@@ -459,8 +493,11 @@ ok('inviting a staff address is refused, and stamps nothing');
 // ---------------------------------------------------------------------------------------------
 // 11. Refusal two: a roster-DISABLED account. Setting a password does not lift a ban, so without
 //     this the prospect would follow a working link, choose a password, and then be unable to sign
-//     in — with nobody in the loop able to see why. `banned` is written directly here because the
-//     roster UI that normally sets it is smoke:signin's territory; the invite reads this column.
+//     in — with nobody in the loop able to see why. `banned` is set DIRECTLY rather than through the
+//     roster action that normally sets it: the invite action only reads this column, and driving
+//     /admin/users/<id>?/disable would raise this whole script's prerequisite from "a staff account"
+//     to "a roster admin" — a stronger requirement than the action under test has. The roster path is
+//     smoke:signin's job.
 // ---------------------------------------------------------------------------------------------
 await db.update(schema.user).set({ banned: true }).where(eq(schema.user.id, invitee.id));
 const disabledRefusal = await formPost(
@@ -484,14 +521,14 @@ ok('inviting a disabled account is refused, and stamps nothing');
 //     left alone.
 // ---------------------------------------------------------------------------------------------
 await purgeInvitee(inviteeEmail);
-if (!existingStaffLead) {
-	await db
-		.delete(schema.waitlistSubmission)
-		.where(eq(schema.waitlistSubmission.leadId, staffLeadId));
-	await db.delete(schema.waitlistLead).where(eq(schema.waitlistLead.id, staffLeadId));
-}
+if (!existingStaffLead) await deleteLead(staffLeadId);
 const leftover = await findUser(inviteeEmail);
 if (leftover) die('cleanup: the invitee account is still present');
+const leftoverLeads = await db
+	.select({ id: schema.waitlistLead.id })
+	.from(schema.waitlistLead)
+	.where(eq(lowerLeadEmail, inviteeEmail));
+if (leftoverLeads.length !== 0) die('cleanup: a seeded lead is still present');
 ok('cleaned up the invitee account and the seeded leads');
 
 console.log('\n✓ invite → activation smoke test passed');

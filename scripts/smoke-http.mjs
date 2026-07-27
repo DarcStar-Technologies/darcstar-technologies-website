@@ -74,12 +74,25 @@ export function formPost(base, path, body, cookie) {
 	});
 }
 
+/** How long to wait out Better Auth's sign-in window before retrying a 429 (its built-in per-path
+ *  rule on `/sign-in/email` is a handful of requests over a few seconds). */
+const RATE_LIMIT_RETRY_MS = 15_000;
+
 /**
  * Sign in through the `/login` form action — the no-JS path, which forwards to Better Auth's handler
  * directly and therefore works against ANY origin/port (no ORIGIN match needed, unlike a request
  * straight to `/api/auth/*`). Returns the raw response; callers assert the status and pull the
  * cookie, because what a successful sign-in should look like differs per script.
+ *
+ * A 429 is waited out ONCE, loudly. These scripts spend two sign-ins each, so running two of them
+ * back to back trips the limiter on the fourth — a property of our own cadence, not of the code under
+ * test, and one that otherwise leaves a half-finished lifecycle behind. A SECOND 429 is returned to
+ * the caller to report: by then something other than this script is holding the bucket down.
  */
-export function signIn(base, email, password) {
+export async function signIn(base, email, password) {
+	const first = await formPost(base, '/login?/signin', { email, password });
+	if (first.status !== 429) return first;
+	console.log(`… sign-in rate-limited; waiting ${RATE_LIMIT_RETRY_MS / 1000}s for the window`);
+	await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_RETRY_MS));
 	return formPost(base, '/login?/signin', { email, password });
 }

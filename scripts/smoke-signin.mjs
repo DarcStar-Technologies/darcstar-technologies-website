@@ -35,7 +35,7 @@ if (!email || !password) {
 // needs and why it works on any origin/port).
 const signedIn = await signIn(BASE, email, password);
 if (signedIn.status === 429)
-	die('sign-in got 429 — rate-limited by a prior run; wait ~1 min and retry.');
+	die('sign-in got 429 even after waiting out the window — try again in a minute.');
 if (signedIn.status !== 303 || signedIn.headers.get('location') !== '/admin') {
 	die(
 		`sign-in: expected 303 → /admin, got ${signedIn.status} → ${signedIn.headers.get('location')} (wrong credentials?)`
