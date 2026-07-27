@@ -22,6 +22,11 @@
 // enumeration angle: reading the row to route would still make the response depend on data the visitor
 // can't see, and the flow claim already carries everything the routing needs.
 //
+// EVERY STEP ALSO MOVES THE RESUME COOKIE (DAR-75) on to whatever it just routed to, from the SAME
+// `next` the response carries — so a reload lands where the visitor left off instead of on a blank
+// signup form, and the cookie can never disagree with the page about where that is. It is signed and
+// httpOnly (waitlist-resume.ts) and drops the row id at `done`.
+//
 // THE ROUTING IS NOT GATED AT THE WRITE. Which step a visitor is shown (waitlist-flow.ts) is a UX
 // decision, not a permission: someone who crafts a POST straight to step 3 — or to the step-4 branch
 // they weren't routed to — still gets their answers validated + stored, because answering buys no
@@ -42,6 +47,7 @@ import {
 } from '$lib/server/waitlist';
 import { applyWaitlistStep, type WaitlistStepData } from '$lib/server/waitlist-store';
 import { verifyWaitlistToken, isDecoyWaitlistId } from '$lib/server/waitlist-token';
+import { setWaitlistResume, type WaitlistResumeStage } from '$lib/server/waitlist-resume';
 import {
 	nextStepAfterStep2,
 	nextStepAfterStep3,
@@ -50,10 +56,13 @@ import {
 	confirmationCtaFor,
 	mintWaitlistFlowClaim,
 	verifyWaitlistFlowClaim,
-	type WaitlistNextStep
+	type WaitlistAudience,
+	type WaitlistNextStep,
+	type WaitlistStep4Branch
 } from '$lib/server/waitlist-flow';
 import type { WaitlistCta } from '$lib/waitlist-qualification';
 import { readEnv } from '$lib/server/env';
+import type { Cookies } from '@sveltejs/kit';
 
 /**
  * Every step returns this shape.
@@ -100,30 +109,82 @@ const echoSigned = (v: unknown): string =>
 	typeof v === 'string' ? v.slice(0, SIGNED_ECHO_MAX) : '';
 
 /**
- * Verify the continuation token and apply one step's columns. BEST EFFORT — never throws:
+ * The submission the presented token authorizes, or null for ANY failure (no secret, malformed,
+ * expired, tampered, or a value signed for something else). Never throws.
+ *
+ * Resolved ONCE per step rather than inside the enrich, because two things want it now: the write
+ * below, and the resume cookie (DAR-75), which stores the row id so a reload can re-mint a token for
+ * it. A DECOY id (the honeypot's) comes back as-is — the caller decides what to do with it, and the
+ * two callers differ: the enrich skips it, the cookie keeps it so the trap's responses stay
+ * byte-identical to a real signup's.
+ */
+async function resolveStepRow(tokenSecret: string | undefined, token: unknown) {
+	if (!tokenSecret) return null; // misconfigured env: the flow still works, it just can't enrich
+	try {
+		return await verifyWaitlistToken(tokenSecret, token);
+	} catch (err) {
+		console.error('waitlist step token verification failed', err);
+		return null;
+	}
+}
+
+/**
+ * Apply one step's columns to an already-resolved row. BEST EFFORT — never throws:
  *
  * The signup row was already persisted at step 1 and these steps are optional enrichment, so a DB
  * failure must not break the visitor's flow with an error page (the same posture as the fire-and-
- * forget notification emails: log it, don't fail the submission). A verification failure is likewise
+ * forget notification emails: log it, don't fail the submission). An unusable token is likewise
  * silent — surfacing it would turn the response into a token oracle.
  */
 async function applyStepBestEffort(
 	db: Db,
-	tokenSecret: string | undefined,
-	token: unknown,
+	rowId: string | null,
 	data: WaitlistStepData
 ): Promise<void> {
-	if (!tokenSecret) return; // misconfigured env: the flow still works, it just can't enrich
+	// A null id (malformed/expired/tampered/no secret) is not surfaced — skip the write. A DECOY id
+	// (the honeypot's token) is skipped too: it addresses no real row, so the UPDATE could only match
+	// zero rows, and a trap-tripping bot shouldn't get to spend DB writes. Both look identical to the
+	// caller. applyWaitlistStep also no-ops on an id whose row is simply gone.
+	if (!rowId || isDecoyWaitlistId(rowId)) return;
 	try {
-		const id = await verifyWaitlistToken(tokenSecret, token);
-		// A null id (malformed/expired/tampered) is not surfaced — skip the write. A DECOY id (the
-		// honeypot's token) is skipped too: it addresses no real row, so the UPDATE could only match
-		// zero rows, and a trap-tripping bot shouldn't get to spend DB writes. Both look identical to
-		// the caller. applyWaitlistStep also no-ops on an id whose row is simply gone.
-		if (id && !isDecoyWaitlistId(id)) await applyWaitlistStep(db, id, data);
+		await applyWaitlistStep(db, rowId, data);
 	} catch (err) {
 		console.error('waitlist step enrich failed', data.step, err);
 	}
+}
+
+/**
+ * Move the resume cookie (DAR-75) on to whatever step the server just routed to, so a reload lands
+ * there instead of on a blank signup form.
+ *
+ * `next` is the SAME value the response carries, which is what keeps the two in step: the cookie can
+ * never disagree with the page about where the visitor is, because both read one decision.
+ *
+ * THE ROW ID IS DROPPED AT `done`. A finished flow has nothing left to write, so its cookie stops
+ * carrying a handle that could be turned back into a write token — see `WaitlistResumeState`.
+ */
+function rememberStep(
+	cookies: Cookies,
+	tokenSecret: string | undefined,
+	rowId: string | null,
+	state: {
+		// Assignable as-is: `WaitlistNextStep` is `WaitlistResumeStage` minus `step2`, which only
+		// step 1 routes to. A new next-step slug is a type error here until it's a resumable one.
+		next: WaitlistResumeStage;
+		branch: WaitlistStep4Branch | null;
+		audience: WaitlistAudience | null;
+		cta: WaitlistCta | null;
+		flowId: string;
+	}
+): Promise<void> {
+	return setWaitlistResume(cookies, tokenSecret, {
+		stage: state.next,
+		submissionId: state.next === 'done' ? null : rowId,
+		branch: state.branch,
+		audience: state.audience,
+		cta: state.cta,
+		flowId: state.flowId
+	});
 }
 
 // `token` is the continuation handle from step 1; `intent` discriminates the two submit buttons
@@ -147,12 +208,13 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 		// getDb() only CONSTRUCTS the client here (sync, no network) — the enrich below is the only
 		// thing that touches the DB, and it runs only on the write path.
 		const db = getDb();
-		const { platform } = getRequestEvent();
+		const { platform, cookies } = getRequestEvent();
 		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 
 		const cleaned = validateWaitlistStep2(data);
 		const skipped = data.intent === 'skip';
 		const hasAnswer = hasAnyAnswer(cleaned);
+		const rowId = await resolveStepRow(tokenSecret, data.token);
 
 		// Skip (the "Skip for now" button) writes nothing — the general path must not persist partial
 		// junk. A Continue with every select left blank has nothing to write either; short-circuiting it
@@ -160,7 +222,7 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 		// hermetic against the placeholder DB). All three fields are individually optional, so an
 		// all-blank Continue is valid — it just advances with no enrich.
 		if (!skipped && hasAnswer) {
-			await applyStepBestEffort(db, tokenSecret, data.token, { step: 2, ...cleaned });
+			await applyStepBestEffort(db, rowId, { step: 2, ...cleaned });
 		}
 
 		// Route on the answers just submitted: commercial/operational use cases get step 3, everyone
@@ -183,23 +245,37 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 		if (next === 'done') events.push('qualification_completed');
 		captureWaitlistFunnel(db, platform, data.flowId, events);
 
+		// Step 2 only terminates by SKIP, which persists nothing — so it leaves us knowing nothing, and
+		// `audience: null` is the honest input (DAR-64's "general signup, skipped early"). On every
+		// other path the flow continues and a later step picks the CTA.
+		const cta = skipped ? confirmationCtaFor({ audience: null }) : null;
+
+		// The two decisions step 2 settles. They ride BOTH the signed flow claim (forward, to whichever
+		// step asks next) and the resume cookie (sideways, to a reload) — computed once here so the two
+		// transports can never carry different answers.
+		//
+		// A skip stores nothing, so its resume state carries nothing either: the `null`s below are the
+		// same "we know nothing about them" the CTA above is chosen from.
+		const branch = step4BranchFor(cleaned.evaluationTimeline);
+		const audience = audienceFor(cleaned);
+		const flowId = echoFlowId(data.flowId);
+		await rememberStep(cookies, tokenSecret, rowId, {
+			next,
+			branch: skipped ? null : branch,
+			audience: skipped ? null : audience,
+			cta,
+			flowId
+		});
+
 		// The flow claim is minted on EVERY path (not just the step-3 one) so the response shape
 		// doesn't vary, and it costs one HMAC. It carries only what the visitor just told us.
 		return {
 			success: true,
 			next,
 			token: echoSigned(data.token),
-			flowId: echoFlowId(data.flowId),
-			flowClaim: tokenSecret
-				? await mintWaitlistFlowClaim(tokenSecret, {
-						branch: step4BranchFor(cleaned.evaluationTimeline),
-						audience: audienceFor(cleaned)
-					})
-				: '',
-			// Step 2 only terminates by SKIP, which persists nothing — so it leaves us knowing nothing,
-			// and `audience: null` is the honest input (DAR-64's "general signup, skipped early"). On
-			// every other path the flow continues and a later step picks the CTA.
-			cta: skipped ? confirmationCtaFor({ audience: null }) : null
+			flowId,
+			flowClaim: tokenSecret ? await mintWaitlistFlowClaim(tokenSecret, { branch, audience }) : '',
+			cta
 		};
 	}
 );
@@ -226,18 +302,19 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 	async (data) => {
 		// Request-scoped handles first — see the note in submitWaitlistStep2.
 		const db = getDb();
-		const { platform } = getRequestEvent();
+		const { platform, cookies } = getRequestEvent();
 		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 
 		const cleaned = validateWaitlistStep3(data);
 		const skipped = data.intent === 'skip';
 		const hasAnswer = hasAnyAnswer(cleaned);
+		const rowId = await resolveStepRow(tokenSecret, data.token);
 
 		// Same rule as step 2: Skip persists nothing, and an all-blank Continue has nothing to enrich.
 		// The evidence cap is applied inside the validator, so more than WAITLIST_EVIDENCE_MAX boxes
 		// (JS off, or the disabling bypassed) is truncated rather than rejected.
 		if (!skipped && hasAnswer) {
-			await applyStepBestEffort(db, tokenSecret, data.token, { step: 3, ...cleaned });
+			await applyStepBestEffort(db, rowId, { step: 3, ...cleaned });
 		}
 
 		// The step-4 fork and the CTA audience were decided at step 2 (from answers this form doesn't
@@ -256,17 +333,31 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 		if (next === 'done') events.push('qualification_completed');
 		captureWaitlistFunnel(db, platform, data.flowId, events);
 
+		// Step 3 terminates by SKIP only. Skipping the money questions doesn't unlearn who they told us
+		// they were at step 2, so the audience still stands.
+		const cta = next === 'done' ? confirmationCtaFor({ audience: flow?.audience ?? null }) : null;
+
+		// Carry step 2's decisions sideways as well as forward — the resume cookie is the only copy a
+		// RELOAD can reach, since the claim itself lives in a hidden field that a fresh GET doesn't
+		// have. Same verified values the routing above used, never a re-derivation.
+		const flowId = echoFlowId(data.flowId);
+		await rememberStep(cookies, tokenSecret, rowId, {
+			next,
+			branch: flow?.branch ?? null,
+			audience: flow?.audience ?? null,
+			cta,
+			flowId
+		});
+
 		return {
 			success: true,
 			next,
 			token: echoSigned(data.token),
-			flowId: echoFlowId(data.flowId),
+			flowId,
 			// Echoed verbatim, like the token: step 4's hidden field has to survive a no-JS re-render,
 			// and re-minting here would be a second place that decides what the claim says.
 			flowClaim: echoSigned(data.flowClaim),
-			// Step 3 terminates by SKIP only. Skipping the money questions doesn't unlearn who they told
-			// us they were at step 2, so the audience still stands.
-			cta: next === 'done' ? confirmationCtaFor({ audience: flow?.audience ?? null }) : null
+			cta
 		};
 	}
 );
@@ -294,16 +385,17 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 	async (data) => {
 		// Request-scoped handles first — see the note in submitWaitlistStep2.
 		const db = getDb();
-		const { platform } = getRequestEvent();
+		const { platform, cookies } = getRequestEvent();
 		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 
 		const cleaned = validateWaitlistStep4A(data);
 		const skipped = data.intent === 'skip';
 		const hasAnswer = hasAnyAnswer(cleaned);
+		const rowId = await resolveStepRow(tokenSecret, data.token);
 
 		// Same rule as steps 2–3: Skip persists nothing, an all-blank Continue has nothing to enrich.
 		if (!skipped && hasAnswer) {
-			await applyStepBestEffort(db, tokenSecret, data.token, { step: '4a', ...cleaned });
+			await applyStepBestEffort(db, rowId, { step: '4a', ...cleaned });
 		}
 
 		// Terminal step — both buttons land on the confirmation, so the CTA is decided here (DAR-64).
@@ -321,15 +413,30 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 		events.push('qualification_completed'); // terminal step: both buttons land on the confirmation
 		captureWaitlistFunnel(db, platform, data.flowId, events);
 
+		const cta = confirmationCtaFor({
+			audience: flow?.audience ?? null,
+			pilotInterest: skipped ? null : cleaned.pilotInterest
+		});
+
+		// Terminal: the cookie now holds a screen and a link and nothing else — `rememberStep` drops
+		// the row id at `done`, so a reload of the confirmation can't re-mint a write token. The
+		// RESOLVED cta is stored rather than the pilot answer it came from, both because it's the only
+		// thing the confirmation renders and because an answer has no business in a cookie.
+		const flowId = echoFlowId(data.flowId);
+		await rememberStep(cookies, tokenSecret, rowId, {
+			next: 'done',
+			branch: null,
+			audience: null,
+			cta,
+			flowId
+		});
+
 		return {
 			success: true,
 			next: 'done',
 			token: echoSigned(data.token),
-			flowId: echoFlowId(data.flowId),
-			cta: confirmationCtaFor({
-				audience: flow?.audience ?? null,
-				pilotInterest: skipped ? null : cleaned.pilotInterest
-			})
+			flowId,
+			cta
 		};
 	}
 );
@@ -352,14 +459,15 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 	async (data) => {
 		// Request-scoped handles first — see the note in submitWaitlistStep2.
 		const db = getDb();
-		const { platform } = getRequestEvent();
+		const { platform, cookies } = getRequestEvent();
 		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 
 		const cleaned = validateWaitlistStep4B(data);
 		const skipped = data.intent === 'skip';
+		const rowId = await resolveStepRow(tokenSecret, data.token);
 
 		if (!skipped && hasAnyAnswer(cleaned)) {
-			await applyStepBestEffort(db, tokenSecret, data.token, { step: '4b', ...cleaned });
+			await applyStepBestEffort(db, rowId, { step: '4b', ...cleaned });
 		}
 
 		// Terminal step. Branch B never asks about pilots, so the CTA rests on the step-2 audience
@@ -371,12 +479,25 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 		// exists — `pilot_interest_selected` is branch A's, and this branch is never asked.
 		captureWaitlistFunnel(db, platform, data.flowId, ['qualification_completed']);
 
+		const cta = confirmationCtaFor({ audience: flow?.audience ?? null });
+
+		// Terminal, same as branch A: the row id is dropped and the cookie keeps only the screen and
+		// its link.
+		const flowId = echoFlowId(data.flowId);
+		await rememberStep(cookies, tokenSecret, rowId, {
+			next: 'done',
+			branch: null,
+			audience: null,
+			cta,
+			flowId
+		});
+
 		return {
 			success: true,
 			next: 'done',
 			token: echoSigned(data.token),
-			flowId: echoFlowId(data.flowId),
-			cta: confirmationCtaFor({ audience: flow?.audience ?? null })
+			flowId,
+			cta
 		};
 	}
 );

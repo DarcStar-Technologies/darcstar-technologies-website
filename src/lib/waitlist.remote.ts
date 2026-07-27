@@ -1,16 +1,18 @@
-// Waitlist signup — a SvelteKit remote `form` function, spread onto the /waitlist page's <form> so it
-// progressively enhances with JS and degrades to a native POST without. Lives in $lib (allowed);
-// remote functions may sit anywhere under src EXCEPT $lib/server. Mirrors submitContact
-// (contact.remote.ts); the key differences are the append-only submission insert (waitlist-store.ts)
-// and gating the notification emails on a genuine new signup.
+// The /waitlist page's two non-step remote `form` functions — the signup itself, and the restart that
+// throws its resume state away. Both are spread onto a <form>, so both progressively enhance with JS
+// and degrade to a native POST without. Lives in $lib (allowed); remote functions may sit anywhere
+// under src EXCEPT $lib/server. `joinWaitlist` mirrors submitContact (contact.remote.ts); the key
+// differences are the append-only submission insert (waitlist-store.ts) and gating the notification
+// emails on a genuine new signup.
 import { form, getRequestEvent } from '$app/server';
-import { invalid } from '@sveltejs/kit';
+import { invalid, redirect } from '@sveltejs/kit';
 import { and, eq, gt } from 'drizzle-orm';
 import { getDb } from '$lib/server/db';
 import { waitlistSubmission } from '$lib/server/db/schema';
 import { validateWaitlist } from '$lib/server/waitlist';
 import { insertWaitlistSubmission } from '$lib/server/waitlist-store';
-import { mintWaitlistToken, mintDecoyWaitlistToken } from '$lib/server/waitlist-token';
+import { mintWaitlistToken, decoyWaitlistId } from '$lib/server/waitlist-token';
+import { clearWaitlistResume, setWaitlistResume } from '$lib/server/waitlist-resume';
 import { readEnv } from '$lib/server/env';
 import { hashIp } from '$lib/server/contact'; // shared truncated-SHA-256 IP hash (same throttle model)
 import { sendWaitlistEmails } from '$lib/server/waitlist-notify';
@@ -67,6 +69,7 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		const ip = event.getClientAddress();
 		const userAgent = event.request.headers.get('user-agent') ?? null;
 		const platform = event.platform;
+		const cookies = event.cookies;
 		const locale = getLocale();
 		// The token signing secret, via the shared per-request resolver (sync — valid at this
 		// pre-await point). Reused from Better Auth (domain-separated inside waitlist-token.ts) so no
@@ -82,13 +85,28 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		// No funnel event either — a tripped honeypot is a bot, and counting it would corrupt the one
 		// metric this measures. (The e2e drives the flow through this very path, which is a second
 		// reason it must stay silent: the hermetic suite writes no analytics rows.)
+		//
+		// The resume cookie (DAR-75) is written here TOO, around the decoy id. Skipping it would make
+		// the trap detectable from a response HEADER, which is a far louder tell than the timing
+		// side-channel already accepted above — and it costs nothing, because a decoy id resumes into
+		// a flow whose every step write no-ops exactly as it does today.
 		if (typeof data.website === 'string' && data.website.trim() !== '') {
+			const flowId = echoFlowId(data.flowId);
+			if (!tokenSecret) return { success: true, flowId };
+
+			const decoyId = await decoyWaitlistId(tokenSecret, String(data.email ?? ''));
+			await setWaitlistResume(cookies, tokenSecret, {
+				stage: 'step2',
+				submissionId: decoyId,
+				branch: null,
+				audience: null,
+				cta: null,
+				flowId
+			});
 			return {
 				success: true,
-				token: tokenSecret
-					? await mintDecoyWaitlistToken(tokenSecret, String(data.email ?? ''))
-					: undefined,
-				flowId: echoFlowId(data.flowId)
+				token: await mintWaitlistToken(tokenSecret, decoyId),
+				flowId
 			};
 		}
 
@@ -143,12 +161,60 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		// the same anti-enumeration reason the response shape is identical.
 		captureWaitlistFunnel(db, platform, data.flowId, ['waitlist_signup_completed']);
 
+		// Remember where this browser got to, so a reload lands on step 2 rather than a blank form
+		// (DAR-75). Written for new and existing emails alike, and on the honeypot path above — a
+		// cookie that appeared only sometimes would be a response difference, which is the one thing
+		// this endpoint is careful not to have. It carries only what we just handed back anyway.
+		const flowId = echoFlowId(data.flowId);
+		await setWaitlistResume(cookies, tokenSecret, {
+			stage: 'step2',
+			submissionId: id,
+			branch: null, // step 2 hasn't been answered yet, so there is no branch or audience…
+			audience: null,
+			cta: null, // …and no terminal step has chosen a CTA.
+			flowId
+		});
+
 		// New and existing emails get the same shape INCLUDING the token (anti-enumeration); without
 		// a secret (misconfigured env) the signup still succeeds, just without the optional steps.
 		return {
 			success: true,
 			token: tokenSecret ? await mintWaitlistToken(tokenSecret, id) : undefined,
-			flowId: echoFlowId(data.flowId)
+			flowId
 		};
 	}
 );
+
+/**
+ * Throw away this browser's resume state (DAR-75) — the "Start a new signup" escape hatch.
+ *
+ * WHY A FORM AND NOT A LINK. Resuming is what makes the escape hatch necessary, and clearing the
+ * cookie is a state mutation, so it belongs behind a POST. The first cut was `<a href="?restart">`
+ * handled in the page's load, and a destructive GET behind an internal link is a trap in a SvelteKit
+ * app: `<body>` sets `preload-data="hover"`, so preloading the data ran the load and dropped the
+ * cookie on mouse-over, with no click. That needed `data-sveltekit-reload` to defuse — a mitigation
+ * for a hazard the method choice removes outright. A POST is never prefetched, so nothing can fire
+ * this by accident.
+ *
+ * It also settles a design question the link raised: DAR-64 gives the confirmation exactly ONE call
+ * to action, and a second <a> on that screen was at best a technicality. A submit button isn't a
+ * link, so the rule holds without an argument.
+ *
+ * REDIRECTS RATHER THAN RETURNING. Classic POST/Redirect/GET, and here it buys something concrete
+ * beyond a clean URL and no re-POST prompt: without JS the response to this POST is a page
+ * RE-RENDER, and the funnel's view event is recorded on GET only (DAR-66's guard against counting
+ * per-step POST re-renders). A restarted no-JS visitor would therefore begin a fresh flow whose
+ * signup had no view behind it. The 303 turns the landing into a real GET, so the new flow is
+ * counted exactly like any other arrival.
+ *
+ * Takes no input and needs no guard: it only deletes a cookie the caller already holds, so the worst
+ * a forged POST does is show its own sender a signup form.
+ */
+export const restartWaitlist = form(async () => {
+	const { cookies, url } = getRequestEvent();
+	clearWaitlistResume(cookies);
+	// `url` is the PAGE the form was called from (Kit's remote-function contract), so `pathname` keeps
+	// whatever locale prefix it had — `/es/waitlist` restarts in Spanish — and drops the `?/remote=…`
+	// a native submit posts to.
+	redirect(303, url.pathname);
+});
