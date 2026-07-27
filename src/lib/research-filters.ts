@@ -101,8 +101,9 @@ export function isDarcstarAuthored(paper: PaperRow): boolean {
 	return paper.darcstarAuthored === true;
 }
 
-// The origin split as a single partition rather than two `.filter()` walks of the same list —
-// order-preserving, so each section keeps whatever order sortPapers established.
+// The origin split as a single partition rather than two `.filter()` walks of the same list.
+// Order-preserving, which is what makes it correct under pagination: the query sorts origin-major
+// (DAR-94), so a page's two sections stay contiguous and in the order the query established.
 export function partitionByOrigin(papers: PaperRow[]): {
 	darcstar: PaperRow[];
 	external: PaperRow[];

@@ -26,19 +26,27 @@ import type { PageServerLoad } from './$types';
 
 // One shape for all three sort variants. The three `…Result` types are generated separately but are
 // structurally identical by construction (the queries share every const except the `order()`
-// clause), so THIS ANNOTATION IS THE GUARD: edit one projection without mirroring it to the others
-// and the union stops being assignable here, at compile time, rather than at whatever call site
-// first reads the field that went missing.
+// clause), so this annotation catches a projection that LOSES or renames a field in one variant —
+// the union stops being assignable and `pnpm check` fails.
+//
+// It does NOT catch a field ADDED to one variant: excess properties are legal in a non-literal
+// assignment, so the wider type still satisfies this one (measured — `pnpm check` passed with
+// `_updatedAt` added to the title query alone). The guard that covers every drift, including an
+// edit to a FILTER predicate that changes no type at all, is the byte-identical comparison in
+// queries.spec.ts. Don't mistake this annotation for that.
 type PapersPage = PapersPageByDateQueryResult;
 
-const EMPTY: PapersPage = {
+// A factory, not a shared const: the returned object is spread into the load's result, so a shared
+// literal would hand every failing request the same `papers`/`topics` arrays. Nothing mutates them
+// today, which is exactly the kind of thing that stops being true quietly.
+const empty = (): PapersPage => ({
 	papers: [],
 	total: 0,
 	totalAll: 0,
 	topics: [],
 	teamAuthors: [],
 	authorLabel: null
-};
+});
 
 // The sort selects the query, because GROQ's `order()` cannot be parameterised — three literals is
 // the price of keeping `client.fetch()` statically typed (see the note in queries.ts on why a
@@ -60,7 +68,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	const filters = parseResearchFilters(url.searchParams);
 	const requested = parsePageParam(url.searchParams);
 
-	let result = EMPTY;
+	let result = empty();
 	try {
 		result = await fetchPapersPage(filters.sort, {
 			topic: filters.topic,
@@ -72,18 +80,18 @@ export const load: PageServerLoad = async ({ url }) => {
 		console.warn('[sanity] /research list fetch failed:', err);
 	}
 
-	const window = pageWindow(requested, result.total);
+	const view = pageWindow(requested, result.total);
 	// `?page=99` on a 7-page index would otherwise render a card-less page under a filter bar, which
 	// reads as "no results" rather than "no such page". The redirect costs one wasted query, and only
 	// on a URL nothing on the site produces — page 1 is always in range, so the normal path never
 	// reaches it. 302, not 301: which page is last changes as papers are published.
-	if (window.outOfRange) redirect(302, pageHref(url, window.pageCount));
+	if (view.outOfRange) redirect(302, pageHref(url, view.pageCount));
 
 	return {
 		...result,
-		page: window.page,
-		pageCount: window.pageCount,
-		from: window.from,
-		to: window.to
+		page: view.page,
+		pageCount: view.pageCount,
+		from: view.from,
+		to: view.to
 	};
 };

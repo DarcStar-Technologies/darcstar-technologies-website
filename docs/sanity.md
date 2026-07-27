@@ -130,7 +130,7 @@ the shared `PageHero` + one `<Seo>`; chrome copy via Paraglide `m.*`, CMS data a
 ### /research origin split (DAR-52)
 
 The `paper` type holds two kinds of entry — first-party DarcStar work (`darcstarAuthored: true`)
-and notable third-party research we annotate (`commentary`, Portable Text; `papersQuery` exposes a
+and notable third-party research we annotate (`commentary`, Portable Text; the list queries expose a
 `hasCommentary` boolean via `coalesce(count(commentary) > 0, false)`). Third-party work must never
 read as ours, so the rendering rail is:
 

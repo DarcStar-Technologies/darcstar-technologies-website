@@ -29,7 +29,8 @@ describe('sanity GROQ queries', () => {
 		expect(postsPageQuery).toContain('"total": count(*[_type == "post" && defined(slug.current)])');
 		// `featured` is authored in the Studio but no surface has ever rendered it — it was pure
 		// payload. Pinned so it isn't re-added by reflex when someone copies the detail projection.
-		expect(postsPageQuery).not.toContain('featured');
+		// Word-anchored: a future `featuredImage` field is a different thing and must not trip this.
+		expect(postsPageQuery).not.toMatch(/\bfeatured\b/);
 	});
 
 	it('postBySlugQuery is slug-parameterised and pulls the body + related papers', () => {

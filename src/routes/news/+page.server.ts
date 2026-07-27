@@ -12,23 +12,25 @@ import type { PageServerLoad } from './$types';
 // Read-only, token-less, from the public dataset (see sanity/client.ts). The fetch stays wrapped so
 // a Sanity outage degrades to an empty feed + a log line rather than 500-ing a marketing page — the
 // page renders its shell/empty-state either way.
-const EMPTY: PostsPageQueryResult = { posts: [], total: 0 };
+// A factory, not a shared const — see the /research load: the value is spread into the result, so a
+// shared literal would hand every failing request the same `posts` array.
+const empty = (): PostsPageQueryResult => ({ posts: [], total: 0 });
 
 export const load: PageServerLoad = async ({ url }) => {
 	const requested = parsePageParam(url.searchParams);
 	const offset = pageOffset(requested);
 
-	let result = EMPTY;
+	let result = empty();
 	try {
 		result = await getSanityClient().fetch(postsPageQuery, { offset, end: offset + PAGE_SIZE });
 	} catch (err) {
 		console.warn('[sanity] /news list fetch failed:', err);
 	}
 
-	const window = pageWindow(requested, result.total);
+	const view = pageWindow(requested, result.total);
 	// See the /research load: a page past the end renders as an empty feed, which reads as "no posts"
 	// rather than "no such page". Page 1 is always in range, so the normal path never redirects.
-	if (window.outOfRange) redirect(302, pageHref(url, window.pageCount));
+	if (view.outOfRange) redirect(302, pageHref(url, view.pageCount));
 
-	return { ...result, page: window.page, pageCount: window.pageCount };
+	return { ...result, page: view.page, pageCount: view.pageCount };
 };
