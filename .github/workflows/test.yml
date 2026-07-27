@@ -29,6 +29,18 @@ jobs:
       # No `--` before --run: pnpm forwards a literal `--` and vitest would discard the flag
       # (the job would then rely on vitest's CI detection alone to avoid watch mode).
       - run: pnpm test:unit --run
+      # A red unit run writes a structured record of every failure to test-failures/ (DAR-90). The
+      # job log has the same names, but not the runner's load average or how long the rest of the
+      # suite took — and on a shared runner, "was the box busy" is the question a one-off red raises
+      # and the log cannot answer.
+      - name: Upload unit failure report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-failure-report
+          path: test-failures/
+          if-no-files-found: ignore
+          retention-days: 7
 
   e2e:
     name: e2e
@@ -56,7 +68,8 @@ jobs:
       # libraries, and this skips the script's own (then-redundant) install step.
       - run: pnpm exec playwright install --with-deps chromium
       # Playwright's webServer runs `pnpm build && pnpm preview` (the real wrangler dev runtime,
-      # with the always-pass Turnstile test keys baked in — see package.json).
+      # with the always-pass Turnstile test keys baked in — see scripts/preview.mjs, where DAR-79
+      # moved them from package.json).
       - run: pnpm exec playwright test
       # A red e2e without artifacts is undebuggable — keep the traces (captured on first retry,
       # see playwright.config.ts) and any screenshots/output from the failing run.

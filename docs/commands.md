@@ -54,6 +54,33 @@ Vitest is configured with **three projects** (see `vite.config.ts`), so pick the
 
 Note: `test.expect.requireAssertions` is on — every test must make at least one assertion.
 
+### When a unit run goes red (DAR-90)
+
+**You don't have to keep the log.** Every red run writes itself to `test-failures/<ISO>-<pid>.json`
+(gitignored, newest 50 kept, uploaded as a CI artifact on a failed unit job) — each failed test's
+name, `file:line`, project, duration vs its timeout, whether it was a **timeout**, and the error;
+plus module collection errors, unhandled errors, the machine's load, and the **10 slowest tests of
+that run**.
+
+That last part is the one to read first on a one-off failure. Compare it against a known baseline:
+the suite's slowest test (`GlassSelect`) has measured 914 ms and 2346 ms on the same machine —
+**2.6× run-to-run variance** — so a report showing it at several times that says the box was
+overloaded, and one showing it under a second rules load out. That is the question a
+red-once-green-since failure always raises, and `loadavg` alone can't answer it.
+
+Names are unique per run and green runs write nothing, so re-running never destroys the previous
+record — the defect that created DAR-90, where a suite was piped through `grep` and immediately
+re-run, leaving a failure count with no name attached.
+
+**One trap:** `--reporter=<name>` on the command line **replaces** the configured reporters rather
+than adding to them, so `pnpm test:unit --run --reporter=verbose` records nothing — and that is the
+flag you reach for while chasing a flake, the one moment the record matters most. Adding
+`--reporter=default` does _not_ bring it back (it's still a CLI list). Name the recorder itself:
+
+```sh
+pnpm test:unit --run --reporter=verbose --reporter=./scripts/vitest-failure-report.ts
+```
+
 Both suites are **hermetic** — no real credentials anywhere: CI runs the unit suite with no env
 at all, and the e2e job against committed placeholder values (test.yml writes them; the worker
 needs vars _present_ to construct its DB/auth clients, but the specs are written DB-free and
