@@ -104,7 +104,7 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 				cta: null,
 				// The cookie carries the bare id (DAR-86), so the trap pays for one more verification —
 				// and has to, or a resumed decoy would land on a fresh flow and re-record a view.
-				flowId: (await resolveWaitlistFlowId(tokenSecret, data.flowId)) ?? ''
+				flowId: await resolveWaitlistFlowId(tokenSecret, data.flowId)
 			});
 			return {
 				success: true,
@@ -179,7 +179,7 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 			branch: null, // step 2 hasn't been answered yet, so there is no branch or audience…
 			audience: null,
 			cta: null, // …and no terminal step has chosen a CTA.
-			flowId: flowId ?? ''
+			flowId
 		});
 
 		// New and existing emails get the same shape INCLUDING the token (anti-enumeration); without

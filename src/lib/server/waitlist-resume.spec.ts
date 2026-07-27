@@ -180,7 +180,7 @@ describe('verifyWaitlistResume vocabulary narrowing', () => {
 			branch: null,
 			audience: null,
 			cta: null,
-			flowId: ''
+			flowId: null
 		});
 	});
 

@@ -99,9 +99,10 @@ export interface WaitlistResumeState {
 	 * splits on '.', so a signed value simply cannot be a field inside another signed value. The load
 	 * re-mints a handle from this, exactly as it re-mints the continuation token from the row id.
 	 *
-	 * `''` when there is none — a deploy with no signing secret, or a value we didn't write.
+	 * `null` when there is none — a deploy with no signing secret, an expired handle, or a value we
+	 * didn't write. Same absent-shape as every other optional field here.
 	 */
-	flowId: WaitlistFlowId | '';
+	flowId: WaitlistFlowId | null;
 }
 
 /**
@@ -156,7 +157,7 @@ export function mintWaitlistResume(
 		state.branch ?? '',
 		state.audience ?? '',
 		state.cta ?? '',
-		state.flowId
+		state.flowId ?? ''
 	].join(RESUME_SEPARATOR);
 
 	return mintSignedValue(
@@ -217,7 +218,7 @@ export async function verifyWaitlistResume(
 		// signs this into the handle it hands the page, and only ids of the column's own shape should
 		// ever be signed. A junk one degrades to '' — the load then starts a fresh flow — rather than
 		// taking the whole resume down with it.
-		flowId: isWaitlistFlowId(rawFlowId) ? rawFlowId : ''
+		flowId: isWaitlistFlowId(rawFlowId) ? rawFlowId : null
 	};
 }
 

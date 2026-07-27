@@ -211,7 +211,7 @@ function rememberStep(
 		audience: WaitlistAudience | null;
 		cta: WaitlistCta | null;
 		/** The BARE flow id (DAR-86) — the cookie can't hold the signed handle; see `WaitlistResumeState`. */
-		flowId: WaitlistFlowId | '';
+		flowId: WaitlistFlowId | null;
 	}
 ): Promise<void> {
 	return setWaitlistResume(cookies, tokenSecret, {
@@ -313,7 +313,7 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 			branch: skipped ? null : branch,
 			audience: skipped ? null : audience,
 			cta,
-			flowId: flowId ?? ''
+			flowId
 		});
 
 		// The flow claim is minted on EVERY path (not just the step-3 one) so the response shape
@@ -399,7 +399,7 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 			branch: flow?.branch ?? null,
 			audience: flow?.audience ?? null,
 			cta,
-			flowId: flowId ?? ''
+			flowId
 		});
 
 		return {
@@ -485,7 +485,7 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 			branch: null,
 			audience: null,
 			cta,
-			flowId: flowId ?? ''
+			flowId
 		});
 
 		return {
@@ -550,7 +550,7 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 			branch: null,
 			audience: null,
 			cta,
-			flowId: flowId ?? ''
+			flowId
 		});
 
 		return {
