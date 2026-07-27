@@ -57,7 +57,7 @@
 		aria-label={label}
 		rel={external ? 'noreferrer' : null}
 		target={external ? '_blank' : null}
-		class="glass-btn flex size-10 items-center justify-center rounded-lg text-body hover:text-white"
+		class="glass-btn flex size-10 items-center justify-center rounded-lg text-body hover-focus:text-white"
 	>
 		{#if icon === 'github'}
 			<svg class="size-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -128,7 +128,7 @@
 							<a
 								href={link.href}
 								data-sveltekit-preload-data={link.preload}
-								class="text-sm text-body transition-colors hover:text-primary-500"
+								class="text-sm text-body transition-colors hover-focus:text-primary-500"
 							>
 								{link.label}
 							</a>
@@ -139,7 +139,7 @@
 							type="button"
 							aria-haspopup="dialog"
 							onclick={() => contactDialog.show()}
-							class="text-sm text-body transition-colors hover:text-primary-500"
+							class="text-sm text-body transition-colors hover-focus:text-primary-500"
 						>
 							{m.footer_nav_contact()}
 						</button>
@@ -156,11 +156,11 @@
 			<!-- Legal links (DAR-44) share the line with the location; "·" is decoration-only
 			     (no letters), so the no-raw-text rule permits the literal. -->
 			<p class="flex flex-wrap items-center gap-x-2 gap-y-1">
-				<a href={localizeHref('/privacy')} class="transition-colors hover:text-primary-500"
+				<a href={localizeHref('/privacy')} class="transition-colors hover-focus:text-primary-500"
 					>{m.footer_legal_privacy()}</a
 				>
 				<span aria-hidden="true">·</span>
-				<a href={localizeHref('/terms')} class="transition-colors hover:text-primary-500"
+				<a href={localizeHref('/terms')} class="transition-colors hover-focus:text-primary-500"
 					>{m.footer_legal_terms()}</a
 				>
 				<span aria-hidden="true">·</span>

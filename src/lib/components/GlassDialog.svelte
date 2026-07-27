@@ -39,7 +39,7 @@
 				class="glass-card relative my-8 w-full {widthClass[maxWidth]} p-6 text-left sm:p-8"
 			>
 				<Dialog.CloseTrigger
-					class="glass-btn absolute top-4 right-4 flex size-9 items-center justify-center rounded-full text-body hover:text-white"
+					class="glass-btn absolute top-4 right-4 flex size-9 items-center justify-center rounded-full text-body hover-focus:text-white"
 					aria-label={closeLabel}
 				>
 					<IconClose />

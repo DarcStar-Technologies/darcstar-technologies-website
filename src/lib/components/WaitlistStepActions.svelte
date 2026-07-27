@@ -33,7 +33,7 @@
 	<button
 		{...form.fields.intent.as('submit', 'skip')}
 		disabled={!!form.pending}
-		class="order-2 rounded-full px-6 py-3 text-sm font-medium text-subtle transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-60 sm:order-1"
+		class="order-2 rounded-full px-6 py-3 text-sm font-medium text-subtle transition-colors hover-focus:text-white disabled:cursor-not-allowed disabled:opacity-60 sm:order-1"
 	>
 		{m.waitlist_flow_skip()}
 	</button>

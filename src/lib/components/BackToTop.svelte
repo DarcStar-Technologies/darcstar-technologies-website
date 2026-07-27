@@ -27,7 +27,7 @@
 		onclick={toTop}
 		aria-label={m.back_to_top()}
 		transition:fade={{ duration: 150 }}
-		class="glass-btn fixed right-5 bottom-5 z-40 flex size-11 items-center justify-center rounded-full text-emphasis hover:text-white sm:right-8 sm:bottom-8"
+		class="glass-btn fixed right-5 bottom-5 z-40 flex size-11 items-center justify-center rounded-full text-emphasis hover-focus:text-white sm:right-8 sm:bottom-8"
 	>
 		<Icon class="size-5">
 			<path d="M12 19V5M5 12l7-7 7 7" />

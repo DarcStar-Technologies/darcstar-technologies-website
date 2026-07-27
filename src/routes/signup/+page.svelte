@@ -8,7 +8,7 @@
 	// enforces anything.
 	import Seo from '$lib/components/Seo.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
-	import { submitButtonClass } from '$lib/styles';
+	import { inlineLinkClass, submitButtonClass } from '$lib/styles';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 </script>
@@ -35,10 +35,7 @@
 
 		<p class="mt-6 text-sm text-body">
 			{m.signup_have_account_prompt()}
-			<a
-				class="font-medium text-primary-500 underline-offset-4 transition-colors hover:text-primary-400 hover:underline"
-				href={localizeHref('/login')}>{m.signup_have_account_link()}</a
-			>
+			<a class={inlineLinkClass} href={localizeHref('/login')}>{m.signup_have_account_link()}</a>
 		</p>
 	</div>
 </section>

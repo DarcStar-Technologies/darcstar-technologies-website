@@ -35,7 +35,7 @@
 					<li>
 						<a
 							href={localizeHref(`/news/${post.slug}`)}
-							class="glass-card group flex flex-col overflow-hidden transition-colors hover:border-primary-500/40 sm:flex-row"
+							class="glass-card group flex flex-col overflow-hidden transition-colors hover-focus:border-primary-500/40 sm:flex-row"
 						>
 							{#if post.coverImage?.asset}
 								<div class="shrink-0 overflow-hidden sm:w-56">
@@ -59,7 +59,7 @@
 									{/if}
 								</div>
 								<h2
-									class="mt-2 text-xl font-medium tracking-tight text-white transition-colors group-hover:text-primary-400"
+									class="mt-2 text-xl font-medium tracking-tight text-white transition-colors group-hover-focus:text-primary-400"
 								>
 									{post.title}
 								</h2>

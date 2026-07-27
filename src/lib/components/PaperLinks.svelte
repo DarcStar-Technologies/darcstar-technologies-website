@@ -39,7 +39,7 @@
 				href={link.href}
 				target="_blank"
 				rel="noreferrer noopener"
-				class="inline-flex items-center gap-1 rounded-full border border-primary-500/40 bg-primary-500/10 px-3 py-1 text-xs font-medium text-primary-400 transition-colors hover:border-primary-400 hover:bg-primary-500/20 hover:text-primary-300"
+				class="inline-flex items-center gap-1 rounded-full border border-primary-500/40 bg-primary-500/10 px-3 py-1 text-xs font-medium text-primary-400 transition-colors hover-focus:border-primary-400 hover-focus:bg-primary-500/20 hover-focus:text-primary-300"
 			>
 				{link.label}<span aria-hidden="true">↗</span>
 			</a>

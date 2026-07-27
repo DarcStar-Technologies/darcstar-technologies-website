@@ -73,7 +73,7 @@
 		<div class="flex flex-col gap-4">
 			<a
 				href={localizeHref('/research')}
-				class="text-sm font-medium text-primary-500 transition-colors hover:text-primary-400"
+				class="text-sm font-medium text-primary-500 transition-colors hover-focus:text-primary-400"
 				>{m.research_back()}</a
 			>
 			<div class="flex flex-wrap items-center gap-3">
