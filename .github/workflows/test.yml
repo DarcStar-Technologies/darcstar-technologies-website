@@ -54,18 +54,18 @@ jobs:
       # The preview worker needs env PRESENT to construct its DB/auth clients (getDb() / Better
       # Auth throw when the vars are ABSENT), but the e2e specs are DB-free by design —
       # placeholder values satisfy construction without any real credentials, and the one load
-      # that queries (/waitlist interest suggestions) degrades to its curated seed. Turnstile
-      # test keys are baked into the preview script itself.
-      # ORIGIN's port is the MAIN checkout's preview port (scripts/preview-port.mjs — a linked
-      # worktree derives its own, but CI checks out a real `.git` directory). Changing that constant
-      # without this line fails `preview-port.spec.ts`, which pins the two together.
+      # that queries (/waitlist interest suggestions) degrades to its curated seed.
+      # ORIGIN is NOT written here. It used to be, hand-written as localhost:4173, and that made CI
+      # the only place the auth API was reachable — a local run, whose .env holds the dev server's
+      # origin, silently tested a /api/auth that 404'd. The preview script now derives it from the
+      # port it binds, along with the Turnstile test keys and the memory rate-limit store
+      # (scripts/preview-vars.mjs, DAR-81), so both runs exercise the same thing.
       - name: Provide placeholder runtime env (specs never touch a real DB)
         run: |
           {
             echo 'DATABASE_URL=libsql://placeholder.invalid'
             echo 'DATABASE_AUTH_TOKEN=placeholder'
             echo 'BETTER_AUTH_SECRET=e2e-placeholder-not-a-secret'
-            echo 'ORIGIN=http://localhost:4173'
           } > .env
       # Not `pnpm test:e2e` — the runner additionally needs --with-deps for chromium's system
       # libraries, and this skips the script's own (then-redundant) install step.

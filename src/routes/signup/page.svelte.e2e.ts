@@ -36,25 +36,7 @@ test('anonymous /signup renders the invite-only notice, not a sign-up form', asy
 	await expect(main.locator('input[name="cf-turnstile-response"]')).toHaveCount(0);
 });
 
-// Belt and braces on the acceptance criterion "a direct sign-up POST is rejected".
-//
-// READ THIS BEFORE TRUSTING IT. In the preview, better-auth's `isAuthPath` compares the request
-// origin against the configured baseURL (ORIGIN = the production host, while the preview serves
-// localhost), so the auth API is not mounted here at all and this POST 404s in SvelteKit's router
-// — BEFORE `disableSignUp` is ever consulted. So this test would stay green even if registration
-// were re-opened, and it is NOT the guard for that.
-//
-// THE REAL GUARD IS `auth.spec.ts` ("our config refuses public sign-up outright"), which drives the
-// very `emailAndPassword` object auth.ts ships against a throwaway instance and asserts the
-// rejection. What this adds is the end-to-end fact that nothing on the deployed worker answers a
-// sign-up POST with an account: no success, and above all no session.
-test('a direct POST to the sign-up endpoint creates no session', async ({ request }) => {
-	const res = await request.post('/api/auth/sign-up/email', {
-		data: { name: 'Probe', email: 'probe@example.com', password: 'a-long-enough-password' },
-		failOnStatusCode: false
-	});
-
-	expect(res.ok()).toBe(false);
-	const cookies = res.headersArray().filter((h) => h.name.toLowerCase() === 'set-cookie');
-	expect(cookies.some((h) => h.value.includes('session_token'))).toBe(false);
-});
+// The sign-up POST itself is asserted in `auth-api.e2e.ts`, not here — it is a fact about
+// /api/auth/sign-up/email rather than about this page, and DAR-81 made it a real assertion (the
+// exact refusal, by better-auth's own error code) instead of the "not ok, somehow" it could be
+// while the auth API 404'd in the preview.

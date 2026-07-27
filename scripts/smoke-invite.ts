@@ -40,11 +40,13 @@
 // anyone holding neither. The HTTP plumbing they do share lives in smoke-http.mjs.
 //
 // THE ONE HOP NOT COVERED is Better Auth's GET /api/auth/reset-password/:token callback — the link in
-// the email. It is unreachable from a preview twice over: the link is built from `ctx.baseURL` (the
-// ORIGIN env var, not this checkout's port), and `isAuthPath()` drops any request whose origin isn't
-// ORIGIN, so /api/auth/* 404s before any auth logic runs (docs/auth.md; DAR-81 is the ticket for
-// fixing that). The script instead POSTs the token straight to /reset-password — exactly what the
-// invitee's browser does once that callback has handed the token over.
+// the email. It used to be unreachable twice over: the link is built from `ctx.baseURL` (the ORIGIN
+// env var, not this checkout's port), and `isAuthPath()` dropped any request whose origin wasn't
+// ORIGIN, so /api/auth/* 404'd before any auth logic ran. DAR-81 fixed both — `pnpm preview` now
+// derives ORIGIN from the port it binds, so the link points at the preview AND the callback is
+// mounted — and covering it here is simply not done yet. Meanwhile the script POSTs the token
+// straight to /reset-password, which is exactly what the invitee's browser does once that callback
+// has handed the token over.
 //
 // TypeScript (run under tsx, like `admin:create`) so it can import the REAL drizzle schema instead of
 // hand-writing SQL that would drift from it — and so `pnpm check` type-checks it in CI, which is the

@@ -16,14 +16,15 @@ import {
 	reapStrayPortHolder,
 	worktreePort
 } from './preview-port.mjs';
+import { previewVarArgs, previewVars } from './preview-vars.mjs';
 
 // DAR-79. The preview port used to be the literal 4173 in `playwright.config.ts`, in the `preview`
 // script and in `smoke-signin.mjs`; with every checkout on the same port, Playwright's
 // `reuseExistingServer` default silently ran the e2e suite against a SIBLING worktree's server.
 //
 // What has to hold now, and none of it is visible from a passing e2e run:
-//   - the main checkout keeps 4173, or every `curl localhost:4173` in the docs and the CI
-//     `ORIGIN=http://localhost:4173` line quietly stop describing reality;
+//   - the main checkout keeps 4173, or every `curl localhost:4173` in the docs quietly stops
+//     describing reality;
 //   - a worktree's port is STABLE (it is a URL people note down) and never 4173;
 //   - a bad PREVIEW_PORT fails loudly, because falling back would put `pnpm preview` and Playwright
 //     on different ports and the only symptom is a 180s webServer timeout pointing nowhere.
@@ -336,13 +337,34 @@ describe.skipIf(!existsSync('/proc/self'))('descendants', () => {
 	);
 });
 
-// The e2e job writes ORIGIN by hand, and Better Auth mounts /api/auth only for requests whose origin
-// matches it. CI checks out a MAIN checkout (a real `.git` directory), so it previews on BASE_PORT —
-// but nothing connects the two literals, and a changed BASE_PORT would leave the workflow pointing at
-// a port nothing serves. Pinned here because it can't be single-sourced: one half is YAML.
-describe('the CI e2e job', () => {
-	it('points ORIGIN at the port the main checkout actually previews on', () => {
-		const workflow = readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8');
-		expect(workflow).toContain(`ORIGIN=http://localhost:${BASE_PORT}`);
+// The CI e2e job used to write `ORIGIN=http://localhost:4173` into a `.env` by hand, and this spec
+// pinned that literal to BASE_PORT because it could not be single-sourced — one half was YAML.
+// DAR-81 deleted the line instead: the preview derives ORIGIN from the port it is binding, so there
+// is no second copy left to drift, and the property that used to need pinning is now unstateable.
+//
+// What replaced it is below. Better Auth mounts /api/auth ONLY for requests whose origin matches its
+// baseURL, so an ORIGIN that doesn't match the served port doesn't produce a wrong answer — it
+// produces no auth API at all, and a suite full of 404s that most assertions read as a refusal.
+describe('the vars the preview bakes', () => {
+	it('points ORIGIN at the port being served, whatever that port is', () => {
+		// Both ends of the range plus the main checkout: the derivation is the guarantee, not one value.
+		for (const port of [BASE_PORT, BASE_PORT + 1, BASE_PORT + WORKTREE_SLOTS]) {
+			expect(previewVars(port).ORIGIN).toBe(`http://localhost:${port}`);
+		}
+	});
+
+	it('runs the rate limiter in memory, so auth routes are reachable without a database', () => {
+		// The limiter runs before every /api/auth route and its `database` store makes a DB round-trip
+		// the precondition for reaching any auth logic. The e2e suite has no database.
+		expect(previewVars(BASE_PORT).AUTH_RATE_LIMIT_STORAGE).toBe('memory');
+	});
+
+	it('emits `--var NAME:VALUE` pairs wrangler can parse', () => {
+		const args = previewVarArgs(BASE_PORT);
+		// Colon-separated, and ORIGIN's value is itself full of colons — wrangler splits on the first
+		// one. Asserted because the alternative (a quoted value, or a split-on-every-colon parse)
+		// fails by silently setting the var to `http`, which reads as a mismatched origin.
+		expect(args).toContain(`ORIGIN:http://localhost:${BASE_PORT}`);
+		expect(args.filter((arg) => arg === '--var')).toHaveLength(args.length / 2);
 	});
 });

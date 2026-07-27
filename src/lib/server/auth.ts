@@ -103,7 +103,28 @@ function createAuth() {
 				}
 			}
 		},
-		rateLimit, // #69: DB-backed limiter on the now-public auth endpoints — see auth-options.ts
+		// #69: DB-backed limiter on the now-public auth endpoints — see auth-options.ts. Env-bound
+		// here for the same reason the senders above are: only the STORE is chosen at runtime, and
+		// only in a local preview.
+		//
+		// DAR-81: the limiter runs before every /api/auth route, so `storage: 'database'` makes a DB
+		// round-trip the precondition for reaching any auth logic at all. The e2e suite is hermetic —
+		// its DATABASE_URL is a placeholder that resolves to nothing — so with the shipped value every
+		// auth endpoint answered 500 before better-auth decided anything, GET /ok included, and the
+		// boundaries DAR-67 wanted asserted end-to-end stayed untestable. `pnpm preview` bakes
+		// AUTH_RATE_LIMIT_STORAGE=memory (scripts/preview-vars.mjs) so the limiter still RUNS, just
+		// without a database.
+		//
+		// FAIL-SAFE POLARITY, and it is the whole safety argument: weakening a rate limiter needs a
+		// POSITIVE signal, so only the exact literal `memory` switches the store and everything else —
+		// unset, blank, a typo, any other value — keeps the durable one. Nothing declares this var in
+		// wrangler.jsonc, so no deployed Worker carries it. Memory storage on Cloudflare is per-isolate,
+		// which is to say no limiter at all (auth-options.ts) — that is what must never ship, and what
+		// this polarity makes take a deliberate act rather than a mistake.
+		rateLimit: {
+			...rateLimit,
+			storage: readEnv('AUTH_RATE_LIMIT_STORAGE') === 'memory' ? 'memory' : 'database'
+		},
 		session, // cookie-cache the session so signed-in page views skip the DB — see auth-options.ts
 		// #96 (PR 2): verify the email before an account is usable (requireEmailVerification lives in
 		// auth-options.ts). `autoSignInAfterVerification` drops the visitor into /account the moment they

@@ -9,13 +9,17 @@ import { emailAndPassword } from './auth-options';
 // the previous regime; verification stays on for the accounts that predate the lockdown, and the
 // captcha plugin is gone with the form it guarded.
 //
-// This can't be exercised through the e2e preview: better-auth's isAuthPath() rejects any request
-// whose origin differs from the configured baseURL (ORIGIN), and the preview serves on localhost:4173
-// while ORIGIN is the production host — so the endpoint 404s before the auth logic runs. Instead we
-// build a throwaway instance from the SAME `emailAndPassword` config the app uses (auth-options.ts),
-// backed by an in-memory adapter, so the assertions are hermetic (no DB, no origin, no env) and guard
-// the real config values: that public sign-up is refused, that the staff path is NOT, and that
-// verification is still required to sign in.
+// These build a throwaway instance from the SAME `emailAndPassword` config the app uses
+// (auth-options.ts), backed by an in-memory adapter, so the assertions are hermetic (no DB, no
+// origin, no env) and guard the real config VALUES: that public sign-up is refused, that the staff
+// path is NOT, and that verification is still required to sign in.
+//
+// The lockdown is now also asserted against the deployed worker (`auth-api.e2e.ts`, DAR-81) — it
+// could not be before, because the preview served an origin that better-auth's isAuthPath() did not
+// recognise and every /api/auth request 404'd. The two are different claims and both are worth
+// having: this one says the config refuses public sign-up, that one says the shipped worker does.
+// A config can be right and its wiring wrong, which is the gap the e2e closes; equally the e2e runs
+// one request against one endpoint, while the cases below cover the whole regime.
 function buildAuth(opts: typeof emailAndPassword) {
 	return betterAuth({
 		baseURL: 'http://localhost',
