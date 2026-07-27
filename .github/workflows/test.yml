@@ -26,8 +26,11 @@ jobs:
       # The client + storybook projects run in real chromium (vitest browser mode);
       # --with-deps also installs the runner's system libraries.
       - run: pnpm exec playwright install --with-deps chromium
-      # No `--` before --run: pnpm forwards a literal `--` and vitest would discard the flag
-      # (the job would then rely on vitest's CI detection alone to avoid watch mode).
+      # No `--` before --run: pnpm forwards a literal `--` and what lands past it is dropped.
+      # Measured on pnpm 11.13 / vitest 4.1: `--run` itself DOES survive, but a positional filter
+      # does not — `pnpm test:unit -- --run <path>` runs the whole suite while looking like it ran
+      # the one file. Harmless for this job (it wants the whole suite anyway) and load-bearing
+      # locally, which is why docs/commands.md carries the same warning.
       - run: pnpm test:unit --run
       # A red unit run writes a structured record of every failure to test-failures/ (DAR-90). The
       # job log has the same names, but not the runner's load average or how long the rest of the
