@@ -233,7 +233,7 @@ describe('applyWaitlistStep', () => {
 		expect(row.qualificationStep).toBe(3);
 	});
 
-	it('4a: boolean writes contact_permission absolutely, null keep-existings it, step never rewinds', async () => {
+	it('4a: a grant fills a never-asked contact_permission, null keep-existings it, step never rewinds', async () => {
 		const id = await insert();
 		await applyWaitlistStep(db, id, {
 			step: '4a',
@@ -281,6 +281,74 @@ describe('applyWaitlistStep', () => {
 		});
 		[row] = await rows();
 		expect(row.contactPermission).toBe(false);
+	});
+
+	// --- DAR-72: what a continuation-token holder may OVERWRITE ---------------------------------
+	// The token reaches any submitter of a known address (step 1's anti-enumeration success shape
+	// hands it over), so these two assert the columns that turn the record into an ACTION are not
+	// attacker-overwritable. Both bound overwriting only; the first write is still open by design.
+
+	it('4a: a grant can NOT overturn a stored decline (contact_permission is decline-wins)', async () => {
+		const id = await insert();
+		await applyWaitlistStep(db, id, {
+			step: '4a',
+			pilotInterest: 'possibly-contact-me',
+			deploymentScale: null,
+			contactPermission: false, // the real person declined
+			contactMethod: null,
+			phone: null
+		});
+		// A decline still lands on a never-asked (null) row — restrictive answers always write.
+		expect((await rows())[0].contactPermission).toBe(false);
+
+		// A later 4a claiming the grant — the flipped bit that would make the record read "wants to
+		// be called". It must not land.
+		const { updated } = await applyWaitlistStep(db, id, {
+			step: '4a',
+			pilotInterest: 'yes-within-3-months',
+			deploymentScale: null,
+			contactPermission: true,
+			contactMethod: 'phone-video',
+			phone: null
+		});
+		expect(updated).toBe(true); // generic success — refusing to overwrite is not an error path
+
+		const [row] = await rows();
+		expect(row.contactPermission).toBe(false); // decline survived the grant
+		expect(row.pilotInterest).toBe('yes-within-3-months'); // judgement columns still provided-wins
+	});
+
+	it('4a: phone is FILL-FORWARD — it cannot replace a stored number, but fills a null one', async () => {
+		// A row that already carries the phone its owner gave at step 1. Step 1's own enrich policy
+		// (fillIfEmpty) protects that value from an anonymous resubmit; before DAR-72 the token-gated
+		// step bypassed that protection for the same attacker, on the same column.
+		await upsertWaitlist(db, { ...base, name: 'Ada', phone: '+1 555 0100' }, 'h', null);
+		const id = (await rows())[0].id;
+
+		await applyWaitlistStep(db, id, {
+			step: '4a',
+			pilotInterest: 'yes-within-3-months',
+			deploymentScale: null,
+			contactPermission: null,
+			contactMethod: null,
+			phone: '+1 555 9999' // attacker-controlled destination
+		});
+		expect((await rows())[0].phone).toBe('+1 555 0100'); // NOT redirected
+
+		// …while a row that never had one still accepts the step-4A answer (the flow's actual purpose,
+		// and the case this deliberately does NOT close — see waitlist-store.ts).
+		const fresh = (await upsertWaitlist(db, { ...base, email: 'grace@example.com' }, 'h2', null))
+			.id;
+		await applyWaitlistStep(db, fresh, {
+			step: '4a',
+			pilotInterest: 'yes-within-3-months',
+			deploymentScale: null,
+			contactPermission: null,
+			contactMethod: null,
+			phone: '+1 555 0177'
+		});
+		const grace = (await rows()).find((r) => r.id === fresh);
+		expect(grace?.phone).toBe('+1 555 0177');
 	});
 
 	it('stores step-4b research preferences', async () => {
