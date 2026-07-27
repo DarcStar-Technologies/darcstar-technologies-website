@@ -64,9 +64,11 @@ production-shaped origin.
 
 **Two consequences worth knowing.** The rate limiter is real in a preview, just in memory — a fresh
 preview starts with empty counters, but `E2E_REUSE_SERVER=1` keeps them, so the 4th e2e run within
-the hour trips the 3/hour sign-up cap and `auth-api.e2e.ts` fails; restart the preview. And the
-hand-run smokes now reach `/api/auth/*` too, so the emailed activation link's GET callback is
-testable there for the first time (`smoke-invite.ts` does not yet do it).
+the hour trips the 3/hour sign-up cap and `auth-api.e2e.ts` fails; restart the preview. The same is
+true of the smokes, whose per-hour caps are tighter (below): **restarting `pnpm preview` is how you
+clear a bucket**, not waiting. And the hand-run smokes now reach `/api/auth/*` too, which is what
+[`smoke-invite.ts`](../scripts/smoke-invite.ts) uses to follow the emailed activation link and to
+probe the anti-enumerating endpoints (DAR-91).
 
 ## Tests
 
@@ -128,12 +130,22 @@ first failed assertion. Start `pnpm build && pnpm preview` in one shell, then in
   states → the full operator-roster lifecycle (create → non-admin guard → reset → force-logout →
   disable → enable → delete) → `/logout` → the guard. Needs `ADMIN_EMAIL`/`ADMIN_PASSWORD` for a
   provisioned account (`pnpm admin:create`).
-- `pnpm smoke:invite` (`scripts/smoke-invite.ts`, DAR-80) — the invite → activation lifecycle that
-  the hermetic suites structurally cannot reach. Same credentials, plus `DATABASE_*` and a real
-  `RESEND_API_KEY` in `.env`, since it asserts against the database and really sends. Mail goes to
-  `delivered@resend.dev` (Resend's test recipient — a real send, visible in the Resend logs, in
-  nobody's inbox); `SMOKE_INVITE_EMAIL` overrides it, so point it only at a mailbox you own. See
+- `pnpm smoke:invite` (`scripts/smoke-invite.ts`, DAR-80 + DAR-91) — the invite → activation
+  lifecycle that the hermetic suites structurally cannot reach, now including the emailed link's
+  own GET callback and an anti-enumeration probe (below). Same credentials, plus `DATABASE_*` and a
+  real `RESEND_API_KEY` in `.env`, since it asserts against the database and really sends. Mail goes
+  to `delivered@resend.dev` (Resend's test recipient — a real send, visible in the Resend logs, in
+  nobody's inbox); `SMOKE_INVITE_EMAIL` overrides it, so point it only at a mailbox you own — and
+  note a run sends that address **two** emails since DAR-91, the invitation and a real password
+  reset the anti-enumeration probe cannot ask its question without triggering. See
   [auth](auth.md#invite-only-onboarding-dar-67).
+
+**A run spends two of the 3/hour `/request-password-reset` budget** (the probe asks about an account
+and about a stranger), so a second run inside the hour fails there rather than at anything real. The
+failure names itself and the fix — restart `pnpm preview`, which clears the in-memory counters. That
+probe is deliberately ordered **status first, bodies second**: two 429s are byte-identical, so
+comparing bodies alone reports "identical, no leak" about an endpoint that answered nothing —
+DAR-81's failure mode with the polarity flipped.
 
 `SMOKE_BASE` overrides the target for both; the default follows [this checkout's preview
 port](#the-preview-port-dar-79). Shared HTTP plumbing lives in `scripts/smoke-http.mjs`, including

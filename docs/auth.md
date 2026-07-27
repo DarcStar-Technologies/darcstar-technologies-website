@@ -248,13 +248,40 @@ inside workerd, `createUser` succeed with no forwarded headers, `onPasswordReset
 redemption, and the Resend send actually be awaited. It seeds a lead directly (the public form would
 mail info@ and hit step 1's per-IP throttle), invites it, asserts the account is role `user`, verified,
 **credential-less** and named from the earliest submission, reads the activation token out of
-`verification`, checks it carries the week-long TTL, redeems it through `/reset-password`, and asserts
-the credential now exists, the token is spent, `activated_at` is stamped and the invitee signs in to
-`/account` (not `/admin`). Both refusals — `staff_account`, `account_disabled` — are asserted to write
-**nothing**. It is hand-run, self-healing (it purges its own leftovers before it starts, so a run that
-dies halfway doesn't change what the next one tests), and it mails
-[`delivered@resend.dev`](https://resend.com/docs/dashboard/emails/send-test-emails), Resend's test
-recipient: a real API call, visible in the Resend logs, landing in nobody's inbox.
+`verification`, checks it carries the week-long TTL, **follows the emailed link**, redeems it through
+`/reset-password`, and asserts the credential now exists, the token is spent, `activated_at` is
+stamped and the invitee signs in to `/account` (not `/admin`). Both refusals — `staff_account`,
+`account_disabled` — are asserted to write **nothing**. It is hand-run, self-healing (it purges its
+own leftovers before it starts, so a run that dies halfway doesn't change what the next one tests),
+and it mails [`delivered@resend.dev`](https://resend.com/docs/dashboard/emails/send-test-emails),
+Resend's test recipient: a real API call, visible in the Resend logs, landing in nobody's inbox.
+
+**Following the link is DAR-91**, and it is what makes the callback in step 2 of the reset flow below
+a tested hop rather than a documented one. The script still reconstructs the link itself (it cannot
+read a mailbox) but takes everything after it off the response: the 302's `location` supplies the
+path, the token and the `invite` flag, and the redeem POSTs there. Two assertions carry the weight,
+because **the redirect is the same 302 whether the token is good or dead** — better-auth signals
+failure with `?error=INVALID_TOKEN` on an otherwise identical response, so the query is checked, not
+the status; and the landing page is matched on the form's **lede**, not its heading, since "Set your
+password" is also the page `<title>` and therefore renders on the dead-link panel too. Both were
+measured against the running preview, not reasoned about.
+
+**Anti-enumeration is asserted on the wire** in the same script (also DAR-91):
+`/request-password-reset` and `/send-verification-email` are each asked about an address that has an
+account and one that cannot, and the two responses must match byte for byte. That claim previously
+existed only as a unit test of `auth.api.*` return values — a claim about a function, not about what
+a stranger with curl can see.
+
+It lives in this script rather than `smoke:signin` because `/request-password-reset` **mails the
+address it is asked about**, so the known-good half of each pair has to be able to _receive_.
+`smoke:signin`'s two candidates both fail that: the operator's own address (a genuine reset link at a
+colleague's inbox every run) and the throwaway operator it creates at `smoke-op-<ts>@example.com` —
+example.com publishes a **null MX** (`0 .`, RFC 7505: accepts no mail), so that one would manufacture
+a hard bounce per run on the same verified domain the site's real mail leaves from. Consequence worth
+knowing: **a run now sends `SMOKE_INVITE_EMAIL` two emails**, the invitation and a real password
+reset — fine for the `delivered@resend.dev` default, worth knowing before pointing the override at a
+mailbox someone reads. The probes are anonymous by necessity: `/send-verification-email` takes a
+completely different branch when a session cookie is present.
 
 ## Password reset (self-service)
 
