@@ -217,12 +217,28 @@ doesn't), topic `description` left the list projection (it was 15 copies of one 
   buys back case-insensitivity but not the accent-insensitivity `localeCompare(…, {sensitivity:
 'base'})` had. Measured: zero visible change on today's corpus. Fixing it properly means a
   normalized `titleSortKey` in the Studio.
-- **`defined(x)` as a FILTER can disagree with the same expression in a projection.** Measured on
-  production: `count(*[_type == "paper" && defined(abstract)])` answers **6** while all **18** papers
-  return an abstract from a projection. The truncation therefore doesn't gate on it.
+- **`defined(abstract)` as a FILTER disagrees with the same expression in a projection.** Measured on
+  production, reproducibly and across two API versions: `count(*[_type == "paper" &&
+defined(abstract)])` answers **6** while all **18** papers return `defined(abstract): true` from a
+  projection. The truncation therefore doesn't gate on it.
+
+  Checked the rest of the fields rather than generalising, because the alarming reading would be
+  that every `defined()` guard on the site is unreliable: `slug.current` (papers **and** posts —
+  the guard every list query depends on), `title`, `venue` and `darcstarAuthored` all **agree**
+  filter-vs-projection. So nothing shipped is affected; the oddity is confined to `abstract`, the
+  one long-text field. Treat `defined()` on a large text field as suspect, not `defined()` at large.
+
 - **A facet TTL cache was considered and rejected.** The vocabulary rides the page's existing round
   trip, so a cache would buy nothing and add a staleness window plus a second failure mode. It
   becomes right only if facets ever move to a separate request.
+- **Pager and filter links preload on hover, and that is deliberately left alone.** `app.html` sets
+  `data-sveltekit-preload-data="hover"` body-wide, so hovering one runs the load — verified: a hover
+  alone fires `GET /research/__data.json?topic=…`, i.e. a real Sanity round trip. Here that is a pure
+  latency win, because **these loads have no side effects**. That is the whole distinction from
+  DAR-66, where `/waitlist` had to opt out with `preload-data="tap"` because its load RECORDED a
+  funnel view and a mouse sweep would have invented traffic. If anything (analytics, a write, a
+  counter) is ever added to the `/research` or `/news` load, it inherits that trap — opt the links
+  out in the same change, or hovers will fire it.
 
 #### The author facet is a text input, not a select
 
