@@ -8,7 +8,7 @@ import { SANITY_IMAGE_CDN_ORIGIN, TURNSTILE_ORIGIN } from '../lib/security-heade
 // served by the Workers assets layer and get theirs (nosniff + HSTS only) from the root `_headers`
 // file. The CSP is enforced (not report-only), so the violation-guard tests below are the
 // regression net. `pnpm preview` bakes Cloudflare's universal always-pass Turnstile TEST keys
-// (package.json) — a real sitekey rejects localhost before ever iframing — so the live widget
+// (`scripts/preview.mjs`) — a real sitekey rejects localhost before ever iframing — so the live widget
 // mounts here and the challenges.cloudflare.com allowlist is exercised end-to-end. Needs no
 // env/tokens, but it DOES need network egress to challenges.cloudflare.com (live widget) — on an
 // offline/firewalled runner the /signup test times out for environment reasons, not a regression.

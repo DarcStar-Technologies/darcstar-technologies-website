@@ -41,6 +41,9 @@ jobs:
       # placeholder values satisfy construction without any real credentials, and the one load
       # that queries (/waitlist interest suggestions) degrades to its curated seed. Turnstile
       # test keys are baked into the preview script itself.
+      # ORIGIN's port is the MAIN checkout's preview port (scripts/preview-port.mjs — a linked
+      # worktree derives its own, but CI checks out a real `.git` directory). Changing that constant
+      # without this line fails `preview-port.spec.ts`, which pins the two together.
       - name: Provide placeholder runtime env (specs never touch a real DB)
         run: |
           {

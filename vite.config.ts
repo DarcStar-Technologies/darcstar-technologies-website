@@ -65,6 +65,11 @@ export default defineConfig({
 			typescript: {
 				config: (config) => {
 					config.include.push('../drizzle.config.ts');
+					// Kit's generated include covers src/ and the vite config only, so `pnpm check` used
+					// to skip the e2e config and everything in scripts/ entirely — including, as of
+					// DAR-79, a spec and the module both of those import. Both are clean today; adding
+					// them means the next edit that isn't gets caught by CI rather than at runtime.
+					config.include.push('../scripts/**/*.ts', '../playwright.config.ts');
 				}
 			}
 		}),
@@ -97,7 +102,9 @@ export default defineConfig({
 				test: {
 					name: 'server',
 					environment: 'node',
-					include: ['src/**/*.{test,spec}.{js,ts}'],
+					// scripts/ is in scope too (DAR-79's preview-port derivation): build tooling, but its
+					// rules rot exactly like app code's, and there is nowhere else for them to be tested.
+					include: ['src/**/*.{test,spec}.{js,ts}', 'scripts/**/*.{test,spec}.{js,ts}'],
 					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
 				}
 			},

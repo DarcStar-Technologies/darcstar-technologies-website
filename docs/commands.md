@@ -2,16 +2,47 @@
 
 - `pnpm dev` — Vite dev server.
 - `pnpm build` — regenerates types (`scripts/gen-types.mjs`) then `vite build`. Output goes to `.svelte-kit/cloudflare`.
-- `pnpm preview` — serve the built worker through `wrangler dev` (port 4173), i.e. a real Workers runtime, not `vite preview`. Bakes Cloudflare's always-pass Turnstile **test** keys (`--var` in package.json) so the signup widget mounts on localhost — a real sitekey rejects localhost. → [security-headers](security-headers.md)
+- `pnpm preview` — serve the built worker through `wrangler dev` on [this checkout's port](#the-preview-port-dar-79), i.e. a real Workers runtime, not `vite preview`. Bakes Cloudflare's always-pass Turnstile **test** keys (`--var` in `scripts/preview.mjs`) so a widget mounts on localhost — a real sitekey rejects localhost. → [security-headers](security-headers.md)
 - `pnpm check` — regenerates types + compiles Paraglide + `svelte-kit sync` + `svelte-check` (type/diagnostic check). The Paraglide compile makes it work on a **fresh clone** (the vite plugin only generates `src/lib/paraglide` during dev/build, and svelte-check needs it).
 - `pnpm lint` — `prettier --check .` then `eslint .`. `pnpm format` writes Prettier fixes.
 - `pnpm gen` — `scripts/gen-types.mjs`; regenerates `worker-configuration.d.ts` (the `Env` type consumed by `src/app.d.ts` and referenced in `tsconfig.json`). Run this after changing `wrangler.jsonc` bindings **or `.env.example`** — generation is **deterministic** (DAR-49): env-var _names_ come from the committed `.env.example` (never your real `.env`), and the volatile bits of wrangler's output (content hash, the build-output-dependent `GlobalProps` block) are normalized away, so any checkout — including CI, which has no `.env` — reproduces the committed file byte-for-byte. Never run `wrangler types` directly. Corollary: **a new runtime env var isn't typed until it's listed in `.env.example`** (which [deployment](deployment.md) already requires). The `check` CI job drift-guards the committed copy, so a `wrangler.jsonc`/`.env.example`/wrangler-version change must ship its regenerated types.
 - `pnpm storybook` — Storybook dev server on 6006. `pnpm build-storybook` for static build.
 
+## The preview port (DAR-79)
+
+`pnpm preview` and Playwright's `webServer` share one derived port. It is written down in exactly one
+place — [`scripts/preview-port.mjs`](../scripts/preview-port.mjs) — and nowhere else:
+
+- **main checkout → 4173**, so every `curl localhost:4173` in these docs and CI's `ORIGIN` stay true
+- **each linked worktree → its own stable slot, 4174–4272**, hashed from the worktree's path (stable
+  across branch switches, because it is the path that is hashed)
+- `PREVIEW_PORT=4200 pnpm preview` overrides both, and a value that isn't a port is **refused**, not
+  quietly ignored
+
+Why it's derived: `reuseExistingServer` defaults **on** locally, so while every checkout previewed on
+4173, a preview left running in a sibling worktree was silently reused — a green suite describing
+someone else's branch. That default is now off; a busy port stops the run. `E2E_REUSE_SERVER=1` opts
+back in for the iterate-on-specs loop (keep a fresh preview up, skip the ~60 s rebuild) and warns that
+the results describe whatever is already listening.
+
+**Something already on the port?** Both the preview script and the Playwright config print the owner —
+pid, working directory, and the pid to `kill`. Read that before killing anything:
+
+- The cwd says whose it is. **Another checkout means another session** — use `PREVIEW_PORT`, don't
+  kill it.
+- Never `pkill -f workerd` / `pkill -f wrangler`: it sweeps every worktree's server at once. The
+  reflex one-liner is worse — `ss -ltnp | grep -oP '(?<=pid=)\d+' | head -1` returns the first
+  listening socket on the box, not the one on your port. (It once killed an unrelated process here.)
+- Kill the **tree root**, not the socket owner. `workerd` is wrangler's grandchild; killing it alone
+  just makes wrangler respawn one. A SIGTERM anywhere in the tree reaps the whole thing.
+- A tree whose parent was SIGKILLed keeps the port forever under `ppid 1` — that is where stale
+  servers come from. `pnpm preview` now reaps its own tree on SIGTERM/SIGINT, so a plain `kill` is
+  enough.
+
 ## Tests
 
 - `pnpm test:unit` — Vitest (watch). `pnpm test:unit -- --run` for a single pass. Filter with a path/name, e.g. `pnpm test:unit -- --run src/lib/vitest-examples/greet.spec.ts`.
-- `pnpm test:e2e` — installs chromium (the only browser the config ever launches), then Playwright. Playwright's `webServer` runs `pnpm build && pnpm preview`, so e2e exercises the Cloudflare preview build. Test files match `**/*.e2e.{ts,js}`.
+- `pnpm test:e2e` — installs chromium (the only browser the config ever launches), then Playwright. Playwright's `webServer` runs `pnpm build && pnpm preview` on [this checkout's port](#the-preview-port-dar-79), so e2e exercises the Cloudflare preview build — and never an already-running server. Test files match `**/*.e2e.{ts,js}`.
   - **Local re-run gotcha:** `wrangler dev` persists the worker's Cache API to `.wrangler/state` (gitignored — CI's clean checkout is immune), and the adapter caches any `Cache-Control: public` response. `/sitemap.xml` ships `max-age=3600`, so a rebuilt preview within the hour can replay the _previous build's_ cached sitemap and fail the seo specs against changes that are really there — `rm -rf .wrangler/state` and re-run.
 - `pnpm test` — unit (`--run`) then e2e.
 

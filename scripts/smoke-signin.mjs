@@ -8,14 +8,17 @@
 // Sign-in goes through the /login form action, which forwards to Better Auth's handler directly, so
 // it works against ANY origin/port (no ORIGIN match needed). Just build + serve, then run:
 //
-//   pnpm build && pnpm preview                                            # one shell (port 4173)
+//   pnpm build && pnpm preview                                            # one shell
 //   ADMIN_EMAIL=you@darcstar.tech ADMIN_PASSWORD='…' pnpm smoke:signin    # another
 //
 // Prereqs: a provisioned operator (`pnpm admin:create`) and the `rate_limit` table (`pnpm db:push`).
-// Override the target with SMOKE_BASE (default http://localhost:4173). Exits non-zero on the first
+// Override the target with SMOKE_BASE; the default follows this checkout's own preview port, which
+// is 4173 in the main checkout but derived in a worktree (DAR-79). Exits non-zero on the first
 // failed assertion.
 
-const BASE = (process.env.SMOKE_BASE || 'http://localhost:4173').replace(/\/$/, '');
+import { previewUrl } from './preview-port.mjs';
+
+const BASE = (process.env.SMOKE_BASE || previewUrl()).replace(/\/$/, '');
 const email = process.env.ADMIN_EMAIL?.trim();
 const password = process.env.ADMIN_PASSWORD;
 const origin = new URL(BASE).origin;

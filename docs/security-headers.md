@@ -29,7 +29,7 @@ on any `securitypolicyviolation` event. Its teeth come from five mechanisms:
   so the "nothing prerenders" invariant holds even for future pages nobody enrolled in the
   audited list;
 - the **live Turnstile widget** on `/signup`: `pnpm preview` bakes Cloudflare's always-pass
-  **test** sitekey (`1x00000000000000000000AA`, `--var` in package.json), because a real sitekey
+  **test** sitekey (`1x00000000000000000000AA`, `--var` in `scripts/preview.mjs`), because a real sitekey
   rejects localhost with a 400 before rendering — the test key runs the real challenge pipeline
   anywhere, proving `script-src` live (the widget's iframe hides inside a **closed shadow root**,
   so the e2e keys on the `cf-turnstile-response` input it injects; `frame-src` is pinned by the
@@ -117,4 +117,5 @@ test pins both copies. Gotchas learned the hard way:
 
 `pnpm test:e2e` covers all of it (header assertions + violation guard, real Workers runtime).
 Manually: `pnpm preview`, then `curl -sI localhost:4173/` (worker path) and
-`curl -sI localhost:4173/robots.txt` (assets path).
+`curl -sI localhost:4173/robots.txt` (assets path) — 4173 in the main checkout; a worktree previews on
+[its own derived port](commands.md#the-preview-port-dar-79), which `pnpm preview` prints.

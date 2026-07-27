@@ -251,6 +251,9 @@ the SSR HTML:
 curl -s http://localhost:4173/ | grep -E 'og:|twitter:|canonical|<title>'
 ```
 
+(4173 is the main checkout's port; a worktree previews on
+[its own](commands.md#the-preview-port-dar-79), which `pnpm preview` prints.)
+
 Before sharing externally, validate with the platform debuggers (they force a
 re-scrape): [opengraph.xyz](https://www.opengraph.xyz/),
 LinkedIn Post Inspector, and the X Card validator.
