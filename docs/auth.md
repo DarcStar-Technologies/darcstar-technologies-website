@@ -229,6 +229,21 @@ session). **Note on that last one:** the preview can't test the boundary — `is
 request whose origin ≠ `ORIGIN` and the preview serves `localhost:4173`, so `/api/auth/*` 404s there
 before any auth logic runs. `auth.spec.ts` is the real guard.
 
+**The runtime path is `pnpm smoke:invite`** (DAR-80, `scripts/smoke-invite.ts` — see
+[commands](commands.md#manual-smokes-not-in-ci)). Everything above tests a piece; the smoke tests them
+in composition against a built preview, which is the only way to see `getAuth().$context` resolve
+inside workerd, `createUser` succeed with no forwarded headers, `onPasswordReset` fire on a real
+redemption, and the Resend send actually be awaited. It seeds a lead directly (the public form would
+mail info@ and hit step 1's per-IP throttle), invites it, asserts the account is role `user`, verified,
+**credential-less** and named from the earliest submission, reads the activation token out of
+`verification`, checks it carries the week-long TTL, redeems it through `/reset-password`, and asserts
+the credential now exists, the token is spent, `activated_at` is stamped and the invitee signs in to
+`/account` (not `/admin`). Both refusals — `staff_account`, `account_disabled` — are asserted to write
+**nothing**. It is hand-run, self-healing (it purges its own leftovers before it starts, so a run that
+dies halfway doesn't change what the next one tests), and it mails
+[`delivered@resend.dev`](https://resend.com/docs/dashboard/emails/send-test-emails), Resend's test
+recipient: a real API call, visible in the Resend logs, landing in nobody's inbox.
+
 ## Password reset (self-service)
 
 Better Auth's built-in `forget-password` flow, wired to Resend and two form-action pages. **No schema

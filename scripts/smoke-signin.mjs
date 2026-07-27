@@ -15,21 +15,15 @@
 // Override the target with SMOKE_BASE; the default follows this checkout's own preview port, which
 // is 4173 in the main checkout but derived in a worktree (DAR-79). Exits non-zero on the first
 // failed assertion.
+//
+// The HTTP plumbing (form POST, sign-in, cookie handling) is shared with `smoke-invite.ts`
+// (DAR-80's invite → activation lifecycle) — see smoke-http.mjs.
 
-import { previewUrl } from './preview-port.mjs';
+import { cookieHeader, die, formPost, ok, signIn, smokeBase } from './smoke-http.mjs';
 
-const BASE = (process.env.SMOKE_BASE || previewUrl()).replace(/\/$/, '');
+const BASE = smokeBase();
 const email = process.env.ADMIN_EMAIL?.trim();
 const password = process.env.ADMIN_PASSWORD;
-const origin = new URL(BASE).origin;
-
-function die(msg) {
-	console.error(`✗ ${msg}`);
-	process.exit(1);
-}
-function ok(msg) {
-	console.log(`✓ ${msg}`);
-}
 
 if (!email || !password) {
 	die(
@@ -37,30 +31,17 @@ if (!email || !password) {
 	);
 }
 
-// 1. Sign in via the /login form action — the no-JS path. `origin` satisfies SvelteKit's CSRF
-// check; `accept: text/html` gets the native 303 redirect (a `*/*` accept would instead get the
-// enhanced JSON action response).
-const signIn = await fetch(`${BASE}/login?/signin`, {
-	method: 'POST',
-	redirect: 'manual',
-	headers: {
-		'content-type': 'application/x-www-form-urlencoded',
-		accept: 'text/html',
-		origin
-	},
-	body: new URLSearchParams({ email, password })
-});
-if (signIn.status === 429)
-	die('sign-in got 429 — rate-limited by a prior run; wait ~1 min and retry.');
-if (signIn.status !== 303 || signIn.headers.get('location') !== '/admin') {
+// 1. Sign in via the /login form action — the no-JS path (see smoke-http.mjs for the headers it
+// needs and why it works on any origin/port).
+const signedIn = await signIn(BASE, email, password);
+if (signedIn.status === 429)
+	die('sign-in got 429 even after waiting out the window — try again in a minute.');
+if (signedIn.status !== 303 || signedIn.headers.get('location') !== '/admin') {
 	die(
-		`sign-in: expected 303 → /admin, got ${signIn.status} → ${signIn.headers.get('location')} (wrong credentials?)`
+		`sign-in: expected 303 → /admin, got ${signedIn.status} → ${signedIn.headers.get('location')} (wrong credentials?)`
 	);
 }
-const cookie = signIn.headers
-	.getSetCookie()
-	.map((c) => c.split(';', 1)[0])
-	.join('; ');
+const cookie = cookieHeader(signedIn);
 if (!/session_token=/.test(cookie)) die('sign-in: 303 but no session cookie was set');
 ok('sign-in via /login succeeded (303 → /admin + session cookie)');
 
@@ -95,19 +76,8 @@ if (!(await rosterView.text()).includes('Users')) {
 }
 ok('/admin/users renders the roster for an admin');
 
-// Owner-authenticated no-JS form POST helper (native 303 or 200 re-render, per the action).
-const post = (path, body, jar = cookie) =>
-	fetch(`${BASE}${path}`, {
-		method: 'POST',
-		redirect: 'manual',
-		headers: {
-			'content-type': 'application/x-www-form-urlencoded',
-			accept: 'text/html',
-			origin,
-			cookie: jar
-		},
-		body: new URLSearchParams(body)
-	});
+// Owner-authenticated no-JS form POST (native 303 or 200 re-render, per the action).
+const post = (path, body, jar = cookie) => formPost(BASE, path, body, jar);
 
 const opEmail = `smoke-op-${Date.now()}@example.com`;
 const opPassword = 'smoke-operator-pw-123';
@@ -131,17 +101,9 @@ const opId = opIdMatch[1];
 ok(`created operator ${opEmail} (id ${opId})`);
 
 // Two-role split: the new operator can view submissions but is bounced away from /admin/users.
-const opSignIn = await fetch(`${BASE}/login?/signin`, {
-	method: 'POST',
-	redirect: 'manual',
-	headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'text/html', origin },
-	body: new URLSearchParams({ email: opEmail, password: opPassword })
-});
+const opSignIn = await signIn(BASE, opEmail, opPassword);
 if (opSignIn.status !== 303) die(`operator sign-in: expected 303, got ${opSignIn.status}`);
-const opCookie = opSignIn.headers
-	.getSetCookie()
-	.map((c) => c.split(';', 1)[0])
-	.join('; ');
+const opCookie = cookieHeader(opSignIn);
 const opRoster = await fetch(`${BASE}/admin/users`, {
 	headers: { cookie: opCookie },
 	redirect: 'manual'
@@ -221,17 +183,7 @@ ok('deleted the operator and it no longer appears in the roster');
 // 3. Sign out via /logout — the navbar's global sign-out target (a native form POST). Clears the
 // session cookies and lands on the home page (303 → /). This is the /admin sign-out button's twin
 // (same `auth.api.signOut`), but reachable from any page.
-const signOut = await fetch(`${BASE}/logout`, {
-	method: 'POST',
-	redirect: 'manual',
-	headers: {
-		'content-type': 'application/x-www-form-urlencoded',
-		accept: 'text/html',
-		origin,
-		cookie
-	},
-	body: ''
-});
+const signOut = await post('/logout', {});
 if (signOut.status !== 303 || signOut.headers.get('location') !== '/') {
 	die(`/logout: expected 303 → /, got ${signOut.status} → ${signOut.headers.get('location')}`);
 }
