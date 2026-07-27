@@ -12,7 +12,8 @@
 //   2. Anything that must track the port can be DERIVED from the port this run is binding, instead
 //      of written down a second time and pinned by a spec to stop the two drifting.
 //
-// Extracted from preview.mjs so it can be asserted without starting wrangler (preview-vars.spec.ts).
+// Extracted from preview.mjs so it can be asserted without starting wrangler — the specs live in
+// preview-port.spec.ts, next to the port derivation two of these values depend on.
 
 /**
  * The vars `pnpm preview` bakes, given the port it is about to bind.

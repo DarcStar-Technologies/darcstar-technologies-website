@@ -32,7 +32,9 @@ test('the auth API is mounted on this origin', async ({ request }) => {
 	// a 500 means the rate limiter went looking for the database again. Both are harness failures,
 	// and both would otherwise surface as a puzzling failure in the boundary test below.
 	expect(res.status(), 'GET /api/auth/ok — 404 = not mounted, 500 = limiter hit the DB').toBe(200);
-	expect(await res.json()).toEqual({ ok: true });
+	// toMatchObject, not toEqual: the claim is that better-auth answered this, not that its liveness
+	// payload never grows a field.
+	expect(await res.json()).toMatchObject({ ok: true });
 });
 
 // DAR-67's boundary, end to end: the acceptance criterion that ticket wanted and could not write.
