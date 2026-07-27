@@ -247,10 +247,12 @@ describe('captureWaitlistPriorityLead', () => {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
-	it('sends once when concurrent step writes both classify A', async () => {
+	it('sends once when concurrent step writes all classify A', async () => {
+		// In flight together, so each would see a null if it read before writing — the reason the claim
+		// is a WHERE predicate rather than a check.
 		const outcome = await seed();
 		const { platform, settle } = fakePlatform();
-		for (let i = 0; i < 4; i++) captureWaitlistPriorityLead(db, platform, env, outcome);
+		for (let i = 0; i < 5; i++) captureWaitlistPriorityLead(db, platform, env, outcome);
 		await settle();
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});

@@ -268,7 +268,7 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 		const events: WaitlistFunnelEvent[] = ['qualification_started'];
 		if (!skipped && hasAnswer) events.push('use_case_completed');
 		if (next === 'done') events.push('qualification_completed');
-		captureWaitlistFunnel(ctx.db, platform, data.flowId, events);
+		captureWaitlistFunnel(ctx.db, ctx.platform, data.flowId, events);
 
 		// Step 2 only terminates by SKIP, which persists nothing — so it leaves us knowing nothing, and
 		// `audience: null` is the honest input (DAR-64's "general signup, skipped early"). On every
@@ -356,7 +356,7 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 		const events: WaitlistFunnelEvent[] = [];
 		if (!skipped && hasAnswer) events.push('commercial_context_completed');
 		if (next === 'done') events.push('qualification_completed');
-		captureWaitlistFunnel(ctx.db, platform, data.flowId, events);
+		captureWaitlistFunnel(ctx.db, ctx.platform, data.flowId, events);
 
 		// Step 3 terminates by SKIP only. Skipping the money questions doesn't unlearn who they told us
 		// they were at step 2, so the audience still stands.
@@ -436,7 +436,7 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 		const events: WaitlistFunnelEvent[] = [];
 		if (!skipped && cleaned.pilotInterest !== null) events.push('pilot_interest_selected');
 		events.push('qualification_completed'); // terminal step: both buttons land on the confirmation
-		captureWaitlistFunnel(ctx.db, platform, data.flowId, events);
+		captureWaitlistFunnel(ctx.db, ctx.platform, data.flowId, events);
 
 		const cta = confirmationCtaFor({
 			audience: flow?.audience ?? null,
@@ -502,7 +502,7 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 
 		// Funnel (DAR-66): terminal step, so the flow completed either way. No branch-B-specific event
 		// exists — `pilot_interest_selected` is branch A's, and this branch is never asked.
-		captureWaitlistFunnel(ctx.db, platform, data.flowId, ['qualification_completed']);
+		captureWaitlistFunnel(ctx.db, ctx.platform, data.flowId, ['qualification_completed']);
 
 		const cta = confirmationCtaFor({ audience: flow?.audience ?? null });
 

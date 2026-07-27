@@ -846,10 +846,10 @@ Three things about them are easy to get wrong:
    by someone who happens to be on the list would flip their badge and claim an onboarding that never
    happened.
 
-Deliberately NOT built: any automatic invitation. Priority-A leads are not auto-invited and no
-notification fires — the same restraint as DAR-65's Priority-A notification, and for a stronger
-reason here, since the action mints an account and mails a credential-setting link. Every invitation
-is a human decision behind a confirm.
+Deliberately NOT built: any automatic invitation. A Priority-A lead is announced into `info@`
+(DAR-82, above) but never auto-invited — that action mints an account and mails a credential-setting
+link, so it stays a human decision behind a confirm. The notification exists precisely to put that
+decision in front of someone sooner.
 
 ## Setup
 
