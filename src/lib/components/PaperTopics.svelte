@@ -2,8 +2,11 @@
 	// Research-topic tags for a Sanity `paper` — the "what is it about" taxonomy (the Studio's
 	// `topic` type; distinct from the site-section `category`). Tertiary (R) accent per the
 	// paper-rail charge mapping (docs/sanity.md): R = topic, G = commentary, B = link/published.
-	// `description` becomes a hover tooltip (progressive enhancement only — DAR-56 tracks a
-	// visible rendering). With `topicHref`, tags render as LINKS into the filtered /research
+	// `description` becomes a hover tooltip — progressive enhancement ONLY, never the rendering: a
+	// pointer-gated tooltip is invisible on touch and unreachable by keyboard, so the authored text
+	// is shown for real by TopicGuide on /research (DAR-56). Keep those in step — a description that
+	// exists only here is a description most visitors never see.
+	// With `topicHref`, tags render as LINKS into the filtered /research
 	// view (?topic=slug), so a tag is never a dead end. Renders nothing without topics, so
 	// callers pass spacing via `class` with no guard (the SanityImage convention).
 	import { pillClass } from '$lib/components/PaperStatus.svelte';

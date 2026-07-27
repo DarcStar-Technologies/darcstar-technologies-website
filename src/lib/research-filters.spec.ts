@@ -4,9 +4,11 @@ import {
 	filterPapers,
 	hasActiveFilters,
 	paperFacets,
+	partitionByOrigin,
 	parseResearchFilters,
 	researchTopicHref,
 	sortPapers,
+	topicOptions,
 	type PaperRow
 } from './research-filters';
 
@@ -22,7 +24,7 @@ const paper = (over: {
 	title: string;
 	darcstarAuthored?: boolean | null;
 	publishedDate?: string | null;
-	topics?: { slug: string | null; title: string }[] | null;
+	topics?: { slug: string | null; title: string; description?: string | null }[] | null;
 	authors?: { slug: string | null; name: string }[] | null;
 }): PaperRow =>
 	({
@@ -37,14 +39,15 @@ const gide = paper({
 	_id: 'p1',
 	title: 'GIDE: Guaranteed Intelligent Dynamics',
 	darcstarAuthored: true,
-	topics: [{ slug: 'safety', title: 'Provable Safety' }],
+	topics: [{ slug: 'safety', title: 'Provable Safety', description: 'Verified control.' }],
 	authors: [{ slug: 'm-harris', name: 'M. Harris' }]
 });
 const attention = paper({
 	_id: 'p2',
 	title: 'Attention Is All You Need',
 	darcstarAuthored: false,
-	topics: [{ slug: 'transformers', title: 'Transformer Architecture' }],
+	// No description — an editor may leave the Studio field blank.
+	topics: [{ slug: 'transformers', title: 'Transformer Architecture', description: null }],
 	authors: [{ slug: 'a-vaswani', name: 'A. Vaswani' }]
 });
 const flash = paper({
@@ -52,8 +55,14 @@ const flash = paper({
 	title: 'FlashAttention',
 	// Unset origin — must count as external (DAR-52 fail-safe polarity).
 	topics: [
-		{ slug: 'transformers', title: 'Transformer Architecture' },
-		{ slug: null, title: 'Slugless Topic' }
+		// A repeat of p2's topic, this time WITH a description: the dedup must keep the last write
+		// whole, or a topic's description would depend on which paper happened to be walked first.
+		{
+			slug: 'transformers',
+			title: 'Transformer Architecture',
+			description: 'The architecture behind modern sequence models.'
+		},
+		{ slug: null, title: 'Slugless Topic', description: 'Unreachable by URL.' }
 	],
 	authors: [{ slug: 't-dao', name: 'T. Dao' }]
 });
@@ -204,17 +213,55 @@ describe('buildFilterQuery', () => {
 });
 
 describe('paperFacets', () => {
-	it('dedupes by slug, sorts by label, and skips slugless entries', () => {
+	it('derives topics and authors in one pass: deduped by slug, title-sorted, slugless skipped', () => {
 		const { topics, authors } = paperFacets(all);
+		// Topics keep their authored description — the /research guide renders it, and a topic that
+		// appears on two papers must resolve to ONE entry, whole (p3 tags `transformers` with a
+		// description, p2 without; the dedup must not leave a half-merged row).
 		expect(topics).toEqual([
-			{ value: 'safety', label: 'Provable Safety' },
-			{ value: 'transformers', label: 'Transformer Architecture' }
+			{ slug: 'safety', title: 'Provable Safety', description: 'Verified control.' },
+			{
+				slug: 'transformers',
+				title: 'Transformer Architecture',
+				description: 'The architecture behind modern sequence models.'
+			}
 		]);
 		// Label-sorted (A. Vaswani, M. Harris, T. Dao), not value-sorted.
 		expect(authors.map((a) => a.value)).toEqual(['a-vaswani', 'm-harris', 't-dao']);
 	});
 
+	it('carries a blank description through as null rather than dropping the topic', () => {
+		// The facet select still needs an undescribed topic (it has papers); only the /research
+		// guide filters those out, and that call is the RENDERER's — not this function's.
+		expect(paperFacets([attention]).topics).toEqual([
+			{ slug: 'transformers', title: 'Transformer Architecture', description: null }
+		]);
+	});
+
 	it('returns empty facets for an empty index', () => {
 		expect(paperFacets([])).toEqual({ topics: [], authors: [] });
+	});
+});
+
+describe('topicOptions', () => {
+	it('projects entries down to the select shape, dropping the description', () => {
+		expect(topicOptions(paperFacets(all).topics)).toEqual([
+			{ value: 'safety', label: 'Provable Safety' },
+			{ value: 'transformers', label: 'Transformer Architecture' }
+		]);
+	});
+});
+
+describe('partitionByOrigin', () => {
+	it('splits by the fail-safe polarity and preserves order within each side', () => {
+		// gide is ours; attention is explicitly false; flash leaves the flag UNSET — DAR-52 says
+		// that stays third-party, which is the whole point of the helper this shares with the filter.
+		const { darcstar, external } = partitionByOrigin(all);
+		expect(darcstar.map((p) => p._id)).toEqual(['p1']);
+		expect(external.map((p) => p._id)).toEqual(['p2', 'p3']);
+	});
+
+	it('returns two empty sides for an empty index', () => {
+		expect(partitionByOrigin([])).toEqual({ darcstar: [], external: [] });
 	});
 });

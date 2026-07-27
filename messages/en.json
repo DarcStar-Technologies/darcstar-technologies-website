@@ -755,6 +755,8 @@
 	"research_filter_apply": "Apply",
 	"research_filter_clear": "Clear filters",
 	"research_filter_no_matches": "No papers match these filters.",
+	"research_topics_legend_summary": "What these topics mean",
+	"research_topic_eyebrow": "Topic",
 	"research_commentary_heading": "DarcStar commentary",
 	"research_commentary_note": "Our perspective on this work and how it informs our research — not part of the original paper.",
 	"research_status_draft": "Draft",

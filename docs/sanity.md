@@ -162,8 +162,19 @@ server load never reads the URL, so query-only navigations don't re-hit Sanity. 
 options derive from the fetched papers (those two selects only offer values that match at least
 one paper; origin/sort are static sets). A **title sort merges the origin sections** into one
 A–Z list (cards are origin-self-sufficient per DAR-52). Topic tags (`PaperTopics`'s `topicHref`)
-link into `?topic=`, so a tag is an entry point, not a dead end. Scale assumption: a curated,
-un-paginated index — pagination or hundreds of papers would need GROQ-side filtering.
+link into `?topic=`, so a tag is an entry point, not a dead end.
+
+**Scale.** The index is **un-paginated**: every published paper is fetched and rendered per
+request. `research-filters.ts` is written so nothing walks the corpus twice — `paperFacets`
+derives topics **and** authors in one pass, `partitionByOrigin` splits the origin sections in one
+(it was two `.filter()` calls), and the DAR-52 fail-safe polarity lives in a single
+`isDarcstarAuthored` predicate that the origin filter and the partition share. Measured on the
+page's full re-derive (facets + filter + sort + partition, 3 topics and 2 authors per paper):
+**0.14 ms at 100 papers, 0.49 ms at 300, 1.4 ms at 1000** — this layer is not what will hurt. What
+it does **not** fix sits upstream and will bite first: `papersQuery` ships every abstract/author/topic on every SSR request, and the page
+renders a card per paper. Bounding those means GROQ-side filtering + pagination — which also
+changes the filter module's contract, since facets can no longer derive from the fetched set once
+that set is one page of the corpus.
 
 ### Paper meta-rail charge mapping
 
@@ -178,8 +189,36 @@ The chips/pills around a paper color-code the brand triad ([styling — color-ch
 Neutral (`border-hairline`) = non-semantic chrome (statuses, "Third-party", categories). All pill
 geometry comes from `PaperStatus`'s exported `pillClass`. The B charge carries two meanings, so
 the **rest fill** disambiguates: `PaperLinks` pills are filled (`bg-primary-500/10`) = clickable;
-the published status pill is outline-only = badge. Topic `description` renders as a `title`
-tooltip only (invisible on touch/keyboard — DAR-56 tracks a visible rendering).
+the published status pill is outline-only = badge. Topic `description` still renders as a `title`
+tooltip here, but that is progressive enhancement **only** — the visible rendering is `TopicGuide`
+on /research (below).
+
+### Topic descriptions are rendered, not tooltipped (DAR-56)
+
+The Studio's `topic.description` ("shown alongside the papers tagged with it") reached nothing but
+a `title` tooltip on the `PaperTopics` tags, which needs a pointer: invisible on touch, unreachable
+by keyboard, inconsistently announced by screen readers. `TopicGuide.svelte` renders it for real on
+/research, in two surfaces because they answer different questions:
+
+- a **collapsed `<details>` legend** ("What these topics mean") — a `<dl>` of every in-use
+  described topic, each title linking to its `?topic=` view. Costs one line when unopened;
+- the **active-topic block** — when `?topic=` is set, that topic's title + description render
+  **plainly visible, outside the disclosure**. This is what closes the loop for a touch user: tap a
+  tag on a card → land on the filtered view → read what it means, with nothing to open. A
+  disclosure here would be the tooltip's problem in a new costume.
+
+Rules: both derive from `paperTopics(data.papers)` — the **whole** index, never `filtered`, or
+filtering to one topic would shrink the legend to that one entry; **undescribed topics are omitted**
+(a bare title just echoes the facet select), and when none has a description the component renders
+**nothing at all**, not an empty wrapper (the page spaces children with `space-y-8`, i.e. `> * + *`).
+`paperTopics` is the single walk of the papers' topics — `paperFacets` derives the Topic select from
+it, so "which topics does this index have" cannot answer differently in two places.
+
+Guarded by `TopicGuide.svelte.spec.ts`, which only means anything because the `client` vitest
+project runs **real chromium**: it distinguishes _visible_ from _in the DOM_, which is the entire
+bug. It proves the closed `<details>` genuinely hides its body (both directions — hidden closed,
+shown opened) before relying on that anywhere else. Deliberately **no e2e**: CI runs Playwright
+without `SANITY_VIEWER_TOKEN`, so /research is empty there and the guide is correctly absent.
 
 ## Configuring the dataset / project
 
