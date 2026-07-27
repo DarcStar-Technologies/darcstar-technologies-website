@@ -10,7 +10,7 @@
 // there is exactly ONE rule left (provided-wins, below) and it is a UX nicety rather than a security
 // boundary — see the note above applyWaitlistStep.
 //
-// The two writes and what each is for (the one read, `readWaitlistTriageWindow`, is at the bottom):
+// The three writes and what each is for (the one read, `readWaitlistTriageWindow`, is at the bottom):
 //
 //   insertWaitlistSubmission — upserts the LEAD (the collated person, one row per email) and then
 //   always inserts a SUBMISSION under it. Returns `isNew` for the caller's email gate and the
@@ -20,11 +20,16 @@
 //   id (the caller resolves it from a verified token), building each step's SET clause from an
 //   explicit per-step column list. The token now addresses the row ITS OWN submitter created, so a
 //   step can only ever edit the answers that submitter gave.
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+//
+//   claimPriorityLeadNotification — spends a lead's one-and-only Priority-A notification (DAR-82),
+//   as a conditional UPDATE rather than a check. Same family as the two gates above: the database
+//   decides, in the statement that does the work.
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { SQLiteUpdateSetSource } from 'drizzle-orm/sqlite-core';
 import type { Db } from './db';
 import { waitlistLead, waitlistSubmission } from './db/schema';
 import type { WaitlistLeadRow, WaitlistSubmissionRow } from './waitlist-collate';
+import type { WaitlistLeadSignals } from './waitlist-classify';
 import type {
 	CleanedWaitlist,
 	CleanedWaitlistStep2,
@@ -265,6 +270,28 @@ const stepRank = { 2: 2, 3: 3, '4a': 4, '4b': 4 } as const;
 // believe is a human's, which is the whole point of holding leads for review.
 
 /**
+ * The submission as it stands AFTER a step write — the rubric's inputs, plus who to address about it.
+ *
+ * `extends WaitlistLeadSignals` is doing real work, twice over. It forces the `RETURNING` list below
+ * to keep covering exactly what `classifyWaitlistLead` reads, so adding a signal to the rubric is a
+ * compile error here rather than a notification that quietly stops firing. And it inherits DAR-65's
+ * money guardrail wholesale: `economic_impact` and `budget_range` are absent from that interface on
+ * purpose, so a self-reported dollar figure cannot travel this path into an email that says "hot
+ * lead" — the figures stay on the row detail, where a human weighs them.
+ *
+ * Read post-update, which is what makes it usable as a transition input at all: SQLite's `RETURNING`
+ * on an UPDATE yields the new values, so a `coalesce`-preserved answer from an earlier step comes
+ * back alongside the one this step just wrote. There is no second query — the UPDATE was already
+ * returning a column to count.
+ */
+export interface WaitlistStepOutcome extends WaitlistLeadSignals {
+	/** The collated person this submission belongs to — what the notification claim addresses. */
+	leadId: string;
+	email: string;
+	name: string | null;
+}
+
+/**
  * Apply one optional step to an existing submission (id comes from a VERIFIED continuation token —
  * this function trusts its caller on that and enforces everything else). Explicit per-step SET objects
  * keep a step to its own columns; every column is provided-wins, so a blank never erases.
@@ -274,12 +301,17 @@ const stepRank = { 2: 2, 3: 3, '4a': 4, '4b': 4 } as const;
  * existence oracle. Since DAR-68 it also returns false when the row has spent its step-write budget
  * for the window, which is deliberately the SAME answer: a throttle that could be told apart from a
  * missing row would be exactly the oracle the budget is required not to be.
+ *
+ * `outcome` is the written row (DAR-82), non-null exactly when `updated` is true — both are read off
+ * the same `.returning()`, so they cannot disagree. It exists so a caller can ask "does this row NOW
+ * classify Priority A?" without a follow-up read. Like `updated`, it must never reach the visitor:
+ * every step response is one generic success.
  */
 export async function applyWaitlistStep(
 	db: Db,
 	id: string,
 	data: WaitlistStepData
-): Promise<{ updated: boolean }> {
+): Promise<{ updated: boolean; outcome: WaitlistStepOutcome | null }> {
 	let set: SQLiteUpdateSetSource<typeof waitlistSubmission>;
 	switch (data.step) {
 		case 2:
@@ -337,9 +369,46 @@ export async function applyWaitlistStep(
 				sql`(not ${IN_WINDOW} or coalesce(step_write_count, 0) < ${WAITLIST_STEP_WRITE_MAX})`
 			)
 		)
-		.returning({ id: waitlistSubmission.id });
+		// The rubric's inputs, post-update — see WaitlistStepOutcome. Free: this UPDATE already had a
+		// RETURNING clause so it could tell a permitted write from a refused one.
+		.returning({
+			leadId: waitlistSubmission.leadId,
+			email: waitlistSubmission.email,
+			name: waitlistSubmission.name,
+			role: waitlistSubmission.role,
+			primaryApplication: waitlistSubmission.primaryApplication,
+			evaluationTimeline: waitlistSubmission.evaluationTimeline,
+			pilotInterest: waitlistSubmission.pilotInterest
+		});
 
-	return { updated: updated.length > 0 };
+	return { updated: updated.length > 0, outcome: updated[0] ?? null };
+}
+
+/**
+ * Spend a lead's one-and-only Priority-A notification (DAR-82). True when THIS call claimed it, false
+ * when someone already had — or when the lead is gone.
+ *
+ * The guard is the UPDATE, not a check in front of one. `priority_a_notified_at IS NULL` in the WHERE
+ * clause means the database settles the race: two step writes arriving together both see a null if
+ * they read first, but only one of them can write it, so exactly one email is sent. That is the same
+ * shape as `isNew` on the lead insert and as the funnel's composite key — a cap enforced by the
+ * statement that does the work, with no counting query to get wrong.
+ *
+ * CLAIM BEFORE SEND, which is the OPPOSITE polarity to DAR-67's invitation (that one mails first and
+ * stamps after, so a failed send stays retryable). The difference is who retries. An invitation has an
+ * operator standing over it; this fires from a visitor's step submit that will not happen again, so
+ * there is nobody to notice a duplicate and nobody to ask. At-most-once is therefore the property
+ * worth having, and the cost of buying it is bounded: a send that fails after the claim loses one
+ * email, and the lead still lands at the top of /admin/waitlist, sorted into the Priority-A band. The
+ * notification accelerates triage; it was never the system of record.
+ */
+export async function claimPriorityLeadNotification(db: Db, leadId: string): Promise<boolean> {
+	const claimed = await db
+		.update(waitlistLead)
+		.set({ priorityANotifiedAt: DB_NOW })
+		.where(and(eq(waitlistLead.id, leadId), isNull(waitlistLead.priorityANotifiedAt)))
+		.returning({ id: waitlistLead.id });
+	return claimed.length > 0;
 }
 
 /**

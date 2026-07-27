@@ -46,6 +46,10 @@ import {
 	validateWaitlistStep4B
 } from '$lib/server/waitlist';
 import { applyWaitlistStep, type WaitlistStepData } from '$lib/server/waitlist-store';
+import {
+	captureWaitlistPriorityLead,
+	type WaitlistPriorityNotifyEnv
+} from '$lib/server/waitlist-priority-notify';
 import { verifyWaitlistToken, isDecoyWaitlistId } from '$lib/server/waitlist-token';
 import { setWaitlistResume, type WaitlistResumeStage } from '$lib/server/waitlist-resume';
 import {
@@ -128,6 +132,20 @@ async function resolveStepRow(tokenSecret: string | undefined, token: unknown) {
 	}
 }
 
+/** The request-scoped values a step write needs beyond the row itself, all read before the first
+ *  await (`readEnv` and `platform` are only valid inside the request's async context). */
+type StepWriteContext = {
+	db: Db;
+	platform: App.Platform | undefined;
+	notify: WaitlistPriorityNotifyEnv;
+};
+
+const stepWriteContext = (platform: App.Platform | undefined): StepWriteContext => ({
+	db: getDb(),
+	platform,
+	notify: { resendKey: readEnv('RESEND_API_KEY'), origin: readEnv('ORIGIN') }
+});
+
 /**
  * Apply one step's columns to an already-resolved row. BEST EFFORT — never throws:
  *
@@ -135,9 +153,15 @@ async function resolveStepRow(tokenSecret: string | undefined, token: unknown) {
  * failure must not break the visitor's flow with an error page (the same posture as the fire-and-
  * forget notification emails: log it, don't fail the submission). An unusable token is likewise
  * silent — surfacing it would turn the response into a token oracle.
+ *
+ * THE PRIORITY-A NOTIFICATION (DAR-82) HANGS OFF THE WRITE ITSELF, deliberately, rather than off the
+ * four call sites. It has to consider every step (any of them can complete the rubric's triple under
+ * provided-wins), and a step added later must not be able to forget it — so it lives at the single
+ * chokepoint every enrich already goes through, reading the post-update row the UPDATE hands back.
+ * The capture is void and swallows its own failures, so it changes nothing about this contract.
  */
 async function applyStepBestEffort(
-	db: Db,
+	ctx: StepWriteContext,
 	rowId: string | null,
 	data: WaitlistStepData
 ): Promise<void> {
@@ -147,7 +171,8 @@ async function applyStepBestEffort(
 	// caller. applyWaitlistStep also no-ops on an id whose row is simply gone.
 	if (!rowId || isDecoyWaitlistId(rowId)) return;
 	try {
-		await applyWaitlistStep(db, rowId, data);
+		const { outcome } = await applyWaitlistStep(ctx.db, rowId, data);
+		captureWaitlistPriorityLead(ctx.db, ctx.platform, ctx.notify, outcome);
 	} catch (err) {
 		console.error('waitlist step enrich failed', data.step, err);
 	}
@@ -207,8 +232,8 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 		// the request and getRequestEvent() (which readEnv/getDb call) must precede the first await.
 		// getDb() only CONSTRUCTS the client here (sync, no network) — the enrich below is the only
 		// thing that touches the DB, and it runs only on the write path.
-		const db = getDb();
 		const { platform, cookies } = getRequestEvent();
+		const ctx = stepWriteContext(platform);
 		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 
 		const cleaned = validateWaitlistStep2(data);
@@ -222,7 +247,7 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 		// hermetic against the placeholder DB). All three fields are individually optional, so an
 		// all-blank Continue is valid — it just advances with no enrich.
 		if (!skipped && hasAnswer) {
-			await applyStepBestEffort(db, rowId, { step: 2, ...cleaned });
+			await applyStepBestEffort(ctx, rowId, { step: 2, ...cleaned });
 		}
 
 		// Route on the answers just submitted: commercial/operational use cases get step 3, everyone
@@ -243,7 +268,7 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 		const events: WaitlistFunnelEvent[] = ['qualification_started'];
 		if (!skipped && hasAnswer) events.push('use_case_completed');
 		if (next === 'done') events.push('qualification_completed');
-		captureWaitlistFunnel(db, platform, data.flowId, events);
+		captureWaitlistFunnel(ctx.db, platform, data.flowId, events);
 
 		// Step 2 only terminates by SKIP, which persists nothing — so it leaves us knowing nothing, and
 		// `audience: null` is the honest input (DAR-64's "general signup, skipped early"). On every
@@ -301,8 +326,8 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 	'unchecked',
 	async (data) => {
 		// Request-scoped handles first — see the note in submitWaitlistStep2.
-		const db = getDb();
 		const { platform, cookies } = getRequestEvent();
+		const ctx = stepWriteContext(platform);
 		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 
 		const cleaned = validateWaitlistStep3(data);
@@ -314,7 +339,7 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 		// The evidence cap is applied inside the validator, so more than WAITLIST_EVIDENCE_MAX boxes
 		// (JS off, or the disabling bypassed) is truncated rather than rejected.
 		if (!skipped && hasAnswer) {
-			await applyStepBestEffort(db, rowId, { step: 3, ...cleaned });
+			await applyStepBestEffort(ctx, rowId, { step: 3, ...cleaned });
 		}
 
 		// The step-4 fork and the CTA audience were decided at step 2 (from answers this form doesn't
@@ -331,7 +356,7 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 		const events: WaitlistFunnelEvent[] = [];
 		if (!skipped && hasAnswer) events.push('commercial_context_completed');
 		if (next === 'done') events.push('qualification_completed');
-		captureWaitlistFunnel(db, platform, data.flowId, events);
+		captureWaitlistFunnel(ctx.db, platform, data.flowId, events);
 
 		// Step 3 terminates by SKIP only. Skipping the money questions doesn't unlearn who they told us
 		// they were at step 2, so the audience still stands.
@@ -384,8 +409,8 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 	'unchecked',
 	async (data) => {
 		// Request-scoped handles first — see the note in submitWaitlistStep2.
-		const db = getDb();
 		const { platform, cookies } = getRequestEvent();
+		const ctx = stepWriteContext(platform);
 		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 
 		const cleaned = validateWaitlistStep4A(data);
@@ -395,7 +420,7 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 
 		// Same rule as steps 2–3: Skip persists nothing, an all-blank Continue has nothing to enrich.
 		if (!skipped && hasAnswer) {
-			await applyStepBestEffort(db, rowId, { step: '4a', ...cleaned });
+			await applyStepBestEffort(ctx, rowId, { step: '4a', ...cleaned });
 		}
 
 		// Terminal step — both buttons land on the confirmation, so the CTA is decided here (DAR-64).
@@ -411,7 +436,7 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 		const events: WaitlistFunnelEvent[] = [];
 		if (!skipped && cleaned.pilotInterest !== null) events.push('pilot_interest_selected');
 		events.push('qualification_completed'); // terminal step: both buttons land on the confirmation
-		captureWaitlistFunnel(db, platform, data.flowId, events);
+		captureWaitlistFunnel(ctx.db, platform, data.flowId, events);
 
 		const cta = confirmationCtaFor({
 			audience: flow?.audience ?? null,
@@ -458,8 +483,8 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 	'unchecked',
 	async (data) => {
 		// Request-scoped handles first — see the note in submitWaitlistStep2.
-		const db = getDb();
 		const { platform, cookies } = getRequestEvent();
+		const ctx = stepWriteContext(platform);
 		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 
 		const cleaned = validateWaitlistStep4B(data);
@@ -467,7 +492,7 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 		const rowId = await resolveStepRow(tokenSecret, data.token);
 
 		if (!skipped && hasAnyAnswer(cleaned)) {
-			await applyStepBestEffort(db, rowId, { step: '4b', ...cleaned });
+			await applyStepBestEffort(ctx, rowId, { step: '4b', ...cleaned });
 		}
 
 		// Terminal step. Branch B never asks about pilots, so the CTA rests on the step-2 audience
@@ -477,7 +502,7 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 
 		// Funnel (DAR-66): terminal step, so the flow completed either way. No branch-B-specific event
 		// exists — `pilot_interest_selected` is branch A's, and this branch is never asked.
-		captureWaitlistFunnel(db, platform, data.flowId, ['qualification_completed']);
+		captureWaitlistFunnel(ctx.db, platform, data.flowId, ['qualification_completed']);
 
 		const cta = confirmationCtaFor({ audience: flow?.audience ?? null });
 

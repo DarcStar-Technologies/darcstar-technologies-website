@@ -1,0 +1,1 @@
+ALTER TABLE `waitlist_lead` ADD `priority_a_notified_at` integer;
