@@ -86,8 +86,32 @@ Both suites are **hermetic** — no real credentials anywhere: CI runs the unit 
 at all, and the e2e job against committed placeholder values (test.yml writes them; the worker
 needs vars _present_ to construct its DB/auth clients, but the specs are written DB-free and
 never query). A Sanity-token-less preview degrades to empty content lists, which the specs
-tolerate. Keep new tests that way; anything needing real credentials belongs in
-`pnpm smoke:signin`-style scripts, not the gated suites.
+tolerate. Keep new tests that way; anything needing real credentials belongs in a **manual smoke**
+(below), not the gated suites.
+
+### Manual smokes (not in CI)
+
+Two scripts drive the real endpoints of a built preview over HTTP, no browser. Both are **run by
+hand** — they need real credentials and write to the dev database — and both exit non-zero on the
+first failed assertion. Start `pnpm build && pnpm preview` in one shell, then in another:
+
+- `pnpm smoke:signin` (`scripts/smoke-signin.mjs`, #69) — sign-in → `/admin` → the navbar's auth
+  states → the full operator-roster lifecycle (create → non-admin guard → reset → force-logout →
+  disable → enable → delete) → `/logout` → the guard. Needs `ADMIN_EMAIL`/`ADMIN_PASSWORD` for a
+  provisioned account (`pnpm admin:create`).
+- `pnpm smoke:invite` (`scripts/smoke-invite.ts`, DAR-80) — the invite → activation lifecycle that
+  the hermetic suites structurally cannot reach. Same credentials, plus `DATABASE_*` and a real
+  `RESEND_API_KEY` in `.env`, since it asserts against the database and really sends. Mail goes to
+  `delivered@resend.dev` (Resend's test recipient — a real send, visible in the Resend logs, in
+  nobody's inbox); `SMOKE_INVITE_EMAIL` overrides it, so point it only at a mailbox you own. See
+  [auth](auth.md#invite-only-onboarding-dar-67).
+
+`SMOKE_BASE` overrides the target for both; the default follows [this checkout's preview
+port](#the-preview-port-dar-79). Shared HTTP plumbing lives in `scripts/smoke-http.mjs`. Note the
+asymmetry in what checks them: `scripts/**/*.ts` is inside `tsconfig`'s `include`, so `pnpm check`
+type-checks `smoke-invite.ts` against the real drizzle schema on every PR — the `.mjs` scripts get no
+such guard, which is a reason to reach for `.ts` (run under `tsx`, as `admin:create` does) in a new
+one.
 
 ## CI (required checks)
 
