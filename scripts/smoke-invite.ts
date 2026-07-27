@@ -116,14 +116,24 @@ const RESET_TOKEN_PREFIX = 'reset-password:';
 const EARLIEST_NAME = 'Ada Smoke';
 const LATER_NAME = 'Mallory Smoke';
 
+// FIXED ids for both leads this script seeds, so that every lead it deletes is keyed on an id only
+// this script ever writes. Two properties come out of that, and both are load-bearing:
+//
+//   1. A mistyped SMOKE_INVITE_EMAIL cannot destroy a real signup. Deleting leads by ADDRESS was the
+//      obvious implementation and it is quietly dangerous: the account guard in `purgeInvitee` is no
+//      help, because a genuine prospect has no account to check the role of — they are a waitlist row
+//      and nothing else. Under DAR-88 those rows are an append-only record of what people told us,
+//      which makes deleting the wrong one unrecoverable. Now the script refuses instead (see the
+//      "already on the waitlist" check below).
+//   2. A run that dies before its teardown is recoverable. Its rows are findable next time by id,
+//      where a random id would strand them — which for the staff lead also meant silently flipping
+//      every later run onto the borrow-an-existing-lead branch.
+//
 // The staff-refusal case (step 10) needs a lead whose address holds a staff account, i.e. the
-// operator's OWN address — which may legitimately already be on the waitlist. So that lead is
-// borrowed when it exists and seeded when it doesn't, and the seeded one carries this FIXED id rather
-// than a random one. That is what makes it recoverable: only this script ever writes this id, so a run
-// that dies before its teardown can be cleaned up by id on the next run, with no way to mistake a real
-// lead for ours. (A random id would be unfindable, and matching on the email would risk deleting a
-// genuine signup.)
-const SMOKE_STAFF_LEAD_ID = '5304e0ff-0000-4000-8000-5304e0ff5304';
+// operator's OWN address, which may legitimately already be on the waitlist — so that one is BORROWED
+// when it exists and seeded under this id when it doesn't.
+const SMOKE_INVITEE_LEAD_ID = '5304e0ff-0000-4000-8000-000000000001';
+const SMOKE_STAFF_LEAD_ID = '5304e0ff-0000-4000-8000-000000000002';
 
 const findUser = async (email: string) =>
 	(
@@ -191,11 +201,8 @@ async function purgeInvitee(email: string): Promise<void> {
 		await db.delete(schema.account).where(eq(schema.account.userId, existing.id));
 		await db.delete(schema.user).where(eq(schema.user.id, existing.id));
 	}
-	const leads = await db
-		.select({ id: schema.waitlistLead.id })
-		.from(schema.waitlistLead)
-		.where(eq(lowerLeadEmail, email));
-	for (const lead of leads) await deleteLead(lead.id);
+	// By ID, never by address — see SMOKE_INVITEE_LEAD_ID.
+	await deleteLead(SMOKE_INVITEE_LEAD_ID);
 }
 
 /** Delete a lead and its submissions. Explicit, for the reason `purgeInvitee` gives. */
@@ -230,11 +237,25 @@ ok(`signed in as ${staffEmail} (id ${staffUser.id})`);
 // 2. A clean slate, then one prospect with two submissions.
 // ---------------------------------------------------------------------------------------------
 await purgeInvitee(inviteeEmail);
-// Any staff lead a previous run seeded and didn't get to delete (see SMOKE_STAFF_LEAD_ID). A no-op
-// on the normal path, and it can only ever match this script's own row.
+// Any staff lead a previous run seeded and didn't get to delete. A no-op on the normal path, and it
+// can only ever match this script's own row.
 await deleteLead(SMOKE_STAFF_LEAD_ID);
 
-const leadId = randomUUID();
+// Anything still holding this address is somebody else's row: refuse rather than delete it, and
+// refuse rather than let the `lower(email)` unique index reject the insert below with a constraint
+// error nobody can act on. This is the check that makes a typo in SMOKE_INVITE_EMAIL cost nothing.
+const [foreignLead] = await db
+	.select({ id: schema.waitlistLead.id })
+	.from(schema.waitlistLead)
+	.where(eq(lowerLeadEmail, inviteeEmail))
+	.limit(1);
+if (foreignLead) {
+	die(
+		`${inviteeEmail} is already on the waitlist (lead ${foreignLead.id}) and this script did not put it there. SMOKE_INVITE_EMAIL must be a throwaway address — refusing to touch a real signup.`
+	);
+}
+
+const leadId = SMOKE_INVITEE_LEAD_ID;
 await db.insert(schema.waitlistLead).values({ id: leadId, email: inviteeEmail });
 // `createdAt` is set explicitly on both rows. The default is a millisecond clock, and two inserts in
 // the same millisecond would make "the earliest submission" a coin toss — which is precisely the
@@ -385,7 +406,14 @@ const redeemed = await formPost(BASE, '/reset-password?invite=1', {
 });
 const redeemedBody = await redeemed.text();
 if (redeemed.status !== 200 || !redeemedBody.includes('Your password is set.')) {
-	die(`redeem: expected 200 + the invite success copy, got ${redeemed.status}`);
+	// `/reset-password` is capped at 10/hour/IP (auth-options.ts) and each run spends exactly one, so
+	// this is what the eleventh run of an hour looks like. Unlike the sign-in window there is nothing
+	// worth waiting out, so name it rather than retry.
+	const hint =
+		redeemed.status === 429
+			? ' — the /reset-password cap is 10/hour/IP, so this is roughly the eleventh run this hour'
+			: '';
+	die(`redeem: expected 200 + the invite success copy, got ${redeemed.status}${hint}`);
 }
 ok('redeemed the activation link through /reset-password');
 

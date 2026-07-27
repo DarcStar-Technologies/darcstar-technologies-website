@@ -112,10 +112,12 @@ one behaviour worth knowing: Better Auth caps `/sign-in/email` at **3 per short 
 script spends two sign-ins, so running two back to back trips it on the fourth. A 429 is waited out
 **once**, loudly (`… sign-in rate-limited; waiting 15s`); a second one is reported as a failure,
 because by then something other than your own cadence is holding the bucket down. Note the
-asymmetry in what checks them: `scripts/**/*.ts` is inside `tsconfig`'s `include`, so `pnpm check`
-type-checks `smoke-invite.ts` against the real drizzle schema on every PR — the `.mjs` scripts get no
-such guard, which is a reason to reach for `.ts` (run under `tsx`, as `admin:create` does) in a new
-one.
+asymmetry in what checks them: `vite.config.ts`'s `kit.typescript.config` hook pushes
+`../scripts/**/*.ts` into the generated `include` (DAR-79), so `pnpm check` type-checks
+`smoke-invite.ts` against the real drizzle schema on every PR — mutating a column type in it really
+does turn the `check` job red. The `.mjs` scripts get no such guard (`checkJs` is off and they aren't
+in `include` at all), which is a reason to reach for `.ts` (run under `tsx`, as `admin:create` does)
+in a new one.
 
 ## CI (required checks)
 
