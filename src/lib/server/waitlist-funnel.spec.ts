@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
@@ -7,10 +8,12 @@ import { waitlistFunnelEvent } from './db/schema';
 import type { Db } from './db';
 import {
 	captureWaitlistFunnel,
+	captureWaitlistStepFunnel,
 	readWaitlistFunnelCounts,
 	signupConversionRate,
 	type WaitlistFunnelCounts
 } from './waitlist-funnel';
+import { decoyWaitlistId } from './waitlist-token';
 import { WAITLIST_FUNNEL_EVENTS, type WaitlistFunnelEvent } from '$lib/waitlist-funnel';
 
 // The funnel write path (DAR-66), against a real in-memory libsql — because the two properties worth
@@ -182,6 +185,96 @@ describe('captureWaitlistFunnel', () => {
 		captureWaitlistFunnel(db, undefined, FLOW, ['waitlist_viewed']);
 		// Nothing to drain — give the floating insert a turn to settle.
 		await vi.waitFor(async () => expect(await rows()).toHaveLength(1));
+	});
+});
+
+// DAR-83. Step 1's honeypot has always withheld `waitlist_signup_completed`; steps 2–4 didn't, so a
+// bot that tripped the trap and drove the rest of the flow on its decoy token made the later stages
+// exceed the signups they descend from. The gate makes the trap's effect uniform across the two
+// surfaces it can reach: no submission row, no funnel row.
+describe('captureWaitlistStepFunnel', () => {
+	// Any secret works — `decoyWaitlistId` is an HMAC over the email, and what matters is that the id
+	// is the real thing the honeypot mints rather than a hand-written `decoy_…` string.
+	const SECRET = 'spec-secret-not-a-real-one';
+	const ROW = '5b1f2c3d-9e8a-4b7c-8d6e-1f2a3b4c5d6e'; // a submission id, as verifyWaitlistToken returns
+
+	it('records a step’s events for a real submission id', async () => {
+		captureWaitlistStepFunnel(db, platform, ROW, FLOW, [
+			'qualification_started',
+			'use_case_completed'
+		]);
+		await flush();
+
+		expect((await rows()).map((r) => r.event).sort()).toEqual([
+			'qualification_started',
+			'use_case_completed'
+		]);
+	});
+
+	// Every stage, not a sampled one: passing the whole vocabulary means a slug added later is covered
+	// here the day it exists. The real id in the same drain is the vacuity guard — a wrapper that
+	// dropped everything would pass the decoy half on its own.
+	it('records NOTHING for the honeypot’s decoy id, at any stage', async () => {
+		const decoy = await decoyWaitlistId(SECRET, 'bot@example.com');
+
+		captureWaitlistStepFunnel(db, platform, ROW, FLOW, WAITLIST_FUNNEL_EVENTS);
+		captureWaitlistStepFunnel(db, platform, decoy, OTHER_FLOW, WAITLIST_FUNNEL_EVENTS);
+		await flush();
+
+		const written = await rows();
+		expect(written).toHaveLength(WAITLIST_FUNNEL_EVENTS.length);
+		expect(written.map((r) => r.flowId)).not.toContain(OTHER_FLOW);
+	});
+
+	// THE POLARITY IS DELIBERATE, and the opposite of the write's. An unusable token — expired,
+	// absent, tampered, or a deploy with no signing secret — is not evidence of a bot: it covers the
+	// visitor whose token aged out mid-flow, who genuinely reached this stage, and gating on it would
+	// take the whole step funnel dark on a misconfigured deploy rather than merely stop enriching. The
+	// decoy is the one id that carries a positive signal, because it exists only for someone who
+	// filled a field no human can see.
+	it('still records when the token was unusable, which is not the same as a decoy', async () => {
+		captureWaitlistStepFunnel(db, platform, null, FLOW, ['qualification_started']);
+		await flush();
+
+		expect(await rows()).toEqual([{ flowId: FLOW, event: 'qualification_started' }]);
+	});
+});
+
+// The gate is worth nothing unless the step endpoints actually go through it, and no type can force
+// that: `captureWaitlistFunnel` stays exported for step 1 and the page load, so it remains importable
+// from anywhere. The rule therefore lives in a spec that reads the file — the same move
+// `evidence-boundary.spec.ts` makes for a rule TypeScript can't hold.
+describe('the step endpoints reach the funnel only through the gate', () => {
+	const source = readFileSync(new URL('../waitlist-steps.remote.ts', import.meta.url), 'utf8');
+
+	// Pinned at the IMPORT rather than at the call text: an ESM call site cannot exist without the
+	// binding, so this catches the same mistake one step earlier, and it can't be tripped by a comment
+	// that mentions the ungated function by name.
+	it('imports the gated entry point and not the ungated one', () => {
+		const imported = [
+			...source.matchAll(
+				/import\s+(?:type\s+)?\{([^}]+)\}\s+from\s+'\$lib\/server\/waitlist-funnel'/g
+			)
+		]
+			.flatMap(([, names]) => names.split(','))
+			.map((name) => name.trim())
+			.filter(Boolean);
+
+		expect(imported).toContain('captureWaitlistStepFunnel'); // also the vacuity guard: [] fails here
+		expect(imported).not.toContain('captureWaitlistFunnel');
+		// A namespace import would reach the ungated function without naming it.
+		expect(source).not.toMatch(/import\s+\*\s+as\s+\w+\s+from\s+'\$lib\/server\/waitlist-funnel'/);
+	});
+
+	// A step that fires no funnel event at all is not a thing the flow has (every step reports at
+	// least that it was reached), so "one call per step form" is the shape a new step has to keep. It
+	// fails loudly rather than silently under-reporting the middle of the funnel.
+	it('calls the gated one at least once per step form', () => {
+		const forms = source.match(/export const submitWaitlistStep/g) ?? [];
+		const calls = source.match(/captureWaitlistStepFunnel\(/g) ?? [];
+
+		expect(forms.length).toBeGreaterThanOrEqual(4); // steps 2, 3, 4A, 4B — the file is intact
+		expect(calls.length).toBeGreaterThanOrEqual(forms.length);
 	});
 });
 
