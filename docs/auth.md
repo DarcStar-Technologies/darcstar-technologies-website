@@ -34,6 +34,15 @@ operator is still made by the provisioning script. This doc maps what's wired an
     repeat) past the defaults. Only requests through Better Auth's **router** are limited, which is why
     the login action forwards to `auth.handler()` rather than calling `auth.api.*` directly — and
     conversely why DAR-67's invite calls `auth.api.*`, to stay OFF the public reset limiter.
+    **The store is the one env-bound thing here** (DAR-81, in `auth.ts` rather than the shared config):
+    `AUTH_RATE_LIMIT_STORAGE=memory` runs the limiter without a database, and `pnpm preview` bakes it
+    because the limiter executes ahead of every auth route — against the e2e suite's placeholder
+    `DATABASE_URL` that made every `/api/auth/*` request a 500, `GET /ok` included, so no auth boundary
+    could be asserted end-to-end. Polarity is **fail-safe**: only the exact literal `memory` switches
+    the store, so unset/blank/a typo all keep the durable table, and `wrangler.jsonc` never declares the
+    var — memory storage is per-isolate, which on Cloudflare is no rate limiting at all, and that must
+    take a deliberate act rather than a mistake. Not schema-affecting (the `rate_limit` table stays), so
+    the CLI config is untouched.
   - `emailVerification` (env-bound → in `auth.ts`, not `auth-options.ts`) — `sendOnSignUp`,
     `autoSignInAfterVerification`, `expiresIn: 3600`, a `sendVerificationEmail` that Resends the link
     (`verification-email.ts`), and an `afterEmailVerification` that runs the ownership backfill
@@ -224,10 +233,13 @@ is the pin for the `reset-password:` prefix coupling, plus the no-password-accou
 actually uses); `activation-email.spec.ts` (wire shape, escaping, and that it doesn't read as a
 password reset); `waitlist-invite.spec.ts` × 2 (the derivation, and the UPDATE predicates);
 `admin/waitlist/page.svelte.spec.ts` (badges, Invite-vs-Resend, outcome banners);
-`signup/page.svelte.e2e.ts` (the notice renders, no form, and a direct sign-up POST creates no
-session). **Note on that last one:** the preview can't test the boundary — `isAuthPath()` drops any
-request whose origin ≠ `ORIGIN` and the preview serves `localhost:4173`, so `/api/auth/*` 404s there
-before any auth logic runs. `auth.spec.ts` is the real guard.
+`signup/page.svelte.e2e.ts` (the notice renders, no form); and **`auth-api.e2e.ts`** — the boundary
+against the deployed worker, `POST /api/auth/sign-up/email` → 400 `EMAIL_PASSWORD_SIGN_UP_DISABLED`.
+**That last one is new (DAR-81)** and it is the acceptance criterion this ticket wanted and couldn't
+write: the preview used to serve an origin `isAuthPath()` didn't recognise, so `/api/auth/*` 404'd
+before any auth logic ran and the old assertion ("not ok, and no session") was satisfied by the 404
+itself — it would have stayed green with registration re-opened. Both guards are kept: `auth.spec.ts`
+says the CONFIG refuses public sign-up, `auth-api.e2e.ts` says the shipped worker does.
 
 **The runtime path is `pnpm smoke:invite`** (DAR-80, `scripts/smoke-invite.ts` — see
 [commands](commands.md#manual-smokes-not-in-ci)). Everything above tests a piece; the smoke tests them

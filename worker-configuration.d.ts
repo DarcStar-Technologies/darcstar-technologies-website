@@ -8,6 +8,7 @@ interface __BaseEnv_Env {
 	DATABASE_AUTH_TOKEN: string;
 	ORIGIN: string;
 	BETTER_AUTH_SECRET: string;
+	AUTH_RATE_LIMIT_STORAGE: string;
 	GITHUB_CLIENT_ID: string;
 	GITHUB_CLIENT_SECRET: string;
 	RESEND_API_KEY: string;
@@ -23,6 +24,7 @@ declare namespace Cloudflare {
 		DATABASE_AUTH_TOKEN: string;
 		ORIGIN: string;
 		BETTER_AUTH_SECRET: string;
+		AUTH_RATE_LIMIT_STORAGE: string;
 		GITHUB_CLIENT_ID: string;
 		GITHUB_CLIENT_SECRET: string;
 		RESEND_API_KEY: string;
@@ -38,7 +40,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "DATABASE_URL" | "DATABASE_AUTH_TOKEN" | "ORIGIN" | "BETTER_AUTH_SECRET" | "GITHUB_CLIENT_ID" | "GITHUB_CLIENT_SECRET" | "RESEND_API_KEY" | "TURNSTILE_SITE_KEY" | "TURNSTILE_SECRET_KEY" | "SANITY_VIEWER_TOKEN" | "ADMIN_USER_IDS">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "DATABASE_URL" | "DATABASE_AUTH_TOKEN" | "ORIGIN" | "BETTER_AUTH_SECRET" | "AUTH_RATE_LIMIT_STORAGE" | "GITHUB_CLIENT_ID" | "GITHUB_CLIENT_SECRET" | "RESEND_API_KEY" | "TURNSTILE_SITE_KEY" | "TURNSTILE_SECRET_KEY" | "SANITY_VIEWER_TOKEN" | "ADMIN_USER_IDS">> {}
 }
 
 // Begin runtime types

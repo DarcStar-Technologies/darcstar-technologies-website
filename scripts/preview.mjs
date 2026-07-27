@@ -27,17 +27,7 @@ import {
 	reapStrayPortHolder,
 	REPO_ROOT
 } from './preview-port.mjs';
-
-// Cloudflare's universal always-pass Turnstile TEST keys. A real sitekey rejects localhost, so these
-// are what let a widget mount in preview at all. DAR-67 removed the only widget, but auth.ts keeps
-// the env deliberately (re-opening public sign-up should be a plugin + a form, not a secrets dance),
-// so they stay here too — see docs/auth.md.
-const TURNSTILE_TEST_VARS = [
-	'--var',
-	'TURNSTILE_SITE_KEY:1x00000000000000000000AA',
-	'--var',
-	'TURNSTILE_SECRET_KEY:1x0000000000000000000000000000000AA'
-];
+import { previewVarArgs } from './preview-vars.mjs';
 
 /** How long a SIGTERM'd tree gets to exit before survivors are SIGKILLed. */
 const GRACE_MS = 5_000;
@@ -74,6 +64,10 @@ console.log(
 // pnpm's own bin shim (it `exec`s node, so it adds no process layer), spawned by path rather than
 // through `pnpm exec` — one less node between the signal handlers below and the process that owns
 // `workerd`. A missing shim surfaces on the 'error' handler as a plain ENOENT.
+//
+// Our vars go BEFORE the forwarded arguments deliberately: wrangler takes the LAST `--var` for a
+// repeated name (measured), so `pnpm preview --var ORIGIN:https://darcstar.tech` still wins. That is
+// the escape hatch for previewing against a production-shaped origin — see preview-vars.mjs.
 const child = spawn(
 	join(REPO_ROOT, 'node_modules/.bin/wrangler'),
 	[
@@ -81,7 +75,7 @@ const child = spawn(
 		'.svelte-kit/cloudflare/_worker.js',
 		'--port',
 		String(port),
-		...TURNSTILE_TEST_VARS,
+		...previewVarArgs(port),
 		...forwarded
 	],
 	{ cwd: REPO_ROOT, stdio: 'inherit' }

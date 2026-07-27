@@ -2,7 +2,7 @@
 
 - `pnpm dev` — Vite dev server.
 - `pnpm build` — regenerates types (`scripts/gen-types.mjs`) then `vite build`. Output goes to `.svelte-kit/cloudflare`.
-- `pnpm preview` — serve the built worker through `wrangler dev` on [this checkout's port](#the-preview-port-dar-79), i.e. a real Workers runtime, not `vite preview`. Bakes Cloudflare's always-pass Turnstile **test** keys (`--var` in `scripts/preview.mjs`) so a widget mounts on localhost — a real sitekey rejects localhost. → [security-headers](security-headers.md)
+- `pnpm preview` — serve the built worker through `wrangler dev` on [this checkout's port](#the-preview-port-dar-79), i.e. a real Workers runtime, not `vite preview`. Bakes the env whose production values can't work against localhost ([`scripts/preview-vars.mjs`](#what-the-preview-overrides-dar-81)). → [security-headers](security-headers.md)
 - `pnpm check` — regenerates types + compiles Paraglide + `svelte-kit sync` + `svelte-check` (type/diagnostic check). The Paraglide compile makes it work on a **fresh clone** (the vite plugin only generates `src/lib/paraglide` during dev/build, and svelte-check needs it).
 - `pnpm lint` — `prettier --check .` then `eslint .`. `pnpm format` writes Prettier fixes.
 - `pnpm gen` — `scripts/gen-types.mjs`; regenerates `worker-configuration.d.ts` (the `Env` type consumed by `src/app.d.ts` and referenced in `tsconfig.json`). Run this after changing `wrangler.jsonc` bindings **or `.env.example`** — generation is **deterministic** (DAR-49): env-var _names_ come from the committed `.env.example` (never your real `.env`), and the volatile bits of wrangler's output (content hash, the build-output-dependent `GlobalProps` block) are normalized away, so any checkout — including CI, which has no `.env` — reproduces the committed file byte-for-byte. Never run `wrangler types` directly. Corollary: **a new runtime env var isn't typed until it's listed in `.env.example`** (which [deployment](deployment.md) already requires). The `check` CI job drift-guards the committed copy, so a `wrangler.jsonc`/`.env.example`/wrangler-version change must ship its regenerated types.
@@ -13,7 +13,7 @@
 `pnpm preview` and Playwright's `webServer` share one derived port. It is written down in exactly one
 place — [`scripts/preview-port.mjs`](../scripts/preview-port.mjs) — and nowhere else:
 
-- **main checkout → 4173**, so every `curl localhost:4173` in these docs and CI's `ORIGIN` stay true
+- **main checkout → 4173**, so every `curl localhost:4173` in these docs stays true
 - **each linked worktree → its own stable slot, 4174–4272**, hashed from the worktree's path (stable
   across branch switches, because it is the path that is hashed)
 - `PREVIEW_PORT=4200 pnpm preview` overrides both, and a value that isn't a port is **refused**, not
@@ -38,6 +38,35 @@ pid, working directory, and the pid to `kill`. Read that before killing anything
 - A tree whose parent was SIGKILLed keeps the port forever under `ppid 1` — that is where stale
   servers come from. `pnpm preview` now reaps its own tree on SIGTERM/SIGINT, so a plain `kill` is
   enough.
+
+## What the preview overrides (DAR-81)
+
+`pnpm preview` bakes three things into its `wrangler dev` invocation, all derived in one place
+([`scripts/preview-vars.mjs`](../scripts/preview-vars.mjs)) and all for the same reason — the
+production value cannot work against localhost:
+
+| Var                       | Value                              | Why                                                                                                                                                         |
+| ------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TURNSTILE_*`             | Cloudflare's always-pass test keys | A real sitekey rejects localhost, so no widget could mount (DAR-45).                                                                                        |
+| `ORIGIN`                  | `http://localhost:<port>`          | Better Auth mounts `/api/auth` **only** for requests whose origin matches its baseURL, so the production value leaves the auth API not mounted at all.      |
+| `AUTH_RATE_LIMIT_STORAGE` | `memory`                           | The limiter runs before every auth route and stores counters in the **database**; this suite has none, so every auth endpoint answered 500 — `GET /ok` too. |
+
+They are `--var` flags rather than `.env` entries on purpose. A `--var` **beats** a `.env` entry, so
+what the suite exercises no longer depends on what a developer happens to have in their `.env` — and
+that was a live defect, not a hypothetical: CI hand-wrote `ORIGIN=http://localhost:4173` and so
+reached the auth API, while a local run (whose `.env` holds the _dev server's_ origin, on a port a
+worktree derives independently) silently tested a `/api/auth` that 404'd. Anything that must track
+the port is now derived from it, so there is no second copy to drift.
+
+wrangler takes the **last** `--var` for a repeated name and ours go first, so
+`pnpm preview --var ORIGIN:https://darcstar.tech` is the escape hatch for previewing against a
+production-shaped origin.
+
+**Two consequences worth knowing.** The rate limiter is real in a preview, just in memory — a fresh
+preview starts with empty counters, but `E2E_REUSE_SERVER=1` keeps them, so the 4th e2e run within
+the hour trips the 3/hour sign-up cap and `auth-api.e2e.ts` fails; restart the preview. And the
+hand-run smokes now reach `/api/auth/*` too, so the emailed activation link's GET callback is
+testable there for the first time (`smoke-invite.ts` does not yet do it).
 
 ## Tests
 
