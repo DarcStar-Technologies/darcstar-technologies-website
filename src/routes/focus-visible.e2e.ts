@@ -20,9 +20,9 @@ type Stop = {
 	outlineWidth: string;
 	outlineStyle: string;
 	outlineColor: string;
-	/** Everything a focus state could plausibly change, so "did it change at all" is answerable. */
+	/** What the element visibly looks like — see `installAppearanceProbe` for what counts. */
 	appearance: string;
-	/** The same string read before anything was focused — see `snapshotUnfocused`. */
+	/** The same string, read before this element had ever been focused — see `stampResting`. */
 	restingAppearance: string | null;
 };
 
@@ -61,21 +61,30 @@ async function installAppearanceProbe(page: Page): Promise<void> {
 }
 
 /**
- * Records how every focusable element looks while NOTHING is focused, stamped on the element itself,
- * so the walk can ask whether focus changed its appearance.
+ * Stamps every not-yet-stamped focusable with how it looks RIGHT NOW, before the next Tab moves
+ * focus onto it — so the walk can ask whether focus changed its appearance.
  *
  * This is what enforces the layered design's actual rule — **opt out of the ring only by REPLACING
  * it**. `glass-field` and `/admin` legitimately suppress the outline and draw their own, so they
  * can't be held to the branded ring; without this they were asserted against nothing at all, and an
  * `outline-none` added with no replacement would have gone unnoticed.
+ *
+ * Called once per step rather than once per page, and only for elements that lack a stamp. A single
+ * snapshot after `goto` misses anything the page creates later — a `mounted`-gated reveal,
+ * GlassSelect's native-select→glass-menu swap — and those would arrive at the walk with no resting
+ * value to compare against. Stamping just-in-time is also still correct: the element being measured
+ * has not been focused yet, which is the only thing "resting" requires.
  */
-async function snapshotUnfocused(page: Page): Promise<void> {
+async function stampResting(page: Page): Promise<void> {
 	await page.evaluate(() => {
 		const appearance = (window as AppearanceWindow).__fvAppearance;
 		if (!appearance) throw new Error('appearance probe missing — installAppearanceProbe first');
-		document.querySelectorAll('a,button,summary,input,select,textarea').forEach((el) => {
-			el.setAttribute('data-fv-resting', appearance(el));
-		});
+		document
+			.querySelectorAll('a,button,summary,input,select,textarea')
+			.forEach(
+				(el) =>
+					el.hasAttribute('data-fv-resting') || el.setAttribute('data-fv-resting', appearance(el))
+			);
 	});
 }
 
@@ -117,6 +126,7 @@ async function brandRingColor(page: Page): Promise<string> {
 async function tabThrough(page: Page, limit: number): Promise<Stop[]> {
 	const stops: Stop[] = [];
 	for (let i = 0; i < limit; i += 1) {
+		await stampResting(page);
 		await page.keyboard.press('Tab');
 		const stop = await page.evaluate(async () => {
 			const el = document.activeElement;
@@ -175,7 +185,6 @@ for (const { path, minStops } of [
 		await page.goto(path);
 
 		const brandColor = await brandRingColor(page);
-		await snapshotUnfocused(page);
 		const stops = await tabThrough(page, 60);
 
 		// Without this the whole spec passes vacuously if the walk finds nothing — the failure mode
@@ -198,7 +207,11 @@ for (const { path, minStops } of [
 			// border + glow), so they can't be held to the exact treatment — but they still have to
 			// look different when focused. This is the enforcement of "opt out only by REPLACING
 			// it": an `outline-none` added with nothing behind it fails here.
-			expect(stop.restingAppearance, `${where} was never snapshotted`).not.toBeNull();
+			expect(
+				stop.restingAppearance,
+				`${where} has no resting snapshot — it appeared and took focus within one Tab, so ` +
+					'stampResting never saw it unfocused'
+			).not.toBeNull();
 			expect(stop.appearance, `${where} looks identical focused and unfocused`).not.toBe(
 				stop.restingAppearance
 			);
