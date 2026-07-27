@@ -6,9 +6,11 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import PageHero from '$lib/components/PageHero.svelte';
 	import SanityImage from '$lib/components/SanityImage.svelte';
+	import Pager from '$lib/components/Pager.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import { formatDate } from '$lib/sanity/date';
+	import { page } from '$app/state';
 	import type { PageServerData } from './$types';
 
 	let { data }: { data: PageServerData } = $props();
@@ -26,8 +28,8 @@
 		lead={m.news_lead()}
 	/>
 
-	<div class="mx-auto w-full max-w-3xl">
-		{#if data.posts.length === 0}
+	<div class="mx-auto w-full max-w-3xl space-y-8">
+		{#if data.total === 0}
 			<p class="glass-card px-8 py-12 text-center text-sm text-body">{m.news_empty()}</p>
 		{:else}
 			<ul class="space-y-6">
@@ -74,6 +76,8 @@
 					</li>
 				{/each}
 			</ul>
+
+			<Pager page={data.page} pageCount={data.pageCount} url={page.url} />
 		{/if}
 	</div>
 </div>

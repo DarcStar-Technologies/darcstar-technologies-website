@@ -37,6 +37,56 @@ test('filter bar renders and SSRs the URL state into its controls', async ({ pag
 	await expect(form.getByRole('link', { name: 'Clear filters' })).toBeVisible();
 });
 
+// DAR-94: the Author facet is a TEXT INPUT, not a select. The author vocabulary grows ~7 people per
+// paper and never plateaus (123 across 18 papers), so shipping it as <option>s would undo the point
+// of paginating — suggestions come from /research/authors.json as the visitor types instead. The
+// element type is the part worth pinning: a future "let's just make it a select again" is a silent
+// payload regression, and this is the only guard that would notice.
+test('the author facet is a text input backed by a datalist, not an option list', async ({
+	page
+}) => {
+	await page.goto('/research');
+	const form = page.getByRole('form', FILTER_FORM);
+	if ((await form.count()) === 0) {
+		await expect(page.getByText('No papers yet')).toBeVisible();
+		return;
+	}
+	const author = form.getByLabel('Author');
+	await expect(author).toHaveJSProperty('tagName', 'INPUT');
+	await expect(author).toHaveAttribute('list', 'research-author-options');
+});
+
+// The endpoint is the type-ahead's whole mechanism, and its refusal below three characters is what
+// stops it being a way to download the vocabulary the page declines to ship. Content-free on the
+// refusal side, so it holds in CI where /research is empty for want of SANITY_VIEWER_TOKEN.
+test('the author lookup refuses a query too short to narrow anything', async ({ request }) => {
+	for (const q of ['', 'd', 'da', '*']) {
+		const res = await request.get(`/research/authors.json?q=${encodeURIComponent(q)}`);
+		expect(res.ok()).toBe(true);
+		expect(await res.json()).toEqual({ authors: [] });
+	}
+	// ...and a usable query is served rather than refused, so the check above isn't just asserting a
+	// dead endpoint. The RESULT is content-dependent (empty in CI), the 200 is not.
+	const served = await request.get('/research/authors.json?q=dao');
+	expect(served.ok()).toBe(true);
+	expect(await served.json()).toHaveProperty('authors');
+});
+
+// Same rule as /news: a paged or filtered view is a view of the index, not a page of its own. Pins
+// behaviour that was already true (Seo derives both tags from `page.url.pathname`, which excludes
+// the query string) and that nothing else would notice breaking — it is what makes leaving these
+// views out of the sitemap safe.
+test('paged and filtered views canonicalise to the bare index', async ({ page }) => {
+	// `?page=1`, not `?page=2`: a page past the end REDIRECTS, so on an 18-paper index (or the empty
+	// one CI renders without SANITY_VIEWER_TOKEN) `?page=2` would land on a URL with no page param
+	// and this would only assert that `/research` canonicalises to `/research`. Page 1 is in range
+	// for any corpus, so the query string survives and the tag is genuinely under test.
+	await page.goto('/research?page=1&topic=long-context&sort=title');
+	await expect(page).toHaveURL(/page=1/);
+	await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/research$/);
+	await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', /\/research$/);
+});
+
 // The submit → URL contract, content-free (origin's option set is static): selecting an origin
 // and applying must land on the filtered URL. Covers the wiring a deep-link test can't — the
 // select names feeding buildFilterQuery and the submit handler.

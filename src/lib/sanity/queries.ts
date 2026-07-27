@@ -16,18 +16,191 @@ import { defineQuery } from 'groq';
 //     needs the `asset._ref` intact to build sized CDN URLs (see image.ts).
 //   • `defined(slug.current)` guards list rows that lack a routable slug.
 
-export const postsQuery = defineQuery(`
-	*[_type == "post" && defined(slug.current)] | order(publishedAt desc) {
-		_id,
-		title,
-		"slug": slug.current,
-		excerpt,
-		publishedAt,
-		featured,
-		coverImage,
-		"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role })
-	}
+// ── Paginated indexes (DAR-94) ────────────────────────────────────────────────────────────────
+//
+// Both list queries return ONE PAGE plus the totals (and, for papers, the facet vocabulary) in a
+// SINGLE round trip, via a top-level object projection — the shape `sitemapEntriesQuery` already
+// uses. They replace the `*[...]` fetch-everything queries these indexes used to run: those shipped
+// every abstract, author and topic of every published document on every SSR request, so the page
+// cost grew with the corpus rather than with what a visitor sees.
+//
+// Two rules make the paper queries safe to edit:
+//
+//   1. EVERY part that must not vary between the three sort variants is a shared `const`
+//      interpolated into all of them, so the only textual difference is the `order()` clause
+//      (pinned by queries.spec.ts, which strips that clause and compares the rest byte-for-byte).
+//   2. `defineQuery` must receive a CONST-INTERPOLATED template, never a function call.
+//      `defineQuery(build(order))` type-checks and TypeGen even emits a correct `…Result` for it,
+//      but TS infers the argument as plain `string`, so `overloadClientMethods` fails to resolve
+//      and `client.fetch()` silently returns `any` (measured: a probe asserting `const s: string =
+//      result.total` errored for the const form and PASSED for the function form). Losing the
+//      types is invisible until something reads a field that isn't there.
+//
+// A null filter param is a NO-OP (`$topic == null || …`), which is what lets one static literal
+// carry every filter combination while staying statically typed.
+
+const PAGE_SLICE = `[$offset...$end]`;
+
+// `defined(slug.current)` guards rows with no routable slug, exactly as the old queries did.
+// Origin polarity is FAIL-SAFE and load-bearing: external is `darcstarAuthored != true`, never
+// `== false`, so an unset flag stays third-party — the same trap DAR-71 hit in the sitemap, and the
+// GROQ half of the rule `isDarcstarAuthored` carries in TS ($lib/research-filters.ts). Because it
+// now lives in two languages, queries.spec.ts pins it.
+//
+// `$author` accepts EITHER a slug or a typed name: the filter bar's author control is a text input
+// (the vocabulary is too large to ship — see the facets below), so `?author=dao` must work, while
+// `?author=tri-dao` links that already exist must keep working. `match` is case-insensitive and
+// token-prefixed (measured: "DAO" and "dao*" both hit, "ao*" does not).
+const PAPER_MATCH = `_type == "paper" && defined(slug.current)
+		&& ($topic == null || $topic in topics[]->slug.current)
+		&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*"))
+		&& ($origin == null
+			|| ($origin == "darcstar" && darcstarAuthored == true)
+			|| ($origin == "external" && darcstarAuthored != true))`;
+
+// The list card's fields. Two deliberate omissions versus the detail query:
+//
+//   • `abstract` is TRUNCATED to 50 words, which were 47% of this query's payload. The card clamps
+//     it to 3 lines in CSS anyway, and measured in a real browser at 390/768/1440 px every
+//     truncated abstract still overflows that clamp — so what a visitor sees is unchanged, and the
+//     ellipsis they see is the CSS one.
+//
+//     The `+ "…"` is for the case that measurement CANNOT rule out: a 50-word abstract of unusually
+//     short words could fit inside 3 lines, and then the cut would render as a sentence stopping
+//     dead with no indication why. Marking the truncation in the DATA makes it self-evident at any
+//     width instead of resting on an assumption about the corpus. It never doubles up — when the
+//     clamp does fire, CSS ellipsises at line 3 and our marker is past it, unrendered.
+//
+//     Deliberately NOT gated on `defined(abstract)`: measured on production, that predicate answers
+//     6 in a FILTER while all 18 papers have an abstract in a PROJECTION (Sanity's filter index
+//     disagreeing with the documents). `select()` falls through to the raw field, so a missing
+//     abstract stays null — which the card's `{#if}` already guards.
+//   • topic `description` is GONE. It reached the page once per tag occurrence (15 copies of the
+//     same string, ~3.0 KB against 989 bytes distinct) to feed a `title` tooltip. The descriptions
+//     now arrive ONCE in the topic facet below, which is what TopicGuide renders (DAR-56). The
+//     detail query still projects it — there is no topic guide there, so the tooltip is that page's
+//     only surface for it.
+const PAPER_CARD = `
+			_id,
+			title,
+			"slug": slug.current,
+			status,
+			darcstarAuthored,
+			"hasCommentary": coalesce(count(commentary) > 0, false),
+			venue,
+			publishedDate,
+			url,
+			doi,
+			arxivId,
+			codeUrl,
+			"abstract": select(count(string::split(abstract, " ")) > 50 => array::join(string::split(abstract, " ")[0...50], " ") + "…", abstract),
+			"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),
+			"topics": array::compact(topics[]->{ _id, title, "slug": slug.current })`;
+
+// Everything the /research chrome needs that ISN'T the current page. This is the half that makes
+// pagination possible at all: the facets used to be derived from the fetched papers, so slicing the
+// fetch would have shrunk the Topic select and the topic guide to whatever happened to be on the
+// visitor's page. Sourced from the taxonomy instead, they now describe the WHOLE in-use index —
+// strictly more correct than before, not a compromise.
+//
+// `count(*[… references(^._id)]) > 0` keeps a term that no published paper uses out of the
+// controls, matching the old "only offer values that match at least one paper" guarantee.
+//
+// `teamAuthors` seeds the author input's <datalist> so the control offers something before the
+// visitor types, and it is bounded by the team rather than the corpus (the full author vocabulary
+// is ~7 new people per paper and never plateaus — 123 for 18 papers, ~2,000 at 300). `kind !=
+// "external"` mirrors peopleQuery's fail-open polarity: an unset kind counts as team.
+//
+// `authorLabel` resolves the filter's slug back to a display name so `?author=tri-dao` shows "Tri
+// Dao" in the box. It matches on the SLUG ONLY — never the `match` form the filter accepts —
+// because a broad term like `?author=da` would otherwise label the control with one person while
+// the results legitimately contained several.
+const PAPER_PAGE_META = `
+		"total": count(*[${PAPER_MATCH}]),
+		"totalAll": count(*[_type == "paper" && defined(slug.current)]),
+		"topics": *[_type == "topic" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(title asc) {
+			"slug": slug.current,
+			title,
+			description
+		},
+		"teamAuthors": *[_type == "person" && kind != "external" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(name asc) {
+			"value": slug.current,
+			"label": name
+		},
+		"authorLabel": *[_type == "person" && defined(slug.current) && slug.current == $author][0].name`;
+
+// The origin split (DAR-52) renders as two sections, and under pagination that framing is only
+// honest if a page can't interleave them — so origin is the MAJOR sort key. This reproduces exactly
+// what the un-paginated page rendered (it partitioned a date-sorted list at render time, so
+// first-party cards came first), while guaranteeing each page's sections stay contiguous and in
+// order. `== true` keeps the fail-safe polarity: unset sorts with the third-party work.
+const ORIGIN_MAJOR = `select(darcstarAuthored == true => 0, 1) asc`;
+
+// `coalesce(…, "9999-12-31")` keeps undated papers LAST, which is what the JS sort this replaces
+// did explicitly ("a plain reverse would surface them first"). It is spelled with a sentinel rather
+// than `defined(publishedDate) desc` because GROQ's null placement in `order()` is not something
+// this dataset can exercise — every paper is dated — and a sentinel doesn't depend on knowing it.
+// The default `date` order is left byte-identical to the old query's, so undated papers keep
+// whatever position they have today.
+const ORDER_DATE = `${ORIGIN_MAJOR}, publishedDate desc`;
+const ORDER_DATE_ASC = `${ORIGIN_MAJOR}, coalesce(publishedDate, "9999-12-31") asc`;
+// No origin key: a title sort MERGES the sections into one A–Z list (two separately-sorted sections
+// read as broken), which is what the page already did for this sort.
+//
+// `lower()` rather than a bare `title`: GROQ orders strings by code point, so without it "eDiffi"
+// would sort after "Efficient". This is a deliberate, documented step down from the
+// `localeCompare(…, { sensitivity: 'base' })` it replaces — that was also accent-insensitive, and
+// GROQ has no locale collation, so accented titles now sort after all ASCII. Measured: zero visible
+// change on today's corpus (GROQ's ordering of the real titles is identical to localeCompare's).
+const ORDER_TITLE = `lower(title) asc`;
+
+export const papersPageByDateQuery = defineQuery(`{
+		"papers": *[${PAPER_MATCH}] | order(${ORDER_DATE}) ${PAGE_SLICE} {${PAPER_CARD}
+		},${PAPER_PAGE_META}
+	}`);
+
+export const papersPageByDateAscQuery = defineQuery(`{
+		"papers": *[${PAPER_MATCH}] | order(${ORDER_DATE_ASC}) ${PAGE_SLICE} {${PAPER_CARD}
+		},${PAPER_PAGE_META}
+	}`);
+
+export const papersPageByTitleQuery = defineQuery(`{
+		"papers": *[${PAPER_MATCH}] | order(${ORDER_TITLE}) ${PAGE_SLICE} {${PAPER_CARD}
+		},${PAPER_PAGE_META}
+	}`);
+
+/** Cap on one author-suggestion response — a lookup, never a way to page through the vocabulary. */
+export const AUTHOR_SUGGESTION_LIMIT = 12;
+
+// Backs the author input's type-ahead (GET /research/authors.json). Team members sort first, so the
+// people this site is about lead the list however many co-authors match. The caller enforces a
+// minimum query length and strips `match` wildcards, and BOTH are load-bearing rather than
+// defensive: measured, `q = ""` and `q = "*"` each match all 123 people, so without them this
+// endpoint would hand out the whole vocabulary the page exists to avoid shipping.
+export const authorSuggestionsQuery = defineQuery(`
+	*[_type == "person" && defined(slug.current) && name match ($q + "*") && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0]
+		| order(select(kind != "external" => 0, 1) asc, name asc) [0...${AUTHOR_SUGGESTION_LIMIT}] {
+			"value": slug.current,
+			"label": name
+		}
 `);
+
+// /news has no facets, so it is the same shape without the vocabulary half. `featured` is gone from
+// the projection: the field is authored in the Studio but no surface has ever rendered it.
+const POST_MATCH = `_type == "post" && defined(slug.current)`;
+
+export const postsPageQuery = defineQuery(`{
+		"posts": *[${POST_MATCH}] | order(publishedAt desc) ${PAGE_SLICE} {
+			_id,
+			title,
+			"slug": slug.current,
+			excerpt,
+			publishedAt,
+			coverImage,
+			"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role })
+		},
+		"total": count(*[${POST_MATCH}])
+	}`);
 
 export const postBySlugQuery = defineQuery(`
 	*[_type == "post" && slug.current == $slug][0] {
@@ -43,26 +216,6 @@ export const postBySlugQuery = defineQuery(`
 		"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),
 		"relatedPapers": array::compact(relatedPapers[]->{ _id, title, "slug": slug.current, venue, darcstarAuthored, "hasCommentary": coalesce(count(commentary) > 0, false) }),
 		seo
-	}
-`);
-
-export const papersQuery = defineQuery(`
-	*[_type == "paper" && defined(slug.current)] | order(publishedDate desc) {
-		_id,
-		title,
-		"slug": slug.current,
-		status,
-		darcstarAuthored,
-		"hasCommentary": coalesce(count(commentary) > 0, false),
-		venue,
-		publishedDate,
-		url,
-		doi,
-		arxivId,
-		codeUrl,
-		abstract,
-		"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),
-		"topics": array::compact(topics[]->{ _id, title, "slug": slug.current, description })
 	}
 `);
 

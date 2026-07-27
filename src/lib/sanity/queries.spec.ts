@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-	postsQuery,
+	AUTHOR_SUGGESTION_LIMIT,
+	authorSuggestionsQuery,
+	postsPageQuery,
 	postBySlugQuery,
-	papersQuery,
+	papersPageByDateQuery,
+	papersPageByDateAscQuery,
+	papersPageByTitleQuery,
 	paperBySlugQuery,
 	peopleQuery,
 	siteSettingsQuery,
@@ -15,11 +19,17 @@ import {
 // proves the projections type-check; this guards the query SEMANTICS a type can't (filter/order/param).
 
 describe('sanity GROQ queries', () => {
-	it('postsQuery selects published posts newest-first with dereferenced authors', () => {
-		expect(postsQuery).toContain('_type == "post"');
-		expect(postsQuery).toContain('order(publishedAt desc)');
-		expect(postsQuery).toContain('"slug": slug.current');
-		expect(postsQuery).toContain('authors[]->');
+	it('postsPageQuery selects one page of published posts newest-first with dereferenced authors', () => {
+		expect(postsPageQuery).toContain('_type == "post"');
+		expect(postsPageQuery).toContain('order(publishedAt desc)');
+		expect(postsPageQuery).toContain('"slug": slug.current');
+		expect(postsPageQuery).toContain('authors[]->');
+		// DAR-94: bounded, and the count is what the pager's page count is computed from.
+		expect(postsPageQuery).toContain('[$offset...$end]');
+		expect(postsPageQuery).toContain('"total": count(*[_type == "post" && defined(slug.current)])');
+		// `featured` is authored in the Studio but no surface has ever rendered it — it was pure
+		// payload. Pinned so it isn't re-added by reflex when someone copies the detail projection.
+		expect(postsPageQuery).not.toContain('featured');
 	});
 
 	it('postBySlugQuery is slug-parameterised and pulls the body + related papers', () => {
@@ -33,16 +43,13 @@ describe('sanity GROQ queries', () => {
 		expect(postBySlugQuery).toContain('"hasCommentary": coalesce(count(commentary) > 0, false)');
 	});
 
-	it('papersQuery selects published papers newest-first with the origin + annotation flags', () => {
-		expect(papersQuery).toContain('_type == "paper"');
-		expect(papersQuery).toContain('order(publishedDate desc)');
+	it('the paper page queries carry the origin + annotation flags', () => {
+		expect(papersPageByDateQuery).toContain('_type == "paper"');
 		// DAR-52: the /research split renders darcstarAuthored, and hasCommentary must be a
 		// boolean even when the field is absent (count(missing) is null → coalesce).
-		expect(papersQuery).toContain('darcstarAuthored');
-		expect(papersQuery).toContain('"hasCommentary": coalesce(count(commentary) > 0, false)');
-		// Full projection pinned: `description` feeds the topic tooltip on the list cards.
-		expect(papersQuery).toContain(
-			'"topics": array::compact(topics[]->{ _id, title, "slug": slug.current, description })'
+		expect(papersPageByDateQuery).toContain('darcstarAuthored');
+		expect(papersPageByDateQuery).toContain(
+			'"hasCommentary": coalesce(count(commentary) > 0, false)'
 		);
 	});
 
@@ -111,5 +118,206 @@ describe('sitemapEntriesQuery honors seo.noIndex', () => {
 
 	it('never uses the fail-closed comparison', () => {
 		expect(sitemapEntriesQuery).not.toContain('== false');
+	});
+});
+
+// ── DAR-94: the paginated /research query ─────────────────────────────────────────────────────
+//
+// Three literals exist because GROQ's `order()` cannot be parameterised, and TypeGen + the
+// `client.fetch` overload only stay honest for a query built by CONST INTERPOLATION (a
+// query-BUILDING function still generates a correct type but degrades the fetch result to `any` —
+// measured). So the projection is duplicated three ways on purpose, and these tests are what make
+// that duplication safe to live with.
+describe('the /research page queries differ ONLY in their sort order', () => {
+	const PAPER_PAGE_QUERIES = {
+		date: papersPageByDateQuery,
+		'date-asc': papersPageByDateAscQuery,
+		title: papersPageByTitleQuery
+	};
+	// Everything from `| order(` to the slice is the intended difference; the rest must match.
+	const withoutOrder = (query: string) =>
+		query.replace(/\| order\(.*\) \[\$offset\.\.\.\$end\]/, '| order(…) [$offset...$end]');
+
+	// The guard the duplication rests on. Types cannot see this: the three `…Result` types stay
+	// structurally identical even if someone edits a FILTER predicate in one and not the others, so
+	// `?sort=title` would quietly answer a different question than `?sort=date`.
+	it('are byte-identical once the order clause is stripped', () => {
+		const [reference, ...rest] = Object.values(PAPER_PAGE_QUERIES).map(withoutOrder);
+		for (const query of rest) expect(query).toBe(reference);
+	});
+
+	// ...and the stripper must actually be removing something, or the test above passes vacuously
+	// against three identical (i.e. broken) queries.
+	it('really do carry three different order clauses', () => {
+		const orders = Object.values(PAPER_PAGE_QUERIES).map((q) => /\| order\((.*)\) \[/.exec(q)?.[1]);
+		expect(orders.every(Boolean)).toBe(true);
+		expect(new Set(orders).size).toBe(3);
+	});
+
+	// Origin is the MAJOR key on both date sorts, which is what keeps the DAR-52 section split
+	// truthful under pagination: the un-paginated page partitioned a date-sorted list at render
+	// time, so first-party cards came first. Without this a page could interleave the two origins
+	// and the section headings would be describing a subset of what is under them.
+	it.each([
+		['date', papersPageByDateQuery],
+		['date-asc', papersPageByDateAscQuery]
+	])('%s sorts origin-major so a page cannot straddle the section split', (_name, query) => {
+		expect(query).toContain('order(select(darcstarAuthored == true => 0, 1) asc,');
+	});
+
+	// The title sort deliberately does NOT: it merges the sections into one A–Z list, as the page
+	// already did, because two separately-sorted sections read as broken.
+	it('title sorts merged, not origin-major', () => {
+		expect(papersPageByTitleQuery).toContain('| order(lower(title) asc)');
+		expect(papersPageByTitleQuery).not.toContain('order(select(darcstarAuthored');
+	});
+
+	// `lower()` is the case-insensitive half of the `localeCompare(…, {sensitivity:'base'})` this
+	// replaced. Without it GROQ orders by code point and "eDiffi" sorts after "Efficient".
+	it('title sorts case-insensitively', () => {
+		expect(papersPageByTitleQuery).toContain('lower(title)');
+	});
+
+	// The JS sort put undated papers LAST explicitly ("a plain reverse would surface them first").
+	// A sentinel rather than `defined(publishedDate) desc` because GROQ's null placement in order()
+	// is not something the corpus can exercise — every paper is dated — and this doesn't depend on it.
+	it('date-asc keeps undated papers last', () => {
+		expect(papersPageByDateAscQuery).toContain('coalesce(publishedDate, "9999-12-31") asc');
+	});
+
+	it.each(Object.entries(PAPER_PAGE_QUERIES))('%s is sliced to one page', (_name, query) => {
+		expect(query).toContain('[$offset...$end]');
+	});
+
+	// "Showing 1–20 of 137" is only true if `total` counts the same set the rows come from. They are
+	// the same interpolated const in the source, so this pins that they stay so.
+	it.each(Object.entries(PAPER_PAGE_QUERIES))(
+		'%s counts exactly the set it pages through',
+		(_name, query) => {
+			const rows = /\*\[(_type == "paper".*?)\] \| order/s.exec(query)?.[1];
+			const counted = /"total": count\(\*\[(_type == "paper".*?)\]\)/s.exec(query)?.[1];
+			expect(rows).toBeTruthy();
+			expect(counted).toBe(rows);
+		}
+	);
+
+	// DAR-52's fail-safe polarity, now living in GROQ as well as in `isDarcstarAuthored`. `!= true`
+	// includes null, so an unset flag stays third-party; `== false` would silently drop every paper
+	// whose author never touched the toggle — the identical trap DAR-71 hit in the sitemap.
+	it.each(Object.entries(PAPER_PAGE_QUERIES))(
+		'%s treats an unset origin flag as third-party',
+		(_name, query) => {
+			expect(query).toContain('($origin == "external" && darcstarAuthored != true)');
+			expect(query).not.toContain('== false');
+		}
+	);
+
+	// A null param must be a no-op, or an unfiltered index would return nothing.
+	it.each(Object.entries(PAPER_PAGE_QUERIES))(
+		'%s treats every unset filter as "no filter"',
+		(_name, query) => {
+			for (const param of ['$topic == null', '$author == null', '$origin == null']) {
+				expect(query).toContain(param);
+			}
+		}
+	);
+
+	// The author filter accepts a slug OR a typed name — the control is a text input, so both have
+	// to resolve, and existing `?author=<slug>` links must keep working.
+	it('resolves the author filter by slug or by name', () => {
+		expect(papersPageByDateQuery).toContain('$author in authors[]->slug.current');
+		expect(papersPageByDateQuery).toContain('authors[]->name match ($author + "*")');
+	});
+
+	// The facet half — the reason pagination needed more than a slice. Derived from the taxonomy,
+	// not from the fetched papers, so the Topic select and the DAR-56 topic guide keep describing
+	// the whole index rather than whichever 20 papers the visitor is looking at.
+	it('sources the topic vocabulary from the taxonomy, in use only, with descriptions', () => {
+		expect(papersPageByDateQuery).toContain('"topics": *[_type == "topic"');
+		expect(papersPageByDateQuery).toContain(
+			'count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0'
+		);
+		expect(papersPageByDateQuery).toContain('description');
+	});
+
+	// ...and NOT from the papers. A topic description reached the page once per tag occurrence (15
+	// copies of one string) purely to fill a `title` tooltip; it is rendered properly by TopicGuide
+	// now, from the facet above. Re-adding it here is a payload regression that nothing else fails on.
+	it('does not repeat topic descriptions on every paper', () => {
+		expect(papersPageByDateQuery).toContain(
+			'"topics": array::compact(topics[]->{ _id, title, "slug": slug.current })'
+		);
+	});
+
+	// The list card clamps the abstract to 3 lines in CSS; shipping the whole thing to clip it was
+	// 47% of this query's payload.
+	it('binds the CARD field to the truncation, not merely to a truncation somewhere', () => {
+		// Anchored on the key. An earlier version of this test asserted only that the expression
+		// appeared somewhere in the query, and a mutation that bound `"abstract": abstract` and
+		// parked the truncation under an unused key SURVIVED it — the payload back to full size with
+		// every test still green.
+		expect(papersPageByDateQuery).toContain(
+			'"abstract": select(count(string::split(abstract, " ")) > 50 => array::join(string::split(abstract, " ")[0...50], " ")'
+		);
+		// ...and the raw field is never projected alongside it under any name.
+		expect(papersPageByDateQuery).not.toMatch(/"abstract":\s*abstract\b/);
+	});
+
+	// The marker covers the one case measurement can't: an abstract of unusually short words that
+	// fits inside the 3-line clamp, where the cut would otherwise render as a sentence stopping dead.
+	// It must be conditional — an unconditional "…" would claim every short abstract was abridged.
+	it('marks a truncated abstract, and only a truncated one', () => {
+		expect(papersPageByDateQuery).toContain('count(string::split(abstract, " ")) > 50 =>');
+		expect(papersPageByDateQuery).toContain('" ") + "…", abstract)');
+	});
+
+	// The detail page is the one surface with no topic guide and no clamp, so it keeps both in full.
+	// This is the pairing that makes the two omissions above deliberate rather than a loss.
+	it('leaves the detail page projection whole', () => {
+		expect(paperBySlugQuery).toContain('abstract,');
+		expect(paperBySlugQuery).toContain(
+			'"topics": array::compact(topics[]->{ _id, title, "slug": slug.current, description })'
+		);
+	});
+
+	// The author <datalist> seed. Bounded by the team rather than the corpus — the full vocabulary
+	// grows ~7 people per paper forever (123 for 18 papers) — and `!= "external"` mirrors
+	// peopleQuery's fail-open polarity, so an unset kind still counts as team.
+	it('seeds the author control from the team, not the corpus', () => {
+		expect(papersPageByDateQuery).toContain(
+			'"teamAuthors": *[_type == "person" && kind != "external"'
+		);
+	});
+
+	// Resolving `?author=tri-dao` back to "Tri Dao" for the input must key on the SLUG ONLY. Reusing
+	// the filter's `match` here would label the box with one person while the results legitimately
+	// contained several — e.g. `?author=da`.
+	it('resolves the author label by exact slug, never by the name match', () => {
+		expect(papersPageByDateQuery).toContain(
+			'"authorLabel": *[_type == "person" && defined(slug.current) && slug.current == $author][0].name'
+		);
+	});
+});
+
+describe('authorSuggestionsQuery', () => {
+	it('offers only people who have published, team first', () => {
+		expect(authorSuggestionsQuery).toContain('_type == "person"');
+		expect(authorSuggestionsQuery).toContain(
+			'count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0'
+		);
+		expect(authorSuggestionsQuery).toContain(
+			'order(select(kind != "external" => 0, 1) asc, name asc)'
+		);
+	});
+
+	it('matches on a name prefix', () => {
+		expect(authorSuggestionsQuery).toContain('name match ($q + "*")');
+	});
+
+	// A lookup, not a way to page through the vocabulary — the cap is the second half of the
+	// endpoint's length floor. Without both, `?q=` returns all 123 people (measured).
+	it('caps one response', () => {
+		expect(authorSuggestionsQuery).toContain(`[0...${AUTHOR_SUGGESTION_LIMIT}]`);
+		expect(AUTHOR_SUGGESTION_LIMIT).toBeLessThanOrEqual(25);
 	});
 });

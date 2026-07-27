@@ -6,15 +6,20 @@
 	// Split by origin (DAR-52): first-party DarcStar work and third-party "foundational reading"
 	// render as separate sections, and every external card carries origin chips (PaperOrigin) plus
 	// an explicit not-ours disclaimer — third-party research must never read as DarcStar's. The
-	// fail-safe polarity (an unset/null flag stays external) lives in `isDarcstarAuthored`, which
-	// both the origin filter and the section partition read. Empty groups skip their section.
+	// fail-safe polarity (an unset/null flag stays external) is `isDarcstarAuthored`, which the
+	// section partition reads; the origin FILTER now spells the same rule in GROQ
+	// (`darcstarAuthored != true`), so it lives in two languages and is pinned in both specs. The
+	// query sorts origin-major, which is what stops a page straddling the split. Empty groups skip
+	// their section.
 	//
-	// Filtering/sorting (?topic=&author=&origin=&sort=): URL params are the single source of
-	// state — shareable, SSR-rendered, and no-JS friendly. Without JS the bar is a native GET
-	// form (Apply submits, empty params are tolerated); with JS every change goes through
-	// `goto` for an in-place update with clean URLs. All derivation happens here over the ONE
-	// papers fetch (semantics in $lib/research-filters, unit-tested); the server load never
-	// reads the URL, so query-only navigations don't re-hit Sanity.
+	// Filtering/sorting/paging (?topic=&author=&origin=&sort=&page=): URL params are the single
+	// source of state — shareable, SSR-rendered, and no-JS friendly. Without JS the bar is a native
+	// GET form (Apply submits, empty params are tolerated); with JS every change goes through `goto`
+	// for an in-place update with clean URLs.
+	//
+	// DAR-94 moved the actual filtering, sorting and facet derivation into GROQ — the index is
+	// paginated, and none of the three can be derived from a single page. What this file still
+	// derives is the origin split of the rows it was given, which is legitimately per-page.
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import Seo from '$lib/components/Seo.svelte';
 	import PageHero from '$lib/components/PageHero.svelte';
@@ -24,18 +29,17 @@
 	import PaperTopics from '$lib/components/PaperTopics.svelte';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
 	import TopicGuide from '$lib/components/TopicGuide.svelte';
+	import Pager from '$lib/components/Pager.svelte';
 	import { inlineLinkClass, mutedLinkClass } from '$lib/styles';
 	import { fieldClass } from '$lib/styles';
 	import {
+		authorSearchTerm,
 		buildFilterQuery,
 		FILTER_PARAM,
-		filterPapers,
 		hasActiveFilters,
-		paperFacets,
 		partitionByOrigin,
 		parseResearchFilters,
 		researchTopicHref,
-		sortPapers,
 		topicOptions,
 		type FacetOption
 	} from '$lib/research-filters';
@@ -48,21 +52,63 @@
 
 	let { data }: { data: PageServerData } = $props();
 
-	// One pass over the corpus for the chrome (`paperFacets`), then filter → sort → partition. The
-	// facets are derived from data.papers, NOT `filtered`: the Topic/Author selects offer the whole
-	// index, and the topic guide explains the taxonomy — filtering to one topic must not shrink
-	// either to that one entry (DAR-56).
+	// The filters still come from the URL rather than from `data`, so the controls re-render the
+	// instant a navigation starts instead of waiting on the server round trip.
+	//
+	// `data.topics` is the taxonomy's OWN in-use vocabulary, not the topics of the papers on this
+	// page — that is what lets the Topic select and the topic guide keep describing the whole index
+	// once the fetch is a single page (DAR-56's guide would otherwise explain 20 papers' worth).
 	const filters = $derived(parseResearchFilters(page.url.searchParams));
-	const facets = $derived(paperFacets(data.papers));
-	const topicSelectOptions = $derived(topicOptions(facets.topics));
-	const filtered = $derived(filterPapers(data.papers, filters));
+	const topicSelectOptions = $derived(topicOptions(data.topics));
 	// A title sort merges the origin sections into ONE alphabetical list — two separately-sorted
 	// sections would read as broken. Safe: every card carries its own origin chip + disclaimer
-	// (DAR-52), so the section framing is redundant for correctness.
+	// (DAR-52), so the section framing is redundant for correctness. For the date sorts the query
+	// orders origin-major, so a page's sections are contiguous and in the right order.
 	const mergeSections = $derived(filters.sort === 'title');
-	const allPapers = $derived(sortPapers(filtered, filters.sort, getLocale()));
-	const sections = $derived(partitionByOrigin(allPapers));
+	const sections = $derived(partitionByOrigin(data.papers));
 	const filtersActive = $derived(hasActiveFilters(filters));
+
+	// The author control is a text input, not a select: the author vocabulary grows with the corpus
+	// and never plateaus (123 people for 18 papers), so shipping it as options would undo the point
+	// of paginating. `data.teamAuthors` seeds the <datalist> — bounded, and a native datalist offers
+	// it with JS off — and typing 3+ characters replaces it with server matches, team first.
+	//
+	// `null` means "show the seed", which is not the same as an empty match list: clearing the box
+	// must restore the team names rather than leave the visitor with an empty dropdown.
+	let authorMatches = $state<FacetOption[] | null>(null);
+	const authorOptions = $derived(authorMatches ?? data.teamAuthors);
+
+	// Guards against a slow response for "da" landing after a fast one for "dao" and repopulating
+	// the list with the wrong matches — the classic type-ahead race. Only the newest request wins.
+	let authorRequest = 0;
+	let authorTimer: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => () => clearTimeout(authorTimer));
+
+	function onAuthorInput(event: Event & { currentTarget: HTMLInputElement }) {
+		const term = authorSearchTerm(event.currentTarget.value);
+		clearTimeout(authorTimer);
+		if (!term) {
+			// Below the floor there is nothing to ask for — the endpoint would refuse anyway, since
+			// an unbounded `match` returns the entire vocabulary.
+			authorRequest++;
+			authorMatches = null;
+			return;
+		}
+		authorTimer = setTimeout(() => void loadAuthorMatches(term), 200);
+	}
+
+	async function loadAuthorMatches(term: string) {
+		const request = ++authorRequest;
+		try {
+			const res = await fetch(`/research/authors.json?q=${encodeURIComponent(term)}`);
+			if (!res.ok) return;
+			const body: { authors?: FacetOption[] } = await res.json();
+			if (request === authorRequest) authorMatches = body.authors ?? [];
+		} catch {
+			// Keep whatever the list already offers. The filter itself is server-side, so a failed
+			// lookup costs suggestions, never the ability to filter — the visitor can still submit.
+		}
+	}
 
 	const originOptions = $derived<FacetOption[]>([
 		{ value: 'darcstar', label: m.research_filter_origin_darcstar() },
@@ -78,6 +124,11 @@
 	// arrow keypress in Firefox/Chrome-on-Linux, so navigating per keystroke would storm the
 	// history — 250ms collapses a run of keypresses into one goto. Identical-URL calls bail so
 	// change-then-Apply doesn't navigate twice. Apply (submit) flushes immediately.
+	//
+	// This is also what returns a visitor to page 1 when they narrow a filter: the target is rebuilt
+	// from the form's own fields, and `page` is not one of them (nor a member of FILTER_PARAM), so
+	// it cannot survive. The no-JS path gets the same reset for free — a native GET submit replaces
+	// the whole query string.
 	let applyTimer: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => () => clearTimeout(applyTimer));
 	function applyFilters(form: HTMLFormElement, immediate = false) {
@@ -181,8 +232,10 @@
 
 	<div class="mx-auto w-full max-w-3xl space-y-8">
 		<!-- Gated on content: an outage/empty index shouldn't present dead facet controls over
-		     the "no papers" message. -->
-		{#if data.papers.length > 0}
+		     the "no papers" message. Gated on `totalAll`, NOT on this page's rows — a filter that
+		     matches nothing would otherwise take the filter bar away with it, stranding the visitor
+		     on a "no matches" message with no control left to undo it. -->
+		{#if data.totalAll > 0}
 			<form
 				method="GET"
 				aria-label={m.research_filter_label()}
@@ -200,13 +253,33 @@
 					topicSelectOptions,
 					filters.topic
 				)}
-				{@render filterSelect(
-					FILTER_PARAM.author,
-					m.research_filter_author_label(),
-					m.research_filter_all_authors(),
-					facets.authors,
-					filters.author
-				)}
+				<!-- The one facet that isn't a select. It carries a name OR a slug: the server resolves
+				     either (`?author=dao` and `?author=tri-dao` both work), so tag-style deep links
+				     keep working while a visitor can just type. `data.authorLabel` turns a slug back
+				     into a readable name in the box; a typed term stays as typed.
+
+				     The datalist is progressive enhancement over a plain text field — with JS off it
+				     still offers the team seed, and typing + Apply still filters. -->
+				<label class="block">
+					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body">
+						{m.research_filter_author_label()}
+					</span>
+					<input
+						type="search"
+						name={FILTER_PARAM.author}
+						list="research-author-options"
+						autocomplete="off"
+						value={data.authorLabel ?? filters.author ?? ''}
+						placeholder={m.research_filter_author_placeholder()}
+						class={fieldClass}
+						oninput={onAuthorInput}
+					/>
+					<datalist id="research-author-options">
+						{#each authorOptions as option (option.value)}
+							<option value={option.label}></option>
+						{/each}
+					</datalist>
+				</label>
 				{@render filterSelect(
 					FILTER_PARAM.origin,
 					m.research_filter_origin_label(),
@@ -240,27 +313,40 @@
 		<!-- The topic taxonomy's authored descriptions (DAR-56) — a collapsed legend, plus the
 		     active topic's description rendered plainly when one is filtered to. Self-guarding:
 		     it renders nothing (no wrapper) when no topic has a description, so no `{#if}` here
-		     and no phantom `space-y-8` gap. -->
-		<TopicGuide topics={facets.topics} activeSlug={filters.topic} />
+		     and no phantom `space-y-8` gap.
 
-		{#if data.papers.length === 0}
+		     Fed the taxonomy's own vocabulary, never this page's papers: filtering to one topic —
+		     or simply being on page 3 — must not shrink the legend to what happens to be in view. -->
+		<TopicGuide topics={data.topics} activeSlug={filters.topic} />
+
+		<!-- Branching on the TOTALS, not on `data.papers.length`: that is one page now, so a filter
+		     matching nothing and an empty index look identical from here. `totalAll` distinguishes
+		     "nothing published" from "nothing matched", which are different messages. -->
+		{#if data.totalAll === 0}
 			<p class="glass-card px-8 py-12 text-center text-sm text-body">{m.research_empty()}</p>
-		{:else if filtered.length === 0}
+		{:else if data.total === 0}
 			<p class="glass-card px-8 py-12 text-center text-sm text-body">
 				{m.research_filter_no_matches()}
 				<a href={localizeHref('/research')} class={inlineLinkClass}>{m.research_filter_clear()}</a>
 			</p>
 		{:else}
-			{#if filtersActive}
+			<!-- Two truthful readouts rather than one awkward one: a range when there is more than a
+			     page to range over, and otherwise the filtered-of-total line the index already had.
+			     Merging them would print "Showing 1–1 of 1 papers." on a single result. -->
+			{#if data.pageCount > 1}
 				<p class="text-xs text-muted">
-					{m.research_filter_count({ shown: filtered.length, total: data.papers.length })}
+					{m.research_result_range({ from: data.from, to: data.to, total: data.total })}
+				</p>
+			{:else if filtersActive}
+				<p class="text-xs text-muted">
+					{m.research_filter_count({ shown: data.total, total: data.totalAll })}
 				</p>
 			{/if}
 			{#if mergeSections}
 				<!-- Title sort: one merged A–Z list — two separately-sorted sections would read as
 				     broken. Origin context rides on each card (chips + disclaimer). -->
 				<ul class="space-y-6">
-					{#each allPapers as paper (paper._id)}
+					{#each data.papers as paper (paper._id)}
 						{@render paperCard(paper)}
 					{/each}
 				</ul>
@@ -283,6 +369,8 @@
 					{/if}
 				</div>
 			{/if}
+
+			<Pager page={data.page} pageCount={data.pageCount} url={page.url} />
 		{/if}
 	</div>
 </div>

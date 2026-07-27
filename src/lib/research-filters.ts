@@ -1,28 +1,32 @@
 import { localizeHref } from '$lib/paraglide/runtime';
-import type { PapersQueryResult } from '$lib/sanity/types';
+import type { PapersPageByDateQueryResult } from '$lib/sanity/types';
 
-// Pure filter/sort/facet logic for the /research index. URL query params are the single source
-// of state (?topic=&author=&origin=&sort=) so filtered views are shareable, SSR-render without
-// JS (GET form), and survive reloads; the page derives everything below from the ONE papers
-// fetch — no per-filter Sanity round trips. Kept out of the component so the semantics are
-// unit-testable without a DOM.
+// URL-param semantics for the /research index. Query params are the single source of state
+// (?topic=&author=&origin=&sort=&page=) so filtered views are shareable, SSR-render without JS
+// (native GET form), and survive reloads. Kept out of the component so they are unit-testable
+// without a DOM.
 //
-// Scale: the index is un-paginated — every published paper is fetched and rendered per request.
-// Everything here is therefore written as a SINGLE pass over the corpus and nothing walks it
-// twice. Measured on the page's full re-derive (facets + filter + sort + partition), synthetic
-// papers carrying 3 topics and 2 authors each: 0.14 ms at 100 papers, 0.49 ms at 300, 1.4 ms at
-// 1000 — so this layer is not what will hurt.
+// DAR-94 moved the WORK these params describe into GROQ. Filtering, sorting and the facet
+// vocabulary all used to happen here, over a fetch of the entire corpus. The index is paginated
+// now, so the fetched set is one page — and none of the three can be derived from one page: a Topic
+// select built from 20 papers offers 20 papers' worth of topics, and sorting a page sorts within it
+// rather than across the corpus. What remains is the half that was always about the URL rather than
+// the data, plus the two derivations that still act legitimately on a page of rows
+// (`isDarcstarAuthored`, `partitionByOrigin`).
 //
-// What WILL, and what this module can't fix, sits upstream: `papersQuery` ships every
-// abstract/author/topic on every SSR request, and the page renders a card per paper. Bounding
-// those means GROQ-side filtering + pagination, which changes this module's contract too — facets
-// can no longer derive from the fetched set once that set is one page of the corpus.
+// Page-window arithmetic lives in $lib/pagination.ts, shared with /news.
 
-export type PaperRow = PapersQueryResult[number];
+export type PaperRow = PapersPageByDateQueryResult['papers'][number];
 
-// The param-name contract, defined ONCE: parse/build below, the form's select `name`s, and
+// The param-name contract, defined ONCE: parse/build below, the form's control `name`s, and
 // the topic-tag link URLs all consume this — rename here or drift silently between the JS and
 // no-JS paths.
+//
+// `page` is deliberately NOT a member (it lives in $lib/pagination.ts), and that omission is what
+// implements "changing a filter returns you to page 1": `buildFilterQuery` only emits keys it finds
+// here, so the JS path cannot carry a stale page forward, and the no-JS path is a native GET form,
+// which replaces the whole query string with its own fields. Adding `page` here would silently
+// strand a visitor on page 7 of a filter that now has two results.
 export const FILTER_PARAM = {
 	topic: 'topic',
 	author: 'author',
@@ -97,16 +101,6 @@ export function isDarcstarAuthored(paper: PaperRow): boolean {
 	return paper.darcstarAuthored === true;
 }
 
-// Conjunctive (AND) across facets.
-export function filterPapers(papers: PaperRow[], f: ResearchFilters): PaperRow[] {
-	return papers.filter(
-		(p) =>
-			(!f.topic || (p.topics ?? []).some((t) => t.slug === f.topic)) &&
-			(!f.author || (p.authors ?? []).some((a) => a.slug === f.author)) &&
-			(!f.origin || (f.origin === 'darcstar') === isDarcstarAuthored(p))
-	);
-}
-
 // The origin split as a single partition rather than two `.filter()` walks of the same list —
 // order-preserving, so each section keeps whatever order sortPapers established.
 export function partitionByOrigin(papers: PaperRow[]): {
@@ -119,63 +113,33 @@ export function partitionByOrigin(papers: PaperRow[]): {
 	return { darcstar, external };
 }
 
-// 'date' keeps the query's publishedDate-desc order (GROQ already sorted it — don't re-sort,
-// undated papers stay where the query put them); 'date-asc' is an explicit oldest-first sort
-// with undated papers LAST (a plain reverse would surface them first); 'title' is a
-// locale-aware A→Z copy. Both re-sorts copy — the input is never mutated.
-export function sortPapers(papers: PaperRow[], sort: ResearchSort, locale?: string): PaperRow[] {
-	if (sort === 'title') {
-		return [...papers].sort((a, b) =>
-			a.title.localeCompare(b.title, locale, { sensitivity: 'base' })
-		);
-	}
-	if (sort === 'date-asc') {
-		return [...papers].sort((a, b) => {
-			if (!a.publishedDate) return 1;
-			if (!b.publishedDate) return -1;
-			return a.publishedDate.localeCompare(b.publishedDate);
-		});
-	}
-	return papers;
-}
-
-// Everything the /research chrome derives from the corpus, in ONE pass over it. Topics and
-// authors were two walks (and topics briefly three, because the guide and the select each asked
-// for them); at hundreds of papers that is pure waste, and worse, it let "which topics does this
-// index have" be answered by two different loops.
-//
-// Facets come from the papers themselves (deduped by slug, label-sorted), so the topic and author
-// selects only ever offer values matching at least one paper — origin/sort are static option sets
-// and that guarantee is theirs alone. Entries without a slug can't round-trip through a URL and
-// are skipped, which is why the topic guide can't link a slugless topic either.
-//
-// `topics` comes back as full entries rather than select options because its two consumers want
-// different projections: the guide renders the authored `description`, a `<select>` has nowhere
-// to put one. Carried through as-is (null when the editor left it blank) — deciding what an
-// undescribed topic means belongs to the renderer.
-export interface PaperFacets {
-	topics: TopicEntry[];
-	authors: FacetOption[];
-}
-
-export function paperFacets(papers: PaperRow[]): PaperFacets {
-	const topics = new Map<string, TopicEntry>();
-	const authors = new Map<string, string>();
-	for (const p of papers) {
-		for (const t of p.topics ?? []) {
-			if (t.slug) topics.set(t.slug, { slug: t.slug, title: t.title, description: t.description });
-		}
-		for (const a of p.authors ?? []) if (a.slug) authors.set(a.slug, a.name);
-	}
-	return {
-		topics: [...topics.values()].sort((a, b) => a.title.localeCompare(b.title)),
-		authors: [...authors.entries()]
-			.map(([value, label]) => ({ value, label }))
-			.sort((a, b) => a.label.localeCompare(b.label))
-	};
-}
-
-/** Projects topic entries down to the Topic select's option shape. */
+/** Projects the topic facet down to the Topic select's option shape. */
 export function topicOptions(topics: TopicEntry[]): FacetOption[] {
 	return topics.map((t) => ({ value: t.slug, label: t.title }));
+}
+
+/**
+ * Characters a visitor must type before the author control asks the server for suggestions.
+ *
+ * Shared by the input (which debounces up to this length) and by
+ * `/research/authors.json` (which refuses below it), so the floor cannot hold in one place and not
+ * the other — and the endpoint's copy is the one that matters, since nothing stops a caller from
+ * requesting it directly.
+ */
+export const AUTHOR_QUERY_MIN_LENGTH = 3;
+
+/**
+ * A raw author-search string → the term to hand GROQ's `match`, or null when it is too short to
+ * answer. Both cleanups are load-bearing rather than defensive, measured against production:
+ * `match ("" + "*")` and `match ("*" + "*")` each hit ALL 123 people in the dataset, so an
+ * unfiltered term turns a lookup into a dump of the entire author vocabulary — which is the exact
+ * payload this control exists to avoid shipping.
+ *
+ * The wildcards are stripped rather than rejected: someone typing `Dao*` means Dao, and answering
+ * an intelligible query is friendlier than refusing it. (There is no injection risk to guard
+ * against — GROQ params are bound, not interpolated; this is about the PATTERN's semantics.)
+ */
+export function authorSearchTerm(raw: string | null | undefined): string | null {
+	const cleaned = (raw ?? '').replace(/[*?]/g, '').trim();
+	return cleaned.length >= AUTHOR_QUERY_MIN_LENGTH ? cleaned : null;
 }

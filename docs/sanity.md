@@ -119,9 +119,10 @@ editor could not remove the GitHub link, which is the same lie in the other dire
 Each is `+page.server.ts` (`getSanityClient().fetch(typedQuery)`) + `+page.svelte` (CosmicBackdrop +
 the shared `PageHero` + one `<Seo>`; chrome copy via Paraglide `m.*`, CMS data as `{expr}`).
 
-- `/news` (list) · `/news/[slug]` (Portable Text body, cover, authors, related papers)
-- `/research` (list) · `/research/[slug]` (abstract, status, research-topic tags, external links
-  incl. PDF, DarcStar commentary)
+- `/news` (list, **paginated**) · `/news/[slug]` (Portable Text body, cover, authors, related papers)
+- `/research` (list, **paginated + filtered in GROQ**) · `/research/[slug]` (abstract, status,
+  research-topic tags, external links incl. PDF, DarcStar commentary) ·
+  `/research/authors.json` (author type-ahead for the filter bar — see DAR-94 below)
 - `/people` (team grid — `person` where `kind != "external"`; unset `kind` counts as team)
 - **Resilience:** LIST loads `try/catch` a Sanity outage → empty list + `console.warn` (never a 500);
   DETAIL loads `error(404)` on a missing slug (infra errors propagate as 500).
@@ -149,32 +150,104 @@ read as ours, so the rendering rail is:
 
 ### /research filtering & sorting
 
-`?topic=&author=&origin=&sort=` filter (topic/author **slugs**, origin `darcstar|external`) and
-sort (`date` default · `date-asc` · `title`) the ONE SSR papers fetch — semantics live in
-`src/lib/research-filters.ts` (unit-tested; empty/unknown params degrade safely; origin keeps the
-DAR-52 fail-safe polarity; the param names + topic-link URL live in ONE place there —
-`FILTER_PARAM` / `researchTopicHref`). URL params are the single source of state: the bar is a
-**native GET form** (works no-JS; Apply submits), enhanced on change to a **debounced** `goto`
-with clean URLs (a collapsed select fires `change` per arrow keypress in some browsers); the
-selects carry `value=` as well as option `selected` because Svelte only toggles the selected
-ATTRIBUTE, which browsers ignore once the control is user-dirtied (Clear/Back would desync). The
-server load never reads the URL, so query-only navigations don't re-hit Sanity. **Topic/author**
-options derive from the fetched papers (those two selects only offer values that match at least
-one paper; origin/sort are static sets). A **title sort merges the origin sections** into one
-A–Z list (cards are origin-self-sufficient per DAR-52). Topic tags (`PaperTopics`'s `topicHref`)
-link into `?topic=`, so a tag is an entry point, not a dead end.
+`?topic=&author=&origin=&sort=&page=` filter (topic **slug**, author slug **or name**, origin
+`darcstar|external`), sort (`date` default · `date-asc` · `title`) and page the index. URL params
+are the single source of state: the bar is a **native GET form** (works no-JS; Apply submits),
+enhanced on change to a **debounced** `goto` with clean URLs (a collapsed select fires `change` per
+arrow keypress in some browsers); the selects carry `value=` as well as option `selected` because
+Svelte only toggles the selected ATTRIBUTE, which browsers ignore once the control is user-dirtied
+(Clear/Back would desync). A **title sort merges the origin sections** into one A–Z list (cards are
+origin-self-sufficient per DAR-52). Topic tags (`PaperTopics`'s `topicHref`) link into `?topic=`,
+so a tag is an entry point, not a dead end.
 
-**Scale.** The index is **un-paginated**: every published paper is fetched and rendered per
-request. `research-filters.ts` is written so nothing walks the corpus twice — `paperFacets`
-derives topics **and** authors in one pass, `partitionByOrigin` splits the origin sections in one
-(it was two `.filter()` calls), and the DAR-52 fail-safe polarity lives in a single
-`isDarcstarAuthored` predicate that the origin filter and the partition share. Measured on the
-page's full re-derive (facets + filter + sort + partition, 3 topics and 2 authors per paper):
-**0.14 ms at 100 papers, 0.49 ms at 300, 1.4 ms at 1000** — this layer is not what will hurt. What
-it does **not** fix sits upstream and will bite first: `papersQuery` ships every abstract/author/topic on every SSR request, and the page
-renders a card per paper. Bounding those means GROQ-side filtering + pagination — which also
-changes the filter module's contract, since facets can no longer derive from the fetched set once
-that set is one page of the corpus.
+**The filtering itself happens in GROQ** (DAR-94, below). `src/lib/research-filters.ts` keeps only
+the URL semantics — parse/build, the param-name contract (`FILTER_PARAM` / `researchTopicHref`),
+DAR-52's `isDarcstarAuthored` polarity and the per-page `partitionByOrigin`. Empty/unknown params
+still degrade safely; the load reads the URL and re-queries, so a filter change now costs a Sanity
+round trip (~235 ms measured) where it used to be free.
+
+### Pagination + server-side filtering (DAR-94)
+
+Both indexes serve **one page** (`PAGE_SIZE = 20`, `$lib/pagination.ts`), so HTML per request is
+flat in the corpus instead of growing with it. `/research` was 161 KB of HTML and a 44.6 KB Sanity
+payload for 18 papers; the same page is now **125 KB** and the payload **25.8 KB**, and neither
+moves as papers are added.
+
+Three things had to change together, because a slice alone breaks the page:
+
+- **Facets moved to their own source.** They used to derive from the fetched papers, which stops
+  working the moment that set is one page — a Topic select built from 20 papers offers 20 papers'
+  worth of topics. `papersPage*Query` now projects the taxonomy's own in-use vocabulary
+  (`count(*[… references(^._id)]) > 0`) alongside the page. This makes the DAR-56 topic guide
+  **more** correct, not less: it describes the whole index rather than what is in view.
+- **Three query literals, one projection.** GROQ's `order()` can't be parameterised, so the sort
+  picks between `papersPageByDateQuery` / `…ByDateAscQuery` / `…ByTitleQuery`. Everything that must
+  not vary is a shared `const`, and `queries.spec.ts` strips the order clause and asserts the three
+  are **byte-identical** — a filter-predicate drift is invisible to the types, since all three
+  `…Result` types stay structurally the same.
+- **Origin became the major sort key** on the date sorts. The DAR-52 section split was a render-time
+  partition of a date-sorted list; under pagination a page could straddle the boundary and the
+  headings would describe a subset of what sits under them. `select(darcstarAuthored == true => 0,
+  1. asc` reproduces today's rendering exactly while keeping each page's sections contiguous.
+
+Payload trims that came with it: the card `abstract` is cut to **50 words** (47% of the old payload;
+the card `line-clamp-3`s it anyway — measured in a real browser at 390/768/1440 px, every truncated
+abstract still overflows the clamp, and a `…` marks the cut for the case a short-worded abstract
+doesn't), topic `description` left the list projection (it was 15 copies of one string feeding a
+`title` tooltip), and `post.featured` went with `postsQuery` (authored, never rendered).
+
+**Rules worth keeping:**
+
+- **`?page=` is deliberately not in `FILTER_PARAM`.** That omission IS the "changing a filter
+  returns you to page 1" rule: `buildFilterQuery` only emits keys it finds there, and the no-JS path
+  is a native GET form, which replaces the whole query string. Pinned in `research-filters.spec.ts`.
+- **A page past the end 302s to the last page**, rather than rendering an empty index that reads as
+  "no results" instead of "no such page". Page 1 is always in range, so the normal path never
+  redirects.
+- **Query views canonicalise to the bare path for free** — `Seo.svelte` derives both `canonical` and
+  `og:url` from `page.url.pathname`, which excludes the query string. That is what makes leaving
+  `?page=`/filter views out of the sitemap safe (every paper has its own entry, so discovery never
+  depended on the list). It was already true before this ticket, which is why it now has an e2e:
+  nothing else would notice it breaking.
+- **Branch on the TOTALS, not on `data.papers.length`.** That is one page now, so an empty index and
+  a filter matching nothing look identical from the component — and gating the filter bar on the
+  page's rows would take the bar away with the results, stranding the visitor on a "no matches"
+  message with no control left to undo it.
+- **Title collation changed, deliberately.** GROQ orders strings by code point, so `lower(title)`
+  buys back case-insensitivity but not the accent-insensitivity `localeCompare(…, {sensitivity:
+'base'})` had. Measured: zero visible change on today's corpus. Fixing it properly means a
+  normalized `titleSortKey` in the Studio.
+- **`defined(x)` as a FILTER can disagree with the same expression in a projection.** Measured on
+  production: `count(*[_type == "paper" && defined(abstract)])` answers **6** while all **18** papers
+  return an abstract from a projection. The truncation therefore doesn't gate on it.
+- **A facet TTL cache was considered and rejected.** The vocabulary rides the page's existing round
+  trip, so a cache would buy nothing and add a staleness window plus a second failure mode. It
+  becomes right only if facets ever move to a separate request.
+
+#### The author facet is a text input, not a select
+
+The one facet pagination does **not** make flat. Measured: 123 distinct authors across 18 papers
+against 134 author slots — papers barely share co-authors, so the vocabulary grows ~7 per paper and
+never plateaus (~2,000 at 300 papers ≈ 96 KB of JSON, rendered twice per request, several times the
+page it sits above).
+
+So the control is an `<input list="research-author-options">`: the `<datalist>` is **seeded with
+team authors** (`kind != "external"` — bounded, and a native datalist offers them with JS off), and
+at **3+ characters** it is replaced by server matches from `GET /research/authors.json?q=`, team
+first. ~0.3 KB per request at any corpus size.
+
+- `?author=` accepts a **slug or a typed name** (`$author in authors[]->slug.current ||
+authors[]->name match ($author + "*")`), so existing shareable links keep working while a visitor
+  can just type. The load resolves an exact **slug** back to a display name for the box — never via
+  the `match` form, or `?author=da` would label the control with one person while the results
+  legitimately held several.
+- **The 3-character floor is enforced server-side**, not just in the browser. Measured, `match ("" +
+"*")` and `match ("*" + "*")` each return ALL 123 people — so without it the endpoint hands out
+  the exact vocabulary the input exists to keep off the page. `authorSearchTerm` owns the floor and
+  the wildcard strip so the two callers can't disagree.
+- Named `authors.json` (mirroring `sitemap.xml/+server.ts`): a dotted segment can't shadow
+  `/research/[slug]`. `reroute` de-localizes, so one path serves every locale, and `connect-src
+'self'` already covers the lookup — no CSP change.
 
 ### Paper meta-rail charge mapping
 
@@ -190,8 +263,10 @@ Neutral (`border-hairline`) = non-semantic chrome (statuses, "Third-party", cate
 geometry comes from `PaperStatus`'s exported `pillClass`. The B charge carries two meanings, so
 the **rest fill** disambiguates: `PaperLinks` pills are filled (`bg-primary-500/10`) = clickable;
 the published status pill is outline-only = badge. Topic `description` still renders as a `title`
-tooltip here, but that is progressive enhancement **only** — the visible rendering is `TopicGuide`
-on /research (below).
+tooltip on **`/research/[slug]`**, where there is no topic guide — but that is progressive
+enhancement **only**, never the rendering. It is gone from the **list** cards: DAR-94 dropped
+`description` from the list projection (15 copies of one string per page), and the visible rendering
+there is `TopicGuide` (below).
 
 ### Topic descriptions are rendered, not tooltipped (DAR-56)
 
@@ -207,12 +282,14 @@ by keyboard, inconsistently announced by screen readers. `TopicGuide.svelte` ren
   tag on a card → land on the filtered view → read what it means, with nothing to open. A
   disclosure here would be the tooltip's problem in a new costume.
 
-Rules: both derive from `paperTopics(data.papers)` — the **whole** index, never `filtered`, or
-filtering to one topic would shrink the legend to that one entry; **undescribed topics are omitted**
-(a bare title just echoes the facet select), and when none has a description the component renders
-**nothing at all**, not an empty wrapper (the page spaces children with `space-y-8`, i.e. `> * + *`).
-`paperTopics` is the single walk of the papers' topics — `paperFacets` derives the Topic select from
-it, so "which topics does this index have" cannot answer differently in two places.
+Rules: both derive from the **taxonomy's own in-use vocabulary** (`data.topics`, projected by
+`papersPage*Query` — DAR-94), never from the papers in view, or filtering to one topic (or simply
+being on page 3) would shrink the legend to whatever is on screen. Originally that meant "the whole
+fetched index"; pagination made the distinction load-bearing rather than merely tidy. **Undescribed
+topics are omitted** (a bare title just echoes the facet select), and when none has a description
+the component renders **nothing at all**, not an empty wrapper (the page spaces children with
+`space-y-8`, i.e. `> * + *`). The Topic select projects from the same list via `topicOptions`, so
+"which topics does this index have" cannot answer differently in two places.
 
 Guarded by `TopicGuide.svelte.spec.ts`, which only means anything because the `client` vitest
 project runs **real chromium**: it distinguishes _visible_ from _in the DOM_, which is the entire
@@ -253,7 +330,8 @@ SANITY_VIEWER_TOKEN --env preview` (the preview Worker). No `wrangler.jsonc` cha
 ## Deferred
 
 Draft/preview (Presentation tool, stega, `useCdn:false` + `previewDrafts`) · a CI `schema.json` drift
-gate · pagination · category filter pages · trimming the inert `siteSettings` fields from the Studio
+gate · a normalized `titleSortKey` in the Studio (GROQ has no locale collation — see DAR-94 above) ·
+category filter pages · trimming the inert `siteSettings` fields from the Studio
 schema (DAR-73's deferred half — see the table above; wiring them is deliberately **not** planned) ·
 `es` translation of the new chrome (untranslated today — `es.json` carries translated keys only and
 everything else falls back to `en`; `noindex`).
