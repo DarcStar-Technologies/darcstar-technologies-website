@@ -186,15 +186,21 @@ describe('resolveWaitlistFlowId', () => {
 
 	// Analytics may fail, and a visitor must never find out — the same contract `resolveStepRow` keeps
 	// for the continuation token beside it. A throwing crypto layer degrades to "not measured".
+	//
+	// `finally`, unlike the console spies elsewhere in this file: a `crypto.subtle.verify` left mocked
+	// would break every signed value in every test after it, so one real failure here would come back
+	// as a wall of unrelated red.
 	it('never throws', async () => {
 		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 		const verify = vi.spyOn(crypto.subtle, 'verify').mockRejectedValue(new Error('no subtle'));
 
-		await expect(resolveWaitlistFlowId(SECRET, HANDLE)).resolves.toBeNull();
-		expect(error).toHaveBeenCalled();
-
-		verify.mockRestore();
-		error.mockRestore();
+		try {
+			await expect(resolveWaitlistFlowId(SECRET, HANDLE)).resolves.toBeNull();
+			expect(error).toHaveBeenCalled();
+		} finally {
+			verify.mockRestore();
+			error.mockRestore();
+		}
 	});
 });
 

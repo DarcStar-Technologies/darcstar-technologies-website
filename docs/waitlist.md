@@ -324,6 +324,16 @@ the step write having succeeded, which would make DAR-68's per-row budget bound 
 destroys the metric — `qualification_started` fires for a **Skip**, which writes nothing, and skip-only
 flows are precisely the drop-off the funnel exists to measure.
 
+**Accepted cost: a sitting longer than the 24h window over-counts its own views by a few.** A handle's
+life starts at the first page load and the steps echo it verbatim, so a step submitted from a day-old
+tab resolves to nothing and writes `''` into the resume cookie's flow id — after which each reload
+mints a fresh flow (the load reads the cookie, it never writes one) and records another
+`waitlist_viewed`. The underlying "an empty stored flow id isn't repaired" behaviour predates this;
+expiry is a new way in. Left alone deliberately: fixing it means either a cookie write inside a load —
+which DAR-75 kept read-only on purpose — or accepting expired handles, which would put a second
+verification mode next to the one crossing. The magnitude is a handful of view rows for one visitor,
+on a readout that already counts bots and repeat visits and says so.
+
 ### The events
 
 `waitlist_viewed` (a GET of the page) · `waitlist_signup_completed` (step 1 accepted) ·

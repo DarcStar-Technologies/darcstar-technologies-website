@@ -106,9 +106,10 @@ const FLOW_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  *
  * The brand is the point (DAR-86). The wire carries a signed handle and the column holds this, so
  * every request has to cross from one to the other exactly once, at `resolveWaitlistFlowId`; making
- * the two DIFFERENT TYPES turns "did anyone forget?" into a compile error rather than a convention a
- * sixth call site can quietly break. It is erased at runtime, so `isWaitlistFlowId` still stands
- * behind it — a cast would compile, and is the one thing to question in review.
+ * the two DIFFERENT TYPES turns "did anyone forget?" into a compile error rather than a convention
+ * the next call site can quietly break — and there are seven already. It is erased at runtime, so
+ * `isWaitlistFlowId` still stands behind it: a cast would compile, and is the one thing to question
+ * in review.
  */
 export type WaitlistFlowId = string & { readonly __waitlistFlowId: unique symbol };
 

@@ -254,7 +254,9 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 		const rowId = await resolveStepRow(tokenSecret, data.token);
 		// The funnel handle crosses from wire value to vouched-for id here, beside the token and for
 		// the same reason (DAR-86): this endpoint cannot mint one, so a bare POST with a self-chosen
-		// UUID records nothing. `flowHandle` below is the string that goes back out.
+		// UUID records nothing. Resolved once for BOTH consumers, exactly as the row id above is — the
+		// capture and the resume cookie — so it is never wasted work, even on a step that ends up
+		// recording no event. `flowHandle` below is the separate thing: the wire string, reflected out.
 		const flowId = await resolveWaitlistFlowId(tokenSecret, data.flowId);
 
 		// Skip (the "Skip for now" button) writes nothing — the general path must not persist partial
