@@ -282,7 +282,8 @@ row must not be walkable back to a person, and a derived id would be joinable to
 who could recompute it. Each step **echoes it verbatim** exactly as it echoes the continuation token:
 without JS every step is a native POST that re-renders the page, whose load mints a fresh one, so an
 unechoed handle would split one visitor across four flows. Since DAR-75 a **resumed** visitor keeps
-theirs too — the load reuses the id inside the resume cookie rather than minting — which closes the
+theirs too — the load reuses the id inside the resume cookie rather than generating a fresh one (it
+mints a handle around it either way) — which closes the
 same split for a mid-flow reload, and makes the re-recorded `waitlist_viewed` a no-op against the
 composite key instead of a second view for one visitor.
 
@@ -326,7 +327,7 @@ flows are precisely the drop-off the funnel exists to measure.
 
 **Accepted cost: a sitting longer than the 24h window over-counts its own views by a few.** A handle's
 life starts at the first page load and the steps echo it verbatim, so a step submitted from a day-old
-tab resolves to nothing and writes `''` into the resume cookie's flow id — after which each reload
+tab resolves to nothing, so the resume cookie is written with no flow id — after which each reload
 mints a fresh flow (the load reads the cookie, it never writes one) and records another
 `waitlist_viewed`. The underlying "an empty stored flow id isn't repaired" behaviour predates this;
 expiry is a new way in. Left alone deliberately: fixing it means either a cookie write inside a load —

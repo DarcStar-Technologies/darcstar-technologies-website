@@ -209,10 +209,6 @@ describe('captureWaitlistFunnel', () => {
 		captureWaitlistFunnel(db, platform, FLOW, ['waitlist_viewed', 'waitlist_signup_completed']);
 		await flush();
 
-		// The call passed the signed HANDLE and the column holds the bare FLOW — the transport/storage
-		// split (DAR-86), which is what makes this a change with no migration behind it: every stored
-		// row and every count means exactly what it did before.
-		//
 		// Compared as a set: row order is the primary key's, not the call's, and nothing depends on it.
 		expect(await rows()).toEqual(
 			expect.arrayContaining([
@@ -270,9 +266,12 @@ describe('captureWaitlistFunnel', () => {
 		['nothing at all', () => null]
 	])('writes nothing for %s', async (_label, value) => {
 		captureWaitlistFunnel(db, platform, value() as WaitlistFlowId | null, ['waitlist_viewed']);
+		// A real id in the same drain is the vacuity guard: "no rows" is what a capture that had simply
+		// stopped working would produce too, so the assertion has to be able to tell them apart.
+		captureWaitlistFunnel(db, platform, OTHER_FLOW, ['waitlist_viewed']);
 		await flush();
 
-		expect(await rows()).toEqual([]);
+		expect(await rows()).toEqual([{ flowId: OTHER_FLOW, event: 'waitlist_viewed' }]);
 	});
 
 	// THE CAP KEYS ON THE FLOW, NOT THE HANDLE. Two distinct signed strings for one flow still collapse
