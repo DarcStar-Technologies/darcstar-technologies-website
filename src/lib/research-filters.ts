@@ -39,6 +39,13 @@ export interface FacetOption {
 	label: string;
 }
 
+/** A research topic in use by at least one paper, with the Studio's authored `description`. */
+export interface TopicEntry {
+	slug: string;
+	title: string;
+	description: string | null;
+}
+
 // Tolerant by design: a no-JS GET submit sends empty strings for untouched selects (→ null),
 // and hand-edited URLs may carry junk (unknown origin/sort values fall back safely).
 export function parseResearchFilters(params: URLSearchParams): ResearchFilters {
@@ -106,21 +113,38 @@ export function sortPapers(papers: PaperRow[], sort: ResearchSort, locale?: stri
 	return papers;
 }
 
+// The in-use topic set, deduped by slug and title-sorted — the ONE walk of the papers' topics.
+// Both consumers derive from it: the Topic facet select (which needs slug + title) and the
+// /research topic guide (which needs the `description` a facet option has no room for). Kept as
+// one function so "which topics does this index have" can't answer differently in two places.
+//
+// Slugless topics are skipped, matching the facet rule: a topic that can't round-trip through a
+// URL can't be filtered to, so the guide couldn't link it either. `description` is carried
+// through as-is (null when the editor left it blank) — deciding what to do with an undescribed
+// topic belongs to the renderer, not here.
+export function paperTopics(papers: PaperRow[]): TopicEntry[] {
+	const topics = new Map<string, TopicEntry>();
+	for (const p of papers) {
+		for (const t of p.topics ?? []) {
+			if (t.slug) topics.set(t.slug, { slug: t.slug, title: t.title, description: t.description });
+		}
+	}
+	return [...topics.values()].sort((a, b) => a.title.localeCompare(b.title));
+}
+
 // Facet options come from the papers themselves (deduped by slug, label-sorted), so the topic
 // and author selects only ever offer values that match at least one paper (origin/sort are
 // static option sets — that guarantee is theirs alone). Entries without a slug can't
 // round-trip through a URL and are skipped.
 export function paperFacets(papers: PaperRow[]): { topics: FacetOption[]; authors: FacetOption[] } {
-	const topics = new Map<string, string>();
 	const authors = new Map<string, string>();
 	for (const p of papers) {
-		for (const t of p.topics ?? []) if (t.slug) topics.set(t.slug, t.title);
 		for (const a of p.authors ?? []) if (a.slug) authors.set(a.slug, a.name);
 	}
-	const toOptions = (m: Map<string, string>): FacetOption[] =>
-		[...m.entries()].map(([value, label]) => ({ value, label }));
 	return {
-		topics: toOptions(topics).sort((a, b) => a.label.localeCompare(b.label)),
-		authors: toOptions(authors).sort((a, b) => a.label.localeCompare(b.label))
+		topics: paperTopics(papers).map((t) => ({ value: t.slug, label: t.title })),
+		authors: [...authors.entries()]
+			.map(([value, label]) => ({ value, label }))
+			.sort((a, b) => a.label.localeCompare(b.label))
 	};
 }

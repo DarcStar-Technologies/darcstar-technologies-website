@@ -4,6 +4,7 @@ import {
 	filterPapers,
 	hasActiveFilters,
 	paperFacets,
+	paperTopics,
 	parseResearchFilters,
 	researchTopicHref,
 	sortPapers,
@@ -22,7 +23,7 @@ const paper = (over: {
 	title: string;
 	darcstarAuthored?: boolean | null;
 	publishedDate?: string | null;
-	topics?: { slug: string | null; title: string }[] | null;
+	topics?: { slug: string | null; title: string; description?: string | null }[] | null;
 	authors?: { slug: string | null; name: string }[] | null;
 }): PaperRow =>
 	({
@@ -37,14 +38,15 @@ const gide = paper({
 	_id: 'p1',
 	title: 'GIDE: Guaranteed Intelligent Dynamics',
 	darcstarAuthored: true,
-	topics: [{ slug: 'safety', title: 'Provable Safety' }],
+	topics: [{ slug: 'safety', title: 'Provable Safety', description: 'Verified control.' }],
 	authors: [{ slug: 'm-harris', name: 'M. Harris' }]
 });
 const attention = paper({
 	_id: 'p2',
 	title: 'Attention Is All You Need',
 	darcstarAuthored: false,
-	topics: [{ slug: 'transformers', title: 'Transformer Architecture' }],
+	// No description — an editor may leave the Studio field blank.
+	topics: [{ slug: 'transformers', title: 'Transformer Architecture', description: null }],
 	authors: [{ slug: 'a-vaswani', name: 'A. Vaswani' }]
 });
 const flash = paper({
@@ -52,8 +54,14 @@ const flash = paper({
 	title: 'FlashAttention',
 	// Unset origin — must count as external (DAR-52 fail-safe polarity).
 	topics: [
-		{ slug: 'transformers', title: 'Transformer Architecture' },
-		{ slug: null, title: 'Slugless Topic' }
+		// A repeat of p2's topic, this time WITH a description: the dedup must keep the last write
+		// whole, or a topic's description would depend on which paper happened to be walked first.
+		{
+			slug: 'transformers',
+			title: 'Transformer Architecture',
+			description: 'The architecture behind modern sequence models.'
+		},
+		{ slug: null, title: 'Slugless Topic', description: 'Unreachable by URL.' }
 	],
 	authors: [{ slug: 't-dao', name: 'T. Dao' }]
 });
@@ -200,6 +208,32 @@ describe('buildFilterQuery', () => {
 
 	it('ignores unknown keys', () => {
 		expect(buildFilterQuery(values({ evil: 'x', sort: 'title' }))).toBe('sort=title');
+	});
+});
+
+describe('paperTopics', () => {
+	it('dedupes by slug, sorts by title, keeps descriptions, and skips slugless entries', () => {
+		expect(paperTopics(all)).toEqual([
+			{ slug: 'safety', title: 'Provable Safety', description: 'Verified control.' },
+			{
+				slug: 'transformers',
+				title: 'Transformer Architecture',
+				description: 'The architecture behind modern sequence models.'
+			}
+		]);
+	});
+
+	it('carries a blank description through as null rather than dropping the topic', () => {
+		// The facet select still needs an undescribed topic (it has papers); only the /research
+		// guide filters those out, and that call is the RENDERER's — not this function's.
+		const topics = paperTopics([attention]);
+		expect(topics).toEqual([
+			{ slug: 'transformers', title: 'Transformer Architecture', description: null }
+		]);
+	});
+
+	it('returns an empty list for an empty index', () => {
+		expect(paperTopics([])).toEqual([]);
 	});
 });
 

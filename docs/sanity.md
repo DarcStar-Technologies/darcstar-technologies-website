@@ -178,8 +178,36 @@ The chips/pills around a paper color-code the brand triad ([styling — color-ch
 Neutral (`border-hairline`) = non-semantic chrome (statuses, "Third-party", categories). All pill
 geometry comes from `PaperStatus`'s exported `pillClass`. The B charge carries two meanings, so
 the **rest fill** disambiguates: `PaperLinks` pills are filled (`bg-primary-500/10`) = clickable;
-the published status pill is outline-only = badge. Topic `description` renders as a `title`
-tooltip only (invisible on touch/keyboard — DAR-56 tracks a visible rendering).
+the published status pill is outline-only = badge. Topic `description` still renders as a `title`
+tooltip here, but that is progressive enhancement **only** — the visible rendering is `TopicGuide`
+on /research (below).
+
+### Topic descriptions are rendered, not tooltipped (DAR-56)
+
+The Studio's `topic.description` ("shown alongside the papers tagged with it") reached nothing but
+a `title` tooltip on the `PaperTopics` tags, which needs a pointer: invisible on touch, unreachable
+by keyboard, inconsistently announced by screen readers. `TopicGuide.svelte` renders it for real on
+/research, in two surfaces because they answer different questions:
+
+- a **collapsed `<details>` legend** ("What these topics mean") — a `<dl>` of every in-use
+  described topic, each title linking to its `?topic=` view. Costs one line when unopened;
+- the **active-topic block** — when `?topic=` is set, that topic's title + description render
+  **plainly visible, outside the disclosure**. This is what closes the loop for a touch user: tap a
+  tag on a card → land on the filtered view → read what it means, with nothing to open. A
+  disclosure here would be the tooltip's problem in a new costume.
+
+Rules: both derive from `paperTopics(data.papers)` — the **whole** index, never `filtered`, or
+filtering to one topic would shrink the legend to that one entry; **undescribed topics are omitted**
+(a bare title just echoes the facet select), and when none has a description the component renders
+**nothing at all**, not an empty wrapper (the page spaces children with `space-y-8`, i.e. `> * + *`).
+`paperTopics` is the single walk of the papers' topics — `paperFacets` derives the Topic select from
+it, so "which topics does this index have" cannot answer differently in two places.
+
+Guarded by `TopicGuide.svelte.spec.ts`, which only means anything because the `client` vitest
+project runs **real chromium**: it distinguishes _visible_ from _in the DOM_, which is the entire
+bug. It proves the closed `<details>` genuinely hides its body (both directions — hidden closed,
+shown opened) before relying on that anywhere else. Deliberately **no e2e**: CI runs Playwright
+without `SANITY_VIEWER_TOKEN`, so /research is empty there and the guide is correctly absent.
 
 ## Configuring the dataset / project
 

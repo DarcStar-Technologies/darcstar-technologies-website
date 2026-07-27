@@ -23,6 +23,7 @@
 	import PaperExternalDisclaimer from '$lib/components/PaperExternalDisclaimer.svelte';
 	import PaperTopics from '$lib/components/PaperTopics.svelte';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
+	import TopicGuide from '$lib/components/TopicGuide.svelte';
 	import { inlineLinkClass, mutedLinkClass } from '$lib/styles';
 	import { fieldClass } from '$lib/styles';
 	import {
@@ -31,6 +32,7 @@
 		filterPapers,
 		hasActiveFilters,
 		paperFacets,
+		paperTopics,
 		parseResearchFilters,
 		researchTopicHref,
 		sortPapers,
@@ -47,6 +49,9 @@
 
 	const filters = $derived(parseResearchFilters(page.url.searchParams));
 	const facets = $derived(paperFacets(data.papers));
+	// From data.papers, NOT `filtered`: the guide explains the taxonomy, so filtering to one topic
+	// must not shrink it to that one entry (DAR-56).
+	const topics = $derived(paperTopics(data.papers));
 	const filtered = $derived(filterPapers(data.papers, filters));
 	// A title sort merges the origin sections into ONE alphabetical list — two separately-sorted
 	// sections would read as broken. Safe: every card carries its own origin chip + disclaimer
@@ -229,6 +234,12 @@
 				</div>
 			</form>
 		{/if}
+
+		<!-- The topic taxonomy's authored descriptions (DAR-56) — a collapsed legend, plus the
+		     active topic's description rendered plainly when one is filtered to. Self-guarding:
+		     it renders nothing (no wrapper) when no topic has a description, so no `{#if}` here
+		     and no phantom `space-y-8` gap. -->
+		<TopicGuide {topics} activeSlug={filters.topic} />
 
 		{#if data.papers.length === 0}
 			<p class="glass-card px-8 py-12 text-center text-sm text-body">{m.research_empty()}</p>
