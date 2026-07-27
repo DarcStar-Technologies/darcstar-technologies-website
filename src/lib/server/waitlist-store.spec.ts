@@ -6,6 +6,7 @@ import type { Db } from './db';
 import { waitlistLead, waitlistSubmission } from './db/schema';
 import {
 	applyWaitlistStep,
+	claimPriorityLeadNotification,
 	insertWaitlistSubmission,
 	readWaitlistTriageWindow,
 	WAITLIST_STEP_WRITE_MAX,
@@ -47,6 +48,7 @@ beforeAll(async () => {
 			id text PRIMARY KEY NOT NULL,
 			email text NOT NULL,
 			invited_at integer, invited_by text, activated_at integer,
+			priority_a_notified_at integer,
 			reviewed_at integer, reviewed_by text,
 			created_at integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 		)`
@@ -424,15 +426,122 @@ describe('applyWaitlistStep', () => {
 	});
 
 	it('reports updated=false for an unknown id and NEVER creates a row (decoy-token path)', async () => {
-		const { updated } = await applyWaitlistStep(db, crypto.randomUUID(), {
+		const { updated, outcome } = await applyWaitlistStep(db, crypto.randomUUID(), {
 			step: 2,
 			role: null,
 			primaryApplication: null,
 			evaluationTimeline: null
 		});
 		expect(updated).toBe(false);
+		expect(outcome).toBeNull(); // nothing to classify — the Priority-A capture no-ops on this
 		expect(await rows()).toHaveLength(0);
 		expect(await leads()).toHaveLength(0); // and no lead either
+	});
+
+	// --- The post-update row DAR-82's notification classifies -------------------------------------
+
+	it('returns the row AS IT NOW STANDS — this step’s answer plus what coalesce preserved', async () => {
+		// The whole reason `outcome` can drive a transition check without a follow-up read: step 4A
+		// writes only the pilot answer, but the returned row has to carry step 2's role and timeline
+		// too, or nothing that classifies could be assembled from one step's write.
+		const id = await insert();
+		await applyWaitlistStep(db, id, {
+			step: 2,
+			role: 'founder-executive',
+			primaryApplication: 'robotics-autonomous-systems',
+			evaluationTimeline: 'evaluating-now'
+		});
+
+		const { outcome } = await applyWaitlistStep(db, id, {
+			step: '4a',
+			pilotInterest: 'yes-within-3-months',
+			deploymentScale: null,
+			contactPermission: null,
+			contactMethod: null,
+			phone: null
+		});
+
+		expect(outcome).toEqual({
+			leadId: (await rowById(id))!.leadId,
+			email: 'ada@example.com',
+			name: 'Ada',
+			role: 'founder-executive',
+			primaryApplication: 'robotics-autonomous-systems',
+			evaluationTimeline: 'evaluating-now',
+			pilotInterest: 'yes-within-3-months'
+		});
+	});
+
+	it('carries the lead id, so the notification claim needs no lookup', async () => {
+		const inserted = await insertWaitlistSubmission(db, base, 'h', null);
+		const { outcome } = await applyWaitlistStep(db, inserted.id, {
+			step: '4b',
+			researchPreferences: ['technical-reports']
+		});
+		expect(outcome?.leadId).toBe((await leads())[0].id);
+	});
+});
+
+// DAR-82 — the Priority-A notification's one-per-lead cap. The whole guarantee lives in the WHERE
+// clause, so it can only be tested against a real database.
+describe('claimPriorityLeadNotification', () => {
+	const insertLead = async () => (await insertWaitlistSubmission(db, base, 'h', null)).id;
+
+	const notifiedAt = async () => (await leads())[0]?.priorityANotifiedAt ?? null;
+
+	it('claims once and refuses every later attempt', async () => {
+		await insertLead();
+		const leadId = (await leads())[0].id;
+
+		expect(await claimPriorityLeadNotification(db, leadId)).toBe(true);
+		const stamped = await notifiedAt();
+		expect(stamped).toBeInstanceOf(Date);
+
+		expect(await claimPriorityLeadNotification(db, leadId)).toBe(false);
+		expect(await claimPriorityLeadNotification(db, leadId)).toBe(false);
+		// A refused claim leaves the original stamp alone — it records the notification that was
+		// actually sent, not the last time someone tried.
+		expect(await notifiedAt()).toEqual(stamped);
+	});
+
+	it('lets exactly one of N concurrent claims win', async () => {
+		// The reason this is a WHERE predicate rather than a read-then-write: every one of these sees a
+		// null if it looks first, so a procedural guard would send five emails.
+		await insertLead();
+		const leadId = (await leads())[0].id;
+
+		const results = await Promise.all(
+			Array.from({ length: 5 }, () => claimPriorityLeadNotification(db, leadId))
+		);
+		expect(results.filter(Boolean)).toHaveLength(1);
+	});
+
+	it('is per LEAD, so N submissions under one address still buy one notification', async () => {
+		// Append-only accepts that a stranger can pile submissions onto a known address (DAR-88). This
+		// is the bound on what that costs the info@ inbox.
+		await insertLead();
+		await insertWaitlistSubmission(db, { ...base, name: 'Mallory' }, 'other', null);
+		await insertWaitlistSubmission(db, { ...base, name: 'Mallory' }, 'other', null);
+		expect(await rows()).toHaveLength(3);
+		expect(await leads()).toHaveLength(1);
+
+		const leadId = (await leads())[0].id;
+		expect(await claimPriorityLeadNotification(db, leadId)).toBe(true);
+		expect(await claimPriorityLeadNotification(db, leadId)).toBe(false);
+	});
+
+	it('refuses a lead that no longer exists, without creating one', async () => {
+		expect(await claimPriorityLeadNotification(db, crypto.randomUUID())).toBe(false);
+		expect(await leads()).toHaveLength(0);
+	});
+
+	it('budgets each lead separately', async () => {
+		await insertLead();
+		await insertWaitlistSubmission(db, { ...base, email: 'grace@example.com' }, 'h', null);
+		const [a, b] = await leads();
+
+		expect(await claimPriorityLeadNotification(db, a.id)).toBe(true);
+		expect(await claimPriorityLeadNotification(db, b.id)).toBe(true);
 	});
 });
 

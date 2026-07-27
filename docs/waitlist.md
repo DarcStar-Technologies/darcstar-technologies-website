@@ -179,14 +179,87 @@ research, investor) and its index is the rank:
   `canonicalizeWaitlistRole`, `isActiveEvaluationTimeline`) — a rubric that drifted from the flow
   would classify people by questions they were never asked. Fail-safe polarity carries through:
   nobody is promoted by silence, so an empty row lands in `research`, not a priority band.
-- **The step-1 lead email was deliberately left alone.** DAR-65 offered a second internal
-  notification when a signup completes qualification as Priority A; it is **not** built here. The
-  rubric's three signals can only all be present at a **step-4A** submit, and step 4A is authorized
-  by the continuation token — which the anti-enumeration success shape hands to _any_ submitter of a
-  known email. So a stranger who guesses an address on the list could drive unlimited "Priority A!"
-  mail into `info@`: exactly the mailbomb the `isNew` gate exists to close, and closing it again
-  needs a null→positive transition guard the current `keepExisting` UPDATE doesn't report. That is
-  its own ticket, not a rider on the classifier.
+- **The step-1 lead email was deliberately left alone.** The Priority-A notification DAR-65 sketched
+  is a separate mailer with its own gate — see the next section.
+
+## Priority-A notification (live)
+
+**DAR-82.** One email into `info@` the first time any of a lead's submissions classifies Priority A,
+so a hot prospect isn't sitting unread in the triage list.
+`src/lib/server/waitlist-priority-notify.ts`; the cap lives in `waitlist-store.ts` and the column on
+`waitlist_lead`.
+
+DAR-65 specified this and deliberately did **not** build it, and the reason is worth keeping because
+it stopped being true: the rubric's three signals can only all be present at a **step-4A** submit,
+step 4A is authorized by the continuation token, and step 1's anti-enumeration response handed that
+token to _any_ submitter of a known email — so a stranger who guessed an address on the list could
+drive unlimited "Priority A!" mail into `info@`. **DAR-88 removed the premise rather than the
+symptom.** Signups are append-only, so a token addresses the submission its own holder just created;
+nobody can push another person's row into a band. (DAR-82 was filed hours before DAR-88 merged, which
+is why the ticket still describes the blocker as live.)
+
+### The cap is a column, not a counter
+
+`UPDATE waitlist_lead SET priority_a_notified_at = … WHERE id = ? AND priority_a_notified_at IS NULL
+RETURNING id` — one row back means this call and no other claimed the notification
+(`claimPriorityLeadNotification`). Same family as `isNew` on the lead insert and the funnel's
+composite key: the database decides, inside the statement that does the work, so there is no counting
+query and no read-then-write race. Five concurrent step writes send one email; a spec pins that.
+
+- **Per LEAD, so N submissions buy one email.** Append-only accepts that a stranger can pile
+  submissions onto a known address; this is the bound on what that costs the inbox. The other bound
+  is upstream — step 1's per-IP throttle caps how many distinct leads one source can mint. Rotating
+  IPs stays edge/WAF territory, the same boundary DAR-68 and DAR-88 both drew.
+- **Deliberately NOT a global rate cap.** A shared bucket would be a denial-of-notification
+  primitive: flood it with junk signups and the real Priority-A lead behind them goes unannounced.
+  Per-lead has no such property — one person's abuse spends one person's budget.
+- **On the lead, not the submission**, exactly like `invited_at`: it records something _we_ did about
+  a person. The submissions stay an immutable record of what people told us.
+
+### Claim before send — the opposite polarity to DAR-67
+
+DAR-67's invitation mails **first** and stamps after, so a failed send stays retryable. This one
+claims **first**. The difference is who retries: an invitation has an operator standing over it,
+while this fires from a visitor's step submit that will not happen again, so there is nobody to
+notice a duplicate. At-most-once is the property worth buying, and the cost is bounded — a send that
+fails after the claim loses one email, and the lead still sits at the top of `/admin/waitlist` in the
+Priority-A band. The notification accelerates triage; it was never the system of record.
+
+**The Resend key is checked before the claim**, or a deploy with no key would burn every lead's
+one-and-only notification on sends that never happen, and the column has no reset.
+
+### Wiring
+
+- Hangs off `applyStepBestEffort` (`waitlist-steps.remote.ts`), the single chokepoint every enrich
+  goes through — not off the four call sites, so a step added later can't forget it.
+- **Every step, not just 4A.** A positive pilot answer can only come from step 4A, but it is the
+  _combination_ that scores, and a visitor who reloads and walks back can supply the last missing
+  piece from step 2 (provided-wins means any write can complete the triple).
+- `applyWaitlistStep` returns the **post-update row** (`WaitlistStepOutcome`) so the check needs no
+  follow-up read — the UPDATE already had a `RETURNING` clause to tell a permitted write from a
+  refused one. `extends WaitlistLeadSignals` keeps that list covering exactly what the rubric reads.
+- **Fire-and-forget, including the claim.** `captureWaitlistPriorityLead` returns void and runs both
+  the claim and the send inside `ctx.waitUntil`. That isn't only tidiness: an awaited conditional
+  UPDATE would add a round trip on exactly the submits that classify Priority A, and whether it
+  matched a row answers "has this address been flagged before?" — state the visitor can't see. Off
+  the response path, the timing difference doesn't exist to measure.
+
+### What the email says
+
+The address, the name, and the four rubric inputs in English labels (role canonicalized, so a legacy
+v1 slug reads as the value that was actually judged), then **"invite them"** with a link to
+`/admin/waitlist?class=priority-a` — DAR-67 sends invitations from that page, so "a hot lead arrived"
+and "someone should invite them" are one operational moment. It closes with the standing caveat that
+the band is our own guess from unverified claims and that the lead's other submissions are worth
+reading first.
+
+- **No money figures, structurally.** The builder's row list is a `Record<keyof WaitlistLeadSignals,
+…>`, and `economic_impact` / `budget_range` are absent from that interface by DAR-65's design — so a
+  self-reported dollar amount has no way into a message whose subject line says "Priority A". Pinned
+  from the outside too, since "the type won't let you" holds only until someone widens the type.
+- **The link is built from `ORIGIN`, never the request's `url.origin`**, which follows the (forgeable)
+  Host header — a forged request would otherwise put an attacker-chosen URL inside an email we send
+  ourselves and act on. With `ORIGIN` unset the email drops the link and still names the page.
 
 ## Funnel analytics (live)
 
@@ -632,7 +705,8 @@ from an invisible edit of the real record to an additional row a human can read 
 
 **The lead holds no answers, deliberately.** `waitlist_lead` is an identity anchor plus the things
 that describe a person rather than a submission: `invited_at` / `invited_by` / `activated_at`
-(DAR-67's state, moved here) and `reviewed_at` / `reviewed_by`. Nothing on it is written by two
+(DAR-67's state, moved here), `reviewed_at` / `reviewed_by`, and `priority_a_notified_at` (DAR-82's
+one-per-person notification claim). Nothing on it is written by two
 different actors, so no "who may overwrite what" policy can grow back. A merged-answers column set —
 canonical values an operator promotes from a submission — was considered and rejected for exactly that
 reason: it is the same overwrite problem with a friendlier interface, and the reconciliation belongs
@@ -772,10 +846,10 @@ Three things about them are easy to get wrong:
    by someone who happens to be on the list would flip their badge and claim an onboarding that never
    happened.
 
-Deliberately NOT built: any automatic invitation. Priority-A leads are not auto-invited and no
-notification fires — the same restraint as DAR-65's Priority-A notification, and for a stronger
-reason here, since the action mints an account and mails a credential-setting link. Every invitation
-is a human decision behind a confirm.
+Deliberately NOT built: any automatic invitation. A Priority-A lead is announced into `info@`
+(DAR-82, above) but never auto-invited — that action mints an account and mails a credential-setting
+link, so it stays a human decision behind a confirm. The notification exists precisely to put that
+decision in front of someone sooner.
 
 ## Setup
 

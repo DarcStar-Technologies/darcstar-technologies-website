@@ -144,6 +144,26 @@ export const waitlistLead = sqliteTable(
 		// set, so an ordinary self-service reset by someone who was never invited can't backfill this
 		// and make the badge claim an activation that never happened.
 		activatedAt: integer('activated_at', { mode: 'timestamp_ms' }),
+		// --- Priority-A notification (DAR-82) ---
+		// "We have told info@ about this person." Set exactly once, ever, the first time any of their
+		// submissions classifies Priority A (waitlist-priority-notify.ts).
+		//
+		// THIS COLUMN IS THE ABUSE CAP, not a record of it. The send is triggered by an unauthenticated
+		// visitor's step write, so it needs a bound, and the bound is
+		// `UPDATE … WHERE priority_a_notified_at IS NULL RETURNING id`: one row back means this call and
+		// no other claimed the notification. Same move as `waitlist_funnel_event`'s composite key and as
+		// `isNew` on the lead insert — the database decides, in the statement that does the work, so
+		// there is no counting query and no read-then-write race between two concurrent submits.
+		//
+		// PER LEAD, therefore, and that is the number that matters: a stranger can append submissions
+		// under a known address all day (append-only accepts that cost), and every one of them together
+		// can produce at most this single email. Deliberately NOT a global rate cap, which would be a
+		// denial-of-notification primitive — flood it and real Priority-A leads go unannounced.
+		//
+		// On the lead rather than the submission for the same reason `invited_at` is: this records
+		// something WE did about a person. The submissions stay an immutable record of what people told
+		// us, and our own outreach is not something they said.
+		priorityANotifiedAt: integer('priority_a_notified_at', { mode: 'timestamp_ms' }),
 		// --- Human review (DAR-88) ---
 		// "A human has looked at this lead's submissions and reconciled them." Deliberately a STAMP and
 		// not a merge: the reconciliation lands in whatever the operator does next (an outreach, a CRM
