@@ -81,9 +81,14 @@ html {
 	   `focus-visible:ring-*` chips. That makes the rule "opt out only by REPLACING it", never by
 	   leaving nothing.
 
-	   An explicit element list rather than a bare `:focus-visible`: SvelteKit focuses <body> after
-	   a client-side navigation (it asks for `focusVisible: false`, but that option isn't honoured
-	   everywhere), and a bare selector would outline the whole page after a keyboard-driven one.
+	   An explicit element list rather than a bare `:focus-visible`, and the reason is the
+	   `tabindex="-1"` CONTAINERS, not <body>. (Kit focuses <body> after a client-side navigation,
+	   which looks like the risk — measured, and Chromium matches neither `:focus-visible` nor
+	   `:focus` on it, so that one is a non-issue.) The real ones are the contact and login dialog
+	   panels: `div[tabindex="-1"].glass-card`, programmatically focusable, so a bare selector would
+	   ring the ENTIRE frosted panel the moment the dialog library focused its content rather than
+	   the close button — which is where Zag puts focus today, an implementation detail and not a
+	   promise. Naming the interactive elements also documents what the rule is for.
 	   2px clears WCAG 2.2 SC 2.4.13's thickness floor. A browser without `:focus-visible` drops the
 	   whole rule and keeps its UA ring — no worse than before. */
 	a:focus-visible,

@@ -20,7 +20,64 @@ type Stop = {
 	outlineWidth: string;
 	outlineStyle: string;
 	outlineColor: string;
+	/** Everything a focus state could plausibly change, so "did it change at all" is answerable. */
+	appearance: string;
+	/** The same string read before anything was focused — see `snapshotUnfocused`. */
+	restingAppearance: string | null;
 };
+
+/** The page-side helper below, so both readers of "appearance" are the same code. */
+type AppearanceWindow = Window & { __fvAppearance?: (el: Element) => string };
+
+/**
+ * Installs a page-side "what does this element LOOK like" probe, used by both the resting snapshot
+ * and the walk — one definition, so the two can't compute it differently.
+ *
+ * The outline collapses to `no-outline` unless it is actually painted, and `outline-offset` rides
+ * INSIDE that branch rather than beside it. That is load-bearing: `outline: none` (how `glass-field`
+ * opts out) does not reset `outline-offset`, so the base rule's `2px` survives on the computed
+ * style — and a naive join therefore reports "focus changed this element" for a change that renders
+ * nothing at all. A deliberately-broken field passed the first version of this check for exactly
+ * that reason.
+ */
+async function installAppearanceProbe(page: Page): Promise<void> {
+	await page.addInitScript(() => {
+		(window as AppearanceWindow).__fvAppearance = (el: Element) => {
+			const s = getComputedStyle(el);
+			const outline =
+				s.outlineStyle === 'none' || parseFloat(s.outlineWidth) === 0
+					? 'no-outline'
+					: `${s.outlineWidth} ${s.outlineStyle} ${s.outlineColor} @${s.outlineOffset}`;
+			return [
+				outline,
+				s.boxShadow,
+				s.borderColor,
+				s.backgroundColor,
+				s.color,
+				s.textDecorationLine
+			].join(' | ');
+		};
+	});
+}
+
+/**
+ * Records how every focusable element looks while NOTHING is focused, stamped on the element itself,
+ * so the walk can ask whether focus changed its appearance.
+ *
+ * This is what enforces the layered design's actual rule — **opt out of the ring only by REPLACING
+ * it**. `glass-field` and `/admin` legitimately suppress the outline and draw their own, so they
+ * can't be held to the branded ring; without this they were asserted against nothing at all, and an
+ * `outline-none` added with no replacement would have gone unnoticed.
+ */
+async function snapshotUnfocused(page: Page): Promise<void> {
+	await page.evaluate(() => {
+		const appearance = (window as AppearanceWindow).__fvAppearance;
+		if (!appearance) throw new Error('appearance probe missing — installAppearanceProbe first');
+		document.querySelectorAll('a,button,summary,input,select,textarea').forEach((el) => {
+			el.setAttribute('data-fv-resting', appearance(el));
+		});
+	});
+}
 
 /**
  * The ring colour as the page itself resolves it.
@@ -65,17 +122,33 @@ async function tabThrough(page: Page, limit: number): Promise<Stop[]> {
 			const el = document.activeElement;
 			if (!el || el === document.body || el === document.documentElement) return null;
 
+			const appearance = (window as AppearanceWindow).__fvAppearance;
+			if (!appearance) throw new Error('appearance probe missing — installAppearanceProbe first');
+
 			const transitions = el.getAnimations().filter((a) => 'transitionProperty' in a);
 			await Promise.allSettled(transitions.map((a) => a.finished));
 
 			const style = getComputedStyle(el);
 			return {
 				tag: el.tagName.toLowerCase(),
-				// Enough to name the offender in a failure without dumping the DOM.
-				label: (el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 40),
+				// Enough to name the offender in a failure without dumping the DOM. Form controls
+				// have no text content, so fall back to what identifies one — otherwise a failing
+				// field reports as `<input> ""` and the reader has to go find it.
+				label: (
+					el.getAttribute('aria-label') ||
+					el.textContent?.trim() ||
+					el.getAttribute('name') ||
+					el.getAttribute('id') ||
+					el.getAttribute('placeholder') ||
+					''
+				)
+					.trim()
+					.slice(0, 40),
 				outlineWidth: style.outlineWidth,
 				outlineStyle: style.outlineStyle,
-				outlineColor: style.outlineColor
+				outlineColor: style.outlineColor,
+				appearance: appearance(el),
+				restingAppearance: el.getAttribute('data-fv-resting')
 			};
 		});
 		// Focus left the document (the browser chrome takes the next stop) — the walk is done.
@@ -98,9 +171,11 @@ for (const { path, minStops } of [
 	{ path: '/login', minStops: 18 }
 ]) {
 	test(`every keyboard focus stop on ${path} shows the branded ring`, async ({ page }) => {
+		await installAppearanceProbe(page);
 		await page.goto(path);
 
 		const brandColor = await brandRingColor(page);
+		await snapshotUnfocused(page);
 		const stops = await tabThrough(page, 60);
 
 		// Without this the whole spec passes vacuously if the walk finds nothing — the failure mode
@@ -108,14 +183,25 @@ for (const { path, minStops } of [
 		expect(stops.length).toBeGreaterThanOrEqual(minStops);
 
 		for (const stop of stops) {
-			// Fields own their focus state (glass-field's recessed ring, layout.css) and legitimately
-			// suppress the outline; links and buttons are what this rule exists for.
-			if (stop.tag !== 'a' && stop.tag !== 'button') continue;
+			const where = `<${stop.tag}> "${stop.label}" on ${path}`;
 
-			expect(
-				{ width: stop.outlineWidth, style: stop.outlineStyle, color: stop.outlineColor },
-				`<${stop.tag}> "${stop.label}" on ${path}`
-			).toEqual({ width: RING_WIDTH, style: RING_STYLE, color: brandColor });
+			// Links and buttons are what the site-wide rule exists for: the exact ring, or nothing.
+			if (stop.tag === 'a' || stop.tag === 'button') {
+				expect(
+					{ width: stop.outlineWidth, style: stop.outlineStyle, color: stop.outlineColor },
+					where
+				).toEqual({ width: RING_WIDTH, style: RING_STYLE, color: brandColor });
+				continue;
+			}
+
+			// Fields legitimately suppress the ring and draw their own (glass-field's recessed
+			// border + glow), so they can't be held to the exact treatment — but they still have to
+			// look different when focused. This is the enforcement of "opt out only by REPLACING
+			// it": an `outline-none` added with nothing behind it fails here.
+			expect(stop.restingAppearance, `${where} was never snapshotted`).not.toBeNull();
+			expect(stop.appearance, `${where} looks identical focused and unfocused`).not.toBe(
+				stop.restingAppearance
+			);
 		}
 	});
 }
