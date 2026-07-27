@@ -1,31 +1,35 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+	AUTHOR_QUERY_MIN_LENGTH,
+	authorSearchTerm,
 	buildFilterQuery,
-	filterPapers,
+	FILTER_PARAM,
 	hasActiveFilters,
-	paperFacets,
 	partitionByOrigin,
 	parseResearchFilters,
 	researchTopicHref,
-	sortPapers,
 	topicOptions,
-	type PaperRow
+	type PaperRow,
+	type TopicEntry
 } from './research-filters';
+import { PAGE_PARAM } from './pagination';
 
 // researchTopicHref localizes via the Paraglide runtime, whose getLocale() needs a request /
 // browser context this bare unit environment lacks. Identity-mock it: these tests pin the
 // PATH + PARAM shape (the drift rail); locale prefixing is Paraglide's, covered by e2e.
 vi.mock('$lib/paraglide/runtime', () => ({ localizeHref: (href: string) => href }));
 
-// Minimal PaperRow stand-ins — only the fields the filter logic touches; the cast keeps the
-// fixtures honest against renames without dragging in every projected field.
+// Minimal PaperRow stand-ins — only the fields the surviving derivations touch; the cast keeps the
+// fixtures honest against renames without dragging in every projected field. Note `topics` carries
+// no `description`: DAR-94 dropped it from the LIST projection (the topic facet supplies it once
+// instead of once per tag occurrence), and the fixture shape says so.
 const paper = (over: {
 	_id: string;
 	title: string;
 	darcstarAuthored?: boolean | null;
 	publishedDate?: string | null;
-	topics?: { slug: string | null; title: string; description?: string | null }[] | null;
-	authors?: { slug: string | null; name: string }[] | null;
+	topics?: { slug: string; title: string }[] | null;
+	authors?: { slug: string; name: string }[] | null;
 }): PaperRow =>
 	({
 		darcstarAuthored: null,
@@ -38,34 +42,15 @@ const paper = (over: {
 const gide = paper({
 	_id: 'p1',
 	title: 'GIDE: Guaranteed Intelligent Dynamics',
-	darcstarAuthored: true,
-	topics: [{ slug: 'safety', title: 'Provable Safety', description: 'Verified control.' }],
-	authors: [{ slug: 'm-harris', name: 'M. Harris' }]
+	darcstarAuthored: true
 });
 const attention = paper({
 	_id: 'p2',
 	title: 'Attention Is All You Need',
-	darcstarAuthored: false,
-	// No description — an editor may leave the Studio field blank.
-	topics: [{ slug: 'transformers', title: 'Transformer Architecture', description: null }],
-	authors: [{ slug: 'a-vaswani', name: 'A. Vaswani' }]
+	darcstarAuthored: false
 });
-const flash = paper({
-	_id: 'p3',
-	title: 'FlashAttention',
-	// Unset origin — must count as external (DAR-52 fail-safe polarity).
-	topics: [
-		// A repeat of p2's topic, this time WITH a description: the dedup must keep the last write
-		// whole, or a topic's description would depend on which paper happened to be walked first.
-		{
-			slug: 'transformers',
-			title: 'Transformer Architecture',
-			description: 'The architecture behind modern sequence models.'
-		},
-		{ slug: null, title: 'Slugless Topic', description: 'Unreachable by URL.' }
-	],
-	authors: [{ slug: 't-dao', name: 'T. Dao' }]
-});
+// Unset origin — must count as external (DAR-52 fail-safe polarity).
+const flash = paper({ _id: 'p3', title: 'FlashAttention' });
 const all = [gide, attention, flash];
 
 describe('parseResearchFilters', () => {
@@ -108,79 +93,20 @@ describe('parseResearchFilters', () => {
 		});
 		expect(hasActiveFilters(f)).toBe(true);
 	});
-});
 
-describe('filterPapers', () => {
-	const base = { topic: null, author: null, origin: null, sort: 'date' } as const;
-
-	it('passes everything through with no active filters', () => {
-		expect(filterPapers(all, { ...base })).toEqual(all);
+	// The author param accepts a typed NAME as well as a slug (the control is a text input — the
+	// author vocabulary is too large to ship as options). Both reach GROQ verbatim, which resolves
+	// either; the parser must not try to tell them apart.
+	it('passes a typed author name through unchanged', () => {
+		expect(parseResearchFilters(new URLSearchParams('author=Tri+Dao')).author).toBe('Tri Dao');
 	});
 
-	it('filters by topic slug', () => {
-		expect(filterPapers(all, { ...base, topic: 'transformers' })).toEqual([attention, flash]);
-	});
-
-	it('filters by author slug', () => {
-		expect(filterPapers(all, { ...base, author: 'm-harris' })).toEqual([gide]);
-	});
-
-	it('origin=darcstar returns only explicitly first-party papers', () => {
-		expect(filterPapers(all, { ...base, origin: 'darcstar' })).toEqual([gide]);
-	});
-
-	it('origin=external includes unset darcstarAuthored (fail-safe polarity)', () => {
-		expect(filterPapers(all, { ...base, origin: 'external' })).toEqual([attention, flash]);
-	});
-
-	it('combines facets conjunctively', () => {
-		expect(filterPapers(all, { ...base, topic: 'transformers', author: 'a-vaswani' })).toEqual([
-			attention
-		]);
-	});
-
-	it('tolerates null topics/authors arrays', () => {
-		const bare = paper({ _id: 'p4', title: 'Bare' });
-		expect(filterPapers([bare], { ...base, topic: 'transformers' })).toEqual([]);
-		expect(filterPapers([bare], { ...base, author: 'm-harris' })).toEqual([]);
-		expect(filterPapers([bare], { ...base, origin: 'external' })).toEqual([bare]);
-	});
-});
-
-describe('sortPapers', () => {
-	it('keeps the query order (publishedDate desc) for the date sort', () => {
-		expect(sortPapers(all, 'date')).toBe(all);
-	});
-
-	it('sorts by title A→Z without mutating the input', () => {
-		const sorted = sortPapers(all, 'title');
-		expect(sorted.map((p) => p.title)).toEqual([
-			'Attention Is All You Need',
-			'FlashAttention',
-			'GIDE: Guaranteed Intelligent Dynamics'
-		]);
-		expect(all[0]).toBe(gide);
-	});
-
-	it('threads the locale into the title collation', () => {
-		const eñe = paper({ _id: 'p5', title: 'ñandú control' });
-		const n = paper({ _id: 'p6', title: 'nz systems' });
-		const z = paper({ _id: 'p7', title: 'zeta' });
-		// Spanish traditional-adjacent collation still interleaves ñ with n (ñandú < nz would be
-		// true under strict 'traditional' but modern es sorts ñ AFTER n); the load-bearing bit is
-		// that the locale parameter reaches localeCompare without throwing and yields a stable,
-		// locale-defined order rather than raw code-point order (where ñ would sort after z).
-		const sorted = sortPapers([z, eñe, n], 'title', 'es');
-		expect(sorted.map((p) => p._id)).toEqual(['p6', 'p5', 'p7']);
-	});
-
-	it('date-asc sorts oldest first with undated papers last', () => {
-		const oldest = paper({ _id: 'd1', title: 'Oldest', publishedDate: '2017-06-12' });
-		const newest = paper({ _id: 'd2', title: 'Newest', publishedDate: '2024-07-11' });
-		const undated = paper({ _id: 'd3', title: 'Undated' });
-		const input = [newest, undated, oldest];
-		expect(sortPapers(input, 'date-asc').map((p) => p._id)).toEqual(['d1', 'd2', 'd3']);
-		expect(input[0]).toBe(newest);
+	// ?page= is pagination's, not a filter's — `hasActiveFilters` drives the "Clear filters" link,
+	// and paging to page 2 must not make the page claim filters are in force.
+	it('ignores the page param entirely', () => {
+		const f = parseResearchFilters(new URLSearchParams('page=3'));
+		expect(f).toEqual({ topic: null, author: null, origin: null, sort: 'date' });
+		expect(hasActiveFilters(f)).toBe(false);
 	});
 });
 
@@ -210,52 +136,44 @@ describe('buildFilterQuery', () => {
 	it('ignores unknown keys', () => {
 		expect(buildFilterQuery(values({ evil: 'x', sort: 'title' }))).toBe('sort=title');
 	});
-});
 
-describe('paperFacets', () => {
-	it('derives topics and authors in one pass: deduped by slug, title-sorted, slugless skipped', () => {
-		const { topics, authors } = paperFacets(all);
-		// Topics keep their authored description — the /research guide renders it, and a topic that
-		// appears on two papers must resolve to ONE entry, whole (p3 tags `transformers` with a
-		// description, p2 without; the dedup must not leave a half-merged row).
-		expect(topics).toEqual([
-			{ slug: 'safety', title: 'Provable Safety', description: 'Verified control.' },
-			{
-				slug: 'transformers',
-				title: 'Transformer Architecture',
-				description: 'The architecture behind modern sequence models.'
-			}
-		]);
-		// Label-sorted (A. Vaswani, M. Harris, T. Dao), not value-sorted.
-		expect(authors.map((a) => a.value)).toEqual(['a-vaswani', 'm-harris', 't-dao']);
+	// THE page-reset rule (DAR-94). Narrowing a filter must return the visitor to page 1 — page 7 of
+	// a filter that now has two results is an empty screen with no explanation. It is enforced by
+	// omission rather than by code: `page` is not in FILTER_PARAM, so this builder cannot emit it
+	// even when handed one. That makes the guarantee invisible in the source, which is exactly why
+	// it needs a test rather than a comment.
+	it('never carries a page number forward, even if the form supplies one', () => {
+		expect(buildFilterQuery(values({ page: '7', topic: 'x' }))).toBe('topic=x');
 	});
 
-	it('carries a blank description through as null rather than dropping the topic', () => {
-		// The facet select still needs an undescribed topic (it has papers); only the /research
-		// guide filters those out, and that call is the RENDERER's — not this function's.
-		expect(paperFacets([attention]).topics).toEqual([
-			{ slug: 'transformers', title: 'Transformer Architecture', description: null }
-		]);
-	});
-
-	it('returns empty facets for an empty index', () => {
-		expect(paperFacets([])).toEqual({ topics: [], authors: [] });
+	it('keeps page out of the filter param contract', () => {
+		expect(Object.values(FILTER_PARAM)).not.toContain(PAGE_PARAM);
 	});
 });
 
 describe('topicOptions', () => {
-	it('projects entries down to the select shape, dropping the description', () => {
-		expect(topicOptions(paperFacets(all).topics)).toEqual([
+	const topics: TopicEntry[] = [
+		{ slug: 'safety', title: 'Provable Safety', description: 'Verified control.' },
+		{ slug: 'transformers', title: 'Transformer Architecture', description: null }
+	];
+
+	it('projects facet entries down to the select shape, dropping the description', () => {
+		expect(topicOptions(topics)).toEqual([
 			{ value: 'safety', label: 'Provable Safety' },
 			{ value: 'transformers', label: 'Transformer Architecture' }
 		]);
+	});
+
+	it('handles an empty vocabulary', () => {
+		expect(topicOptions([])).toEqual([]);
 	});
 });
 
 describe('partitionByOrigin', () => {
 	it('splits by the fail-safe polarity and preserves order within each side', () => {
 		// gide is ours; attention is explicitly false; flash leaves the flag UNSET — DAR-52 says
-		// that stays third-party, which is the whole point of the helper this shares with the filter.
+		// that stays third-party. The GROQ half of this rule (`darcstarAuthored != true`) is pinned
+		// separately in sanity/queries.spec.ts; the polarity now lives in two languages.
 		const { darcstar, external } = partitionByOrigin(all);
 		expect(darcstar.map((p) => p._id)).toEqual(['p1']);
 		expect(external.map((p) => p._id)).toEqual(['p2', 'p3']);
@@ -263,5 +181,45 @@ describe('partitionByOrigin', () => {
 
 	it('returns two empty sides for an empty index', () => {
 		expect(partitionByOrigin([])).toEqual({ darcstar: [], external: [] });
+	});
+});
+
+describe('authorSearchTerm', () => {
+	it('accepts a term at the minimum length', () => {
+		expect('dao'.length).toBe(AUTHOR_QUERY_MIN_LENGTH);
+		expect(authorSearchTerm('dao')).toBe('dao');
+	});
+
+	it('trims surrounding whitespace', () => {
+		expect(authorSearchTerm('  Tri Dao  ')).toBe('Tri Dao');
+	});
+
+	// Both refusals are measured, not hypothetical: against the production dataset,
+	// `name match ("" + "*")` and `name match ("*" + "*")` each return ALL 123 people. Without these
+	// the endpoint hands out the entire author vocabulary — the payload the text input exists to
+	// avoid shipping in the first place.
+	it.each([
+		['null', null],
+		['undefined', undefined],
+		['empty', ''],
+		['whitespace only', '   '],
+		['one character', 'd'],
+		['two characters', 'da'],
+		['a bare wildcard', '*'],
+		['wildcards that clean down to nothing', '**??'],
+		['whitespace-padded short term', '  da  ']
+	])('refuses %s', (_label, raw) => {
+		expect(authorSearchTerm(raw)).toBeNull();
+	});
+
+	it('strips wildcards from an otherwise usable term', () => {
+		expect(authorSearchTerm('Dao*')).toBe('Dao');
+		expect(authorSearchTerm('D*a?o')).toBe('Dao');
+	});
+
+	// Length is judged AFTER cleaning, or `da*` would pass the floor on the strength of a character
+	// that is then removed — a 2-letter query reaching GROQ through the back door.
+	it('measures length after stripping, not before', () => {
+		expect(authorSearchTerm('da*')).toBeNull();
 	});
 });

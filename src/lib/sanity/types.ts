@@ -467,30 +467,169 @@ export type AllSanitySchemaTypes =
 	| Geopoint;
 
 // Source: src/lib/sanity/queries.ts
-// Variable: postsQuery
-// Query: *[_type == "post" && defined(slug.current)] | order(publishedAt desc) {		_id,		title,		"slug": slug.current,		excerpt,		publishedAt,		featured,		coverImage,		"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role })	}
-export type PostsQueryResult = Array<{
-	_id: string;
-	title: string;
-	slug: string;
-	excerpt: string | null;
-	publishedAt: string;
-	featured: boolean | null;
-	coverImage: {
-		asset?: SanityImageAssetReference;
-		media?: unknown;
-		hotspot?: SanityImageHotspot;
-		crop?: SanityImageCrop;
-		alt: string;
-		_type: 'image';
-	} | null;
-	authors: Array<{
+// Variable: papersPageByDateQuery
+// Query: {		"papers": *[_type == "paper" && defined(slug.current)		&& ($topic == null || $topic in topics[]->slug.current)		&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*"))		&& ($origin == null			|| ($origin == "darcstar" && darcstarAuthored == true)			|| ($origin == "external" && darcstarAuthored != true))] | order(select(darcstarAuthored == true => 0, 1) asc, publishedDate desc) [$offset...$end] {			_id,			title,			"slug": slug.current,			status,			darcstarAuthored,			"hasCommentary": coalesce(count(commentary) > 0, false),			venue,			publishedDate,			url,			doi,			arxivId,			codeUrl,			"abstract": select(count(string::split(abstract, " ")) > 50 => array::join(string::split(abstract, " ")[0...50], " ") + "…", abstract),			"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),			"topics": array::compact(topics[]->{ _id, title, "slug": slug.current })		},		"total": count(*[_type == "paper" && defined(slug.current)		&& ($topic == null || $topic in topics[]->slug.current)		&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*"))		&& ($origin == null			|| ($origin == "darcstar" && darcstarAuthored == true)			|| ($origin == "external" && darcstarAuthored != true))]),		"totalAll": count(*[_type == "paper" && defined(slug.current)]),		"topics": *[_type == "topic" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(title asc) {			"slug": slug.current,			title,			description		},		"teamAuthors": *[_type == "person" && kind != "external" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(name asc) {			"value": slug.current,			"label": name		},		"authorLabel": *[_type == "person" && defined(slug.current) && slug.current == $author][0].name	}
+export type PapersPageByDateQueryResult = {
+	papers: Array<{
 		_id: string;
-		name: string;
+		title: string;
 		slug: string;
-		role: string | null;
-	}> | null;
+		status: 'draft' | 'preprint' | 'published' | 'toAppear' | null;
+		darcstarAuthored: boolean | null;
+		hasCommentary: boolean | false;
+		venue: string | null;
+		publishedDate: string | null;
+		url: string | null;
+		doi: string | null;
+		arxivId: string | null;
+		codeUrl: string | null;
+		abstract: string | null;
+		authors: Array<{
+			_id: string;
+			name: string;
+			slug: string;
+		}> | null;
+		topics: Array<{
+			_id: string;
+			title: string;
+			slug: string;
+		}> | null;
+	}>;
+	total: number;
+	totalAll: number;
+	topics: Array<{
+		slug: string;
+		title: string;
+		description: string | null;
+	}>;
+	teamAuthors: Array<{
+		value: string;
+		label: string;
+	}>;
+	authorLabel: string | null;
+};
+
+// Source: src/lib/sanity/queries.ts
+// Variable: papersPageByDateAscQuery
+// Query: {		"papers": *[_type == "paper" && defined(slug.current)		&& ($topic == null || $topic in topics[]->slug.current)		&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*"))		&& ($origin == null			|| ($origin == "darcstar" && darcstarAuthored == true)			|| ($origin == "external" && darcstarAuthored != true))] | order(select(darcstarAuthored == true => 0, 1) asc, coalesce(publishedDate, "9999-12-31") asc) [$offset...$end] {			_id,			title,			"slug": slug.current,			status,			darcstarAuthored,			"hasCommentary": coalesce(count(commentary) > 0, false),			venue,			publishedDate,			url,			doi,			arxivId,			codeUrl,			"abstract": select(count(string::split(abstract, " ")) > 50 => array::join(string::split(abstract, " ")[0...50], " ") + "…", abstract),			"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),			"topics": array::compact(topics[]->{ _id, title, "slug": slug.current })		},		"total": count(*[_type == "paper" && defined(slug.current)		&& ($topic == null || $topic in topics[]->slug.current)		&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*"))		&& ($origin == null			|| ($origin == "darcstar" && darcstarAuthored == true)			|| ($origin == "external" && darcstarAuthored != true))]),		"totalAll": count(*[_type == "paper" && defined(slug.current)]),		"topics": *[_type == "topic" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(title asc) {			"slug": slug.current,			title,			description		},		"teamAuthors": *[_type == "person" && kind != "external" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(name asc) {			"value": slug.current,			"label": name		},		"authorLabel": *[_type == "person" && defined(slug.current) && slug.current == $author][0].name	}
+export type PapersPageByDateAscQueryResult = {
+	papers: Array<{
+		_id: string;
+		title: string;
+		slug: string;
+		status: 'draft' | 'preprint' | 'published' | 'toAppear' | null;
+		darcstarAuthored: boolean | null;
+		hasCommentary: boolean | false;
+		venue: string | null;
+		publishedDate: string | null;
+		url: string | null;
+		doi: string | null;
+		arxivId: string | null;
+		codeUrl: string | null;
+		abstract: string | null;
+		authors: Array<{
+			_id: string;
+			name: string;
+			slug: string;
+		}> | null;
+		topics: Array<{
+			_id: string;
+			title: string;
+			slug: string;
+		}> | null;
+	}>;
+	total: number;
+	totalAll: number;
+	topics: Array<{
+		slug: string;
+		title: string;
+		description: string | null;
+	}>;
+	teamAuthors: Array<{
+		value: string;
+		label: string;
+	}>;
+	authorLabel: string | null;
+};
+
+// Source: src/lib/sanity/queries.ts
+// Variable: papersPageByTitleQuery
+// Query: {		"papers": *[_type == "paper" && defined(slug.current)		&& ($topic == null || $topic in topics[]->slug.current)		&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*"))		&& ($origin == null			|| ($origin == "darcstar" && darcstarAuthored == true)			|| ($origin == "external" && darcstarAuthored != true))] | order(lower(title) asc) [$offset...$end] {			_id,			title,			"slug": slug.current,			status,			darcstarAuthored,			"hasCommentary": coalesce(count(commentary) > 0, false),			venue,			publishedDate,			url,			doi,			arxivId,			codeUrl,			"abstract": select(count(string::split(abstract, " ")) > 50 => array::join(string::split(abstract, " ")[0...50], " ") + "…", abstract),			"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),			"topics": array::compact(topics[]->{ _id, title, "slug": slug.current })		},		"total": count(*[_type == "paper" && defined(slug.current)		&& ($topic == null || $topic in topics[]->slug.current)		&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*"))		&& ($origin == null			|| ($origin == "darcstar" && darcstarAuthored == true)			|| ($origin == "external" && darcstarAuthored != true))]),		"totalAll": count(*[_type == "paper" && defined(slug.current)]),		"topics": *[_type == "topic" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(title asc) {			"slug": slug.current,			title,			description		},		"teamAuthors": *[_type == "person" && kind != "external" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(name asc) {			"value": slug.current,			"label": name		},		"authorLabel": *[_type == "person" && defined(slug.current) && slug.current == $author][0].name	}
+export type PapersPageByTitleQueryResult = {
+	papers: Array<{
+		_id: string;
+		title: string;
+		slug: string;
+		status: 'draft' | 'preprint' | 'published' | 'toAppear' | null;
+		darcstarAuthored: boolean | null;
+		hasCommentary: boolean | false;
+		venue: string | null;
+		publishedDate: string | null;
+		url: string | null;
+		doi: string | null;
+		arxivId: string | null;
+		codeUrl: string | null;
+		abstract: string | null;
+		authors: Array<{
+			_id: string;
+			name: string;
+			slug: string;
+		}> | null;
+		topics: Array<{
+			_id: string;
+			title: string;
+			slug: string;
+		}> | null;
+	}>;
+	total: number;
+	totalAll: number;
+	topics: Array<{
+		slug: string;
+		title: string;
+		description: string | null;
+	}>;
+	teamAuthors: Array<{
+		value: string;
+		label: string;
+	}>;
+	authorLabel: string | null;
+};
+
+// Source: src/lib/sanity/queries.ts
+// Variable: authorSuggestionsQuery
+// Query: *[_type == "person" && defined(slug.current) && name match ($q + "*") && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0]		| order(select(kind != "external" => 0, 1) asc, name asc) [0...12] {			"value": slug.current,			"label": name		}
+export type AuthorSuggestionsQueryResult = Array<{
+	value: string;
+	label: string;
 }>;
+
+// Source: src/lib/sanity/queries.ts
+// Variable: postsPageQuery
+// Query: {		"posts": *[_type == "post" && defined(slug.current)] | order(publishedAt desc) [$offset...$end] {			_id,			title,			"slug": slug.current,			excerpt,			publishedAt,			coverImage,			"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role })		},		"total": count(*[_type == "post" && defined(slug.current)])	}
+export type PostsPageQueryResult = {
+	posts: Array<{
+		_id: string;
+		title: string;
+		slug: string;
+		excerpt: string | null;
+		publishedAt: string;
+		coverImage: {
+			asset?: SanityImageAssetReference;
+			media?: unknown;
+			hotspot?: SanityImageHotspot;
+			crop?: SanityImageCrop;
+			alt: string;
+			_type: 'image';
+		} | null;
+		authors: Array<{
+			_id: string;
+			name: string;
+			slug: string;
+			role: string | null;
+		}> | null;
+	}>;
+	total: number;
+};
 
 // Source: src/lib/sanity/queries.ts
 // Variable: postBySlugQuery
@@ -540,36 +679,6 @@ export type PostBySlugQueryResult = {
 	}> | null;
 	seo: Seo | null;
 } | null;
-
-// Source: src/lib/sanity/queries.ts
-// Variable: papersQuery
-// Query: *[_type == "paper" && defined(slug.current)] | order(publishedDate desc) {		_id,		title,		"slug": slug.current,		status,		darcstarAuthored,		"hasCommentary": coalesce(count(commentary) > 0, false),		venue,		publishedDate,		url,		doi,		arxivId,		codeUrl,		abstract,		"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),		"topics": array::compact(topics[]->{ _id, title, "slug": slug.current, description })	}
-export type PapersQueryResult = Array<{
-	_id: string;
-	title: string;
-	slug: string;
-	status: 'draft' | 'preprint' | 'published' | 'toAppear' | null;
-	darcstarAuthored: boolean | null;
-	hasCommentary: boolean | false;
-	venue: string | null;
-	publishedDate: string | null;
-	url: string | null;
-	doi: string | null;
-	arxivId: string | null;
-	codeUrl: string | null;
-	abstract: string | null;
-	authors: Array<{
-		_id: string;
-		name: string;
-		slug: string;
-	}> | null;
-	topics: Array<{
-		_id: string;
-		title: string;
-		slug: string;
-		description: string | null;
-	}> | null;
-}>;
 
 // Source: src/lib/sanity/queries.ts
 // Variable: paperBySlugQuery
@@ -666,9 +775,12 @@ export type PeopleQueryResult = Array<{
 import '@sanity/client';
 declare module '@sanity/client' {
 	interface SanityQueries {
-		'\n\t*[_type == "post" && defined(slug.current)] | order(publishedAt desc) {\n\t\t_id,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\texcerpt,\n\t\tpublishedAt,\n\t\tfeatured,\n\t\tcoverImage,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role })\n\t}\n': PostsQueryResult;
+		'{\n\t\t"papers": *[_type == "paper" && defined(slug.current)\n\t\t&& ($topic == null || $topic in topics[]->slug.current)\n\t\t&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*"))\n\t\t&& ($origin == null\n\t\t\t|| ($origin == "darcstar" && darcstarAuthored == true)\n\t\t\t|| ($origin == "external" && darcstarAuthored != true))] | order(select(darcstarAuthored == true => 0, 1) asc, publishedDate desc) [$offset...$end] {\n\t\t\t_id,\n\t\t\ttitle,\n\t\t\t"slug": slug.current,\n\t\t\tstatus,\n\t\t\tdarcstarAuthored,\n\t\t\t"hasCommentary": coalesce(count(commentary) > 0, false),\n\t\t\tvenue,\n\t\t\tpublishedDate,\n\t\t\turl,\n\t\t\tdoi,\n\t\t\tarxivId,\n\t\t\tcodeUrl,\n\t\t\t"abstract": select(count(string::split(abstract, " ")) > 50 => array::join(string::split(abstract, " ")[0...50], " ") + "\u2026", abstract),\n\t\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),\n\t\t\t"topics": array::compact(topics[]->{ _id, title, "slug": slug.current })\n\t\t},\n\t\t"total": count(*[_type == "paper" && defined(slug.current)\n\t\t&& ($topic == null || $topic in topics[]->slug.current)\n\t\t&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*"))\n\t\t&& ($origin == null\n\t\t\t|| ($origin == "darcstar" && darcstarAuthored == true)\n\t\t\t|| ($origin == "external" && darcstarAuthored != true))]),\n\t\t"totalAll": count(*[_type == "paper" && defined(slug.current)]),\n\t\t"topics": *[_type == "topic" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(title asc) {\n\t\t\t"slug": slug.current,\n\t\t\ttitle,\n\t\t\tdescription\n\t\t},\n\t\t"teamAuthors": *[_type == "person" && kind != "external" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(name asc) {\n\t\t\t"value": slug.current,\n\t\t\t"label": name\n\t\t},\n\t\t"authorLabel": *[_type == "person" && defined(slug.current) && slug.current == $author][0].name\n\t}': PapersPageByDateQueryResult;
+		'{\n\t\t"papers": *[_type == "paper" && defined(slug.current)\n\t\t&& ($topic == null || $topic in topics[]->slug.current)\n\t\t&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*"))\n\t\t&& ($origin == null\n\t\t\t|| ($origin == "darcstar" && darcstarAuthored == true)\n\t\t\t|| ($origin == "external" && darcstarAuthored != true))] | order(select(darcstarAuthored == true => 0, 1) asc, coalesce(publishedDate, "9999-12-31") asc) [$offset...$end] {\n\t\t\t_id,\n\t\t\ttitle,\n\t\t\t"slug": slug.current,\n\t\t\tstatus,\n\t\t\tdarcstarAuthored,\n\t\t\t"hasCommentary": coalesce(count(commentary) > 0, false),\n\t\t\tvenue,\n\t\t\tpublishedDate,\n\t\t\turl,\n\t\t\tdoi,\n\t\t\tarxivId,\n\t\t\tcodeUrl,\n\t\t\t"abstract": select(count(string::split(abstract, " ")) > 50 => array::join(string::split(abstract, " ")[0...50], " ") + "\u2026", abstract),\n\t\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),\n\t\t\t"topics": array::compact(topics[]->{ _id, title, "slug": slug.current })\n\t\t},\n\t\t"total": count(*[_type == "paper" && defined(slug.current)\n\t\t&& ($topic == null || $topic in topics[]->slug.current)\n\t\t&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*"))\n\t\t&& ($origin == null\n\t\t\t|| ($origin == "darcstar" && darcstarAuthored == true)\n\t\t\t|| ($origin == "external" && darcstarAuthored != true))]),\n\t\t"totalAll": count(*[_type == "paper" && defined(slug.current)]),\n\t\t"topics": *[_type == "topic" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(title asc) {\n\t\t\t"slug": slug.current,\n\t\t\ttitle,\n\t\t\tdescription\n\t\t},\n\t\t"teamAuthors": *[_type == "person" && kind != "external" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(name asc) {\n\t\t\t"value": slug.current,\n\t\t\t"label": name\n\t\t},\n\t\t"authorLabel": *[_type == "person" && defined(slug.current) && slug.current == $author][0].name\n\t}': PapersPageByDateAscQueryResult;
+		'{\n\t\t"papers": *[_type == "paper" && defined(slug.current)\n\t\t&& ($topic == null || $topic in topics[]->slug.current)\n\t\t&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*"))\n\t\t&& ($origin == null\n\t\t\t|| ($origin == "darcstar" && darcstarAuthored == true)\n\t\t\t|| ($origin == "external" && darcstarAuthored != true))] | order(lower(title) asc) [$offset...$end] {\n\t\t\t_id,\n\t\t\ttitle,\n\t\t\t"slug": slug.current,\n\t\t\tstatus,\n\t\t\tdarcstarAuthored,\n\t\t\t"hasCommentary": coalesce(count(commentary) > 0, false),\n\t\t\tvenue,\n\t\t\tpublishedDate,\n\t\t\turl,\n\t\t\tdoi,\n\t\t\tarxivId,\n\t\t\tcodeUrl,\n\t\t\t"abstract": select(count(string::split(abstract, " ")) > 50 => array::join(string::split(abstract, " ")[0...50], " ") + "\u2026", abstract),\n\t\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),\n\t\t\t"topics": array::compact(topics[]->{ _id, title, "slug": slug.current })\n\t\t},\n\t\t"total": count(*[_type == "paper" && defined(slug.current)\n\t\t&& ($topic == null || $topic in topics[]->slug.current)\n\t\t&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*"))\n\t\t&& ($origin == null\n\t\t\t|| ($origin == "darcstar" && darcstarAuthored == true)\n\t\t\t|| ($origin == "external" && darcstarAuthored != true))]),\n\t\t"totalAll": count(*[_type == "paper" && defined(slug.current)]),\n\t\t"topics": *[_type == "topic" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(title asc) {\n\t\t\t"slug": slug.current,\n\t\t\ttitle,\n\t\t\tdescription\n\t\t},\n\t\t"teamAuthors": *[_type == "person" && kind != "external" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(name asc) {\n\t\t\t"value": slug.current,\n\t\t\t"label": name\n\t\t},\n\t\t"authorLabel": *[_type == "person" && defined(slug.current) && slug.current == $author][0].name\n\t}': PapersPageByTitleQueryResult;
+		'\n\t*[_type == "person" && defined(slug.current) && name match ($q + "*") && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0]\n\t\t| order(select(kind != "external" => 0, 1) asc, name asc) [0...12] {\n\t\t\t"value": slug.current,\n\t\t\t"label": name\n\t\t}\n': AuthorSuggestionsQueryResult;
+		'{\n\t\t"posts": *[_type == "post" && defined(slug.current)] | order(publishedAt desc) [$offset...$end] {\n\t\t\t_id,\n\t\t\ttitle,\n\t\t\t"slug": slug.current,\n\t\t\texcerpt,\n\t\t\tpublishedAt,\n\t\t\tcoverImage,\n\t\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role })\n\t\t},\n\t\t"total": count(*[_type == "post" && defined(slug.current)])\n\t}': PostsPageQueryResult;
 		'\n\t*[_type == "post" && slug.current == $slug][0] {\n\t\t_id,\n\t\t_updatedAt,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\texcerpt,\n\t\tpublishedAt,\n\t\tcoverImage,\n\t\tbody,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role, image }),\n\t\t"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),\n\t\t"relatedPapers": array::compact(relatedPapers[]->{ _id, title, "slug": slug.current, venue, darcstarAuthored, "hasCommentary": coalesce(count(commentary) > 0, false) }),\n\t\tseo\n\t}\n': PostBySlugQueryResult;
-		'\n\t*[_type == "paper" && defined(slug.current)] | order(publishedDate desc) {\n\t\t_id,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\tstatus,\n\t\tdarcstarAuthored,\n\t\t"hasCommentary": coalesce(count(commentary) > 0, false),\n\t\tvenue,\n\t\tpublishedDate,\n\t\turl,\n\t\tdoi,\n\t\tarxivId,\n\t\tcodeUrl,\n\t\tabstract,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current }),\n\t\t"topics": array::compact(topics[]->{ _id, title, "slug": slug.current, description })\n\t}\n': PapersQueryResult;
 		'\n\t*[_type == "paper" && slug.current == $slug][0] {\n\t\t_id,\n\t\t_updatedAt,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\tstatus,\n\t\tdarcstarAuthored,\n\t\tabstract,\n\t\tcommentary,\n\t\tvenue,\n\t\tpublishedDate,\n\t\turl,\n\t\tdoi,\n\t\tarxivId,\n\t\tcodeUrl,\n\t\t"pdfUrl": pdf.asset->url,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role }),\n\t\t"topics": array::compact(topics[]->{ _id, title, "slug": slug.current, description }),\n\t\t"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),\n\t\tseo\n\t}\n': PaperBySlugQueryResult;
 		'{\n\t"posts": *[_type == "post" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt },\n\t"papers": *[_type == "paper" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt }\n}': SitemapEntriesQueryResult;
 		'\n\t*[_id == "siteSettings"][0] {\n\t\tsocialLinks[]{ label, url }\n\t}\n': SiteSettingsQueryResult;
