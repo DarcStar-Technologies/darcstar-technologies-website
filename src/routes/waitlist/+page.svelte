@@ -30,7 +30,7 @@
 	import WaitlistStep4B from '$lib/components/WaitlistStep4B.svelte';
 	import WaitlistConfirmation from '$lib/components/WaitlistConfirmation.svelte';
 	import { fieldClass, mutedLinkClass } from '$lib/styles';
-	import { joinWaitlist } from '$lib/waitlist.remote';
+	import { joinWaitlist, restartWaitlist } from '$lib/waitlist.remote';
 	import {
 		submitWaitlistStep2,
 		submitWaitlistStep3,
@@ -38,7 +38,6 @@
 		submitWaitlistStep4B
 	} from '$lib/waitlist-steps.remote';
 	import { WAITLIST_REGIONS } from '$lib/waitlist-qualification';
-	import { WAITLIST_RESTART_PARAM } from '$lib/waitlist-resume';
 	import { toOptions, waitlistRegionLabel } from '$lib/waitlist-labels';
 	import { m } from '$lib/paraglide/messages.js';
 	import type { PageData } from './$types';
@@ -280,28 +279,18 @@
 		     and came back to sign a colleague up would meet the confirmation and no form at all — a
 		     worse dead end than the blank-form bug this feature fixes.
 
-		     Deliberately OUTSIDE the card, and only when the cookie is what put them here. The
-		     confirmation gets exactly ONE call to action (DAR-64) and that stays true: this is page
-		     chrome pointing at a different task, not a second thing to do with this one. A relative
-		     `?restart` keeps whatever locale prefix the URL already carries.
+		     Deliberately OUTSIDE the card, and only when the cookie is what put them here.
 
-		     `data-sveltekit-reload` IS LOAD-BEARING, twice over, because this link mutates server state
-		     the client router cannot see:
-
-		       1. It suppresses the hover preload. <body> sets `preload-data="hover"` site-wide, and
-		          preloading DATA runs the load — which here DROPS THE COOKIE. Left at the default, a
-		          mouse merely passing over this link would discard the visitor's place in the flow
-		          (and count a phantom view, DAR-66's rule). Kit skips reload links entirely, which is
-		          stronger than the `tap` opt-out the other /waitlist links use.
-		       2. It forces a real navigation. The load redirects `?restart` back to the bare path so
-		          the parameter can't linger — but that lands on the SAME url the current page's data
-		          was loaded for, so the client router correctly concludes nothing it tracks has
-		          changed and re-renders from cache. The cookie really is gone; the page just still
-		          showed the resumed step. A full navigation has no cache to reuse. -->
-		<p class="mt-5 text-center">
-			<a href="?{WAITLIST_RESTART_PARAM}" data-sveltekit-reload class={mutedLinkClass}
-				>{m.waitlist_restart_link()}</a
+		     A FORM, NOT A LINK. Clearing the resume cookie is a state mutation, so it belongs behind a
+		     POST — and a destructive GET behind an internal link is a trap in a Kit app: <body> sets
+		     `preload-data="hover"`, so preloading the data ran the load and dropped the cookie on
+		     mouse-over, with no click. A POST is never prefetched, so nothing can fire it by accident.
+		     It also keeps DAR-64's one-CTA confirmation literally true — a submit button isn't a
+		     second link on that screen. Reasoning lives with `restartWaitlist`. -->
+		<form {...restartWaitlist} class="mt-5 text-center">
+			<button type="submit" class="{mutedLinkClass} cursor-pointer"
+				>{m.waitlist_restart_link()}</button
 			>
-		</p>
+		</form>
 	{/if}
 </section>

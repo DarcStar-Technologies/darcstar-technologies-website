@@ -415,24 +415,34 @@ The state now rides a **signed, httpOnly resume cookie** — `waitlist_resume`,
   Distinguishing a data re-fetch from a page view would mean keying on `x-sveltekit-invalidated`, a
   Kit internal, and `Sec-Fetch-Dest` is no good either — it would drop every client-side navigation
   to the page, undercounting real visitors.
-- **`?restart` is the escape hatch**, and it is load-bearing. Without it, someone who finished the
-  flow and came back to sign up a colleague would meet the confirmation with no form at all — a worse
-  dead end than the original bug. The load drops the cookie on the param and **redirects to the bare
-  path**, so the parameter can't linger (left in the URL, the next signup would be submitted from
-  `/waitlist?restart` and the very next reload would clear the cookie step 1 had just set). The page
-  renders the link **only on a resumed render**, outside the card, so DAR-64's one-CTA confirmation
-  stays a one-CTA confirmation.
-- **That link needs `data-sveltekit-reload`, and it is not cosmetic** — it is the one link on the
-  site that MUTATES server state, and Kit's client router can't see the mutation. Two failures
-  without it, one of which cost a debugging round: (a) `<body>` sets `preload-data="hover"`, and
-  preloading data runs the load, so a mouse merely _passing over_ the link would drop the cookie —
-  the same trap DAR-66 documented, but destructive rather than just miscounted; (b) the redirect
-  lands on the **same url the current page's data was loaded for**, so the router correctly decides
-  nothing it tracks changed and re-renders from cache — the cookie really was gone, the page just
-  kept showing the resumed step. `reload` fixes both (Kit skips preloading reload links outright,
-  which is stronger than `tap`). The general rule: **a destructive GET behind an internal link needs
-  `data-sveltekit-reload`**, and asserting it by behaviour rather than by attribute is what caught
-  the second one.
+- **The escape hatch is a POST** (`restartWaitlist`, `waitlist.remote.ts`), and it is load-bearing,
+  not polish. Without it, someone who finished the flow and came back to sign up a colleague would
+  meet the confirmation with no form at all — a worse dead end than the original bug. It renders
+  **only on a resumed render**, outside the card.
+- **It was `<a href="?restart">` first, and that was wrong three ways** — worth recording, because
+  every one of them is a Kit-specific trap and two only showed up at runtime:
+  1. **A destructive GET behind an internal link fires itself.** `<body>` sets
+     `preload-data="hover"`, and preloading data runs the load — so a mouse merely passing over the
+     link dropped the cookie, no click required. It's DAR-66's prefetch trap again, destructive
+     rather than just miscounted.
+  2. **The client router re-rendered from cache.** The load redirected `?restart` back to the bare
+     path so the parameter couldn't linger, but that lands on the SAME url the current page's data
+     came from, so the router correctly concluded nothing it tracks had changed. The cookie really
+     was gone; the page just kept showing the resumed step. `data-sveltekit-reload` fixed both 1 and
+     2 — a mitigation for a hazard the method choice removes outright.
+  3. **It made DAR-64's one-CTA confirmation a matter of interpretation**, since a second `<a>` sat
+     on that screen. A submit button isn't a link, so the rule now holds literally (pinned by an
+     e2e link count).
+
+  The general rule the detour leaves behind: **a state mutation belongs behind a POST, and if you
+  ever do put one behind an internal link it needs `data-sveltekit-reload`** — asserted by behaviour,
+  never by reading the attribute, which would have passed against the broken version.
+
+- **The POST redirects (303) rather than returning**, and that buys something concrete beyond a clean
+  URL and no re-POST prompt: without JS the response to a remote-form POST is a page **re-render**,
+  and the funnel records views on GET only (DAR-66's guard against counting per-step POSTs). A
+  restarted no-JS visitor would otherwise begin a fresh flow whose signup had no view behind it. The
+  303 makes the landing a real GET, so the new flow is counted like any other arrival.
 - **The honeypot sets it too**, around the decoy id. Skipping it would make the trap detectable from
   a response _header_, a far louder tell than the timing side-channel already accepted — and it costs
   nothing, since a decoy resumes into a flow whose every write no-ops. It's also what keeps the

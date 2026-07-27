@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
 	mintWaitlistResume,
 	verifyWaitlistResume,
+	WAITLIST_RESUME_STAGES,
 	WAITLIST_RESUME_TTL_SECONDS,
 	type WaitlistResumeState
 } from './waitlist-resume';
-import { WAITLIST_RESUME_STAGES } from '$lib/waitlist-resume';
 import { mintSignedValue, mintWaitlistToken, verifyWaitlistToken } from './waitlist-token';
 import { mintWaitlistFlowClaim } from './waitlist-flow';
 

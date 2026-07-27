@@ -503,6 +503,12 @@ test.describe('resuming after a reload', () => {
 		// A finished flow's cookie holds a screen and a link and nothing else — the row id is dropped
 		// at `done`, so there is no step form and nothing left to authorize.
 		await expect(main.locator('input[name="token"]')).toHaveCount(0);
+
+		// DAR-64's rule survives the escape hatch LITERALLY, not by argument: the confirmation still
+		// carries exactly one link, because the restart affordance is a submit button. It was an <a>
+		// in the first cut, which made this count 2 and the rule a matter of interpretation.
+		await expect(main.getByRole('link')).toHaveCount(1);
+		await expect(main.getByRole('button', { name: 'Start a new signup' })).toBeVisible();
 	});
 
 	// THE ESCAPE HATCH. Resuming a finished flow would otherwise trap a visitor who came back to sign
@@ -513,14 +519,15 @@ test.describe('resuming after a reload', () => {
 		await advanceToStep2(main);
 		await page.reload();
 
-		// The link appears only on a RESUMED render — never on the in-flight one, where it would be a
-		// second call to action on a screen designed to have exactly one (DAR-64).
-		const restart = main.getByRole('link', { name: 'Start a new signup' });
+		// The escape hatch appears only on a RESUMED render, and it is a SUBMIT BUTTON, not a link.
+		// Clearing the cookie is a mutation, so it sits behind a POST — which also means nothing can
+		// fire it by prefetch, and DAR-64's one-CTA confirmation stays literally true.
+		const restart = main.getByRole('button', { name: 'Start a new signup' });
 
-		// HOVERING IT MUST NOT FIRE IT. <body> sets `data-sveltekit-preload-data="hover"`, and
-		// preloading data runs the load — which for `?restart` deletes the cookie. Without the opt-out
-		// a mouse drifting across this link would silently throw away the visitor's place in the flow.
-		// Asserted by behaviour, not by reading the attribute: what matters is that the state survives.
+		// MERELY BEING NEAR IT MUST NOT FIRE IT. The first cut was `<a href="?restart">` handled in the
+		// load, and <body>'s `data-sveltekit-preload-data="hover"` meant preloading the data ran that
+		// load and dropped the cookie on mouse-over, with no click. A POST is unreachable that way, but
+		// keep asserting the behaviour: what matters is that hovering leaves the state alone.
 		await restart.hover();
 		await page.waitForTimeout(1000); // Kit's hover preload fires well inside this
 		await page.reload();
@@ -528,16 +535,15 @@ test.describe('resuming after a reload', () => {
 			main.getByRole('heading', { level: 1, name: "Tell us what you're working on" })
 		).toBeVisible();
 
-		await main.getByRole('link', { name: 'Start a new signup' }).click();
+		await main.getByRole('button', { name: 'Start a new signup' }).click();
 
 		await expect(
 			main.getByRole('heading', { level: 1, name: 'Get early access to GIDE' })
 		).toBeVisible();
 		await expect(main.getByLabel('Email', { exact: true })).toHaveValue('');
 
-		// The parameter must NOT survive into the URL. Left there, the next signup would be made from
-		// `/waitlist?restart`, and the very next reload would clear the cookie step 1 had just set —
-		// the original bug, reintroduced for exactly the people who used the escape hatch.
+		// POST/Redirect/GET: the 303 lands on the bare path, so nothing about the restart survives in
+		// the URL to be re-submitted or re-run.
 		await expect(page).toHaveURL(/\/waitlist$/);
 
 		// Really cleared, not just this render: a plain reload of /waitlist stays on the form.
@@ -553,7 +559,7 @@ test.describe('resuming after a reload', () => {
 		const main = page.getByRole('main');
 		await advanceToStep2(main);
 		await page.reload();
-		await main.getByRole('link', { name: 'Start a new signup' }).click();
+		await main.getByRole('button', { name: 'Start a new signup' }).click();
 
 		await advanceToStep2(main);
 		await page.reload();
@@ -618,7 +624,7 @@ test.describe('resuming after a reload', () => {
 		const main = page.getByRole('main');
 		await advanceToStep2(main);
 
-		await expect(main.getByRole('link', { name: 'Start a new signup' })).toHaveCount(0);
+		await expect(main.getByRole('button', { name: 'Start a new signup' })).toHaveCount(0);
 	});
 
 	// The cookie's own contract. It carries a re-mintable row handle, so script must not be able to
@@ -762,10 +768,9 @@ test.describe('without JavaScript', () => {
 			main.getByRole('heading', { level: 1, name: "Tell us what you're working on" })
 		).toBeVisible();
 		await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
-		// The restart link is a plain <a> — the escape hatch has to work with JS off too.
-		await expect(main.getByRole('link', { name: 'Start a new signup' })).toHaveAttribute(
-			'href',
-			/\?restart$/
-		);
+		// The escape hatch degrades like every other form here: a native POST to the remote endpoint.
+		const restart = main.getByRole('button', { name: 'Start a new signup' }).locator('..');
+		await expect(restart).toHaveAttribute('method', /post/i);
+		await expect(restart).toHaveAttribute('action', /restartWaitlist/);
 	});
 });

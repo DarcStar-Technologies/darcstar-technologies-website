@@ -1,15 +1,9 @@
-import { redirect } from '@sveltejs/kit';
 import { getDb, type Db } from '$lib/server/db';
 import { captureWaitlistFunnel } from '$lib/server/waitlist-funnel';
 import { readEnv } from '$lib/server/env';
 import { mintWaitlistFlowClaim } from '$lib/server/waitlist-flow';
 import { mintWaitlistToken } from '$lib/server/waitlist-token';
-import {
-	clearWaitlistResume,
-	verifyWaitlistResume,
-	WAITLIST_RESTART_PARAM,
-	WAITLIST_RESUME_COOKIE
-} from '$lib/server/waitlist-resume';
+import { verifyWaitlistResume, WAITLIST_RESUME_COOKIE } from '$lib/server/waitlist-resume';
 import type { PageServerLoad } from './$types';
 
 // /waitlist's server load does two things, and touches the database for neither of them:
@@ -29,24 +23,17 @@ import type { PageServerLoad } from './$types';
 // property the step endpoints keep by routing on the answers just submitted rather than on stored
 // state (waitlist-steps.remote.ts' ANTI-ORACLE note): no response here varies with whether an address
 // is known.
-export const load: PageServerLoad = async ({ request, url, cookies, platform, setHeaders }) => {
+export const load: PageServerLoad = async ({ request, cookies, platform, setHeaders }) => {
 	// Request-scoped reads FIRST, before any await: on workerd `platform.env` is only valid during the
 	// request. getDb() reads it sync, and so does readEnv.
 	const tokenSecret = readEnv('BETTER_AUTH_SECRET');
 	const cookie = cookies.get(WAITLIST_RESUME_COOKIE);
 
-	// `?restart` is the escape hatch (see WAITLIST_RESTART_PARAM): without it, a visitor who finished
-	// the flow and came back to sign up a second address would meet the confirmation and no form.
-	//
-	// It REDIRECTS to the bare path rather than rendering, so the parameter can't linger in the URL.
-	// If it did, the visitor's next signup would be submitted from `/waitlist?restart` and the reload
-	// they'd been fixed for would clear the cookie step 1 had just set — reinstating the exact bug,
-	// but only for the people who used the escape hatch. Redirecting also keeps the funnel honest:
-	// nothing is rendered here, so the view is recorded once, by the GET that lands.
-	if (url.searchParams.has(WAITLIST_RESTART_PARAM)) {
-		clearWaitlistResume(cookies);
-		redirect(303, url.pathname); // `pathname`, so an `/es/waitlist` restart stays in Spanish
-	}
+	// NOTE: this load only ever READS the resume state. Clearing it is `restartWaitlist`
+	// (waitlist.remote.ts), a POST — deliberately not a `?restart` query parameter handled here, which
+	// is what the first cut did. A destructive GET behind an internal link is a trap in a Kit app:
+	// `<body>` sets `preload-data="hover"`, so preloading the data ran this load and dropped the cookie
+	// on mouse-over, with no click.
 
 	// getDb() throws when the DB env is missing. /waitlist rendered fine without a database before
 	// this load existed, and it must keep doing so — showing the form is the page's job; reporting on

@@ -1,17 +1,18 @@
-// Waitlist signup — a SvelteKit remote `form` function, spread onto the /waitlist page's <form> so it
-// progressively enhances with JS and degrades to a native POST without. Lives in $lib (allowed);
-// remote functions may sit anywhere under src EXCEPT $lib/server. Mirrors submitContact
-// (contact.remote.ts); the key differences are the append-only submission insert (waitlist-store.ts)
-// and gating the notification emails on a genuine new signup.
+// The /waitlist page's two non-step remote `form` functions — the signup itself, and the restart that
+// throws its resume state away. Both are spread onto a <form>, so both progressively enhance with JS
+// and degrade to a native POST without. Lives in $lib (allowed); remote functions may sit anywhere
+// under src EXCEPT $lib/server. `joinWaitlist` mirrors submitContact (contact.remote.ts); the key
+// differences are the append-only submission insert (waitlist-store.ts) and gating the notification
+// emails on a genuine new signup.
 import { form, getRequestEvent } from '$app/server';
-import { invalid } from '@sveltejs/kit';
+import { invalid, redirect } from '@sveltejs/kit';
 import { and, eq, gt } from 'drizzle-orm';
 import { getDb } from '$lib/server/db';
 import { waitlistSubmission } from '$lib/server/db/schema';
 import { validateWaitlist } from '$lib/server/waitlist';
 import { insertWaitlistSubmission } from '$lib/server/waitlist-store';
 import { mintWaitlistToken, decoyWaitlistId } from '$lib/server/waitlist-token';
-import { setWaitlistResume } from '$lib/server/waitlist-resume';
+import { clearWaitlistResume, setWaitlistResume } from '$lib/server/waitlist-resume';
 import { readEnv } from '$lib/server/env';
 import { hashIp } from '$lib/server/contact'; // shared truncated-SHA-256 IP hash (same throttle model)
 import { sendWaitlistEmails } from '$lib/server/waitlist-notify';
@@ -183,3 +184,37 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		};
 	}
 );
+
+/**
+ * Throw away this browser's resume state (DAR-75) — the "Start a new signup" escape hatch.
+ *
+ * WHY A FORM AND NOT A LINK. Resuming is what makes the escape hatch necessary, and clearing the
+ * cookie is a state mutation, so it belongs behind a POST. The first cut was `<a href="?restart">`
+ * handled in the page's load, and a destructive GET behind an internal link is a trap in a SvelteKit
+ * app: `<body>` sets `preload-data="hover"`, so preloading the data ran the load and dropped the
+ * cookie on mouse-over, with no click. That needed `data-sveltekit-reload` to defuse — a mitigation
+ * for a hazard the method choice removes outright. A POST is never prefetched, so nothing can fire
+ * this by accident.
+ *
+ * It also settles a design question the link raised: DAR-64 gives the confirmation exactly ONE call
+ * to action, and a second <a> on that screen was at best a technicality. A submit button isn't a
+ * link, so the rule holds without an argument.
+ *
+ * REDIRECTS RATHER THAN RETURNING. Classic POST/Redirect/GET, and here it buys something concrete
+ * beyond a clean URL and no re-POST prompt: without JS the response to this POST is a page
+ * RE-RENDER, and the funnel's view event is recorded on GET only (DAR-66's guard against counting
+ * per-step POST re-renders). A restarted no-JS visitor would therefore begin a fresh flow whose
+ * signup had no view behind it. The 303 turns the landing into a real GET, so the new flow is
+ * counted exactly like any other arrival.
+ *
+ * Takes no input and needs no guard: it only deletes a cookie the caller already holds, so the worst
+ * a forged POST does is show its own sender a signup form.
+ */
+export const restartWaitlist = form(async () => {
+	const { cookies, url } = getRequestEvent();
+	clearWaitlistResume(cookies);
+	// `url` is the PAGE the form was called from (Kit's remote-function contract), so `pathname` keeps
+	// whatever locale prefix it had — `/es/waitlist` restarts in Spanish — and drops the `?/remote=…`
+	// a native submit posts to.
+	redirect(303, url.pathname);
+});

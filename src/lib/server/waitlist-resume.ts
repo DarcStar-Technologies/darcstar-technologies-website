@@ -46,19 +46,27 @@ import {
 } from './waitlist-flow';
 import { WAITLIST_CTAS, type WaitlistCta } from '$lib/waitlist-qualification';
 import { echoFlowId } from '$lib/waitlist-funnel';
-import { WAITLIST_RESUME_STAGES, type WaitlistResumeStage } from '$lib/waitlist-resume';
-
-export { WAITLIST_RESTART_PARAM, type WaitlistResumeStage } from '$lib/waitlist-resume';
-
-// Every step a step endpoint can route to must be a stage we can resume into, or a visitor could be
-// left on a screen the cookie has no way to describe. The two lists live in different files (the
-// stages have to be client-reachable, `WaitlistNextStep` must not be), so the link between them is a
-// type-level assertion rather than a `satisfies` — the same completeness guard `waitlist-collate.ts`
-// puts on its conflict-field list. Non-distributive by construction: a NEW next-step slug makes
-// `EveryNextStepResumable` `false` and this line stops compiling.
-type EveryNextStepResumable = [WaitlistNextStep] extends [WaitlistResumeStage] ? true : false;
-const _everyNextStepResumable: EveryNextStepResumable = true;
-void _everyNextStepResumable;
+/**
+ * The stages a visitor can be resumed INTO — every screen the flow can leave someone on. It is
+ * `WaitlistNextStep` (what a step endpoint routes to) plus `step2`, which only step 1 routes to and
+ * which therefore isn't in that union; the `satisfies` makes a new next-step slug a compile error
+ * here until it is a resumable one.
+ *
+ * `step1` is deliberately absent: it is the ABSENCE of resume state, not a state to store.
+ *
+ * This lives server-side with everything else because nothing client-facing needs it — the page
+ * compares `data.resume.stage` against literals and the type reaches it through `PageData`. (It was
+ * briefly split into a `$lib/waitlist-resume.ts` so a component could import the restart QUERY
+ * PARAM; making the restart a POST removed that import and the file with it.)
+ */
+export const WAITLIST_RESUME_STAGES = [
+	'step2',
+	'step3',
+	'step4a',
+	'step4b',
+	'done'
+] as const satisfies readonly ('step2' | WaitlistNextStep)[];
+export type WaitlistResumeStage = (typeof WAITLIST_RESUME_STAGES)[number];
 
 /**
  * Everything a fresh GET of /waitlist needs to put the visitor back where they were.
