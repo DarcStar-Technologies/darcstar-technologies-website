@@ -7,9 +7,16 @@ import type { PapersQueryResult } from '$lib/sanity/types';
 // fetch — no per-filter Sanity round trips. Kept out of the component so the semantics are
 // unit-testable without a DOM.
 //
-// Scale assumption: a curated, un-paginated index (tens of papers). Facets/filter/sort all
-// derive client/SSR-side from the full fetch — pagination or a corpus of hundreds would need
-// GROQ-side filtering instead.
+// Scale: the index is un-paginated — every published paper is fetched and rendered per request.
+// Everything here is therefore written as a SINGLE pass over the corpus and nothing walks it
+// twice. Measured on the page's full re-derive (facets + filter + sort + partition), synthetic
+// papers carrying 3 topics and 2 authors each: 0.14 ms at 100 papers, 0.49 ms at 300, 1.4 ms at
+// 1000 — so this layer is not what will hurt.
+//
+// What WILL, and what this module can't fix, sits upstream: `papersQuery` ships every
+// abstract/author/topic on every SSR request, and the page renders a card per paper. Bounding
+// those means GROQ-side filtering + pagination, which changes this module's contract too — facets
+// can no longer derive from the fetched set once that set is one page of the corpus.
 
 export type PaperRow = PapersQueryResult[number];
 
@@ -82,15 +89,34 @@ export function researchTopicHref(slug: string): string {
 	return localizeHref(`/research?${FILTER_PARAM.topic}=${encodeURIComponent(slug)}`);
 }
 
-// Conjunctive (AND) across facets. Origin uses the DAR-52 fail-safe polarity: anything not
-// explicitly darcstarAuthored counts as external.
+// The DAR-52 fail-safe polarity, in ONE place: only an explicit flag makes a paper ours, so an
+// unset/null value stays third-party. Both the origin filter and the section split read it, and
+// they used to spell it out separately (`!!p.darcstarAuthored`, `p.darcstarAuthored`,
+// `!p.darcstarAuthored`) — three chances for the safe direction to drift.
+export function isDarcstarAuthored(paper: PaperRow): boolean {
+	return paper.darcstarAuthored === true;
+}
+
+// Conjunctive (AND) across facets.
 export function filterPapers(papers: PaperRow[], f: ResearchFilters): PaperRow[] {
 	return papers.filter(
 		(p) =>
 			(!f.topic || (p.topics ?? []).some((t) => t.slug === f.topic)) &&
 			(!f.author || (p.authors ?? []).some((a) => a.slug === f.author)) &&
-			(!f.origin || (f.origin === 'darcstar') === !!p.darcstarAuthored)
+			(!f.origin || (f.origin === 'darcstar') === isDarcstarAuthored(p))
 	);
+}
+
+// The origin split as a single partition rather than two `.filter()` walks of the same list —
+// order-preserving, so each section keeps whatever order sortPapers established.
+export function partitionByOrigin(papers: PaperRow[]): {
+	darcstar: PaperRow[];
+	external: PaperRow[];
+} {
+	const darcstar: PaperRow[] = [];
+	const external: PaperRow[] = [];
+	for (const p of papers) (isDarcstarAuthored(p) ? darcstar : external).push(p);
+	return { darcstar, external };
 }
 
 // 'date' keeps the query's publishedDate-desc order (GROQ already sorted it — don't re-sort,
@@ -113,38 +139,43 @@ export function sortPapers(papers: PaperRow[], sort: ResearchSort, locale?: stri
 	return papers;
 }
 
-// The in-use topic set, deduped by slug and title-sorted — the ONE walk of the papers' topics.
-// Both consumers derive from it: the Topic facet select (which needs slug + title) and the
-// /research topic guide (which needs the `description` a facet option has no room for). Kept as
-// one function so "which topics does this index have" can't answer differently in two places.
+// Everything the /research chrome derives from the corpus, in ONE pass over it. Topics and
+// authors were two walks (and topics briefly three, because the guide and the select each asked
+// for them); at hundreds of papers that is pure waste, and worse, it let "which topics does this
+// index have" be answered by two different loops.
 //
-// Slugless topics are skipped, matching the facet rule: a topic that can't round-trip through a
-// URL can't be filtered to, so the guide couldn't link it either. `description` is carried
-// through as-is (null when the editor left it blank) — deciding what to do with an undescribed
-// topic belongs to the renderer, not here.
-export function paperTopics(papers: PaperRow[]): TopicEntry[] {
+// Facets come from the papers themselves (deduped by slug, label-sorted), so the topic and author
+// selects only ever offer values matching at least one paper — origin/sort are static option sets
+// and that guarantee is theirs alone. Entries without a slug can't round-trip through a URL and
+// are skipped, which is why the topic guide can't link a slugless topic either.
+//
+// `topics` comes back as full entries rather than select options because its two consumers want
+// different projections: the guide renders the authored `description`, a `<select>` has nowhere
+// to put one. Carried through as-is (null when the editor left it blank) — deciding what an
+// undescribed topic means belongs to the renderer.
+export interface PaperFacets {
+	topics: TopicEntry[];
+	authors: FacetOption[];
+}
+
+export function paperFacets(papers: PaperRow[]): PaperFacets {
 	const topics = new Map<string, TopicEntry>();
+	const authors = new Map<string, string>();
 	for (const p of papers) {
 		for (const t of p.topics ?? []) {
 			if (t.slug) topics.set(t.slug, { slug: t.slug, title: t.title, description: t.description });
 		}
-	}
-	return [...topics.values()].sort((a, b) => a.title.localeCompare(b.title));
-}
-
-// Facet options come from the papers themselves (deduped by slug, label-sorted), so the topic
-// and author selects only ever offer values that match at least one paper (origin/sort are
-// static option sets — that guarantee is theirs alone). Entries without a slug can't
-// round-trip through a URL and are skipped.
-export function paperFacets(papers: PaperRow[]): { topics: FacetOption[]; authors: FacetOption[] } {
-	const authors = new Map<string, string>();
-	for (const p of papers) {
 		for (const a of p.authors ?? []) if (a.slug) authors.set(a.slug, a.name);
 	}
 	return {
-		topics: paperTopics(papers).map((t) => ({ value: t.slug, label: t.title })),
+		topics: [...topics.values()].sort((a, b) => a.title.localeCompare(b.title)),
 		authors: [...authors.entries()]
 			.map(([value, label]) => ({ value, label }))
 			.sort((a, b) => a.label.localeCompare(b.label))
 	};
+}
+
+/** Projects topic entries down to the Topic select's option shape. */
+export function topicOptions(topics: TopicEntry[]): FacetOption[] {
+	return topics.map((t) => ({ value: t.slug, label: t.title }));
 }

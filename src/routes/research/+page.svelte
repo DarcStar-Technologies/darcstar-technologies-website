@@ -5,9 +5,9 @@
 	//
 	// Split by origin (DAR-52): first-party DarcStar work and third-party "foundational reading"
 	// render as separate sections, and every external card carries origin chips (PaperOrigin) plus
-	// an explicit not-ours disclaimer — third-party research must never read as DarcStar's.
-	// `!darcstarAuthored` (not `=== false`) so an unset/null flag stays external, the fail-safe
-	// direction. Empty groups skip their section entirely.
+	// an explicit not-ours disclaimer — third-party research must never read as DarcStar's. The
+	// fail-safe polarity (an unset/null flag stays external) lives in `isDarcstarAuthored`, which
+	// both the origin filter and the section partition read. Empty groups skip their section.
 	//
 	// Filtering/sorting (?topic=&author=&origin=&sort=): URL params are the single source of
 	// state — shareable, SSR-rendered, and no-JS friendly. Without JS the bar is a native GET
@@ -32,10 +32,11 @@
 		filterPapers,
 		hasActiveFilters,
 		paperFacets,
-		paperTopics,
+		partitionByOrigin,
 		parseResearchFilters,
 		researchTopicHref,
 		sortPapers,
+		topicOptions,
 		type FacetOption
 	} from '$lib/research-filters';
 	import { m } from '$lib/paraglide/messages.js';
@@ -47,19 +48,20 @@
 
 	let { data }: { data: PageServerData } = $props();
 
+	// One pass over the corpus for the chrome (`paperFacets`), then filter → sort → partition. The
+	// facets are derived from data.papers, NOT `filtered`: the Topic/Author selects offer the whole
+	// index, and the topic guide explains the taxonomy — filtering to one topic must not shrink
+	// either to that one entry (DAR-56).
 	const filters = $derived(parseResearchFilters(page.url.searchParams));
 	const facets = $derived(paperFacets(data.papers));
-	// From data.papers, NOT `filtered`: the guide explains the taxonomy, so filtering to one topic
-	// must not shrink it to that one entry (DAR-56).
-	const topics = $derived(paperTopics(data.papers));
+	const topicSelectOptions = $derived(topicOptions(facets.topics));
 	const filtered = $derived(filterPapers(data.papers, filters));
 	// A title sort merges the origin sections into ONE alphabetical list — two separately-sorted
 	// sections would read as broken. Safe: every card carries its own origin chip + disclaimer
 	// (DAR-52), so the section framing is redundant for correctness.
 	const mergeSections = $derived(filters.sort === 'title');
 	const allPapers = $derived(sortPapers(filtered, filters.sort, getLocale()));
-	const darcstarPapers = $derived(allPapers.filter((p) => p.darcstarAuthored));
-	const externalPapers = $derived(allPapers.filter((p) => !p.darcstarAuthored));
+	const sections = $derived(partitionByOrigin(allPapers));
 	const filtersActive = $derived(hasActiveFilters(filters));
 
 	const originOptions = $derived<FacetOption[]>([
@@ -195,7 +197,7 @@
 					FILTER_PARAM.topic,
 					m.research_filter_topic_label(),
 					m.research_filter_all_topics(),
-					facets.topics,
+					topicSelectOptions,
 					filters.topic
 				)}
 				{@render filterSelect(
@@ -239,7 +241,7 @@
 		     active topic's description rendered plainly when one is filtered to. Self-guarding:
 		     it renders nothing (no wrapper) when no topic has a description, so no `{#if}` here
 		     and no phantom `space-y-8` gap. -->
-		<TopicGuide {topics} activeSlug={filters.topic} />
+		<TopicGuide topics={facets.topics} activeSlug={filters.topic} />
 
 		{#if data.papers.length === 0}
 			<p class="glass-card px-8 py-12 text-center text-sm text-body">{m.research_empty()}</p>
@@ -264,19 +266,19 @@
 				</ul>
 			{:else}
 				<div class="space-y-12">
-					{#if darcstarPapers.length > 0}
+					{#if sections.darcstar.length > 0}
 						{@render paperSection(
 							m.research_section_darcstar_heading(),
 							m.research_section_darcstar_note(),
-							darcstarPapers
+							sections.darcstar
 						)}
 					{/if}
 
-					{#if externalPapers.length > 0}
+					{#if sections.external.length > 0}
 						{@render paperSection(
 							m.research_section_external_heading(),
 							m.research_section_external_note(),
-							externalPapers
+							sections.external
 						)}
 					{/if}
 				</div>

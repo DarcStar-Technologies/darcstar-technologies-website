@@ -4,10 +4,11 @@ import {
 	filterPapers,
 	hasActiveFilters,
 	paperFacets,
-	paperTopics,
+	partitionByOrigin,
 	parseResearchFilters,
 	researchTopicHref,
 	sortPapers,
+	topicOptions,
 	type PaperRow
 } from './research-filters';
 
@@ -211,9 +212,13 @@ describe('buildFilterQuery', () => {
 	});
 });
 
-describe('paperTopics', () => {
-	it('dedupes by slug, sorts by title, keeps descriptions, and skips slugless entries', () => {
-		expect(paperTopics(all)).toEqual([
+describe('paperFacets', () => {
+	it('derives topics and authors in one pass: deduped by slug, title-sorted, slugless skipped', () => {
+		const { topics, authors } = paperFacets(all);
+		// Topics keep their authored description — the /research guide renders it, and a topic that
+		// appears on two papers must resolve to ONE entry, whole (p3 tags `transformers` with a
+		// description, p2 without; the dedup must not leave a half-merged row).
+		expect(topics).toEqual([
 			{ slug: 'safety', title: 'Provable Safety', description: 'Verified control.' },
 			{
 				slug: 'transformers',
@@ -221,34 +226,42 @@ describe('paperTopics', () => {
 				description: 'The architecture behind modern sequence models.'
 			}
 		]);
+		// Label-sorted (A. Vaswani, M. Harris, T. Dao), not value-sorted.
+		expect(authors.map((a) => a.value)).toEqual(['a-vaswani', 'm-harris', 't-dao']);
 	});
 
 	it('carries a blank description through as null rather than dropping the topic', () => {
 		// The facet select still needs an undescribed topic (it has papers); only the /research
 		// guide filters those out, and that call is the RENDERER's — not this function's.
-		const topics = paperTopics([attention]);
-		expect(topics).toEqual([
+		expect(paperFacets([attention]).topics).toEqual([
 			{ slug: 'transformers', title: 'Transformer Architecture', description: null }
 		]);
 	});
 
-	it('returns an empty list for an empty index', () => {
-		expect(paperTopics([])).toEqual([]);
+	it('returns empty facets for an empty index', () => {
+		expect(paperFacets([])).toEqual({ topics: [], authors: [] });
 	});
 });
 
-describe('paperFacets', () => {
-	it('dedupes by slug, sorts by label, and skips slugless entries', () => {
-		const { topics, authors } = paperFacets(all);
-		expect(topics).toEqual([
+describe('topicOptions', () => {
+	it('projects entries down to the select shape, dropping the description', () => {
+		expect(topicOptions(paperFacets(all).topics)).toEqual([
 			{ value: 'safety', label: 'Provable Safety' },
 			{ value: 'transformers', label: 'Transformer Architecture' }
 		]);
-		// Label-sorted (A. Vaswani, M. Harris, T. Dao), not value-sorted.
-		expect(authors.map((a) => a.value)).toEqual(['a-vaswani', 'm-harris', 't-dao']);
+	});
+});
+
+describe('partitionByOrigin', () => {
+	it('splits by the fail-safe polarity and preserves order within each side', () => {
+		// gide is ours; attention is explicitly false; flash leaves the flag UNSET — DAR-52 says
+		// that stays third-party, which is the whole point of the helper this shares with the filter.
+		const { darcstar, external } = partitionByOrigin(all);
+		expect(darcstar.map((p) => p._id)).toEqual(['p1']);
+		expect(external.map((p) => p._id)).toEqual(['p2', 'p3']);
 	});
 
-	it('returns empty facets for an empty index', () => {
-		expect(paperFacets([])).toEqual({ topics: [], authors: [] });
+	it('returns two empty sides for an empty index', () => {
+		expect(partitionByOrigin([])).toEqual({ darcstar: [], external: [] });
 	});
 });

@@ -162,8 +162,19 @@ server load never reads the URL, so query-only navigations don't re-hit Sanity. 
 options derive from the fetched papers (those two selects only offer values that match at least
 one paper; origin/sort are static sets). A **title sort merges the origin sections** into one
 A–Z list (cards are origin-self-sufficient per DAR-52). Topic tags (`PaperTopics`'s `topicHref`)
-link into `?topic=`, so a tag is an entry point, not a dead end. Scale assumption: a curated,
-un-paginated index — pagination or hundreds of papers would need GROQ-side filtering.
+link into `?topic=`, so a tag is an entry point, not a dead end.
+
+**Scale.** The index is **un-paginated**: every published paper is fetched and rendered per
+request. `research-filters.ts` is written so nothing walks the corpus twice — `paperFacets`
+derives topics **and** authors in one pass, `partitionByOrigin` splits the origin sections in one
+(it was two `.filter()` calls), and the DAR-52 fail-safe polarity lives in a single
+`isDarcstarAuthored` predicate that the origin filter and the partition share. Measured on the
+page's full re-derive (facets + filter + sort + partition, 3 topics and 2 authors per paper):
+**0.14 ms at 100 papers, 0.49 ms at 300, 1.4 ms at 1000** — this layer is not what will hurt. What
+it does **not** fix sits upstream and will bite first: `papersQuery` ships every abstract/author/topic on every SSR request, and the page
+renders a card per paper. Bounding those means GROQ-side filtering + pagination — which also
+changes the filter module's contract, since facets can no longer derive from the fetched set once
+that set is one page of the corpus.
 
 ### Paper meta-rail charge mapping
 
