@@ -1,9 +1,14 @@
 // Invite-only onboarding (DAR-67) — the database half: looking up whether an address already has an
-// account, and the two timestamp stamps that move a waitlist row through not-invited → invited →
+// account, and the two timestamp stamps that move a prospect through not-invited → invited →
 // activated. Server-only; the state vocabulary and its derivation are client-safe ($lib/waitlist-invite.ts).
+//
+// These stamps address the LEAD since DAR-88, not a signup row. An invitation is something we did to a
+// PERSON — they now have (or are being offered) one account — and a person has N submissions, so
+// hanging it off one arbitrary submission would leave the others looking un-invited and would make
+// "have I already emailed them?" depend on which row an operator happened to be looking at.
 import { and, eq, isNull, isNotNull, sql } from 'drizzle-orm';
 import type { Db } from './db';
-import { waitlist } from './db/schema';
+import { waitlistLead, waitlistSubmission } from './db/schema';
 import { user } from './db/auth.schema';
 import { isStaff } from './admin-access';
 
@@ -29,8 +34,8 @@ export interface ExistingAccount {
  * the area). Routing an operator's invite through an admin-only lookup would 403 them at a step that
  * only reads.
  *
- * Case-insensitive: Better Auth lowercases account emails, but the waitlist column stores whatever
- * the visitor typed, so a row reading `Ada@Example.com` must still find the account.
+ * Case-insensitive: Better Auth lowercases account emails, and although the lead's email is stored
+ * lowercase, a legacy value reading `Ada@Example.com` must still find the account.
  */
 export async function findAccountByEmail(
 	db: Db,
@@ -58,6 +63,40 @@ export async function findAccountByEmail(
 }
 
 /**
+ * Who to address an invitation to, for one lead.
+ *
+ * The email comes from the LEAD (it is the lead's identity — the one field no submission can change,
+ * since a differing address would simply be a different lead). The name comes from that lead's
+ * EARLIEST submission that supplied one, and the "earliest" is the load-bearing part: under
+ * append-only anyone can add a submission for a known address, so taking the newest name would let a
+ * stranger choose the greeting on an email we send to the real person's inbox. Oldest-non-null keeps
+ * the pre-DAR-88 behaviour exactly — step 1's enrich was fill-forward on `name`, so the first one
+ * given always won — without needing a stored copy of it.
+ *
+ * Returns null when the lead is gone (deleted between render and click).
+ */
+export async function findWaitlistInviteTarget(
+	db: Db,
+	leadId: string
+): Promise<{ email: string; name: string | null } | null> {
+	const [lead] = await db
+		.select({ email: waitlistLead.email })
+		.from(waitlistLead)
+		.where(eq(waitlistLead.id, leadId))
+		.limit(1);
+	if (!lead) return null;
+
+	const [named] = await db
+		.select({ name: waitlistSubmission.name })
+		.from(waitlistSubmission)
+		.where(and(eq(waitlistSubmission.leadId, leadId), isNotNull(waitlistSubmission.name)))
+		.orderBy(waitlistSubmission.createdAt)
+		.limit(1);
+
+	return { email: lead.email, name: named?.name ?? null };
+}
+
+/**
  * Record that an invitation went out. Called ONLY after the email has actually been accepted by
  * Resend, so `invited_at` means "a message was sent", never "we tried".
  *
@@ -65,24 +104,22 @@ export async function findAccountByEmail(
  * view has to answer is "did I already email them, and how long ago", and a stale first-contact
  * timestamp answers it wrongly. The per-invite Workers Logs line keeps the full history.
  *
- * Leaves `updated_at` alone, for the same reason `markWaitlistActivated` does: that column tracks the
- * VISITOR's edits to their own qualification answers (the step writes bump it), and an invite is our
- * action, not theirs. Bumping it would make the triage view's "last updated" report activity the
- * prospect never performed.
+ * Touches only the lead, never a submission: the submissions are an immutable record of what people
+ * told us, and our own outreach is not something they said.
  */
 export async function markWaitlistInvited(
 	db: Db,
-	waitlistId: string,
+	leadId: string,
 	invitedBy: string
 ): Promise<void> {
 	await db
-		.update(waitlist)
+		.update(waitlistLead)
 		.set({ invitedAt: new Date(), invitedBy })
-		.where(eq(waitlist.id, waitlistId));
+		.where(eq(waitlistLead.id, leadId));
 }
 
 /**
- * Stamp `activated_at` for the invited prospect at `email`, if there is one. Returns how many rows
+ * Stamp `activated_at` for the invited prospect at `email`, if there is one. Returns how many leads
  * were stamped (0 or 1) so the caller can log it.
  *
  * Two conditions in the WHERE clause, and both are the point:
@@ -95,22 +132,43 @@ export async function markWaitlistInvited(
  *   `activated_at IS NULL` — monotonic. The column records when they FIRST set a password; a routine
  *   reset years later must not rewrite that, or the field silently becomes "last password change".
  *
- * Deliberately does not touch `updated_at`: that column tracks the visitor's own edits to their
- * qualification answers, and this is our stamp, not theirs.
+ * Keyed by email rather than by id because that is all the auth hook knows — and it stays a
+ * single-row update under append-only precisely because the uniqueness moved to the lead: run against
+ * the submissions it would now stamp every row that address ever created.
  */
 export async function markWaitlistActivated(db: Db, email: string): Promise<number> {
 	const normalized = email.trim().toLowerCase();
 	if (!normalized) return 0;
 	const rows = await db
-		.update(waitlist)
+		.update(waitlistLead)
 		.set({ activatedAt: new Date() })
 		.where(
 			and(
-				eq(sql`lower(${waitlist.email})`, normalized),
-				isNotNull(waitlist.invitedAt),
-				isNull(waitlist.activatedAt)
+				eq(sql`lower(${waitlistLead.email})`, normalized),
+				isNotNull(waitlistLead.invitedAt),
+				isNull(waitlistLead.activatedAt)
 			)
 		)
-		.returning({ id: waitlist.id });
+		.returning({ id: waitlistLead.id });
 	return rows.length;
+}
+
+/**
+ * Stamp "a human has reconciled this lead's submissions" (DAR-88). Idempotent by design — re-marking
+ * an already-reviewed lead refreshes the stamp, because the useful reading is "last looked at", and a
+ * lead that gains a new submission after review genuinely does need looking at again.
+ *
+ * Deliberately NOT a merge: nothing is copied from a submission onto the lead. The reconciliation
+ * lands in whatever the operator does next (an outreach, a CRM record); a merged-answers column set
+ * here would rebuild the overwrite problem DAR-88 exists to remove, only with a nicer UI on it.
+ */
+export async function markWaitlistReviewed(
+	db: Db,
+	leadId: string,
+	reviewedBy: string
+): Promise<void> {
+	await db
+		.update(waitlistLead)
+		.set({ reviewedAt: new Date(), reviewedBy })
+		.where(eq(waitlistLead.id, leadId));
 }

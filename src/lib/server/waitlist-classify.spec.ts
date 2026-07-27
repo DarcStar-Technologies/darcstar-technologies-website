@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { classifyWaitlistLead, type WaitlistLeadSignals } from './waitlist-classify';
+import {
+	classifyWaitlistLead,
+	classifyWaitlistLeadGroup,
+	type WaitlistLeadSignals
+} from './waitlist-classify';
 import { WAITLIST_ROLES } from '$lib/waitlist-roles';
 import {
 	WAITLIST_APPLICATIONS,
@@ -227,5 +231,72 @@ describe('waitlistLeadClassRank', () => {
 	it('ranks an unrecognized class last rather than first', () => {
 		const rank = waitlistLeadClassRank('not-a-class' as (typeof WAITLIST_LEAD_CLASSES)[number]);
 		expect(rank).toBeGreaterThan(waitlistLeadClassRank('investor'));
+	});
+});
+
+// DAR-88 — a lead is now N submissions, so the rubric has to reduce over a group. The reduction is
+// "classify each, take the strongest", and the alternative (merge the fields, then classify) is what
+// these pin it against.
+describe('classifyWaitlistLeadGroup', () => {
+	// `signals()` above fills in PRIORITY_A for everything unset, which is the right default for the
+	// matrix tests but the wrong one here: these need submissions that answered ONE thing, so that
+	// splitting a band's requirements across several of them really does split them.
+	const BLANK: WaitlistLeadSignals = {
+		role: null,
+		primaryApplication: null,
+		evaluationTimeline: null,
+		pilotInterest: null
+	};
+	const only = (over: Partial<WaitlistLeadSignals>): WaitlistLeadSignals => ({ ...BLANK, ...over });
+
+	it('matches classifyWaitlistLead for a single submission', () => {
+		for (const role of ROLE_INPUTS) {
+			for (const evaluationTimeline of TIMELINE_INPUTS) {
+				const one = signals({ role, evaluationTimeline });
+				expect(classifyWaitlistLeadGroup([one])).toBe(classifyWaitlistLead(one));
+			}
+		}
+	});
+
+	it('takes the strongest band, regardless of the order the submissions arrive in', () => {
+		const weak = signals({ role: 'researcher' });
+		expect(classifyWaitlistLeadGroup([weak, PRIORITY_A])).toBe('priority-a');
+		expect(classifyWaitlistLeadGroup([PRIORITY_A, weak])).toBe('priority-a');
+	});
+
+	// THE POINT OF CLASSIFYING FIRST. Split Priority A's three requirements across three different
+	// submissions: no single submitter gave the combination, so no Priority A may be reported. A
+	// field-merge reduction would score this as A — a lead nobody actually is — which is the same
+	// class of error as the write-path merging DAR-88 removed.
+	it('never assembles a band from answers given by different submitters', () => {
+		const spread: WaitlistLeadSignals[] = [
+			only({ role: PRIORITY_A.role }),
+			only({
+				primaryApplication: PRIORITY_A.primaryApplication,
+				evaluationTimeline: PRIORITY_A.evaluationTimeline
+			}),
+			only({ pilotInterest: PRIORITY_A.pilotInterest })
+		];
+		// Every requirement is present SOMEWHERE in the group, and none of them together in one row.
+		expect(spread.map(classifyWaitlistLead)).not.toContain('priority-a');
+		expect(classifyWaitlistLeadGroup(spread)).not.toBe('priority-a');
+	});
+
+	// Fail-safe floor: nobody is promoted by silence, including the silence of an empty group (a lead
+	// whose submission insert failed after its lead row was created).
+	it('classes an empty group exactly as it classes a blank submission', () => {
+		expect(classifyWaitlistLeadGroup([])).toBe(classifyWaitlistLead(BLANK));
+		expect(classifyWaitlistLeadGroup([])).toBe('research');
+	});
+
+	// The band it returns is always one a real submission earned — so the badge stays attributable to
+	// a row an operator can open and read.
+	it('returns a band some submission in the group actually earned', () => {
+		for (const role of ROLE_INPUTS) {
+			for (const pilotInterest of PILOT_INPUTS) {
+				const group = [only({ role }), only({ pilotInterest }), PRIORITY_A];
+				expect(group.map(classifyWaitlistLead)).toContain(classifyWaitlistLeadGroup(group));
+			}
+		}
 	});
 });

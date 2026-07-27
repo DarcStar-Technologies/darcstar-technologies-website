@@ -6,8 +6,13 @@
 a native POST without.
 
 Everything lives under `src/lib/waitlist*.ts` (client-safe slug lists + labels), `src/lib/server/
-waitlist*.ts` (validators, store, token, notify), the `waitlist` table (`db/schema.ts`), and the
-`/waitlist` + `/admin/waitlist` routes.
+waitlist*.ts` (validators, store, token, collate, notify), the `waitlist_submission` +
+`waitlist_lead` tables (`db/schema.ts`), and the `/waitlist` + `/admin/waitlist` routes.
+
+**Signups are append-only (DAR-88).** Every submit inserts a `waitlist_submission`; a repeat email
+adds a row under the same `waitlist_lead` and never edits the earlier one. Read
+[Append-only submissions](#append-only-submissions-dar-88) before touching the store — it is the
+reason most of this document is shorter than it used to be.
 
 ## Step 1 — the core signup (live)
 
@@ -24,19 +29,20 @@ unchanged since v1:
 - **Honeypot** `website` field — a non-empty value is silently accepted (never persisted, trap not
   revealed).
 - **IP/time throttle** — at most 5 signups per hashed IP per hour (`hashIp`, the same truncated
-  SHA-256 as the contact form; the raw IP is never stored).
-- **Insert-or-enrich** on `lower(email)` (unique index) via `upsertWaitlist` — a re-signup enriches
-  the existing row **fill-forward** (`fillIfEmpty`: fills a still-null column, never overwrites a
-  stored value) rather than piling up duplicates. Step 1 is unauthenticated, so this stops a stranger
-  who knows an existing email from clobbering its name/company/region on a (throttle-exempt) resubmit;
-  the token-gated qualification steps keep provided-wins (`keepExisting`) for their **judgement**
-  columns, but not for the two that direct an action — see
-  [What a token holder may overwrite](#what-a-token-holder-may-overwrite-dar-72). It returns `isNew`
-  (a genuine first signup) and the row `id`.
+  SHA-256 as the contact form; the raw IP is never stored). Since DAR-88 it counts **submissions**, so
+  it finally sees repeat-email signups: they used to hide inside an UPDATE that added no row.
+- **Insert, always** (`insertWaitlistSubmission`) — one `waitlist_submission` per submit. The
+  **lead** is upserted on `lower(email)` (the unique index moved there), and the insert winning that
+  conflict is what `isNew` means. The returned `id` is the **submission's**, so the continuation token
+  binds to the row this submitter just created. See
+  [Append-only submissions](#append-only-submissions-dar-88).
 - **Emails gated on `isNew`** — a lead → `info@` and a localized signer ack, fire-and-forget via
-  `ctx.waitUntil`. Gating on `isNew` is the anti-abuse boundary: same-email replays enrich (add no
-  row), so without the gate the ack would be an unthrottled mailbomb.
-- **Anti-enumeration** — new vs. existing email return the identical success shape.
+  `ctx.waitUntil`. This is the mailbomb guard, and append-only makes it **more** load-bearing, not
+  less: every submit now inserts a row, so "a row was created" is no longer any evidence of a new
+  person. `isNew` is the LEAD insert winning — the only thing that means "we have never mailed this
+  address".
+- **Anti-enumeration** — new vs. existing email return the identical success shape. Since DAR-88 that
+  is simply true rather than a cover story: there is no difference left to hide.
 
 ## Step 2 — use-case questions (live)
 
@@ -363,8 +369,9 @@ complete end to end and instrumented.
 
 ### Qualification columns
 
-The `waitlist` table grew nullable columns for steps 1–4 (country/consent, application/role/timeline,
-approach/impact/budget/evidence, pilot details, research prefs). Slug values are validated against
+`waitlist_submission` (the `waitlist` table before DAR-88) grew nullable columns for steps 1–4
+(country/consent, application/role/timeline, approach/impact/budget/evidence, pilot details,
+research prefs). Slug values are validated against
 `$lib/waitlist-qualification.ts` (the single client-safe source shared by the step forms and the
 server validators). Two multi-selects (`adoption_evidence`, `research_preferences`) store JSON string
 arrays. `role` is shared between v1 and v2 slug sets — legacy v1 slugs remain as history, new writes
@@ -391,25 +398,26 @@ anything Better Auth signs). Guarantees, all unit-pinned:
   decoded MAC must re-encode to the received bytes). This isn't a capability boundary today — it
   keeps a future exact-string dedup/blocklist from being bypassed by equivalent token strings.
 
-**The token is returned to ANY submitter of an existing email** (the anti-enumeration success shape),
-so it authorizes writing that row's qualification columns to whoever holds it. This is a larger
-surface than v1's enrich-by-email. The step writes are built to stay safe under that exposure:
-`applyWaitlistStep` uses an explicit **per-step column map** (mass-assignment guard — a step can only
-write its own columns, never identity, never another step's answers), and per-field keep-existing
-rules bound what a holder can change — with `phone` and `contact_permission` bounded harder still
-(DAR-72: [What a token holder may overwrite](#what-a-token-holder-may-overwrite-dar-72)). **A step
-endpoint must not add an absolute overwrite of a sensitive field**, and a new column that names a
-contact destination or grants permission to use one belongs on the DAR-72 policies, not
-`keepExisting`. (The honeypot path returns a _decoy_ token — deterministic per email, addressing
-no real row — so the response body matches a real success; a timing side-channel still distinguishes
-the trap, which is accepted.)
+**The token binds to the submission its own holder just created (DAR-88).** Step 1 always inserts, so
+a stranger who submits a known address receives a token for _their own_ row and can never reach the
+real person's answers. That is the whole authorization story now, and it is why the write-policy
+taxonomy this section used to describe is gone: before DAR-88 a repeat email resolved to the FIRST
+submitter's row and handed that row's id out with it, which is what DAR-59's per-field policies and
+DAR-72's `phone`/`contact_permission` rules existed to contain.
+
+`applyWaitlistStep` keeps its explicit **per-step column map** — a step can only write its own
+columns, never identity, never another step's answers — but as blast-radius and legibility rather than
+as a security boundary. Adding a column to a step now only needs "does this step ask that question",
+not "who else could write this, and what could they do with it". (The honeypot path returns a _decoy_
+token — deterministic per email, addressing no real row — so the response body matches a real success;
+a timing side-channel still distinguishes the trap, which is accepted.)
 
 ### Step-write budget (DAR-68)
 
-Because the token reaches any submitter of a known address, a holder could drive **unbounded
-`UPDATE`s** at that row: the steps add no row, and step 1's throttle counts _rows created per hashed
-IP_, so nothing capped them. Not a data-integrity problem (the column map above bounds _what_ can
-change) — a cost one.
+A token holder could drive **unbounded `UPDATE`s** at their row: the steps add no row, and step 1's
+throttle counts _rows created per hashed IP_, so nothing capped them. Not a data-integrity problem
+(the column map above bounds _what_ can change) — a cost one. DAR-88 narrowed the threat (the row is
+now the holder's own) but not the cost, so this stands unchanged.
 
 The cap is **per row**, not per IP: a token addresses exactly one row, which makes the row the thing
 being abused, and keying on it doesn't punish everyone behind a shared NAT for one of them. It is
@@ -445,88 +453,101 @@ round trip), and an attacker holding tokens for N rows gets N budgets. Neither i
 layer — volumetric defense against a distributed or multi-token flood belongs at the edge (a
 Cloudflare rate-limiting rule on `/waitlist`), where rotating tokens can't sidestep it.
 
-**Targeted exhaustion is accepted, not overlooked.** Since the token reaches any submitter of a known
-address, someone can spend a specific person's budget and silently block that person's own enrichment
-for the rest of the window. It costs the attacker a sustained 20 writes/hour aimed at one row, and
-the same token already lets them write that row's answers outright (the surface DAR-72 tracks), so
-denying an optional enrich is the lesser of what they can already do. A per-submitter budget isn't
-available — the point of these endpoints is that there's no identity behind them. Related trade-off:
-a refusal is **not observable** (no log, no metric), because telling "refused" apart from "row gone"
-would take the extra read the design exists to avoid.
+**Targeted exhaustion went away with DAR-88.** This paragraph used to concede that, because the token
+reached any submitter of a known address, someone could spend a specific person's budget and silently
+block that person's own enrichment. A token now addresses the row its own holder created, so the only
+budget anyone can exhaust is their own. What remains is a self-inflicted cap, which is why it sits far
+above a real visitor's ceiling. Related trade-off, unchanged: a refusal is **not observable** (no log,
+no metric), because telling "refused" apart from "row gone" would take the extra read the design
+exists to avoid.
 
 The
 **funnel-event insert on these same endpoints is a separate, still-unbounded vector** — `flow_id` is
 client-minted, so rotating it defeats the composite-key cap, and it doesn't even need a valid token;
 the fix is to sign the flow id (DAR-86), not to gate analytics on the step write, which would stop
-counting the skips the funnel exists to measure. The **step-1 enrich** is unbounded for the same
-reason the steps were (a known email enriches, adds no row, never trips the row-count throttle) —
-tracked as DAR-87, and _not_ a copy of this fix: a refused enrich is indistinguishable from the
-delete race `upsertWaitlist`'s convergence loop uses `enriched.length === 0` to detect, so the same
-predicate would turn a throttled resubmit into a `did not converge` 500.
+counting the skips the funnel exists to measure.
+
+The sibling hole this section used to name — the **step-1 enrich** being throttle-exempt, because a
+known email enriched an existing row and so never trips the row-count check (DAR-87) — **was closed by
+DAR-88 rather than by a fix of its own**: there is no enrich any more, every submit inserts a row, and
+the per-IP row-count throttle counts them all.
 
 ### Consent
 
 `consent_updates` is an **unverified single-opt-in claim** — the form is unauthenticated, so a third
-party can set it for any address. It's monotonic (an unchecked re-submit is "no new grant", never a
-silent revocation; revocation is a future unsubscribe mechanism) and stamped with `consent_updates_at`
-on first grant (provenance). **It must not drive a real send without double-opt-in + unsubscribe.**
+party can submit any address with the box ticked. **It must not drive a real send without
+double-opt-in + unsubscribe.**
+
+Since DAR-88 it is recorded **per submission**, with its own `consent_updates_at` and the row's own
+`ip_hash` beside it. That is a straight compliance upgrade over the monotonic flag it replaces, which
+had been `max()`'d forward across an unknown number of submitters and could only say "someone, once,
+ticked a box". An unticked box on a later submission is that submitter's own "no", not a revocation of
+an earlier grant — each row states what one person did, and nothing reaches across rows. Revocation
+remains a future unsubscribe mechanism, not a form default.
 
 ### `contact_permission` is tri-state
 
 `null` = the question wasn't shown (pilot interest not positive), `false` = shown and declined,
 `true` = granted. The step-4A validator emits `null` unless the pilot answer is positive (the same
 predicate, `isPositivePilotInterest`, that `WaitlistStep4A` reveals the checkbox on), and the store
-keep-existings a `null` — so a not-shown submit can't silently revoke a standing grant.
+keep-existings a `null` — so a not-shown submit can't clobber that submitter's own earlier answer.
 
-Like `consent_updates`, it is an **unverified claim**: the row is identified only by a continuation
-token, which the anti-enumeration success shape hands to _any_ submitter of a known email. Treat step
-4A's contact block as a lead-qualification hint, **not** proof that this person asked to be called,
-and confirm by replying to the signed-up address before acting on it. That process rule is the real
-control here; the store policy below only stops an attacker overturning what the real person said.
+Like `consent_updates`, it is an **unverified claim**. Treat step 4A's contact block as a
+lead-qualification hint, **not** proof that this person asked to be called, and confirm by replying to
+the signed-up address before acting on it. What DAR-88 changed is that a stranger's claim now lands on
+its own submission, visible and comparable, instead of overwriting the real person's answer — but it
+is still a claim, and the process rule is still the control.
 
-### What a token holder may overwrite (DAR-72)
+### Append-only submissions (DAR-88)
 
-The step columns were uniformly `keepExisting` on the premise that _holding the continuation token is
-the authorization_. **That premise doesn't hold.** Step 1 returns the identical success shape — token
-included — for a new and an existing email, which is precisely what stops it being an enumeration
-oracle, and which means the token reaches any submitter of a known address. The step endpoints
-therefore have the **same effective authorization as the unauthenticated step-1 enrich**, and had a
-_weaker_ write policy than it on a column both can write.
+**Every submit inserts a `waitlist_submission`; a repeat email adds a row under the same
+`waitlist_lead` and never edits the earlier one.** Before this, a repeat email collapsed into the
+existing row, and that single decision manufactured a whole class of problem:
 
-Two columns are off `keepExisting`, chosen by what they **do**, not by how sensitive they look:
+- **Anti-enumeration was a cover story.** Step 1 must return an identical response for a new and an
+  existing email — but it was hiding a real difference, and hiding it meant handing the second
+  submitter a continuation token bound to the **first** submitter's row. Now there is nothing to hide:
+  every submit really is new, so a stranger who guesses a known address gets a token for their own row.
+- **We stored inferences as facts.** "Someone submitted X at time T from this IP" is a fact; "this
+  person's phone is X" is an inference. The old model stored the inference and then argued about who
+  might overwrite it — that argument _was_ DAR-59's `keepExisting`/`fillIfEmpty` split and DAR-72's
+  actionable/judgement taxonomy.
+- **Conflicts were destroyed.** Two different phone numbers for one address is exactly what an
+  operator should see. Provided-wins and fill-forward both discarded one, in opposite directions.
 
-| Column               | Policy                                                                        | Why                                                                                                                                                         |
-| -------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `phone`              | `fillIfEmpty` — fills a null, never replaces                                  | The only step-writable column that supplies a contact **destination** (`email` is in no step's column map). Now matches step 1's policy on the same column. |
-| `contact_permission` | `grantFillsDeclineWins` — `false` writes absolutely, `true` fills a null only | The flag that turns the record into permission to use one. A decline must always stick (DAR-63); a grant may no longer overturn one.                        |
+**What this deleted:** all of DAR-72 (`phone` fill-forward, `contact_permission` decline-wins), the
+`fillIfEmpty` / `grantFillsDeclineWins` policy pair and the per-column reasoning behind them,
+`upsertWaitlist`'s enrich branch, and the `lower(email)` unique index on the signup row (it moved to
+the lead). One rule remains — `coalesce(new, existing)`, provided-wins — and it is now a UX nicety
+(don't lose a visitor's own answers when they walk back through a step), not an authorization policy.
 
-Everything else stays `keepExisting` deliberately. Role, timeline, approach, budget and evidence are
-judgement inputs a human weighs — poisonable, caveated on the admin page, and already kept out of the
-classifier where it matters (DAR-65 excludes the self-reported money figures by input type). Locking
-them down would trade away "let someone fix their own answer" for no reduction in attacker capability.
-`contact_method` also stays: it picks among channels we already hold, so it can misroute a
-conversation but cannot supply a destination.
+**What survives:** DAR-68's per-row step-write budget (a holder can still hammer their own row), the
+per-step column maps (blast radius, not authorization), and the `isNew` email gate — which gets
+_more_ load-bearing, since "a row was created" is no longer evidence of a new person. `isNew` is the
+LEAD insert winning its unique-index conflict, decided atomically by the database in the same
+statement, so two concurrent first-signups still can't both mail.
 
-**The limit, stated plainly:** this bounds _overwriting_, not the first write. A row with no phone
-still accepts an attacker's, and a row never asked about contact still accepts an attacker's grant —
-the common case, since `phone` is optional at step 1 and `contact_permission` starts `null` on every
-row. That is not fixable at this layer: the endpoint exists to accept those answers from a submitter
-we cannot identify. What changed is that an attacker can no longer overturn something the real person
-already told us.
+**Costs accepted.** A repeat submitter grows the table, and a stranger can bury a real signup under
+junk rows. Bounds: the per-IP row-count throttle, which finally _sees_ these writes; an operator can
+delete a single junk submission (`?/deleteSubmission`) without discarding the person, or the whole
+lead (cascade). No retention cap — volumetric abuse from rotating IPs is edge/WAF territory, the same
+boundary [DAR-68](#step-write-budget-dar-68) drew. Poisoning did not disappear either; it **moved**,
+from an invisible edit of the real record to an additional row a human can read and dismiss.
 
-Costs accepted, both silent (the response is generic by design, so neither surfaces an error): a
-visitor who supplies a _different_ number at step 4A than the one on their row has it dropped, and one
-who declines and later changes their mind must say so by replying to the signed-up address. Prefilling
-the step-4A phone field so the visitor can see what's stored is **not** an option — it would hand the
-stored number to any token holder, i.e. build the disclosure oracle the whole design avoids.
+**The lead holds no answers, deliberately.** `waitlist_lead` is an identity anchor plus the things
+that describe a person rather than a submission: `invited_at` / `invited_by` / `activated_at`
+(DAR-67's state, moved here) and `reviewed_at` / `reviewed_by`. Nothing on it is written by two
+different actors, so no "who may overwrite what" policy can grow back. A merged-answers column set —
+canonical values an operator promotes from a submission — was considered and rejected for exactly that
+reason: it is the same overwrite problem with a friendlier interface, and the reconciliation belongs
+in whatever the operator does next (an outreach, a CRM record), not in a column here.
 
-Also considered and rejected: giving step 4A its own `contact_phone` column, so a genuine correction
-survives _and_ an operator sees the conflict (a migration plus a two-phone reconciliation on the admin
-page, for a case where the dominant attack is unfixed either way — one uniform rule is easier to keep
-true); and binding the token to the minting session or IP, which would break the no-JS multi-request
-flow the token is echoed through. Rate-limiting the step endpoints shipped separately as
-[DAR-68](#step-write-budget-dar-68) and raises the cost of every variant of this without fixing the
-single-shot case.
+**Migration** (`drizzle/0010_*.sql`) is hand-ordered: it creates both tables, seeds one lead per
+existing row carrying that row's invite state and original `created_at`, re-inserts each row as that
+lead's first submission **keeping its id** (live continuation tokens embed it), and only then drops
+`waitlist`. Existing rows were already one-per-email, so the backfill is 1:1; if that were somehow
+false the lead's unique index fails the migration _before_ the drop, which under migrate-before-deploy
+blocks the deploy rather than silently merging data.
 
 ### Wire contract for the step forms
 
@@ -542,22 +563,54 @@ can carry a `value=` attribute without silently dropping the opt-in.
 
 `/admin/waitlist` is the staff triage view (gated by the `/admin` layout — access rules unchanged by
 DAR-65, which only added what a signed-in staffer sees). It is a triage window, not an archive: the
-read is capped at the 200 most recent, and classification/filtering happen over that window.
+read is capped at the **200 most recently ACTIVE leads** — a person is one line however many times
+they submitted, so capping submissions instead would let one repeat submitter push everyone else off
+the page, and ordering by lead _creation_ would hide the returning prospect who submitted again this
+morning behind 200 newer signups (a real hole once submissions append). Classification and filtering
+happen over that window.
+
+Collation happens at **read** time (`$lib/server/waitlist-collate.ts`) and resolves nothing: it groups
+submissions under their lead, classifies each one, and **flags** the fields they disagree about.
 
 - **Priority column** — `WaitlistLeadClassBadge.svelte` paints the class the load computed. Priority
   A is the only badge with a ring, and rows **sort by rank first** so an A lead can't be buried under
-  199 newer subscribers; `Array.sort` is stable, so newest-first survives as the within-band tiebreak.
+  199 newer subscribers; `Array.sort` is stable, so most-recently-active-first survives as the
+  within-band tiebreak.
+  A lead's band is the **strongest** any single submission earned (`classifyWaitlistLeadGroup`), and
+  each submission's own band renders beside it so the badge stays attributable. The rejected
+  alternative — merge the fields, then classify — could assemble a Priority A out of a role one person
+  gave, a timeline another gave and a pilot answer a third gave: a lead nobody actually is. Classifying
+  first makes that impossible, and it is unit-pinned.
+- **Conflicts** — every answer column is compared across a lead's submissions (`WAITLIST_CONFLICT_FIELDS`,
+  which a type guard forces to stay complete: a new answer column that isn't listed would silently
+  never be compared). A `null` never conflicts — under progressive disclosure most submissions leave
+  most fields blank, so counting absence as disagreement would flag everything and mean nothing —
+  and multi-selects compare as **sets**, so checkbox order isn't a conflict. Disagreements surface as
+  a count chip on the row, a named list in the detail, and a `≠` marker on each affected field.
+- **Review** — `reviewed_at` / `reviewed_by` record that a human reconciled the submissions. It is a
+  **stamp, not a merge**. `needsReview` is derived (newest submission is later than the stamp), so a
+  new submission re-opens a reviewed lead by itself and the action never has to clear a flag.
+- **Two deletes, deliberately separate** — `?/deleteSubmission` drops one junk claim and keeps the
+  person; `?/delete` removes the lead and cascades to every submission. One button doing both by
+  context would eventually delete the wrong thing.
 - **Filter chips** are plain links over a `?class=` GET, so filtering works without JS and every view
   is bookmarkable. Counts are over the whole window, not the filtered slice, so the shape of the list
   stays visible while a filter is on. An unrecognized `?class=` is "no filter", never an error.
+- **Summary columns** read the **newest** submission — the most recent thing this person told us —
+  rather than an aggregate, because an aggregate would have to choose. Where the choice would have
+  mattered, the conflict chip says so and the detail shows every value.
 - **Outreach column** — `contact_permission` rendered as the tri-state it is: `null` = never asked
   (the pilot answer wasn't positive), `false` = asked and declined, `true` = granted (the only one
-  with a filled badge). Method and phone sit in the row detail beside it.
-- **Row detail** — a no-JS `<details>` per row with every v2 qualification answer (region, consent,
-  application, timeline, approach, impact, budget, adoption evidence, pilot interest, deployment
+  with a filled badge). A grant and a decline under one address is a flagged conflict, which is the
+  honest reading of it.
+- **Row detail** — a no-JS `<details>` per lead listing **every submission**, newest first, each with
+  its own timestamp, priority band, delete control, and a complete answer grid (region, consent +
+  when, application, timeline, approach, impact, budget, adoption evidence, pilot interest, deployment
   scale, contact method, phone, research preferences, reached step, last updated) plus the retired v1
-  columns for historical rows. `role` resolves against BOTH label sets (v1 slugs survive as history),
-  falling back to the raw slug so nothing renders blank.
+  columns for historical rows. Two submissions show two complete sets, never a reconciled one. `role`
+  resolves against BOTH label sets (v1 slugs survive as history), falling back to the raw slug so
+  nothing renders blank. The lead's own state (invited / activated / reviewed by) sits below them,
+  separated because those are our actions rather than anything the person submitted.
 - **Funnel readout** (DAR-66) — distinct anonymous flows per stage, in funnel order, plus the primary
   metric (`waitlist_signup_completed / waitlist_viewed`) resolved server-side so the view can't
   compute a different one. A null rate (nothing viewed yet, or the readout unavailable) renders as the
@@ -569,14 +622,17 @@ read is capped at the 200 most recent, and classification/filtering happen over 
   **Invite** or **Resend** to match. Full mechanics — the account creation, the activation token, why
   the send is awaited, and the `activated_at` stamp — are in [auth.md](auth.md#invite-only-onboarding-dar-67);
   what matters here is the state, below.
-- **Two standing caveats** are printed under the table rather than left to a doc nobody reads at 2am:
-  the priority band is an internal guess and not pipeline, and outreach permission / phone / consent
-  are unverified claims from an unauthenticated form — confirm by replying to the signed-up address
-  before acting on them (see `contact_permission` below for why).
+- **Four standing caveats** are printed under the table rather than left to a doc nobody reads at 2am:
+  the priority band is an internal guess and not pipeline; outreach permission / phone / consent are
+  unverified claims from an unauthenticated form (confirm by replying to the signed-up address before
+  acting on them); conflicting answers are flagged and never merged, because a conflict may be a
+  correction or a stranger; and submissions append rather than edit, so deleting a lead deletes all of
+  them.
 
 Rendering is pinned in the **client** project, where a seeded row is just a prop:
-`page.svelte.spec.ts` mounts the whole page over fixture signups (badges, label resolution, the
-tri-state column, the chips, the detail disclosure, and that a delete keeps the active band), and
+`page.svelte.spec.ts` mounts the whole page over fixture leads (badges, label resolution, the
+tri-state column, the chips, the detail disclosure, that every action keeps the active band, and that
+two submissions render two complete answer sets rather than a merged one), and
 `WaitlistLeadClassBadge.svelte.spec.ts` covers every class plus Priority A's louder treatment. It has
 to live there rather than in the e2e suite: that suite is hermetic, with neither a session cookie nor
 a reachable DB, so it can only assert the guard's redirect — which it does, including for a crafted
@@ -589,11 +645,19 @@ Public self-signup is closed, so the waitlist is the only public path to an acco
 [auth.md](auth.md#invite-only-onboarding-dar-67); what belongs here is the three columns this table
 grew and what they actually assert.
 
-`invited_at` · `invited_by` · `activated_at` sit on **`waitlist`**, not on `user`, for the obvious
-reason: the un-invited majority has no `user` row to hang them off — "not invited" is the default
-state of a waitlist entry, not of an account. The badge is **derived on read**
+`invited_at` · `invited_by` · `activated_at` sit on **`waitlist_lead`** (they were on `waitlist`
+until DAR-88), not on `user`, for two reasons: the un-invited majority has no `user` row to hang them
+off — "not invited" is the default state of a prospect, not of an account — and an invitation is
+something we did to a **person**, who now has N submissions, so hanging it off one arbitrary
+submission would leave the others looking un-invited. The badge is **derived on read**
 (`waitlistInviteState`, `$lib/waitlist-invite.ts`), exactly like DAR-65's lead class and for the same
 reason: it's a pure function of columns already on the row.
+
+The invitation's **address** comes from the lead; its **name** comes from the lead's EARLIEST
+submission that supplied one (`findWaitlistInviteTarget`). That ordering is load-bearing: anyone can
+add a submission for a known address, so a newest-name rule would let a stranger choose how we greet
+the real person in an email we send to their inbox. Oldest-non-null reproduces the pre-DAR-88
+behaviour exactly, since step 1's enrich was fill-forward on `name`.
 
 Three things about them are easy to get wrong:
 

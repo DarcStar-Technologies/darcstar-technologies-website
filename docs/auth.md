@@ -181,9 +181,11 @@ real Resend key (send to a throwaway address, not your own inbox), or to set `in
 
 ### Activation state
 
-Three columns on `waitlist` (**not** on `user` — the un-invited majority has no `user` row to hang
-them off): `invited_at`, `invited_by` (a staff id, deliberately not an FK: an audit breadcrumb must
-not cascade away with a departed operator), `activated_at`. The badge state is **derived on read**
+Three columns on `waitlist_lead` (**not** on `user` — the un-invited majority has no `user` row to
+hang them off; and since DAR-88 not on a signup row either, because a person has N append-only
+submissions and hanging an invitation off one of them would leave the rest looking un-invited):
+`invited_at`, `invited_by` (a staff id, deliberately not an FK: an audit breadcrumb must not cascade
+away with a departed operator), `activated_at`. The badge state is **derived on read**
 (`waitlistInviteState`, `$lib/waitlist-invite.ts`), like DAR-65's lead class.
 
 `activated_at` is stamped by better-auth's **`onPasswordReset`** hook (`auth.ts`) — the only place

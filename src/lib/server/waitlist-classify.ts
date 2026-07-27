@@ -19,6 +19,7 @@
 // would classify people by questions they were never asked.
 import {
 	isPositivePilotInterest,
+	waitlistLeadClassRank,
 	type WaitlistLeadClass,
 	type WaitlistTimeline,
 	type WaitlistV2Role
@@ -108,4 +109,42 @@ export function classifyWaitlistLead(signals: WaitlistLeadSignals): WaitlistLead
 		return 'priority-a';
 	}
 	return isActiveEvaluationTimeline(signals.evaluationTimeline) ? 'priority-b' : 'priority-c';
+}
+
+/**
+ * Classify a LEAD, which since DAR-88 is a person with N submissions rather than one row.
+ *
+ * Each submission is classified on its own and the strongest band wins. The alternative — reduce the
+ * submissions to one signal set (newest non-null per field) and classify that — was rejected, and the
+ * reason is the same one that motivated append-only in the first place: merging fields across
+ * submitters can manufacture a lead that nobody actually is. A stranger's "founder-executive" combined
+ * with the real person's "within 3 months" and a third submission's positive pilot answer would score
+ * Priority A although no single human ever gave that combination. Classifying each submission first
+ * makes that impossible: every band this can return was earned by one actual submission, in full.
+ *
+ * The cost, stated plainly: someone who submits a known address with flattering answers can lift that
+ * lead's band. That was equally true before (they wrote those answers straight onto the real row), and
+ * it is now strictly better off — the inflating submission is a separate, visible row an operator can
+ * read and dismiss, and the admin view shows the per-submission bands next to it. The standing "our
+ * own guess, from unverified claims" caveat on that page covers the rest.
+ *
+ * An empty list classifies an empty signal set, which lands in `research` — the same fail-safe floor a
+ * blank submission gets. Nobody is promoted by silence, including the silence of having said nothing.
+ */
+export function classifyWaitlistLeadGroup(
+	submissions: readonly WaitlistLeadSignals[]
+): WaitlistLeadClass {
+	if (submissions.length === 0) {
+		return classifyWaitlistLead({
+			role: null,
+			primaryApplication: null,
+			evaluationTimeline: null,
+			pilotInterest: null
+		});
+	}
+	return submissions
+		.map(classifyWaitlistLead)
+		.reduce((best, next) =>
+			waitlistLeadClassRank(next) < waitlistLeadClassRank(best) ? next : best
+		);
 }

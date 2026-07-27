@@ -3,10 +3,16 @@
 	// only past the /admin route guard (../+layout.server.ts). Same frosted-glass aesthetic.
 	//
 	// DAR-65 turned it from a flat log into a triage surface: every row carries its internal lead
-	// class (decided server-side by `classifyWaitlistLead`, never here), rows sort priority-first, the
-	// chips filter by class through a plain GET so it all works without JS, and each row opens a
-	// <details> with the full v2 qualification answers. Slug columns map to their localized labels;
-	// free text (interest, deployment scale) is shown verbatim.
+	// class (decided server-side, never here), rows sort priority-first, the chips filter by class
+	// through a plain GET so it all works without JS, and each row opens a <details> with the full v2
+	// qualification answers.
+	//
+	// DAR-88 made one row a PERSON rather than a submission. Signups are append-only, so a lead can
+	// hold several submissions, and the job of this view is to show them side by side WITHOUT picking
+	// a winner: the summary columns read from the newest submission, any field the submissions
+	// disagree about is flagged, and the detail lists every submission in full with its own timestamp
+	// and priority band. Nothing here merges — that judgement is the operator's, and the outcome of it
+	// goes wherever they take it, not into a column.
 	import Seo from '$lib/components/Seo.svelte';
 	import WaitlistLeadClassBadge from '$lib/components/WaitlistLeadClassBadge.svelte';
 	import { localizeHref } from '$lib/paraglide/runtime';
@@ -38,6 +44,9 @@
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
+	type Lead = PageData['leads'][number];
+	type Submission = Lead['submissions'][number];
+
 	const DASH = '—';
 
 	// Slug → localized label, falling back to the raw value for a legacy/unknown slug and to an
@@ -56,8 +65,8 @@
 			: DASH;
 	const orDash = (v: string | number | null): string => (v === null ? DASH : String(v));
 
-	// `role` holds BOTH the v1 slug set (legacy rows) and the v2 set (DAR-61's step 2 writes the same
-	// column), so resolve it against both label maps — v2 first — before the raw-slug fallback.
+	// `role` holds BOTH the v1 slug set (legacy submissions) and the v2 set (DAR-61's step 2 writes the
+	// same column), so resolve it against both label maps — v2 first — before the raw-slug fallback.
 	const roleFor = (v: string | null) =>
 		v
 			? (waitlistV2RoleLabel[v as WaitlistV2Role]?.() ??
@@ -68,22 +77,39 @@
 	const fmt = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 	const atCap = $derived(data.total >= data.limit);
 
-	// Funnel readout (DAR-66). The rate is decided server-side (`signupConversionRate`); this only
-	// formats it. A null rate — nothing viewed yet, so no denominator — renders as the same em-dash
-	// every unanswered value on this page uses, rather than a "0%" that would read as "nobody
-	// converts" instead of "nothing measured".
-	const countFmt = new Intl.NumberFormat('en-US');
-	const rateFmt = new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 1 });
-	const conversionLabel = $derived(
-		data.conversion === null ? DASH : rateFmt.format(data.conversion)
-	);
+	// The summary columns read the NEWEST submission — the most recent thing this person told us —
+	// rather than an aggregate across submissions. An aggregate would have to choose, and choosing is
+	// exactly what this page refuses to do; where the choice would have mattered, the conflict chip
+	// says so and the detail below shows every value.
+	const latestOf = (lead: Lead): Submission | undefined => lead.submissions[0];
 
-	const basePath = $derived(localizeHref('/admin/waitlist'));
-	// SvelteKit reads the action name from the `?/name` key, so extra params ride alongside it.
-	const deleteAction = $derived(data.filter ? `?/delete&class=${data.filter}` : '?/delete');
-	const inviteAction = $derived(data.filter ? `?/invite&class=${data.filter}` : '?/invite');
+	// Field labels for the conflict list, keyed by the collator's field names. Reuses the same message
+	// each field's detail row uses, so a renamed label can't say two different things on one page.
+	const conflictLabel: Record<string, () => string> = {
+		name: m.admin_col_name,
+		company: m.admin_col_company,
+		role: m.admin_waitlist_col_role,
+		companySize: m.admin_waitlist_col_size,
+		interest: m.admin_waitlist_col_interest,
+		hearAbout: m.admin_waitlist_col_heard,
+		phone: m.admin_waitlist_col_phone,
+		countryRegion: m.admin_waitlist_field_region,
+		primaryApplication: m.admin_waitlist_field_application,
+		evaluationTimeline: m.admin_waitlist_field_timeline,
+		currentApproach: m.admin_waitlist_field_approach,
+		economicImpact: m.admin_waitlist_field_impact,
+		budgetRange: m.admin_waitlist_field_budget,
+		adoptionEvidence: m.admin_waitlist_field_evidence,
+		pilotInterest: m.admin_waitlist_field_pilot,
+		deploymentScale: m.admin_waitlist_field_deployment,
+		contactPermission: m.admin_waitlist_col_outreach,
+		contactMethod: m.admin_waitlist_field_contact_method,
+		researchPreferences: m.admin_waitlist_field_research_prefs
+	};
+	const conflictNames = (fields: readonly string[]): string =>
+		fields.map((f) => conflictLabel[f]?.() ?? f).join(', ');
 
-	// Invite outcome (DAR-67). `form` is a union across both actions, so narrow on the namespace key
+	// Invite outcome (DAR-67). `form` is a union across the actions, so narrow on the namespace key
 	// rather than on `ok`/`error` — a delete result carries those too.
 	const invite = $derived(form && 'invite' in form ? form.invite : null);
 	// The action's return is a discriminated union of one success and several failures; `in` is what
@@ -108,10 +134,25 @@
 				return m.admin_waitlist_invite_error();
 		}
 	}
+
+	const basePath = $derived(localizeHref('/admin/waitlist'));
+	// SvelteKit reads the action name from the `?/name` key, so extra params ride alongside it. A bare
+	// `?/delete` would resolve to /admin/waitlist?/delete and drop `class=`, bouncing the operator out
+	// of the band they were working.
+	const withFilter = (action: string) =>
+		data.filter ? `?/${action}&class=${data.filter}` : `?/${action}`;
+	const deleteAction = $derived(withFilter('delete'));
+	const deleteSubmissionAction = $derived(withFilter('deleteSubmission'));
+	const inviteAction = $derived(withFilter('invite'));
+	const reviewAction = $derived(withFilter('review'));
+
 	const chipBase =
 		'rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500';
 	const chipActive = 'bg-white/10 text-white';
 	const chipIdle = 'text-faint hover:text-white';
+	const tagBase = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium';
+	const summaryBase =
+		'inline-flex cursor-pointer list-none items-center rounded px-2 py-1 text-xs font-medium transition-colors [&::-webkit-details-marker]:hidden focus-visible:outline-none focus-visible:ring-1';
 </script>
 
 <Seo
@@ -120,12 +161,117 @@
 	noindex
 />
 
-<!-- One label/value pair in a row's qualification detail. -->
-{#snippet detail(label: string, value: string)}
+<!-- One label/value pair in a submission's detail. `conflict` marks a field whose answers differ
+     between this lead's submissions — the marker is what replaces the merge we deliberately don't
+     do, so it carries real TEXT, not just a colour and a glyph: `title` on a <span> is not reliably
+     announced, so the glyph is aria-hidden and the label is sr-only beside it. -->
+{#snippet detail(label: string, value: string, conflict = false)}
 	<div>
-		<dt class="text-xs tracking-wide text-faint">{label}</dt>
+		<dt class="text-xs tracking-wide text-faint">
+			{label}{#if conflict}<span
+					class="ml-1 text-warning-400"
+					title={m.admin_waitlist_conflict_marker()}
+					><span aria-hidden="true">&#8800;</span><span class="sr-only"
+						>{m.admin_waitlist_conflict_marker()}</span
+					></span
+				>{/if}
+		</dt>
 		<dd class="text-sm break-words text-body">{value}</dd>
 	</div>
+{/snippet}
+
+<!-- Every answer one submission carried. Rendered once per submission, so two submissions under one
+     lead show two complete sets rather than a reconciled one. -->
+{#snippet answers(row: Submission, conflicts: readonly string[])}
+	<dl class="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+		{@render detail(m.admin_col_name(), orDash(row.name), conflicts.includes('name'))}
+		{@render detail(m.admin_col_company(), orDash(row.company), conflicts.includes('company'))}
+		{@render detail(m.admin_waitlist_col_role(), roleFor(row.role), conflicts.includes('role'))}
+		{@render detail(
+			m.admin_waitlist_field_region(),
+			labelled(row.countryRegion, waitlistRegionLabel),
+			conflicts.includes('countryRegion')
+		)}
+		{@render detail(
+			m.admin_waitlist_field_application(),
+			labelled(row.primaryApplication, waitlistApplicationLabel),
+			conflicts.includes('primaryApplication')
+		)}
+		{@render detail(
+			m.admin_waitlist_field_timeline(),
+			labelled(row.evaluationTimeline, waitlistTimelineLabel),
+			conflicts.includes('evaluationTimeline')
+		)}
+		{@render detail(
+			m.admin_waitlist_field_approach(),
+			labelled(row.currentApproach, waitlistApproachLabel),
+			conflicts.includes('currentApproach')
+		)}
+		{@render detail(
+			m.admin_waitlist_field_impact(),
+			labelled(row.economicImpact, waitlistImpactLabel),
+			conflicts.includes('economicImpact')
+		)}
+		{@render detail(
+			m.admin_waitlist_field_budget(),
+			labelled(row.budgetRange, waitlistBudgetLabel),
+			conflicts.includes('budgetRange')
+		)}
+		{@render detail(
+			m.admin_waitlist_field_evidence(),
+			labelledList(row.adoptionEvidence, waitlistEvidenceLabel),
+			conflicts.includes('adoptionEvidence')
+		)}
+		{@render detail(
+			m.admin_waitlist_field_pilot(),
+			labelled(row.pilotInterest, waitlistPilotInterestLabel),
+			conflicts.includes('pilotInterest')
+		)}
+		{@render detail(
+			m.admin_waitlist_field_deployment(),
+			orDash(row.deploymentScale),
+			conflicts.includes('deploymentScale')
+		)}
+		{@render detail(
+			m.admin_waitlist_field_contact_method(),
+			labelled(row.contactMethod, waitlistContactMethodLabel),
+			conflicts.includes('contactMethod')
+		)}
+		{@render detail(m.admin_waitlist_col_phone(), orDash(row.phone), conflicts.includes('phone'))}
+		{@render detail(
+			m.admin_waitlist_field_research_prefs(),
+			labelledList(row.researchPreferences, waitlistResearchPreferenceLabel),
+			conflicts.includes('researchPreferences')
+		)}
+		<!-- Consent is per submission since DAR-88, with its own timestamp — better provenance for a
+		     compliance review than the monotonic flag it replaces, and still an unverified claim. -->
+		{@render detail(
+			m.admin_waitlist_field_consent(),
+			row.consentUpdates ? m.admin_waitlist_consent_yes() : m.admin_waitlist_consent_no()
+		)}
+		{@render detail(
+			m.admin_waitlist_field_consent_at(),
+			row.consentUpdatesAt ? fmt.format(row.consentUpdatesAt) : DASH
+		)}
+		{@render detail(m.admin_waitlist_field_step(), orDash(row.qualificationStep))}
+		{@render detail(m.admin_waitlist_field_updated(), fmt.format(row.updatedAt))}
+		<!-- v1 columns: retired from the form, retained for historical submissions. -->
+		{@render detail(
+			m.admin_waitlist_col_size(),
+			labelled(row.companySize, waitlistCompanySizeLabel),
+			conflicts.includes('companySize')
+		)}
+		{@render detail(
+			m.admin_waitlist_col_interest(),
+			orDash(row.interest),
+			conflicts.includes('interest')
+		)}
+		{@render detail(
+			m.admin_waitlist_col_heard(),
+			labelled(row.hearAbout, waitlistReferralLabel),
+			conflicts.includes('hearAbout')
+		)}
+	</dl>
 {/snippet}
 
 <section class="space-y-8">
@@ -162,7 +308,14 @@
 			</h2>
 			<p class="text-sm">
 				<span class="text-faint">{m.admin_waitlist_funnel_conversion()}</span>
-				<span class="ml-2 font-medium text-emphasis tabular-nums">{conversionLabel}</span>
+				<span class="ml-2 font-medium text-emphasis tabular-nums"
+					>{data.conversion === null
+						? DASH
+						: new Intl.NumberFormat('en-US', {
+								style: 'percent',
+								maximumFractionDigits: 1
+							}).format(data.conversion)}</span
+				>
 			</p>
 		</div>
 
@@ -171,7 +324,9 @@
 				{#each WAITLIST_FUNNEL_EVENTS as event (event)}
 					<div>
 						<dt class="text-xs tracking-wide text-faint">{waitlistFunnelEventLabel[event]()}</dt>
-						<dd class="text-lg text-white tabular-nums">{countFmt.format(data.funnel[event])}</dd>
+						<dd class="text-lg text-white tabular-nums">
+							{new Intl.NumberFormat('en-US').format(data.funnel[event])}
+						</dd>
 					</div>
 				{/each}
 			</dl>
@@ -223,19 +378,31 @@
 	<div class="glass-card p-4 sm:p-6">
 		{#if data.total === 0}
 			<p class="px-2 py-12 text-center text-sm text-faint">{m.admin_waitlist_empty()}</p>
-		{:else if data.signups.length === 0}
+		{:else if data.leads.length === 0}
 			<p class="px-2 py-12 text-center text-sm text-faint">{m.admin_waitlist_filter_empty()}</p>
 		{:else}
-			<p class="px-2 pb-4 text-sm text-emphasis">
-				{m.admin_waitlist_count({ count: data.signups.length })}
-			</p>
+			<div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-2 pb-4">
+				<p class="text-sm text-emphasis">
+					{m.admin_waitlist_count({
+						count: data.leads.length,
+						submissions: data.submissionTotal
+					})}
+				</p>
+				{#if data.reviewTotal > 0}
+					<p class="text-xs text-warning-400">
+						{m.admin_waitlist_review_pending({ count: data.reviewTotal })}
+					</p>
+				{/if}
+			</div>
 			<div class="overflow-x-auto">
 				<table class="w-full border-collapse text-left text-sm">
 					<thead>
 						<tr class="border-b border-hairline text-xs tracking-wide text-faint">
 							<th class="px-3 py-2 font-medium whitespace-nowrap">{m.admin_waitlist_col_class()}</th
 							>
-							<th class="px-3 py-2 font-medium whitespace-nowrap">{m.admin_col_received()}</th>
+							<th class="px-3 py-2 font-medium whitespace-nowrap"
+								>{m.admin_waitlist_col_latest()}</th
+							>
 							<th class="px-3 py-2 font-medium">{m.admin_col_email()}</th>
 							<th class="px-3 py-2 font-medium">{m.admin_col_name()}</th>
 							<th class="px-3 py-2 font-medium">{m.admin_col_company()}</th>
@@ -247,51 +414,79 @@
 							</th>
 						</tr>
 					</thead>
-					<!-- One <tbody> per signup: the summary row and its detail row belong together, and
-					     grouping lets the divider fall between signups instead of inside one. -->
-					{#each data.signups as row (row.id)}
+					<!-- One <tbody> per LEAD: the summary row and its submissions belong together, and
+					     grouping lets the divider fall between people instead of inside one. -->
+					{#each data.leads as lead (lead.id)}
 						<!-- One named rule for "is this a repeat invitation", shared with the server side
 						     ($lib/waitlist-invite.ts) rather than re-derived per label below. -->
-						{@const resend = isWaitlistResend(row.inviteState)}
+						{@const resend = isWaitlistResend(lead.inviteState)}
+						{@const latest = latestOf(lead)}
 						<tbody class="border-b border-hairline">
 							<tr class="align-top">
-								<td class="px-3 py-3"><WaitlistLeadClassBadge leadClass={row.leadClass} /></td>
-								<td class="px-3 py-3 whitespace-nowrap text-faint">{fmt.format(row.createdAt)}</td>
+								<td class="px-3 py-3"><WaitlistLeadClassBadge leadClass={lead.leadClass} /></td>
+								<td class="px-3 py-3 whitespace-nowrap text-faint"
+									>{lead.latestAt ? fmt.format(lead.latestAt) : DASH}</td
+								>
 								<td class="px-3 py-3">
 									<a
-										href={`mailto:${row.email}`}
-										class="text-body transition-colors hover:text-primary-500">{row.email}</a
+										href={`mailto:${lead.email}`}
+										class="text-body transition-colors hover:text-primary-500">{lead.email}</a
 									>
+									<!-- The three things that only exist because submissions are append-only: how
+									     many there are, whether they disagree, and whether a human has looked
+									     since the newest one arrived. -->
+									<div class="mt-1 flex flex-wrap items-center gap-1.5">
+										{#if lead.submissions.length > 1}
+											<span class="{tagBase} bg-white/10 text-body"
+												>{m.admin_waitlist_detail_show_n({ count: lead.submissions.length })}</span
+											>
+										{/if}
+										{#if lead.conflicts.length > 0}
+											<span class="{tagBase} bg-warning-500/15 text-warning-300"
+												>{m.admin_waitlist_conflict_badge({ count: lead.conflicts.length })}</span
+											>
+										{/if}
+										{#if lead.needsReview}
+											<span class="text-xs text-warning-400">{m.admin_waitlist_needs_review()}</span
+											>
+										{:else if lead.reviewedAt}
+											<span class="text-xs text-faint"
+												>{m.admin_waitlist_reviewed_at({ date: fmt.format(lead.reviewedAt) })}</span
+											>
+										{/if}
+									</div>
 								</td>
-								<td class="px-3 py-3 text-emphasis">{orDash(row.name)}</td>
-								<td class="px-3 py-3 text-body">{orDash(row.company)}</td>
-								<td class="px-3 py-3 whitespace-nowrap text-body">{roleFor(row.role)}</td>
+								<td class="px-3 py-3 text-emphasis">{orDash(latest?.name ?? null)}</td>
+								<td class="px-3 py-3 text-body">{orDash(latest?.company ?? null)}</td>
+								<td class="px-3 py-3 whitespace-nowrap text-body"
+									>{roleFor(latest?.role ?? null)}</td
+								>
 								<td class="px-3 py-3 whitespace-nowrap">
-									<!-- Tri-state: null = never asked (the pilot answer wasn't positive), false =
-									     asked and declined, true = granted. A grant is the one worth spotting. -->
-									{#if row.contactPermission === true}
-										<span
-											class="inline-flex items-center rounded-full bg-success-500/15 px-2 py-0.5 text-xs font-medium text-success-300"
+									<!-- Tri-state, from the NEWEST submission: null = never asked (the pilot answer
+									     wasn't positive), false = asked and declined, true = granted. A grant is the
+									     one worth spotting — and a grant this lead's submissions disagree about
+									     carries the conflict chip above, which is the honest reading of "someone
+									     said yes and someone said no under this address". -->
+									{#if latest?.contactPermission === true}
+										<span class="{tagBase} bg-success-500/15 text-success-300"
 											>{m.admin_waitlist_outreach_granted()}</span
 										>
-									{:else if row.contactPermission === false}
+									{:else if latest?.contactPermission === false}
 										<span class="text-xs text-body">{m.admin_waitlist_outreach_declined()}</span>
 									{:else}
 										<span class="text-xs text-faint">{m.admin_waitlist_outreach_unasked()}</span>
 									{/if}
 								</td>
 								<td class="px-3 py-3 whitespace-nowrap">
-									<!-- Invite state (DAR-67), derived server-side from invited_at/activated_at. Three
-									     states, and only the last is self-evidently good news: "invited" means an email
-									     went out, not that anyone acted on it. -->
-									{#if row.inviteState === 'activated'}
-										<span
-											class="inline-flex items-center rounded-full bg-success-500/15 px-2 py-0.5 text-xs font-medium text-success-300"
+									<!-- Invite state (DAR-67), derived server-side from the LEAD's
+									     invited_at/activated_at. Three states, and only the last is self-evidently
+									     good news: "invited" means an email went out, not that anyone acted on it. -->
+									{#if lead.inviteState === 'activated'}
+										<span class="{tagBase} bg-success-500/15 text-success-300"
 											>{m.admin_waitlist_invite_activated()}</span
 										>
-									{:else if row.inviteState === 'invited'}
-										<span
-											class="inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-xs font-medium text-body"
+									{:else if lead.inviteState === 'invited'}
+										<span class="{tagBase} bg-white/10 text-body"
 											>{m.admin_waitlist_invite_invited()}</span
 										>
 									{:else}
@@ -301,23 +496,23 @@
 								<td class="px-3 py-3 text-right align-top">
 									<!-- Invite / resend. Same two-step <details> confirm as delete below, and for the
 									     same reason rather than for symmetry: one click here puts a real email in a
-									     prospect's inbox. A row that has already been invited says "Resend" — DAR-67
+									     prospect's inbox. A lead that has already been invited says "Resend" — DAR-67
 									     requires a re-invite to be an explicit act, never an accidental duplicate. -->
 									<details class="mb-1.5 inline-block text-right">
 										<summary
-											class="inline-flex cursor-pointer list-none items-center rounded px-2 py-1 text-xs font-medium text-primary-500 transition-colors [&::-webkit-details-marker]:hidden hover:bg-primary-500/10 focus-visible:ring-1 focus-visible:ring-primary-500 focus-visible:outline-none"
+											class="{summaryBase} text-primary-500 hover:bg-primary-500/10 focus-visible:ring-primary-500"
 											>{resend
 												? m.admin_waitlist_invite_resend()
 												: m.admin_waitlist_invite()}</summary
 										>
 										<form method="post" action={inviteAction} class="mt-1.5">
-											<input type="hidden" name="id" value={row.id} />
+											<input type="hidden" name="id" value={lead.id} />
 											<button
 												type="submit"
 												class="rounded bg-primary-500/20 px-2 py-1 text-xs font-medium text-primary-200 transition-colors hover:bg-primary-500/30 focus-visible:ring-1 focus-visible:ring-primary-500 focus-visible:outline-none"
 												aria-label={resend
-													? m.admin_waitlist_invite_resend_sr({ email: row.email })
-													: m.admin_waitlist_invite_sr({ email: row.email })}
+													? m.admin_waitlist_invite_resend_sr({ email: lead.email })
+													: m.admin_waitlist_invite_sr({ email: lead.email })}
 												>{resend
 													? m.admin_waitlist_invite_resend_confirm()
 													: m.admin_waitlist_invite_confirm()}</button
@@ -325,22 +520,34 @@
 										</form>
 									</details>
 
+									<!-- "I have reconciled this person's submissions" (DAR-88). One click, no confirm
+									     step: it writes a timestamp and nothing else, and a new submission re-opens
+									     the lead by itself. -->
+									<form method="post" action={reviewAction} class="mb-1.5 inline-block">
+										<input type="hidden" name="id" value={lead.id} />
+										<button
+											type="submit"
+											class="{summaryBase} text-faint hover:bg-white/5 hover:text-white focus-visible:ring-primary-500"
+											aria-label={m.admin_waitlist_review_sr({ email: lead.email })}
+											>{m.admin_waitlist_review()}</button
+										>
+									</form>
+
 									<!-- Two-step confirm, no JS: the <summary> reveals the delete button; clicking it
-									     again cancels. Avoids a one-click misclick without needing confirm(). -->
+									     again cancels. Avoids a one-click misclick without needing confirm(). This
+									     one takes the whole person AND every submission (schema cascade), so the
+									     screen-reader label says so. -->
 									<details class="inline-block text-right">
 										<summary
-											class="inline-flex cursor-pointer list-none items-center rounded px-2 py-1 text-xs font-medium text-error-400 transition-colors [&::-webkit-details-marker]:hidden hover:bg-error-500/10 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none"
+											class="{summaryBase} text-error-400 hover:bg-error-500/10 focus-visible:ring-error-500"
 											>{m.admin_delete()}</summary
 										>
-										<!-- Carry the active filter through the action URL. A bare `?/delete` would
-									     resolve to /admin/waitlist?/delete and drop `class=`, bouncing the
-									     operator out of the band they were working. -->
 										<form method="post" action={deleteAction} class="mt-1.5">
-											<input type="hidden" name="id" value={row.id} />
+											<input type="hidden" name="id" value={lead.id} />
 											<button
 												type="submit"
 												class="rounded bg-error-500/20 px-2 py-1 text-xs font-medium text-error-200 transition-colors hover:bg-error-500/30 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none"
-												aria-label={m.admin_waitlist_delete_sr({ email: row.email })}
+												aria-label={m.admin_waitlist_delete_sr({ email: lead.email })}
 												>{m.admin_delete_confirm()}</button
 											>
 										</form>
@@ -351,86 +558,89 @@
 								<td colspan="9" class="px-3 pb-3">
 									<details>
 										<summary
-											aria-label={m.admin_waitlist_detail_sr({ email: row.email })}
+											aria-label={m.admin_waitlist_detail_sr({ email: lead.email })}
 											class="inline-flex cursor-pointer items-center rounded text-xs text-faint transition-colors hover:text-white focus-visible:ring-1 focus-visible:ring-primary-500 focus-visible:outline-none"
-											>{m.admin_waitlist_detail_show()}</summary
+											>{m.admin_waitlist_detail_show_n({ count: lead.submissions.length })}</summary
 										>
-										<dl class="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-											{@render detail(
-												m.admin_waitlist_field_region(),
-												labelled(row.countryRegion, waitlistRegionLabel)
-											)}
-											{@render detail(
-												m.admin_waitlist_field_application(),
-												labelled(row.primaryApplication, waitlistApplicationLabel)
-											)}
-											{@render detail(
-												m.admin_waitlist_field_timeline(),
-												labelled(row.evaluationTimeline, waitlistTimelineLabel)
-											)}
-											{@render detail(
-												m.admin_waitlist_field_approach(),
-												labelled(row.currentApproach, waitlistApproachLabel)
-											)}
-											{@render detail(
-												m.admin_waitlist_field_impact(),
-												labelled(row.economicImpact, waitlistImpactLabel)
-											)}
-											{@render detail(
-												m.admin_waitlist_field_budget(),
-												labelled(row.budgetRange, waitlistBudgetLabel)
-											)}
-											{@render detail(
-												m.admin_waitlist_field_evidence(),
-												labelledList(row.adoptionEvidence, waitlistEvidenceLabel)
-											)}
-											{@render detail(
-												m.admin_waitlist_field_pilot(),
-												labelled(row.pilotInterest, waitlistPilotInterestLabel)
-											)}
-											{@render detail(
-												m.admin_waitlist_field_deployment(),
-												orDash(row.deploymentScale)
-											)}
-											{@render detail(
-												m.admin_waitlist_field_contact_method(),
-												labelled(row.contactMethod, waitlistContactMethodLabel)
-											)}
-											{@render detail(m.admin_waitlist_col_phone(), orDash(row.phone))}
-											{@render detail(
-												m.admin_waitlist_field_research_prefs(),
-												labelledList(row.researchPreferences, waitlistResearchPreferenceLabel)
-											)}
-											{@render detail(
-												m.admin_waitlist_field_consent(),
-												row.consentUpdates
-													? m.admin_waitlist_consent_yes()
-													: m.admin_waitlist_consent_no()
-											)}
-											{@render detail(m.admin_waitlist_field_step(), orDash(row.qualificationStep))}
-											{@render detail(m.admin_waitlist_field_updated(), fmt.format(row.updatedAt))}
-											<!-- Invite audit (DAR-67). `invited_at` is the LAST send, not the first — a
-											     resend overwrites it — so the durable history is the per-invite Workers
-											     Logs line, not this. `invited_by` is a staff user id: the roster is a
-											     different query, and resolving a name per row would cost one. -->
+
+										{#if lead.conflicts.length > 0}
+											<!-- Named up front so the operator knows what to compare before scrolling
+											     through two full answer sets. -->
+											<p class="mt-3 text-xs text-warning-300">
+												{m.admin_waitlist_conflict_list({
+													fields: conflictNames(lead.conflicts)
+												})}
+											</p>
+										{/if}
+
+										<!-- Newest first: the most recent claim is the one an operator is usually
+										     reacting to, and the older ones are the context for judging it. -->
+										{#each lead.submissions as row, index (row.id)}
+											<article class="mt-4 border-t border-hairline pt-3 first:border-t-0">
+												<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+													<div class="flex flex-wrap items-center gap-2">
+														<span class="text-xs text-faint"
+															><!-- Counted from the OLDEST, while the list renders newest-first: "Submission
+															     3 of 3" is the most recent one, which is how a person would describe their
+															     own third attempt. `index + 1` would label the newest as "1 of 3". -->{m.admin_waitlist_submission_n(
+																{
+																	n: lead.submissions.length - index,
+																	total: lead.submissions.length
+																}
+															)}</span
+														>
+														<span class="text-xs text-body">{fmt.format(row.createdAt)}</span>
+														<!-- Per-submission band, so the lead's badge above is attributable
+														     rather than an unexplained aggregate. -->
+														<WaitlistLeadClassBadge leadClass={row.leadClass} />
+													</div>
+													<!-- Drop ONE junk submission without discarding the person. This is the
+													     operator's answer to append-only's accepted cost: anyone can submit
+													     a known address, so there has to be a way to delete a claim rather
+													     than a prospect. -->
+													<details class="text-right">
+														<summary
+															class="{summaryBase} text-error-400 hover:bg-error-500/10 focus-visible:ring-error-500"
+															>{m.admin_waitlist_delete_submission()}</summary
+														>
+														<form method="post" action={deleteSubmissionAction} class="mt-1.5">
+															<input type="hidden" name="id" value={row.id} />
+															<button
+																type="submit"
+																class="rounded bg-error-500/20 px-2 py-1 text-xs font-medium text-error-200 transition-colors hover:bg-error-500/30 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none"
+																aria-label={m.admin_waitlist_delete_submission_sr({
+																	email: lead.email
+																})}>{m.admin_delete_confirm()}</button
+															>
+														</form>
+													</details>
+												</div>
+												{@render answers(row, lead.conflicts)}
+											</article>
+										{/each}
+
+										<!-- Lead-level state: our own actions, not anything the person submitted, which
+										     is exactly why these live on the lead and outside the per-submission
+										     blocks above. -->
+										<dl
+											class="mt-4 grid gap-x-6 gap-y-3 border-t border-hairline pt-3 sm:grid-cols-2 lg:grid-cols-3"
+										>
+											<!-- `invited_at` is the LAST send, not the first — a resend overwrites it —
+											     so the durable history is the per-invite Workers Logs line, not this.
+											     `invited_by` is a staff user id: the roster is a different query, and
+											     resolving a name per row would cost one. -->
 											{@render detail(
 												m.admin_waitlist_field_invited(),
-												row.invitedAt ? fmt.format(row.invitedAt) : DASH
+												lead.invitedAt ? fmt.format(lead.invitedAt) : DASH
 											)}
-											{@render detail(m.admin_waitlist_field_invited_by(), orDash(row.invitedBy))}
+											{@render detail(m.admin_waitlist_field_invited_by(), orDash(lead.invitedBy))}
 											{@render detail(
 												m.admin_waitlist_field_activated(),
-												row.activatedAt ? fmt.format(row.activatedAt) : DASH
+												lead.activatedAt ? fmt.format(lead.activatedAt) : DASH
 											)}
-											<!-- v1 columns: retired from the form, retained for historical rows. -->
 											{@render detail(
-												m.admin_waitlist_col_size(),
-												labelled(row.companySize, waitlistCompanySizeLabel)
-											)}
-											{@render detail(m.admin_waitlist_col_interest(), orDash(row.interest))}
-											{@render detail(
-												m.admin_waitlist_col_heard(),
-												labelled(row.hearAbout, waitlistReferralLabel)
+												m.admin_waitlist_field_reviewed_by(),
+												orDash(lead.reviewedBy)
 											)}
 										</dl>
 									</details>
@@ -441,10 +651,13 @@
 				</table>
 			</div>
 
-			<!-- Two standing caveats, kept next to the data they qualify rather than in a doc nobody
-			     reads at 2am: the priority band is our own guess, and the outreach fields are claims. -->
+			<!-- Standing caveats, kept next to the data they qualify rather than in a doc nobody reads at
+			     2am: the priority band is our own guess, the outreach fields are claims, submissions are
+			     never merged, and deleting a lead takes its submissions with it. -->
 			<p class="mt-5 px-2 text-xs text-faint">{m.admin_waitlist_internal_note()}</p>
 			<p class="mt-1.5 px-2 text-xs text-faint">{m.admin_waitlist_unverified_note()}</p>
+			<p class="mt-1.5 px-2 text-xs text-faint">{m.admin_waitlist_conflict_note()}</p>
+			<p class="mt-1.5 px-2 text-xs text-faint">{m.admin_waitlist_appendonly_note()}</p>
 		{/if}
 	</div>
 </section>
