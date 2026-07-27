@@ -38,16 +38,18 @@
 	const described = $derived(topics.filter((t) => t.description));
 	const active = $derived(described.find((t) => t.slug === activeSlug) ?? null);
 
-	// What actually suppresses the native disclosure triangle here is the `flex` display — measured
-	// in both chromium and firefox, where reverting `list-style` changes neither the summary's
-	// width nor where its first child starts. So `list-none` and the `-webkit-` rule are belt and
-	// braces, not the mechanism: they cost one class each and keep the caret from doubling up if
-	// this summary is ever given a display that generates a marker box (`block`, `list-item`).
+	// `flex w-full` — the summary sits in a card-shaped bar, so a target spanning only its own text
+	// would leave most of a plainly clickable row inert, and it makes the focus ring outline the row
+	// rather than a fragment of it.
+	//
+	// `list-none` + the `-webkit-` rule are belt and braces, NOT the mechanism: what actually
+	// suppresses the native disclosure triangle is the `flex` display. Measured in chromium and
+	// firefox — reverting `list-style` changes neither the summary's width nor where its first child
+	// starts. They stay because they cost a class each and stop the caret doubling up if this
+	// summary is ever given a display that generates a marker box (`block`, `list-item`).
+	//
 	// One literal, never concatenated: Tailwind's scanner reads raw source text, so a class split
 	// across a `+` boundary would silently never compile.
-	// `flex w-full`, not `inline-flex`: the summary sits in a card-shaped bar, so a target that
-	// only spans its own text would leave most of a row that plainly looks clickable inert —
-	// and it makes the focus ring outline the row rather than a fragment of it.
 	const summaryClass =
 		'flex w-full cursor-pointer list-none items-center gap-1.5 rounded text-xs text-muted transition-colors hover-focus:text-white [&::-webkit-details-marker]:hidden';
 </script>
@@ -97,9 +99,10 @@
 		     more result. The tertiary rule ties it to the topic charge (docs/sanity.md). -->
 		{#if active}
 			<div class="border-l-2 border-tertiary-500/40 pl-4">
-				<p class="text-xs font-medium tracking-wide text-faint">
-					{m.research_filter_topic_label()}
-				</p>
+				<!-- Its own key, not the filter select's `research_filter_topic_label` — the two read
+				     identically today and are free to diverge (a select label may well grow into
+				     "Filter by topic"), so sharing one would silently rewrite this eyebrow. -->
+				<p class="text-xs font-medium tracking-wide text-faint">{m.research_topic_eyebrow()}</p>
 				<h2 class="mt-0.5 text-xl font-medium tracking-tight text-white">{active.title}</h2>
 				<p class="mt-1 text-sm leading-relaxed text-body">{active.description}</p>
 			</div>
