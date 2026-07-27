@@ -379,9 +379,21 @@ Three things worth keeping:
   invisible to the caller — which is exactly what isn't true of the decoy token or the resume cookie,
   both of which the trap mints because their absence would be a detectable response difference.
 
+**The view event needs no gate**, and neither does step 1: the trap returns before step 1's capture,
+and a resumed visitor keeps their flow id, so a decoy flow's reloaded `waitlist_viewed` collides with
+the row its own first GET already wrote. The first view is unknowable anyway — it happens before the
+trap is tripped.
+
 No type can force the step endpoints through the gate (`captureWaitlistFunnel` stays exported for step
-1 and the page load), so `waitlist-funnel.spec.ts` reads `waitlist-steps.remote.ts` and pins both
-halves: no bare call, and at least one gated call per exported step form.
+1 and the page load), so `waitlist-funnel.spec.ts` reads `waitlist-steps.remote.ts` and pins two
+things: the **import** — a call site cannot exist without the binding, and pinning the import rather
+than the call text can't be tripped by a comment naming the ungated function — and at least one gated
+call per exported step form, so a fifth step can't quietly under-report.
+
+The honeypot's false positives (a password manager filling the hidden field) lose their funnel events
+along with everything else, which is the **same** trade the trap already makes: that visitor's signup
+was never stored either. Before this, they were one of the shapes that produced the inversion — later
+stages under a flow with no signup.
 
 ### Caveats the readout states
 

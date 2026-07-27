@@ -247,9 +247,23 @@ describe('captureWaitlistStepFunnel', () => {
 describe('the step endpoints reach the funnel only through the gate', () => {
 	const source = readFileSync(new URL('../waitlist-steps.remote.ts', import.meta.url), 'utf8');
 
-	it('never calls the ungated captureWaitlistFunnel', () => {
-		// Not a substring of `captureWaitlistStepFunnel(`, so this matches the bare call and nothing else.
-		expect(source).not.toContain('captureWaitlistFunnel(');
+	// Pinned at the IMPORT rather than at the call text: an ESM call site cannot exist without the
+	// binding, so this catches the same mistake one step earlier, and it can't be tripped by a comment
+	// that mentions the ungated function by name.
+	it('imports the gated entry point and not the ungated one', () => {
+		const imported = [
+			...source.matchAll(
+				/import\s+(?:type\s+)?\{([^}]+)\}\s+from\s+'\$lib\/server\/waitlist-funnel'/g
+			)
+		]
+			.flatMap(([, names]) => names.split(','))
+			.map((name) => name.trim())
+			.filter(Boolean);
+
+		expect(imported).toContain('captureWaitlistStepFunnel'); // also the vacuity guard: [] fails here
+		expect(imported).not.toContain('captureWaitlistFunnel');
+		// A namespace import would reach the ungated function without naming it.
+		expect(source).not.toMatch(/import\s+\*\s+as\s+\w+\s+from\s+'\$lib\/server\/waitlist-funnel'/);
 	});
 
 	// A step that fires no funnel event at all is not a thing the flow has (every step reports at

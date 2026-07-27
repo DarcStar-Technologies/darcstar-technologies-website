@@ -38,7 +38,7 @@ import { form, getRequestEvent } from '$app/server';
 import { getDb, type Db } from '$lib/server/db';
 // The STEP entry point, never the bare `captureWaitlistFunnel`: these are the endpoints a
 // honeypot decoy token can reach, so their funnel writes go through the gate that drops them
-// (DAR-83). A spec pins that this module calls no other one.
+// (DAR-83). A spec pins this IMPORT — a call site can't exist without the binding.
 import { captureWaitlistStepFunnel } from '$lib/server/waitlist-funnel';
 import { echoFlowId, type WaitlistFunnelEvent } from '$lib/waitlist-funnel';
 import {
