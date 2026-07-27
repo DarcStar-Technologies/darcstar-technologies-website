@@ -35,13 +35,17 @@ footer legal bar (`Footer.svelte`).
 - **Keep the policy truthful to the code.** The privacy page enumerates what each form
   actually stores — including the user-agent + hashed IP saved with contact/waitlist
   submissions, the optional waitlist qualification answers (value/budget ranges are
-  internal-only: never shown back, never published), and the message→account backfill — plus the sign-in audit log, the sign-in-cookies-only
-  cookie story (locale lives in the URL; there is no language cookie), the honest
+  internal-only: never shown back, never published), and the message→account backfill — plus the sign-in audit log, the
+  **two** essential cookies (the sign-in one, and DAR-75's `waitlist_resume`, which remembers
+  which step of the waitlist form you reached; locale still lives in the URL, and there is no
+  language cookie), the honest
   no-automatic-expiry status of security logs, and the four processors (Cloudflare,
   Turso, Resend, Sanity — Sanity is content-only and never sees form data). If a form
-  gains a field, a processor appears, or logging/linking/retention changes, update the
-  matching `privacy_*` message **and** bump that page's date constant in
-  `src/lib/legal.ts`.
+  gains a field, a processor appears, **a cookie appears**, or logging/linking/retention
+  changes, update the matching `privacy_*` message **and** bump that page's date constant
+  in `src/lib/legal.ts`. The cookie sentence is the easiest one to falsify by accident —
+  it enumerates every cookie the site sets, so a new one makes the page untrue the day it
+  ships.
 - **Settled public facts only** (see the About page): trade name only — no LLC/Inc —
   location "United States", contact via GitHub + email. Because no state is on record,
   the terms deliberately carry **no governing-law state clause**; add one if the entity

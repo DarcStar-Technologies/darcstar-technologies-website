@@ -29,7 +29,7 @@
 	import WaitlistStep4A from '$lib/components/WaitlistStep4A.svelte';
 	import WaitlistStep4B from '$lib/components/WaitlistStep4B.svelte';
 	import WaitlistConfirmation from '$lib/components/WaitlistConfirmation.svelte';
-	import { fieldClass } from '$lib/styles';
+	import { fieldClass, mutedLinkClass } from '$lib/styles';
 	import { joinWaitlist } from '$lib/waitlist.remote';
 	import {
 		submitWaitlistStep2,
@@ -38,46 +38,65 @@
 		submitWaitlistStep4B
 	} from '$lib/waitlist-steps.remote';
 	import { WAITLIST_REGIONS } from '$lib/waitlist-qualification';
+	import { WAITLIST_RESTART_PARAM } from '$lib/waitlist-resume';
 	import { toOptions, waitlistRegionLabel } from '$lib/waitlist-labels';
 	import { m } from '$lib/paraglide/messages.js';
 	import type { PageData } from './$types';
 
-	// The page's only server data: the funnel's anonymous flow id, minted per render (DAR-66).
+	// The page's server data: the funnel's anonymous flow id (DAR-66) and, when this browser has a
+	// waitlist-resume cookie, the step it left off at with the signed values that step needs (DAR-75).
 	let { data }: { data: PageData } = $props();
 
 	// Slug → {value,label} options for the region select. `$derived` so labels re-resolve on locale
 	// change (the label accessors are $state-backed Paraglide messages).
 	const regionOptions = $derived(toOptions(WAITLIST_REGIONS, waitlistRegionLabel));
 
-	// Which step to show. Each step endpoint says where the flow goes next (`next`, decided server-side
-	// in waitlist-flow.ts — never here), so the page only obeys. LATER results take precedence: on the
-	// JS path every earlier result stays truthy, so the order of these fallbacks is load-bearing. The
-	// two step-4 branches are mutually exclusive (a sitting only ever reaches one), so their order
-	// relative to each other doesn't matter.
-	const stage = $derived(
+	// Which step this REQUEST routed to, or undefined when no form ran — i.e. a plain page view. Each
+	// step endpoint says where the flow goes next (`next`, decided server-side in waitlist-flow.ts —
+	// never here), so the page only obeys. LATER results take precedence: on the JS path every earlier
+	// result stays truthy, so the order of these fallbacks is load-bearing. The two step-4 branches
+	// are mutually exclusive (a sitting only ever reaches one), so their order relative to each other
+	// doesn't matter.
+	const resultStage = $derived(
 		submitWaitlistStep4A.result?.next ??
 			submitWaitlistStep4B.result?.next ??
 			submitWaitlistStep3.result?.next ??
 			submitWaitlistStep2.result?.next ??
-			(joinWaitlist.result?.success ? 'step2' : 'step1')
+			(joinWaitlist.result?.success ? 'step2' : undefined)
 	);
+
+	// Which step to SHOW. A live result always wins over the cookie: on a no-JS submit the page is
+	// re-rendered by the POST, and its load reads the cookie the very same request just wrote, so the
+	// two agree — but the result is the authority and the cookie is the memory of it.
+	const stage = $derived(resultStage ?? data.resume?.stage ?? 'step1');
+
+	// True only when the COOKIE put the visitor here — a reload or a fresh arrival mid-flow, never a
+	// submit. It gates the "start a new signup" link: on the terminal screen that link would otherwise
+	// be a second call to action, which is exactly what DAR-64's confirmation is built not to have.
+	const resumed = $derived(resultStage === undefined && data.resume != null);
 
 	// The continuation token for whichever step is showing: step 2 gets step 1's, later steps get the
 	// one the previous step's response echoed back (a native no-JS POST re-renders the page, so the
-	// step-1 result is gone by then). A misconfigured (secret-less) signup returns none — the steps
-	// then can't enrich, but they still render and still terminate cleanly.
+	// step-1 result is gone by then), and a resumed visitor gets one freshly minted for their own row
+	// by the load. A misconfigured (secret-less) signup returns none — the steps then can't enrich,
+	// but they still render and still terminate cleanly.
 	const stepToken = $derived(
 		submitWaitlistStep3.result?.token ??
 			submitWaitlistStep2.result?.token ??
 			joinWaitlist.result?.token ??
+			data.resume?.token ??
 			''
 	);
 
 	// Step 2's signed decisions — the step-4 branch and the confirmation's CTA audience — minted at
 	// step 2 and echoed by step 3 so they survive the detour (neither step re-asks the answers they
 	// were derived from). Opaque here: the page carries the claim to the next step, never reads it.
+	// On a resumed render the load re-mints it from the same pair, which the cookie carried.
 	const flowClaim = $derived(
-		submitWaitlistStep3.result?.flowClaim ?? submitWaitlistStep2.result?.flowClaim ?? ''
+		submitWaitlistStep3.result?.flowClaim ??
+			submitWaitlistStep2.result?.flowClaim ??
+			data.resume?.flowClaim ??
+			''
 	);
 
 	// The funnel handle (DAR-66) for whichever step is showing. `data.flowId` is the one this render's
@@ -105,6 +124,7 @@
 			submitWaitlistStep4B.result?.cta ??
 			submitWaitlistStep3.result?.cta ??
 			submitWaitlistStep2.result?.cta ??
+			data.resume?.cta ??
 			'home'
 	);
 </script>
@@ -254,4 +274,34 @@
 			</form>
 		{/if}
 	</div>
+
+	{#if resumed}
+		<!-- The escape hatch for a resumed render (DAR-75). Without it, a visitor who finished the flow
+		     and came back to sign a colleague up would meet the confirmation and no form at all — a
+		     worse dead end than the blank-form bug this feature fixes.
+
+		     Deliberately OUTSIDE the card, and only when the cookie is what put them here. The
+		     confirmation gets exactly ONE call to action (DAR-64) and that stays true: this is page
+		     chrome pointing at a different task, not a second thing to do with this one. A relative
+		     `?restart` keeps whatever locale prefix the URL already carries.
+
+		     `data-sveltekit-reload` IS LOAD-BEARING, twice over, because this link mutates server state
+		     the client router cannot see:
+
+		       1. It suppresses the hover preload. <body> sets `preload-data="hover"` site-wide, and
+		          preloading DATA runs the load — which here DROPS THE COOKIE. Left at the default, a
+		          mouse merely passing over this link would discard the visitor's place in the flow
+		          (and count a phantom view, DAR-66's rule). Kit skips reload links entirely, which is
+		          stronger than the `tap` opt-out the other /waitlist links use.
+		       2. It forces a real navigation. The load redirects `?restart` back to the bare path so
+		          the parameter can't linger — but that lands on the SAME url the current page's data
+		          was loaded for, so the client router correctly concludes nothing it tracks has
+		          changed and re-renders from cache. The cookie really is gone; the page just still
+		          showed the resumed step. A full navigation has no cache to reuse. -->
+		<p class="mt-5 text-center">
+			<a href="?{WAITLIST_RESTART_PARAM}" data-sveltekit-reload class={mutedLinkClass}
+				>{m.waitlist_restart_link()}</a
+			>
+		</p>
+	{/if}
 </section>

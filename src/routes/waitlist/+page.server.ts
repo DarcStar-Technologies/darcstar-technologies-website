@@ -1,9 +1,21 @@
+import { redirect } from '@sveltejs/kit';
 import { getDb, type Db } from '$lib/server/db';
 import { captureWaitlistFunnel } from '$lib/server/waitlist-funnel';
+import { readEnv } from '$lib/server/env';
+import { mintWaitlistFlowClaim } from '$lib/server/waitlist-flow';
+import { mintWaitlistToken } from '$lib/server/waitlist-token';
+import {
+	clearWaitlistResume,
+	verifyWaitlistResume,
+	WAITLIST_RESTART_PARAM,
+	WAITLIST_RESUME_COOKIE
+} from '$lib/server/waitlist-resume';
 import type { PageServerLoad } from './$types';
 
-// /waitlist's only server-side work: mint the funnel's anonymous flow id and record the view (DAR-66).
-// The page itself is still driven entirely by the remote forms — this load returns one string.
+// /waitlist's server load does two things, and touches the database for neither of them:
+//
+//   1. Mints the funnel's anonymous flow id and records the view (DAR-66).
+//   2. Turns the resume cookie back into the step the visitor left off at (DAR-75).
 //
 // WHY THE VIEW EVENT RIDES A GET INSTEAD OF `navigator.sendBeacon`. Capturing it here (rather than in
 // a client-side beacon to a small POST endpoint, as the ticket sketched) means: no new public write
@@ -11,13 +23,30 @@ import type { PageServerLoad } from './$types';
 // hydration, and — the reason that decides it — the no-JS visitor is counted like everyone else,
 // which matters when the denominator of the primary metric is exactly "people who saw the form".
 // It costs one INSERT per page view, fire-and-forget.
-export const load: PageServerLoad = ({ request, platform }) => {
-	// A fresh id per render. It is the ONLY thing that ties this visitor's funnel rows together, and
-	// it's random rather than derived: an analytics row must not be walkable back to a person (see
-	// $lib/waitlist-funnel.ts). The forms carry it forward in a hidden field, and each step response
-	// echoes it, so a no-JS visitor keeps ONE flow id across the native per-step POSTs even though
-	// this load re-runs and mints another one it won't use.
-	const flowId = crypto.randomUUID();
+//
+// WHY THE RESUME READ IS SAFE TO DO ON A PUBLIC PAGE. Everything it needs is inside the visitor's own
+// signed cookie, so a GET still asks the database nothing about who is on the list. That is the same
+// property the step endpoints keep by routing on the answers just submitted rather than on stored
+// state (waitlist-steps.remote.ts' ANTI-ORACLE note): no response here varies with whether an address
+// is known.
+export const load: PageServerLoad = async ({ request, url, cookies, platform, setHeaders }) => {
+	// Request-scoped reads FIRST, before any await: on workerd `platform.env` is only valid during the
+	// request. getDb() reads it sync, and so does readEnv.
+	const tokenSecret = readEnv('BETTER_AUTH_SECRET');
+	const cookie = cookies.get(WAITLIST_RESUME_COOKIE);
+
+	// `?restart` is the escape hatch (see WAITLIST_RESTART_PARAM): without it, a visitor who finished
+	// the flow and came back to sign up a second address would meet the confirmation and no form.
+	//
+	// It REDIRECTS to the bare path rather than rendering, so the parameter can't linger in the URL.
+	// If it did, the visitor's next signup would be submitted from `/waitlist?restart` and the reload
+	// they'd been fixed for would clear the cookie step 1 had just set — reinstating the exact bug,
+	// but only for the people who used the escape hatch. Redirecting also keeps the funnel honest:
+	// nothing is rendered here, so the view is recorded once, by the GET that lands.
+	if (url.searchParams.has(WAITLIST_RESTART_PARAM)) {
+		clearWaitlistResume(cookies);
+		redirect(303, url.pathname); // `pathname`, so an `/es/waitlist` restart stays in Spanish
+	}
 
 	// getDb() throws when the DB env is missing. /waitlist rendered fine without a database before
 	// this load existed, and it must keep doing so — showing the form is the page's job; reporting on
@@ -30,6 +59,19 @@ export const load: PageServerLoad = ({ request, platform }) => {
 		console.error('waitlist funnel: no database client', err);
 	}
 
+	const state = tokenSecret ? await verifyWaitlistResume(tokenSecret, cookie) : null;
+
+	// A resumed visitor keeps the flow id their earlier steps were recorded under; only a genuinely
+	// fresh arrival gets a new one. This is the same rule the step responses follow by echoing the
+	// submitted handle, and for the same reason: without it a mid-flow reload would split one visitor
+	// across two flows, stranding `qualification_completed` on a flow that never recorded a view and
+	// quietly corrupting every ratio the funnel exists to report.
+	//
+	// Re-recording `waitlist_viewed` under a handle that already has one is a no-op — the composite
+	// primary key makes the count a count of DISTINCT flows (see $lib/server/waitlist-funnel.ts) — so
+	// a reload no longer inflates the denominator either.
+	const flowId = state?.flowId || crypto.randomUUID();
+
 	// GET only. Kit re-runs loads when it re-renders the page after a native (no-JS) remote-form POST,
 	// and counting those would inflate the funnel's denominator by one view per step — turning the
 	// conversion rate for the visitors least able to convert into the worst-looking number on the
@@ -39,5 +81,39 @@ export const load: PageServerLoad = ({ request, platform }) => {
 		captureWaitlistFunnel(db, platform, flowId, ['waitlist_viewed']);
 	}
 
-	return { flowId };
+	if (!state || !tokenSecret) return { flowId, resume: null };
+
+	// A resumed render is the ONLY cacheable response in this flow that carries a continuation token:
+	// every in-flight step is rendered as the answer to a POST, and POSTs aren't cached. So say so
+	// explicitly rather than relying on "nothing sets cache-control, so nothing caches HTML" — a
+	// shared cache storing this page would hand one visitor a write capability for another visitor's
+	// row. `private` is the part that matters; `no-store` costs this page its bfcache entry, which is
+	// a fair trade for a document that is a per-visitor capability.
+	setHeaders({ 'cache-control': 'private, no-store' });
+
+	// Re-mint the two signed values the resumed step needs, from the decisions the cookie carried, so
+	// the resumed render is indistinguishable from the in-flight one — the page's props are the same
+	// shape either way and it never learns which it got.
+	//
+	// The token is re-minted rather than stored: a cookie holding a live capability verbatim would be
+	// one copy-paste from ending up somewhere else, and the row id it's built from authorizes nothing
+	// on its own. `submissionId` is null once the flow is `done`, which is exactly when there is
+	// nothing left to authorize.
+	return {
+		flowId,
+		resume: {
+			stage: state.stage,
+			token: state.submissionId ? await mintWaitlistToken(tokenSecret, state.submissionId) : '',
+			// Both halves or neither: step 2 settles them together, so a claim minted from a partial
+			// pair would be inventing one of them.
+			flowClaim:
+				state.branch && state.audience
+					? await mintWaitlistFlowClaim(tokenSecret, {
+							branch: state.branch,
+							audience: state.audience
+						})
+					: '',
+			cta: state.cta
+		}
+	};
 };

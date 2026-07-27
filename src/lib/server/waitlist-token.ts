@@ -125,10 +125,27 @@ export function mintWaitlistToken(
 }
 
 /**
+ * The DECOY row id for the honeypot path — an id that addresses no real row, so any step write it
+ * authorizes silently no-ops.
+ *
+ * DETERMINISTIC in the email so repeat honeypot submits return the same id; a fresh-random id each
+ * time would itself fingerprint the trap. Exported because the honeypot path has to look identical in
+ * every observable way, which since DAR-75 includes the resume cookie it sets — that cookie stores an
+ * id, not a token, so the decoy needs its id in hand and not just a token wrapped around it.
+ */
+export async function decoyWaitlistId(secret: string, email: string): Promise<string> {
+	const key = await hmacKey(secret, 'sign');
+	const digest = await crypto.subtle.sign(
+		'HMAC',
+		key,
+		encoder.encode(`decoy:${email}`) as Uint8Array<ArrayBuffer>
+	);
+	return `${DECOY_ID_PREFIX}${b64url(digest).slice(0, 22)}`;
+}
+
+/**
  * A DECOY continuation token for the honeypot path. It verifies structurally but its embedded id
- * (`decoy_…`) addresses no real row, so any step write silently no-ops. The id is derived
- * DETERMINISTICALLY from the email so repeat honeypot submits return the same id — a fresh-random id
- * each time would itself fingerprint the trap. This only makes the response BODY look like a real
+ * addresses no real row (see `decoyWaitlistId`). This only makes the response BODY look like a real
  * success; the honeypot still returns before a real submit's DB round-trips, so a timing
  * side-channel remains (accepted — the goal is only that the JSON a bot parses looks identical).
  */
@@ -137,13 +154,7 @@ export async function mintDecoyWaitlistToken(
 	email: string,
 	now: number = Date.now()
 ): Promise<string> {
-	const key = await hmacKey(secret, 'sign');
-	const digest = await crypto.subtle.sign(
-		'HMAC',
-		key,
-		encoder.encode(`decoy:${email}`) as Uint8Array<ArrayBuffer>
-	);
-	return mintWaitlistToken(secret, `${DECOY_ID_PREFIX}${b64url(digest).slice(0, 22)}`, now);
+	return mintWaitlistToken(secret, await decoyWaitlistId(secret, email), now);
 }
 
 const DECOY_ID_PREFIX = 'decoy_';

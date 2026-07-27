@@ -419,6 +419,187 @@ test('step 4A hides the contact block again for a negative answer', async ({ pag
 	await expectConfirmation(main, 'View the GIDE evidence overview', /\/evidence$/);
 });
 
+// RELOAD RESUMES THE FLOW (DAR-75). Before this, every one of these reloads showed the blank step-1
+// form again — the flow lived entirely in per-response remote-form results, which don't survive one.
+// The state now rides a signed, httpOnly cookie the page's load turns back into the right step. These
+// run on the honeypot's decoy token like everything else here, so they stay DB-free: the cookie is
+// written on the decoy path too, deliberately, so the trap can't be spotted from a response header.
+test.describe('resuming after a reload', () => {
+	test('a reload after the step-1 signup comes back to step 2, not a blank form', async ({
+		page
+	}) => {
+		await page.goto('/waitlist');
+		const main = page.getByRole('main');
+		await advanceToStep2(main);
+
+		await page.reload();
+
+		await expect(
+			main.getByRole('heading', { level: 1, name: "Tell us what you're working on" })
+		).toBeVisible();
+		// And it is a WORKING step 2, not just the right heading: the load re-minted a continuation
+		// token for the same row, so Continue still has something to authorize.
+		await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
+	});
+
+	// The funnel handle survives too. Without this a mid-flow reload would strand the rest of the
+	// visitor's events on a second flow id, so `qualification_completed` would belong to a flow that
+	// never recorded a view — every ratio in the admin readout quietly wrong (DAR-66).
+	test('a reload keeps the visitor on ONE funnel flow', async ({ page }) => {
+		await page.goto('/waitlist');
+		const main = page.getByRole('main');
+		const flowId = await main.locator('input[name="flowId"]').inputValue();
+
+		await advanceToStep2(main);
+		await page.reload();
+
+		await expect(main.locator('input[name="flowId"]')).toHaveValue(flowId);
+	});
+
+	// Deeper in: the branch and CTA audience step 2 decided are carried by the cookie as well as by
+	// the signed flow claim, so a reload at step 3 still knows which step-4 branch it is heading for.
+	test('a reload at step 3 comes back to step 3 with its flow claim intact', async ({ page }) => {
+		await page.goto('/waitlist');
+		const main = page.getByRole('main');
+		await advanceToStep3(main);
+
+		await page.reload();
+
+		await expect(
+			main.getByRole('heading', { level: 1, name: 'Help us understand the opportunity' })
+		).toBeVisible();
+		await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
+		await expect(main.locator('input[name="flowClaim"]')).toHaveValue(/^f1\./);
+
+		// …and it still routes: Continue from here reaches branch A, which only the carried claim can
+		// have chosen (step 3 never re-asks the timeline it was derived from).
+		await main.getByRole('button', { name: 'Continue' }).click();
+		await expect(
+			main.getByRole('heading', { level: 1, name: 'Would you consider an evaluation?' })
+		).toBeVisible();
+	});
+
+	// The terminal case, and the one the ticket names first. The confirmation's CTA is a server
+	// decision, so a resumed confirmation showing the SAME one is what proves the cookie carried the
+	// resolved decision rather than the page re-guessing from nothing.
+	test('a reload after the flow finishes comes back to the confirmation, same CTA', async ({
+		page
+	}) => {
+		await page.goto('/waitlist');
+		const main = page.getByRole('main');
+		await advanceToStep4A(main);
+
+		await chooseOption(main, /Evaluation interest/, /within 3 months/);
+		await main.getByRole('button', { name: 'Continue' }).click();
+		await expectConfirmation(main, 'Request an evaluation conversation', /\/contact$/);
+
+		await page.reload();
+
+		await expect(main.getByRole('heading', { name: "You're on the waitlist" })).toBeVisible();
+		await expect(
+			main.getByRole('link', { name: 'Request an evaluation conversation' })
+		).toHaveAttribute('href', /\/contact$/);
+
+		// A finished flow's cookie holds a screen and a link and nothing else — the row id is dropped
+		// at `done`, so there is no step form and nothing left to authorize.
+		await expect(main.locator('input[name="token"]')).toHaveCount(0);
+	});
+
+	// THE ESCAPE HATCH. Resuming a finished flow would otherwise trap a visitor who came back to sign
+	// up a second address on a confirmation with no form.
+	test('"Start a new signup" clears the resume state and gives the form back', async ({ page }) => {
+		await page.goto('/waitlist');
+		const main = page.getByRole('main');
+		await advanceToStep2(main);
+		await page.reload();
+
+		// The link appears only on a RESUMED render — never on the in-flight one, where it would be a
+		// second call to action on a screen designed to have exactly one (DAR-64).
+		const restart = main.getByRole('link', { name: 'Start a new signup' });
+
+		// HOVERING IT MUST NOT FIRE IT. <body> sets `data-sveltekit-preload-data="hover"`, and
+		// preloading data runs the load — which for `?restart` deletes the cookie. Without the opt-out
+		// a mouse drifting across this link would silently throw away the visitor's place in the flow.
+		// Asserted by behaviour, not by reading the attribute: what matters is that the state survives.
+		await restart.hover();
+		await page.waitForTimeout(1000); // Kit's hover preload fires well inside this
+		await page.reload();
+		await expect(
+			main.getByRole('heading', { level: 1, name: "Tell us what you're working on" })
+		).toBeVisible();
+
+		await main.getByRole('link', { name: 'Start a new signup' }).click();
+
+		await expect(
+			main.getByRole('heading', { level: 1, name: 'Get early access to GIDE' })
+		).toBeVisible();
+		await expect(main.getByLabel('Email', { exact: true })).toHaveValue('');
+
+		// The parameter must NOT survive into the URL. Left there, the next signup would be made from
+		// `/waitlist?restart`, and the very next reload would clear the cookie step 1 had just set —
+		// the original bug, reintroduced for exactly the people who used the escape hatch.
+		await expect(page).toHaveURL(/\/waitlist$/);
+
+		// Really cleared, not just this render: a plain reload of /waitlist stays on the form.
+		await page.reload();
+		await expect(
+			main.getByRole('heading', { level: 1, name: 'Get early access to GIDE' })
+		).toBeVisible();
+	});
+
+	// …and the whole point of clearing it: a second signup works, and is resumable in its own right.
+	test('after a restart the flow can be run again from scratch', async ({ page }) => {
+		await page.goto('/waitlist');
+		const main = page.getByRole('main');
+		await advanceToStep2(main);
+		await page.reload();
+		await main.getByRole('link', { name: 'Start a new signup' }).click();
+
+		await advanceToStep2(main);
+		await page.reload();
+		await expect(
+			main.getByRole('heading', { level: 1, name: "Tell us what you're working on" })
+		).toBeVisible();
+	});
+
+	test('the in-flight flow offers no restart link', async ({ page }) => {
+		await page.goto('/waitlist');
+		const main = page.getByRole('main');
+		await advanceToStep2(main);
+
+		await expect(main.getByRole('link', { name: 'Start a new signup' })).toHaveCount(0);
+	});
+
+	// The cookie's own contract. It carries a re-mintable row handle, so script must not be able to
+	// read it, and it must be signed rather than a legible blob a visitor could edit into another step.
+	test('the resume cookie is httpOnly and opaque', async ({ page, context }) => {
+		await page.goto('/waitlist');
+		await advanceToStep2(page.getByRole('main'));
+
+		const cookie = (await context.cookies()).find((c) => c.name === 'waitlist_resume');
+		expect(cookie, 'step 1 must set the resume cookie').toBeDefined();
+		expect(cookie?.httpOnly).toBe(true);
+		expect(cookie?.sameSite).toBe('Lax');
+		// `r1.` — its own signing prefix, distinct from the continuation token's `v1.` and the flow
+		// claim's `f1.`, so none of the three can be presented as another.
+		expect(cookie?.value.startsWith('r1.')).toBe(true);
+		await expect(page.evaluate(() => document.cookie)).resolves.not.toContain('waitlist_resume');
+	});
+
+	// A resumed render carries a freshly minted continuation token in a hidden field, and unlike every
+	// in-flight step — each of which is the answer to a POST — it is a GET, i.e. cacheable. A shared
+	// cache storing it would hand one visitor a write capability for another visitor's row.
+	test('a resumed render forbids shared caching; a fresh one is untouched', async ({ page }) => {
+		const fresh = await page.goto('/waitlist');
+		expect(fresh?.headers()['cache-control'] ?? '').not.toContain('no-store');
+
+		await advanceToStep2(page.getByRole('main'));
+		const resumed = await page.reload();
+		expect(resumed?.headers()['cache-control']).toContain('private');
+		expect(resumed?.headers()['cache-control']).toContain('no-store');
+	});
+});
+
 // Without JavaScript every step must still submit: each remote form degrades to a native per-step
 // POST. Verify step 1's form carries the native-submit contract (method + action) without submitting
 // (that would need a real DB).
@@ -504,5 +685,36 @@ test.describe('without JavaScript', () => {
 		// response, and the pilot variant degrades to exactly what it is — a link to /contact. The
 		// audience behind it survived two native POSTs inside the signed flow claim.
 		await expectConfirmation(main, 'Request an evaluation conversation', /\/contact$/);
+	});
+
+	// Resuming (DAR-75) matters MORE here than on the hydrated path: without JS every step is a
+	// full-page POST, so the browser's own reload button re-offers the last submission and any stray
+	// navigation loses the flow outright. The cookie is the same one either way — nothing about it
+	// depends on hydration, which is why it's written by the server rather than by an enhance callback.
+	test('a reload mid-flow comes back to the step it left off at', async ({ page }) => {
+		await page.goto('/waitlist');
+		const main = page.getByRole('main');
+
+		await main.getByLabel('Name', { exact: true }).fill('Bot McBotface');
+		await main.getByLabel('Email', { exact: true }).fill('bot@bot');
+		await main.locator('input[name="website"]').fill('bot', { force: true });
+		await main.getByRole('button', { name: 'Join the waitlist' }).click();
+		await expect(
+			main.getByRole('heading', { level: 1, name: "Tell us what you're working on" })
+		).toBeVisible();
+
+		// A clean GET, not a re-POST of the form the browser is sitting on — this is the arrival the
+		// bug was about.
+		await page.goto('/waitlist');
+
+		await expect(
+			main.getByRole('heading', { level: 1, name: "Tell us what you're working on" })
+		).toBeVisible();
+		await expect(main.locator('input[name="token"]')).toHaveValue(/^v1\./);
+		// The restart link is a plain <a> — the escape hatch has to work with JS off too.
+		await expect(main.getByRole('link', { name: 'Start a new signup' })).toHaveAttribute(
+			'href',
+			/\?restart$/
+		);
 	});
 });

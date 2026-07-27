@@ -10,7 +10,8 @@ import { getDb } from '$lib/server/db';
 import { waitlistSubmission } from '$lib/server/db/schema';
 import { validateWaitlist } from '$lib/server/waitlist';
 import { insertWaitlistSubmission } from '$lib/server/waitlist-store';
-import { mintWaitlistToken, mintDecoyWaitlistToken } from '$lib/server/waitlist-token';
+import { mintWaitlistToken, decoyWaitlistId } from '$lib/server/waitlist-token';
+import { setWaitlistResume } from '$lib/server/waitlist-resume';
 import { readEnv } from '$lib/server/env';
 import { hashIp } from '$lib/server/contact'; // shared truncated-SHA-256 IP hash (same throttle model)
 import { sendWaitlistEmails } from '$lib/server/waitlist-notify';
@@ -67,6 +68,7 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		const ip = event.getClientAddress();
 		const userAgent = event.request.headers.get('user-agent') ?? null;
 		const platform = event.platform;
+		const cookies = event.cookies;
 		const locale = getLocale();
 		// The token signing secret, via the shared per-request resolver (sync — valid at this
 		// pre-await point). Reused from Better Auth (domain-separated inside waitlist-token.ts) so no
@@ -82,13 +84,28 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		// No funnel event either — a tripped honeypot is a bot, and counting it would corrupt the one
 		// metric this measures. (The e2e drives the flow through this very path, which is a second
 		// reason it must stay silent: the hermetic suite writes no analytics rows.)
+		//
+		// The resume cookie (DAR-75) is written here TOO, around the decoy id. Skipping it would make
+		// the trap detectable from a response HEADER, which is a far louder tell than the timing
+		// side-channel already accepted above — and it costs nothing, because a decoy id resumes into
+		// a flow whose every step write no-ops exactly as it does today.
 		if (typeof data.website === 'string' && data.website.trim() !== '') {
+			const flowId = echoFlowId(data.flowId);
+			if (!tokenSecret) return { success: true, flowId };
+
+			const decoyId = await decoyWaitlistId(tokenSecret, String(data.email ?? ''));
+			await setWaitlistResume(cookies, tokenSecret, {
+				stage: 'step2',
+				submissionId: decoyId,
+				branch: null,
+				audience: null,
+				cta: null,
+				flowId
+			});
 			return {
 				success: true,
-				token: tokenSecret
-					? await mintDecoyWaitlistToken(tokenSecret, String(data.email ?? ''))
-					: undefined,
-				flowId: echoFlowId(data.flowId)
+				token: await mintWaitlistToken(tokenSecret, decoyId),
+				flowId
 			};
 		}
 
@@ -143,12 +160,26 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		// the same anti-enumeration reason the response shape is identical.
 		captureWaitlistFunnel(db, platform, data.flowId, ['waitlist_signup_completed']);
 
+		// Remember where this browser got to, so a reload lands on step 2 rather than a blank form
+		// (DAR-75). Written for new and existing emails alike, and on the honeypot path above — a
+		// cookie that appeared only sometimes would be a response difference, which is the one thing
+		// this endpoint is careful not to have. It carries only what we just handed back anyway.
+		const flowId = echoFlowId(data.flowId);
+		await setWaitlistResume(cookies, tokenSecret, {
+			stage: 'step2',
+			submissionId: id,
+			branch: null, // step 2 hasn't been answered yet, so there is no branch or audience…
+			audience: null,
+			cta: null, // …and no terminal step has chosen a CTA.
+			flowId
+		});
+
 		// New and existing emails get the same shape INCLUDING the token (anti-enumeration); without
 		// a secret (misconfigured env) the signup still succeeds, just without the optional steps.
 		return {
 			success: true,
 			token: tokenSecret ? await mintWaitlistToken(tokenSecret, id) : undefined,
-			flowId: echoFlowId(data.flowId)
+			flowId
 		};
 	}
 );

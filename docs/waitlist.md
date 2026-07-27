@@ -22,9 +22,10 @@ and an unchecked marketing-consent checkbox (`consent_updates`) are optional. Su
 immediately, so abandoning the later qualification steps still retains the signup. It remains the one
 indexable entry to the flow. (The v1 form asked for email only behind a `<details>` enrichment
 disclosure; DAR-60 flattened it — role moved to step 2, phone to step 4A, and company-size / interest
-/ hear-about left the UI, their columns retained per DAR-59. The interest free-text datalist and its
-`+page.server.ts` load were retired with it, so the page now has no server load.) Safety rails,
-unchanged since v1:
+/ hear-about left the UI, their columns retained per DAR-59. The interest free-text datalist and the
+`+page.server.ts` load that fed it were retired with it; the load that exists today is a different
+one, added by DAR-66 for the funnel and extended by DAR-75 for
+[reload-resume](#resuming-after-a-reload-dar-75).) Safety rails, unchanged since v1:
 
 - **Honeypot** `website` field — a non-empty value is silently accepted (never persisted, trap not
   revealed).
@@ -208,7 +209,10 @@ row must not be walkable back to a person, and a derived id would be joinable to
 who could recompute it. It is shape-checked on write (`isWaitlistFlowId`), so the column can only ever
 hold UUIDs, and each step **echoes it verbatim** exactly as it echoes the continuation token: without
 JS every step is a native POST that re-renders the page, whose load mints a fresh id, so an unechoed
-handle would split one visitor across four flows.
+handle would split one visitor across four flows. Since DAR-75 a **resumed** visitor keeps theirs too
+— the load reuses the id inside the resume cookie rather than minting — which closes the same split
+for a mid-flow reload, and makes the re-recorded `waitlist_viewed` a no-op against the composite key
+instead of a second view for one visitor.
 
 ### The events
 
@@ -355,6 +359,76 @@ closed vocabularies and `verifyWaitlistFlowClaim` narrows against them rather th
   could only ever match zero rows — a trap-tripping bot shouldn't get to spend DB writes. Nothing
   observable changes (the response is generic either way), and it's what keeps the step e2e specs
   DB-free even on the answered paths.
+
+## Resuming after a reload (DAR-75)
+
+Every screen above is rendered from a remote-form **result**, which is per-response: it vanishes on
+reload or navigation. `/waitlist` had no server load at the time, so a fresh GET had nothing that
+could say "this browser already signed up" — a visitor who reloaded at step 3 was shown the empty
+step-1 form again. Never lossy (step 1 persists before step 2 renders, and a re-submit is just
+another append-only row), but a confusing second look at a form they'd filled in.
+
+The state now rides a **signed, httpOnly resume cookie** — `waitlist_resume`,
+`$lib/server/waitlist-resume.ts`.
+
+- **Why a cookie and not the URL.** `/waitlist?c=<token>` was the obvious alternative and it's worse
+  than the bug: it puts a row-authorizing capability into browser history, `Referer` headers and any
+  link the visitor shares. The third option — a re-submit of a known address landing on the
+  confirmation — can't be built without branching on `isNew`, which is exactly the difference step
+  1's response shape exists to hide.
+- **Strictly necessary, and therefore disclosed rather than consented.** It only remembers where the
+  visitor is in a form they're actively filling in, so it needs no banner — but it does need
+  `privacy_collect_technical_body`, which used to state the only cookies are the sign-in ones. That
+  sentence and `PRIVACY_UPDATED` were both updated; see [legal](legal.md).
+- **What it carries**: `stage|submissionId|branch|audience|cta|flowId`, signed with a **third**
+  domain + `r1` prefix on the shared `mintSignedValue` core (alongside the token's `v1` and the flow
+  claim's `f1`), so none of the three can be presented as another. Verification **fails closed** on
+  any component outside its vocabulary — a blank step-1 form is the safe answer, being exactly the
+  behaviour this replaced.
+- **Signed, even though tampering grants nothing.** Routing is UX, not authorization
+  (`waitlist-flow.ts`), so a forged `stage` buys no privilege — but "the client cannot choose its own
+  step" stays structural rather than a per-field argument, and the MAC carries an expiry the browser
+  can't extend by editing `Max-Age`.
+- **The row id is dropped at `done`.** A finished flow has nothing left to write, so its cookie stops
+  carrying a handle the load could turn back into a write token. It chooses a screen and a link.
+- **The load re-mints, it doesn't store.** `+page.server.ts` verifies the cookie and mints a fresh
+  continuation token from `submissionId` and a fresh flow claim from `branch`+`audience`, so the page
+  receives the same props on a resumed render as on an in-flight one and never learns which it got.
+  It reads **no** database row — the same anti-oracle property the step endpoints keep by routing on
+  answers rather than stored state.
+- **A resumed render sets `cache-control: private, no-store`.** It is the only **cacheable** response
+  in the flow that carries a continuation token — every in-flight step is the answer to a POST — so a
+  shared cache storing it would hand one visitor a write capability for another's row. Stated
+  explicitly rather than resting on "nothing sets `cache-control`, so nothing caches HTML".
+- **One flow, not two** (DAR-66). A resumed visitor keeps the flow id their earlier events were
+  recorded under; re-recording `waitlist_viewed` under it is a no-op thanks to the composite key, so
+  a reload no longer inflates the denominator _or_ strands `qualification_completed` on a second flow.
+- **`?restart` is the escape hatch**, and it is load-bearing. Without it, someone who finished the
+  flow and came back to sign up a colleague would meet the confirmation with no form at all — a worse
+  dead end than the original bug. The load drops the cookie on the param and **redirects to the bare
+  path**, so the parameter can't linger (left in the URL, the next signup would be submitted from
+  `/waitlist?restart` and the very next reload would clear the cookie step 1 had just set). The page
+  renders the link **only on a resumed render**, outside the card, so DAR-64's one-CTA confirmation
+  stays a one-CTA confirmation.
+- **That link needs `data-sveltekit-reload`, and it is not cosmetic** — it is the one link on the
+  site that MUTATES server state, and Kit's client router can't see the mutation. Two failures
+  without it, one of which cost a debugging round: (a) `<body>` sets `preload-data="hover"`, and
+  preloading data runs the load, so a mouse merely _passing over_ the link would drop the cookie —
+  the same trap DAR-66 documented, but destructive rather than just miscounted; (b) the redirect
+  lands on the **same url the current page's data was loaded for**, so the router correctly decides
+  nothing it tracks changed and re-renders from cache — the cookie really was gone, the page just
+  kept showing the resumed step. `reload` fixes both (Kit skips preloading reload links outright,
+  which is stronger than `tap`). The general rule: **a destructive GET behind an internal link needs
+  `data-sveltekit-reload`**, and asserting it by behaviour rather than by attribute is what caught
+  the second one.
+- **The honeypot sets it too**, around the decoy id. Skipping it would make the trap detectable from
+  a response _header_, a far louder tell than the timing side-channel already accepted — and it costs
+  nothing, since a decoy resumes into a flow whose every write no-ops. It's also what keeps the
+  reload e2e specs DB-free.
+
+`path` is `/` rather than `/waitlist`: locale lives in the URL, so the page is reachable at both
+`/waitlist` and `/es/waitlist`, and a path-scoped cookie would be silently dropped by a visitor who
+switched language mid-flow.
 
 ## v2 progressive qualification flow (DAR-58)
 

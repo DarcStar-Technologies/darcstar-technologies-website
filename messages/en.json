@@ -791,7 +791,7 @@
 	"privacy_collect_account_title": "Accounts",
 	"privacy_collect_account_body": "Your name, email address, and a password when you create an account. The password is stored only as a salted hash — we can't read it. Sign-up is protected by Cloudflare Turnstile, which may process technical signals from your browser to tell humans from bots. Once you verify your email, contact messages sent from that same address — including ones sent before you signed up — are linked to your account so you can see them on your account page.",
 	"privacy_collect_technical_title": "Security & technical data",
-	"privacy_collect_technical_body": "To protect the site we record the IP address and browser user-agent of sign-in attempts, and each contact or waitlist submission is stored with your browser's user-agent and a shortened hash of your IP address, which we use to rate-limit abuse. The only cookies the site sets are the essential ones that keep you signed in — there are no advertising or analytics cookies, and your language preference lives in the page address, not a cookie.",
+	"privacy_collect_technical_body": "To protect the site we record the IP address and browser user-agent of sign-in attempts, and each contact or waitlist submission is stored with your browser's user-agent and a shortened hash of your IP address, which we use to rate-limit abuse. The only cookies the site sets are essential ones: the cookie that keeps you signed in, and — once you start the waitlist signup — a cookie that remembers which step of that form you reached, so reloading the page doesn't send you back to the beginning. It expires within a day, we never share it, and you can clear it at any time with the “Start a new signup” link on the form. There are no advertising or analytics cookies, and your language preference lives in the page address, not a cookie.",
 	"privacy_use_heading": "How we use it",
 	"privacy_use_body": "We use your information to respond to messages, run the early-access waitlist, operate your account, and keep the site secure. We contact you only about things you asked for — a reply, a waitlist invite, account emails like verification and password resets. There is no marketing list unless you joined the waitlist, and waitlist email is only about early access.",
 	"privacy_processors_heading": "Where it lives",
@@ -847,5 +847,6 @@
 	"contact_privacy_notice": "We use these details only to respond to your message — never for ads, and we never sell them.",
 	"contact_privacy_link": "How we handle your data",
 	"waitlist_privacy_notice": "We use this only to manage the waitlist and send your invite — never for ads, and we never sell it.",
-	"waitlist_privacy_link": "How we handle your data"
+	"waitlist_privacy_link": "How we handle your data",
+	"waitlist_restart_link": "Start a new signup"
 }
