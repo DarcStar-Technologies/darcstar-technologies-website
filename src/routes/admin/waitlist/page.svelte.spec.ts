@@ -17,17 +17,27 @@ vi.mock('$app/state', () => ({
 
 const { default: AdminWaitlistPage } = await import('./+page.svelte');
 
-type Signup = PageData['signups'][number];
+type Lead = PageData['leads'][number];
+type Submission = Lead['submissions'][number];
 // `PageData` also carries the /admin layout's half (a Better Auth `user` + `isAdmin`), which this
 // page reads none of. Pick only this route's own load return, so the fixture still breaks if a
 // column's type changes but doesn't have to fake a session.
 type PageFixture = Pick<
 	PageData,
-	'signups' | 'counts' | 'filter' | 'total' | 'limit' | 'funnel' | 'conversion'
+	| 'leads'
+	| 'counts'
+	| 'filter'
+	| 'total'
+	| 'submissionTotal'
+	| 'reviewTotal'
+	| 'limit'
+	| 'funnel'
+	| 'conversion'
 >;
 
-const ROW: Signup = {
-	id: 'row-1',
+const SUBMISSION: Submission = {
+	id: 'sub-1',
+	leadId: 'lead-1',
 	email: 'lead@example.com',
 	name: 'Ada Lovelace',
 	company: 'Analytical Engines',
@@ -38,6 +48,7 @@ const ROW: Signup = {
 	phone: '+1 555 0100',
 	countryRegion: 'north-america',
 	consentUpdates: true,
+	consentUpdatesAt: new Date('2026-07-01T12:00:00Z'),
 	primaryApplication: 'robotics-autonomous-systems',
 	evaluationTimeline: 'within-3-months',
 	currentApproach: 'internal-system',
@@ -50,29 +61,51 @@ const ROW: Signup = {
 	contactMethod: 'phone-video',
 	researchPreferences: null,
 	qualificationStep: 4,
+	createdAt: new Date('2026-07-01T12:00:00Z'),
+	updatedAt: new Date('2026-07-02T12:00:00Z'),
+	leadClass: 'priority-a'
+};
+
+const ROW: Lead = {
+	id: 'lead-1',
+	email: 'lead@example.com',
 	invitedAt: null,
 	invitedBy: null,
 	activatedAt: null,
+	reviewedAt: null,
+	reviewedBy: null,
 	createdAt: new Date('2026-07-01T12:00:00Z'),
-	updatedAt: new Date('2026-07-02T12:00:00Z'),
+	submissions: [SUBMISSION],
 	leadClass: 'priority-a',
-	inviteState: 'not-invited'
+	inviteState: 'not-invited',
+	conflicts: [],
+	latestAt: new Date('2026-07-01T12:00:00Z'),
+	needsReview: true
 };
 
-const RESEARCHER: Signup = {
+const RESEARCHER: Lead = {
 	...ROW,
-	id: 'row-2',
+	id: 'lead-2',
 	email: 'reader@example.com',
-	name: null,
-	company: null,
-	role: 'researcher',
-	primaryApplication: 'research-education',
-	pilotInterest: null,
-	contactPermission: null,
-	deploymentScale: null,
-	researchPreferences: ['technical-reports'],
+	submissions: [
+		{
+			...SUBMISSION,
+			id: 'sub-2',
+			leadId: 'lead-2',
+			email: 'reader@example.com',
+			name: null,
+			company: null,
+			role: 'researcher',
+			primaryApplication: 'research-education',
+			pilotInterest: null,
+			contactPermission: null,
+			deploymentScale: null,
+			researchPreferences: ['technical-reports'],
+			leadClass: 'research'
+		}
+	],
 	leadClass: 'research',
-	// Already invited (DAR-67) — so one row in the default fixture exercises the resend affordance.
+	// Already invited (DAR-67) — so one lead in the default fixture exercises the resend affordance.
 	invitedAt: new Date('2026-07-03T09:00:00Z'),
 	invitedBy: 'staff-1',
 	activatedAt: null,
@@ -93,15 +126,26 @@ const FUNNEL: PageFixture['funnel'] = {
 };
 
 const data = (over: Partial<PageFixture> = {}): PageFixture => ({
-	signups: [ROW, RESEARCHER],
+	leads: [ROW, RESEARCHER],
 	counts: { 'priority-a': 1, 'priority-b': 0, 'priority-c': 0, research: 1, investor: 0 },
 	filter: null,
 	total: 2,
+	submissionTotal: 2,
+	reviewTotal: 2,
 	limit: 200,
 	funnel: FUNNEL,
 	conversion: 0.25,
 	...over
 });
+
+/** Every POST form's action attribute, so the filter-carrying assertions can match exactly. */
+const actionsOf = (container: HTMLElement, name: string) =>
+	[...container.querySelectorAll('form[method="post"]')]
+		.map((f) => f.getAttribute('action'))
+		// Exact action name, not a prefix: `?/delete` is a prefix of `?/deleteSubmission`, so a
+		// startsWith filter would silently conflate the "remove this claim" and "remove this person"
+		// buttons — the two things the page most needs to keep apart.
+		.filter((a) => a === `?/${name}` || a?.startsWith(`?/${name}&`));
 
 const mount = (over?: Partial<PageFixture>, form: ActionData = null) =>
 	render(AdminWaitlistPage, { data: data(over) as PageData, form });
@@ -110,12 +154,17 @@ describe('/admin/waitlist', () => {
 	it('renders a badge, the row summary and the qualification detail for each signup', async () => {
 		mount();
 
-		await expect.element(page.getByText('Priority A', { exact: true })).toBeVisible();
-		await expect.element(page.getByText('Research / community', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('Priority A', { exact: true }).first()).toBeVisible();
+		await expect
+			.element(page.getByText('Research / community', { exact: true }).first())
+			.toBeVisible();
 		await expect.element(page.getByRole('link', { name: 'lead@example.com' })).toBeVisible();
 		// The label sets resolve rather than leaking a raw slug.
+		// `.first()` throughout: the summary column and the submission's own answer grid both render
+		// this value now, which is the point — the detail states what each submission said rather than
+		// deferring to a single reconciled row.
 		await expect
-			.element(page.getByText('Engineering or technical leader', { exact: true }))
+			.element(page.getByText('Engineering or technical leader', { exact: true }).first())
 			.toBeVisible();
 		// The detail is in the DOM even while its <details> is closed — no JS needed to reveal it.
 		await expect.element(page.getByText('Two inspection cells')).toBeInTheDocument();
@@ -129,7 +178,7 @@ describe('/admin/waitlist', () => {
 	});
 
 	it('marks exactly one filter chip current and uses the band-specific empty state', async () => {
-		const { container } = mount({ filter: 'priority-a', signups: [] });
+		const { container } = mount({ filter: 'priority-a', leads: [] });
 
 		// One, not two: the layout nav already owns the page's aria-current="page".
 		const current = container.querySelectorAll('[aria-current]');
@@ -142,7 +191,7 @@ describe('/admin/waitlist', () => {
 	// none on the list. An empty band is exactly where that distinction matters most, and it's the
 	// one view with no table to hang the note off.
 	it('discloses the read cap even when a filter leaves nothing to show', async () => {
-		mount({ filter: 'priority-b', signups: [], total: 200, limit: 200 });
+		mount({ filter: 'priority-b', leads: [], total: 200, limit: 200 });
 
 		await expect.element(page.getByText('No signups in this band.')).toBeVisible();
 		await expect.element(page.getByText('Showing the 200 most recent.')).toBeVisible();
@@ -152,22 +201,33 @@ describe('/admin/waitlist', () => {
 	// valid-but-not-array JSON must not take the whole triage page down.
 	it('survives a multi-select column that is not an array', async () => {
 		mount({
-			signups: [{ ...ROW, adoptionEvidence: 'corrupted' as unknown as string[] }]
+			leads: [
+				{
+					...ROW,
+					submissions: [{ ...SUBMISSION, adoptionEvidence: 'corrupted' as unknown as string[] }]
+				}
+			]
 		});
-		await expect.element(page.getByText('Priority A', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('Priority A', { exact: true }).first()).toBeVisible();
 	});
 
 	// A bare `?/delete` resolves to /admin/waitlist?/delete and drops `class=`, bouncing the operator
 	// out of the band they were working in.
-	it('carries the active filter into every delete action', () => {
+	it('carries the active filter into every action', () => {
 		const { container } = mount({ filter: 'priority-a' });
-		// Filtered to the delete forms — each row also carries an invite form (DAR-67), covered by its
-		// own test below.
-		const actions = [...container.querySelectorAll('form[method="post"]')]
-			.map((f) => f.getAttribute('action'))
-			.filter((a) => a?.startsWith('?/delete'));
-		expect(actions).toHaveLength(2);
-		expect(new Set(actions)).toEqual(new Set(['?/delete&class=priority-a']));
+		// One of each per lead, plus one deleteSubmission per submission.
+		expect(actionsOf(container, 'delete')).toEqual([
+			'?/delete&class=priority-a',
+			'?/delete&class=priority-a'
+		]);
+		expect(actionsOf(container, 'deleteSubmission')).toEqual([
+			'?/deleteSubmission&class=priority-a',
+			'?/deleteSubmission&class=priority-a'
+		]);
+		expect(actionsOf(container, 'review')).toEqual([
+			'?/review&class=priority-a',
+			'?/review&class=priority-a'
+		]);
 	});
 
 	// DAR-66's readout. It renders every stage including the ones at zero — a stage nobody reached is
@@ -213,17 +273,17 @@ describe('/admin/waitlist', () => {
 
 	// A deploy that lands before its migration has no events table at all. The readout says so and the
 	// LEADS STAY ON SCREEN — an analytics aggregate must not take the triage list down with it.
-	it('degrades to a note when the readout is unavailable, keeping the signups', async () => {
+	it('degrades to a note when the readout is unavailable, keeping the leads', async () => {
 		mount({ funnel: null, conversion: null });
 
 		await expect.element(page.getByText('Funnel counts are unavailable right now.')).toBeVisible();
 		await expect.element(page.getByRole('link', { name: 'lead@example.com' })).toBeVisible();
-		await expect.element(page.getByText('Priority A', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('Priority A', { exact: true }).first()).toBeVisible();
 	});
 
 	// The readout sits on the same page as the leads, so it must stay a count of anonymous flows —
 	// never a per-person breakdown, and never anything a row could be joined back to.
-	it('keeps the readout free of any signup identity', async () => {
+	it('keeps the readout free of any lead identity', async () => {
 		const { container } = mount();
 
 		const funnel = container.querySelector('section[aria-labelledby="waitlist-funnel-heading"]');
@@ -252,7 +312,7 @@ describe('/admin/waitlist invitations', () => {
 
 	it('shows the activated badge once the invitee has set a password', async () => {
 		mount({
-			signups: [
+			leads: [
 				{
 					...ROW,
 					invitedAt: new Date('2026-07-03T09:00:00Z'),
@@ -277,11 +337,10 @@ describe('/admin/waitlist invitations', () => {
 	// of the band they were working in — the same trap the delete action already guards against.
 	it('carries the active filter into every invite action', () => {
 		const { container } = mount({ filter: 'priority-a' });
-		const actions = [...container.querySelectorAll('form[method="post"]')]
-			.map((f) => f.getAttribute('action'))
-			.filter((a) => a?.startsWith('?/invite'));
-		expect(actions).toHaveLength(2);
-		expect(new Set(actions)).toEqual(new Set(['?/invite&class=priority-a']));
+		expect(actionsOf(container, 'invite')).toEqual([
+			'?/invite&class=priority-a',
+			'?/invite&class=priority-a'
+		]);
 	});
 
 	// Both outcome banners live at the top of the page: a no-JS submit re-renders the whole table, and
@@ -322,5 +381,88 @@ describe('/admin/waitlist invitations', () => {
 	it('keeps the delete error and the invite error apart', async () => {
 		const { container } = mount(undefined, { error: 'forbidden' });
 		expect(container.textContent).not.toContain("Couldn't send that invitation");
+	});
+});
+
+// DAR-88 — a row is a PERSON with N submissions, and the view's job is to show them side by side
+// without picking a winner. These cover the three things that only exist because of that.
+describe('/admin/waitlist collated submissions', () => {
+	// Two submissions under one address giving DIFFERENT contact destinations: exactly the case the
+	// pre-DAR-88 store resolved in the write path (and destroyed the loser of). Both must be on screen.
+	const CONFLICTED: Lead = {
+		...ROW,
+		submissions: [
+			{
+				...SUBMISSION,
+				id: 'sub-new',
+				name: 'Mallory',
+				phone: '+1 555 9999',
+				createdAt: new Date('2026-07-05T12:00:00Z')
+			},
+			{ ...SUBMISSION, id: 'sub-old', name: 'Ada Lovelace', phone: '+1 555 0100' }
+		],
+		conflicts: ['name', 'phone'],
+		latestAt: new Date('2026-07-05T12:00:00Z'),
+		needsReview: true
+	};
+
+	it('keeps every submission’s answers rather than merging them', async () => {
+		mount({ leads: [CONFLICTED], total: 1, submissionTotal: 2, reviewTotal: 1 });
+
+		// BOTH phone numbers are rendered. A merged view would show one and silently discard the other,
+		// which is the behaviour this whole change removes.
+		await expect.element(page.getByText('+1 555 9999')).toBeInTheDocument();
+		await expect.element(page.getByText('+1 555 0100')).toBeInTheDocument();
+		await expect.element(page.getByText('Mallory').first()).toBeInTheDocument();
+		await expect.element(page.getByText('Ada Lovelace').first()).toBeInTheDocument();
+	});
+
+	it('names the fields the submissions disagree about', async () => {
+		mount({ leads: [CONFLICTED], total: 1, submissionTotal: 2, reviewTotal: 1 });
+		await expect.element(page.getByText(/Answers disagree across submissions/)).toBeInTheDocument();
+		await expect.element(page.getByText('2 conflicting', { exact: true })).toBeVisible();
+	});
+
+	it('counts the submissions on the lead and in the header', async () => {
+		mount({ leads: [CONFLICTED], total: 1, submissionTotal: 2, reviewTotal: 1 });
+		await expect.element(page.getByText('Leads: 1 · Submissions: 2')).toBeVisible();
+		// The per-lead chip only appears when there is more than one — a "1 submission" badge on every
+		// row would be noise.
+		await expect.element(page.getByText('Submissions (2)').first()).toBeInTheDocument();
+	});
+
+	it('offers a delete for the lead and one per submission, and they are different actions', () => {
+		const { container } = mount({ leads: [CONFLICTED], total: 1, submissionTotal: 2 });
+		expect(actionsOf(container, 'delete')).toEqual(['?/delete']);
+		expect(actionsOf(container, 'deleteSubmission')).toEqual([
+			'?/deleteSubmission',
+			'?/deleteSubmission'
+		]);
+	});
+
+	it('flags a lead awaiting review and reports one that has been reviewed', async () => {
+		mount({ leads: [CONFLICTED], total: 1, submissionTotal: 2, reviewTotal: 1 });
+		await expect.element(page.getByText('Needs review', { exact: true }).first()).toBeVisible();
+		await expect.element(page.getByText('1 awaiting review')).toBeVisible();
+
+		mount(
+			{
+				leads: [
+					{ ...CONFLICTED, reviewedAt: new Date('2026-07-06T12:00:00Z'), needsReview: false }
+				],
+				total: 1,
+				submissionTotal: 2,
+				reviewTotal: 0
+			},
+			null
+		);
+		await expect.element(page.getByText(/Reviewed /).first()).toBeInTheDocument();
+	});
+
+	// The two caveats that describe the model itself, next to the data they qualify.
+	it('states that conflicts are flagged rather than merged, and that submissions append', async () => {
+		mount();
+		await expect.element(page.getByText(/flagged, never merged/)).toBeVisible();
+		await expect.element(page.getByText(/append-only/)).toBeVisible();
 	});
 });

@@ -4,23 +4,23 @@
 // Steps 2 (DAR-61), 3 (DAR-62) and both step-4 branches (DAR-63) live here; whichever of them ends
 // the flow also picks the confirmation's CTA (DAR-64).
 //
-// AUTHORIZATION MODEL (see waitlist-token.ts + waitlist.remote.ts' SECURITY NOTE): steps 2–4 are
-// UNAUTHENTICATED writes. The step-1 response hands back a signed continuation token bound to the row
-// id; each step submits it back and the server verifies before enriching. The same token reaches ANY
-// submitter of a known email (the anti-enumeration success shape), so the writes are deliberately
-// bounded: `applyWaitlistStep` uses an explicit per-step column map (never identity, never another
-// step's answers) and per-field keep-existing. Since DAR-72 the two columns that turn the record into
-// an ACTION are bounded harder still — `phone` (the only step-writable contact DESTINATION) is
-// fill-forward like step 1's own enrich, and `contact_permission` takes a decline absolutely but only
-// fills a grant into a never-asked row. A token holder can no longer overwrite either.
+// AUTHORIZATION MODEL (see waitlist-token.ts + waitlist.remote.ts): steps 2–4 are UNAUTHENTICATED
+// writes. Step 1's response hands back a signed continuation token bound to the SUBMISSION it just
+// inserted; each step submits it back and the server verifies before enriching. Since DAR-88 that is
+// the whole boundary: signups are append-only, so a token always addresses the row its own holder
+// created, and the worst a holder can do is edit answers they gave themselves. The per-step column
+// maps in `applyWaitlistStep` stay — they keep a step to its own columns and away from identity — but
+// they are legibility and blast-radius now, not the thing standing between an attacker and a
+// stranger's record. (Before DAR-88 a token could be minted against a row someone ELSE created, which
+// is what DAR-59's per-field policies and DAR-72's phone/permission rules existed to contain.)
 //
 // ANTI-ORACLE: every path returns the identical success shape — a bad/expired/decoy token, a row that
 // no longer exists, and a real successful write are indistinguishable to the caller, matching the
 // token layer's generic-null contract (verifyWaitlistToken). The `next` step in the response — and
 // the terminal `cta` — are derived ONLY from the answers just submitted (waitlist-flow.ts, plus step
-// 2's signed flow claim), NEVER from stored row state: the token reaches any submitter of a known
-// email, so a `next`/`cta` that depended on the row would leak whether that address is on the list,
-// and how it answered.
+// 2's signed flow claim), NEVER from stored row state. Keep it that way even though DAR-88 defused the
+// enumeration angle: reading the row to route would still make the response depend on data the visitor
+// can't see, and the flow claim already carries everything the routing needs.
 //
 // THE ROUTING IS NOT GATED AT THE WRITE. Which step a visitor is shown (waitlist-flow.ts) is a UX
 // decision, not a permission: someone who crafts a POST straight to step 3 — or to the step-4 branch

@@ -3,20 +3,20 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
 import * as schema from './db/schema';
 import type { Db } from './db';
-import { waitlist } from './db/schema';
+import { waitlistLead, waitlistSubmission } from './db/schema';
 import {
 	applyWaitlistStep,
-	upsertWaitlist,
+	insertWaitlistSubmission,
 	WAITLIST_STEP_WRITE_MAX,
 	WAITLIST_STEP_WRITE_WINDOW_MS
 } from './waitlist-store';
 import type { CleanedWaitlist } from './waitlist';
 
-// Real DB integration test — the insert-or-enrich + `isNew` gate is the security-critical logic
-// (gates the emails; the pure specs can't reach it), so exercise it against an in-memory libsql.
-// The v2 step updates (applyWaitlistStep) are covered here too: they're the only write path for
-// the optional steps, and their guarantees (own-columns-only, monotonic step, no row creation)
-// are what the continuation-token design leans on.
+// Real DB integration test — the append-only insert + the `isNew` gate are the security-critical
+// logic (the gate decides whether an email goes out; the pure specs can't reach it), so exercise them
+// against an in-memory libsql. The v2 step updates (applyWaitlistStep) are covered here too: they're
+// the only write path for the optional steps, and their guarantees (own-columns-only, own-row-only,
+// monotonic step, no row creation) are what the continuation-token design leans on.
 const client = createClient({ url: ':memory:' });
 const db = drizzle(client, { schema }) as unknown as Db;
 
@@ -33,14 +33,30 @@ const base: CleanedWaitlist = {
 	consentUpdates: false
 };
 
-const rows = () => db.select().from(waitlist);
+const leads = () => db.select().from(waitlistLead);
+const rows = () => db.select().from(waitlistSubmission).orderBy(waitlistSubmission.createdAt);
+const rowById = async (id: string) => (await rows()).find((r) => r.id === id);
 
 beforeAll(async () => {
-	// Mirror the schema's waitlist table + its case-insensitive unique index (the perf indexes are
-	// irrelevant to these correctness tests).
+	// Mirror the schema's two waitlist tables. The unique index lives on the LEAD (that migration of
+	// one index is the whole DAR-88 change at the DB layer) and the submission carries no uniqueness
+	// at all; the perf indexes are irrelevant to these correctness tests.
 	await client.execute(
-		`CREATE TABLE waitlist (
+		`CREATE TABLE waitlist_lead (
 			id text PRIMARY KEY NOT NULL,
+			email text NOT NULL,
+			invited_at integer, invited_by text, activated_at integer,
+			reviewed_at integer, reviewed_by text,
+			created_at integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
+		)`
+	);
+	await client.execute(
+		'CREATE UNIQUE INDEX waitlist_lead_email_idx ON waitlist_lead (lower(email))'
+	);
+	await client.execute(
+		`CREATE TABLE waitlist_submission (
+			id text PRIMARY KEY NOT NULL,
+			lead_id text NOT NULL REFERENCES waitlist_lead(id) ON DELETE CASCADE,
 			email text NOT NULL,
 			name text, company text, role text, company_size text, interest text, hear_about text, phone text,
 			country_region text,
@@ -52,145 +68,198 @@ beforeAll(async () => {
 			research_preferences text,
 			qualification_step integer,
 			step_write_count integer, step_write_window_at integer,
-			invited_at integer, invited_by text, activated_at integer,
 			ip_hash text, user_agent text,
 			created_at integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
 			updated_at integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 		)`
 	);
-	await client.execute('CREATE UNIQUE INDEX waitlist_email_idx ON waitlist (lower(email))');
 });
 
 beforeEach(async () => {
-	await client.execute('DELETE FROM waitlist');
+	await client.execute('DELETE FROM waitlist_submission');
+	await client.execute('DELETE FROM waitlist_lead');
 });
 
 afterAll(() => client.close());
 
-describe('upsertWaitlist', () => {
-	it('reports isNew=true and stores the row on a first signup', async () => {
-		const r = await upsertWaitlist(db, { ...base, name: 'Ada' }, 'hash1', 'ua');
+describe('insertWaitlistSubmission', () => {
+	it('reports isNew=true and stores one lead with one submission on a first signup', async () => {
+		const r = await insertWaitlistSubmission(db, { ...base, name: 'Ada' }, 'hash1', 'ua');
 		expect(r.isNew).toBe(true);
+
+		expect(await leads()).toHaveLength(1);
 		const all = await rows();
 		expect(all).toHaveLength(1);
 		expect(all[0].email).toBe('ada@example.com');
 		expect(all[0].name).toBe('Ada');
+		expect(all[0].ipHash).toBe('hash1');
+		expect(all[0].qualificationStep).toBe(1);
+		// The returned id addresses the SUBMISSION — it is what the continuation token binds to.
+		expect(all[0].id).toBe(r.id);
 	});
 
-	it('reports isNew=false on a re-signup and keeps ONE row, case-insensitively', async () => {
-		await upsertWaitlist(db, { ...base, name: 'Ada' }, 'h', null);
-		// same address, different case — the lower(email) unique index must dedupe it
-		const r = await upsertWaitlist(
+	// --- The DAR-88 property, and the reason the write-policy helpers could be deleted -------------
+
+	it('a repeat email APPENDS a submission under the same lead, never edits the first', async () => {
+		const first = await insertWaitlistSubmission(
 			db,
-			{ ...base, email: 'ADA@example.com', company: 'Acme' },
+			{
+				...base,
+				name: 'Ada Lovelace',
+				company: 'Acme',
+				phone: '+1 555 0100',
+				interest: 'Robotics'
+			},
 			'h',
 			null
 		);
-		expect(r.isNew).toBe(false);
-		const all = await rows();
-		expect(all).toHaveLength(1);
-		expect(all[0].email).toBe('ada@example.com'); // stored lowercase
-		expect(all[0].company).toBe('Acme'); // the mixed-case resubmit still ENRICHED the row
-	});
+		const before = await rowById(first.id);
 
-	it('enriches FILL-FORWARD: fills null columns but never overwrites a stored value', async () => {
-		await upsertWaitlist(
+		// Same address, different case — the lower(email) unique index on the LEAD must still resolve
+		// it to one person — with entirely different answers, as a stranger who guessed the address
+		// would supply.
+		const second = await insertWaitlistSubmission(
 			db,
-			{ ...base, name: 'Ada', company: 'Acme', interest: 'Robotics' },
-			'h',
-			null
-		);
-		// A resubmit fills a still-null column (role) but a value for an already-set one (interest)
-		// must NOT overwrite it — step 1 is unauthenticated, so a stranger who knows the email can't
-		// clobber stored data. name/company are blank here, so they survive under either policy.
-		await upsertWaitlist(
-			db,
-			{ ...base, role: 'engineering', interest: 'Fleet logistics' },
-			'h',
-			null
-		);
-		const [row] = await rows();
-		expect(row.name).toBe('Ada'); // preserved (blank on resubmit)
-		expect(row.company).toBe('Acme'); // preserved
-		expect(row.role).toBe('engineering'); // filled (was null)
-		expect(row.interest).toBe('Robotics'); // NOT overwritten — fill-forward keeps the stored value
-	});
-
-	it('enrich cannot overwrite a stored identity value even when a new one is supplied', async () => {
-		// The security property behind fillIfEmpty: required-name (DAR-60) means every submit carries a
-		// name, but an anonymous resubmit for a known email must not replace the stored one — and it's
-		// throttle-exempt (enrich adds no row), so overwrite would be an unbounded vandalism vector.
-		await upsertWaitlist(db, { ...base, name: 'Ada Lovelace', company: 'Acme' }, 'h', null);
-		const r = await upsertWaitlist(
-			db,
-			{ ...base, name: 'Mallory', company: 'Evil Corp', countryRegion: 'europe' },
+			{
+				...base,
+				email: 'ADA@example.com',
+				name: 'Mallory',
+				company: 'Evil Corp',
+				phone: '+1 555 9999',
+				interest: 'Fleet logistics'
+			},
 			'other-ip',
 			null
 		);
-		expect(r.isNew).toBe(false);
-		const [row] = await rows();
-		expect(row.name).toBe('Ada Lovelace'); // attacker-supplied name did NOT win
-		expect(row.company).toBe('Acme'); // nor company
-		expect(row.countryRegion).toBe('europe'); // but a previously-NULL field still fills forward
+
+		expect(second.isNew).toBe(false); // no second welcome email
+		expect(await leads()).toHaveLength(1); // ONE person
+		expect(await rows()).toHaveLength(2); // TWO submissions
+
+		// The first submission is byte-identical. Before DAR-88 this was a policy question per column
+		// (provided-wins? fill-forward?) and the losing value was destroyed; now the write simply
+		// cannot reach it, so every column is safe for the same structural reason.
+		expect(await rowById(first.id)).toEqual(before);
+
+		// …and the stranger's answers are all present, on their own row, for a human to judge.
+		const later = await rowById(second.id);
+		expect(later?.name).toBe('Mallory');
+		expect(later?.phone).toBe('+1 555 9999');
+		expect(later?.email).toBe('ada@example.com'); // normalized on write
 	});
 
-	it('leaves created_at unchanged across an enrich (it is an UPDATE, not a new row)', async () => {
-		await upsertWaitlist(db, base, 'h', null);
-		const [before] = await rows();
-		await upsertWaitlist(db, { ...base, name: 'Ada' }, 'h', null);
-		const [after] = await rows();
-		expect(after.createdAt.getTime()).toBe(before.createdAt.getTime());
-	});
-
-	it('returns the SAME row id for insert and enrich (the continuation token binds to it)', async () => {
-		const first = await upsertWaitlist(db, base, 'h', null);
-		const again = await upsertWaitlist(db, { ...base, email: 'ADA@example.com' }, 'h', null);
-		expect(first.id).toBeTruthy();
-		expect(again.id).toBe(first.id); // case-insensitive match still resolves to the one row
-	});
-
-	it('enriches (never loops) when the stored email is not byte-lowercase', async () => {
-		// Simulate an out-of-band row whose stored email has uppercase bytes (import/console write —
-		// the column has no lowercase constraint, only the functional unique index). A signup for the
-		// lowercase form conflicts on lower(email); the enrich must match it via lower(email), NOT an
-		// exact-equality key that would miss and spin forever (the recursion-DoS this guards against).
-		await client.execute(
-			`INSERT INTO waitlist (id, email, name) VALUES ('mixed-1', 'Ada@Example.com', 'Ada')`
+	it('hands the second submitter a token for THEIR OWN row, not the first submitter’s', async () => {
+		// The continuation token binds to the returned id. Pre-DAR-88 a repeat email returned the FIRST
+		// submitter's row id, which is what let a stranger enrich someone else's record; the ids must
+		// now differ.
+		const first = await insertWaitlistSubmission(db, base, 'h', null);
+		const second = await insertWaitlistSubmission(
+			db,
+			{ ...base, email: 'ADA@example.com' },
+			'h',
+			null
 		);
-		const r = await upsertWaitlist(db, { ...base, company: 'Acme' }, 'h', null);
-		expect(r.isNew).toBe(false);
-		expect(r.id).toBe('mixed-1');
-		const all = await rows();
-		expect(all).toHaveLength(1); // no duplicate inserted
-		expect(all[0].company).toBe('Acme'); // enriched in place
+		expect(second.id).not.toBe(first.id);
+		expect(second.isNew).toBe(false); // …while still looking identical to the caller otherwise
 	});
 
-	it('starts qualification_step at 1 and keeps consent monotonic + timestamped across enriches', async () => {
-		// First submit WITHOUT consent — no grant, no timestamp.
-		await upsertWaitlist(db, base, 'h', null);
-		let [row] = await rows();
-		expect(row.qualificationStep).toBe(1);
-		expect(row.consentUpdates).toBe(false);
-		expect(row.consentUpdatesAt).toBeNull();
+	it('keeps ONE lead when the same address arrives many times', async () => {
+		for (let i = 0; i < 5; i++) {
+			await insertWaitlistSubmission(db, { ...base, name: `Ada ${i}` }, 'h', null);
+		}
+		expect(await leads()).toHaveLength(1);
+		expect(await rows()).toHaveLength(5);
+	});
 
-		// Enrich WITH consent — grant recorded, timestamp stamped.
-		await upsertWaitlist(db, { ...base, consentUpdates: true }, 'h', null);
-		[row] = await rows();
-		expect(row.consentUpdates).toBe(true);
-		const grantedAt = row.consentUpdatesAt;
-		expect(grantedAt).not.toBeNull();
+	it('resolves the lead when its stored email is not byte-lowercase', async () => {
+		// Simulate an out-of-band lead whose stored email has uppercase bytes (import/console write —
+		// the column has no lowercase constraint, only the functional unique index). A signup for the
+		// lowercase form conflicts on lower(email); the read must match it via lower(email), NOT an
+		// exact-equality key that would miss and spin (the recursion-DoS the two-pass loop guards).
+		await client.execute(
+			`INSERT INTO waitlist_lead (id, email) VALUES ('lead-mixed', 'Ada@Example.com')`
+		);
+		const r = await insertWaitlistSubmission(db, { ...base, company: 'Acme' }, 'h', null);
+		expect(r.isNew).toBe(false);
+		expect(await leads()).toHaveLength(1); // no duplicate lead inserted
+		expect((await rowById(r.id))?.leadId).toBe('lead-mixed');
+	});
 
-		// An unchecked box on a later re-submit is "no new grant", NOT a revocation, and must not
-		// move the first-grant timestamp.
-		await upsertWaitlist(db, { ...base, consentUpdates: false }, 'h', null);
-		[row] = await rows();
-		expect(row.consentUpdates).toBe(true);
-		expect(row.consentUpdatesAt?.getTime()).toBe(grantedAt?.getTime());
+	// --- The mailbomb gate ------------------------------------------------------------------------
+
+	it('isNew is true EXACTLY ONCE per address, however many submissions follow', async () => {
+		// This is the gate the welcome/ack emails hang off. Append-only makes "a row was created"
+		// useless as evidence of a new person — every submit creates one — so the gate has to ride the
+		// LEAD insert, and this pins that it does.
+		const flags = [];
+		for (let i = 0; i < 4; i++) {
+			flags.push((await insertWaitlistSubmission(db, base, 'h', null)).isNew);
+		}
+		expect(flags).toEqual([true, false, false, false]);
+	});
+
+	it('two concurrent first-signups for one address yield exactly one isNew', async () => {
+		// The DB decides, atomically, via insert…onConflictDoNothing().returning() against the unique
+		// index — not a "have we seen this email?" read, which would race and mail twice.
+		const results = await Promise.all([
+			insertWaitlistSubmission(db, base, 'h', null),
+			insertWaitlistSubmission(db, { ...base, email: 'ADA@example.com' }, 'h', null)
+		]);
+		expect(results.filter((r) => r.isNew)).toHaveLength(1);
+		expect(await leads()).toHaveLength(1);
+		expect(await rows()).toHaveLength(2); // both submissions still recorded
+	});
+
+	// --- Consent ----------------------------------------------------------------------------------
+
+	it('records consent per submission, with its own timestamp, and never edits an earlier grant', async () => {
+		// A submit WITHOUT consent — no grant, no timestamp.
+		const plain = await insertWaitlistSubmission(db, base, 'h', null);
+		expect((await rowById(plain.id))?.consentUpdates).toBe(false);
+		expect((await rowById(plain.id))?.consentUpdatesAt).toBeNull();
+
+		// A later submit WITH consent — recorded on ITS row, stamped, and provable against that row's
+		// own ip_hash. Better evidence than the monotonic flag it replaces, which said only "someone,
+		// once, ticked a box".
+		const granted = await insertWaitlistSubmission(
+			db,
+			{ ...base, consentUpdates: true },
+			'grant-ip',
+			null
+		);
+		const grantRow = await rowById(granted.id);
+		expect(grantRow?.consentUpdates).toBe(true);
+		expect(grantRow?.consentUpdatesAt).toBeInstanceOf(Date);
+		expect(grantRow?.ipHash).toBe('grant-ip');
+
+		// The earlier row is untouched — no max()-ing a grant forward across submitters.
+		expect((await rowById(plain.id))?.consentUpdates).toBe(false);
+
+		// And an unticked box afterwards is its own "no", not a revocation of the grant above: each row
+		// states what that submitter did, and nothing reaches across rows.
+		const later = await insertWaitlistSubmission(db, { ...base, consentUpdates: false }, 'h', null);
+		expect((await rowById(later.id))?.consentUpdates).toBe(false);
+		expect((await rowById(granted.id))?.consentUpdates).toBe(true);
+	});
+
+	// /admin/waitlist's "delete this lead" relies on the schema's ON DELETE CASCADE to take the
+	// submissions with it — deleting only the lead would leave rows nothing can reach. SQLite enforces
+	// foreign keys only when `PRAGMA foreign_keys` is on, which libsql defaults to but the standard
+	// SQLite default is OFF, so this pins the behaviour the action depends on rather than the DDL text.
+	it('deleting a lead cascades to its submissions', async () => {
+		const first = await insertWaitlistSubmission(db, base, 'h', null);
+		await insertWaitlistSubmission(db, base, 'h', null);
+		const leadId = (await rowById(first.id))!.leadId;
+		expect(await rows()).toHaveLength(2);
+
+		await client.execute({ sql: 'DELETE FROM waitlist_lead WHERE id = ?', args: [leadId] });
+		expect(await rows()).toHaveLength(0);
 	});
 });
 
 describe('applyWaitlistStep', () => {
-	const insert = async () => (await upsertWaitlist(db, { ...base, name: 'Ada' }, 'h', null)).id;
+	const insert = async () =>
+		(await insertWaitlistSubmission(db, { ...base, name: 'Ada' }, 'h', null)).id;
 
 	it('writes ONLY its own step columns — identity fields stay untouched', async () => {
 		const id = await insert();
@@ -201,13 +270,41 @@ describe('applyWaitlistStep', () => {
 			evaluationTimeline: 'evaluating-now'
 		});
 		expect(updated).toBe(true);
-		const [row] = await rows();
-		expect(row.email).toBe('ada@example.com'); // identity untouched
-		expect(row.name).toBe('Ada');
-		expect(row.role).toBe('engineering-leader');
-		expect(row.primaryApplication).toBe('ai-agents-llm-systems');
-		expect(row.evaluationTimeline).toBe('evaluating-now');
-		expect(row.qualificationStep).toBe(2);
+		const row = await rowById(id);
+		expect(row?.email).toBe('ada@example.com'); // identity untouched
+		expect(row?.name).toBe('Ada');
+		expect(row?.role).toBe('engineering-leader');
+		expect(row?.primaryApplication).toBe('ai-agents-llm-systems');
+		expect(row?.evaluationTimeline).toBe('evaluating-now');
+		expect(row?.qualificationStep).toBe(2);
+	});
+
+	it('touches only the submission its token addresses, not the lead’s other submissions', async () => {
+		// The property that replaced DAR-59's per-column policies and DAR-72's phone/permission rules:
+		// a token holder edits the row they created, so a stranger's step write lands on their own
+		// submission and the real person's is untouchable — by construction, not by policy.
+		const mine = await insertWaitlistSubmission(
+			db,
+			{ ...base, name: 'Ada', phone: '+1 555 0100' },
+			'h',
+			null
+		);
+		const theirs = await insertWaitlistSubmission(db, { ...base, name: 'Mallory' }, 'other', null);
+		const before = await rowById(mine.id);
+
+		await applyWaitlistStep(db, theirs.id, {
+			step: '4a',
+			pilotInterest: 'yes-within-3-months',
+			deploymentScale: null,
+			contactPermission: true,
+			contactMethod: 'phone-video',
+			phone: '+1 555 9999'
+		});
+
+		expect(await rowById(mine.id)).toEqual(before); // byte-identical
+		const other = await rowById(theirs.id);
+		expect(other?.phone).toBe('+1 555 9999'); // their claims land on their own row
+		expect(other?.contactPermission).toBe(true);
 	});
 
 	it('round-trips the JSON multi-selects and applies keep-existing on a sparser resubmit', async () => {
@@ -219,7 +316,9 @@ describe('applyWaitlistStep', () => {
 			budgetRange: '25k-100k',
 			adoptionEvidence: ['evaluation-pilot', 'third-party-review']
 		});
-		// A sparser step-3 resubmit (all null) must erase nothing.
+		// A sparser step-3 resubmit (all null) must erase nothing. This is now a UX rule rather than a
+		// security one — it stops a visitor losing their own answers by walking back through a step —
+		// but the behaviour is unchanged.
 		await applyWaitlistStep(db, id, {
 			step: 3,
 			currentApproach: null,
@@ -227,25 +326,24 @@ describe('applyWaitlistStep', () => {
 			budgetRange: null,
 			adoptionEvidence: null
 		});
-		const [row] = await rows();
-		expect(row.currentApproach).toBe('manual-operation');
-		expect(row.adoptionEvidence).toEqual(['evaluation-pilot', 'third-party-review']);
-		expect(row.qualificationStep).toBe(3);
+		const row = await rowById(id);
+		expect(row?.currentApproach).toBe('manual-operation');
+		expect(row?.adoptionEvidence).toEqual(['evaluation-pilot', 'third-party-review']);
+		expect(row?.qualificationStep).toBe(3);
 	});
 
-	it('4a: a grant fills a never-asked contact_permission, null keep-existings it, step never rewinds', async () => {
+	it('4a: contact_permission is tri-state, provided-wins, and the step never rewinds', async () => {
 		const id = await insert();
 		await applyWaitlistStep(db, id, {
 			step: '4a',
 			pilotInterest: 'yes-within-6-months',
 			deploymentScale: 'Two quadrotor cells, ~40 units',
-			contactPermission: true, // a granted answer
+			contactPermission: true,
 			contactMethod: 'email',
 			phone: null
 		});
-		let [row] = await rows();
-		expect(row.qualificationStep).toBe(4);
-		expect(row.contactPermission).toBe(true);
+		expect((await rowById(id))?.qualificationStep).toBe(4);
+		expect((await rowById(id))?.contactPermission).toBe(true);
 
 		// Revisiting an EARLIER step must not rewind the high-water mark…
 		await applyWaitlistStep(db, id, {
@@ -254,8 +352,8 @@ describe('applyWaitlistStep', () => {
 			primaryApplication: null,
 			evaluationTimeline: 'within-3-months'
 		});
-		// …and a later 4a where the question WASN'T shown (validator emits contactPermission=null)
-		// must PRESERVE the standing grant — the key anti-clobber property.
+		// …and a later 4a where the question WASN'T shown (validator emits contactPermission=null) must
+		// PRESERVE the standing answer — null means "not asked", never "no".
 		await applyWaitlistStep(db, id, {
 			step: '4a',
 			pilotInterest: null,
@@ -264,13 +362,16 @@ describe('applyWaitlistStep', () => {
 			contactMethod: null,
 			phone: null
 		});
-		[row] = await rows();
-		expect(row.qualificationStep).toBe(4);
-		expect(row.evaluationTimeline).toBe('within-3-months');
-		expect(row.contactPermission).toBe(true); // NOT revoked by a not-shown submit
-		expect(row.pilotInterest).toBe('yes-within-6-months'); // keep-existing survived the resubmit
+		let row = await rowById(id);
+		expect(row?.qualificationStep).toBe(4);
+		expect(row?.evaluationTimeline).toBe('within-3-months');
+		expect(row?.contactPermission).toBe(true);
+		expect(row?.pilotInterest).toBe('yes-within-6-months');
 
-		// An explicit decline (false — validator saw a positive pilot + unchecked box) DOES stick.
+		// An explicit decline (false — validator saw a positive pilot + unchecked box) writes. So would
+		// a later grant: this row belongs to one submitter, and someone changing their own mind is the
+		// only thing that can reach it. DAR-72's decline-wins asymmetry existed because that was NOT
+		// true; it is now, so the rule is plain provided-wins.
 		await applyWaitlistStep(db, id, {
 			step: '4a',
 			pilotInterest: 'possibly-contact-me',
@@ -279,67 +380,27 @@ describe('applyWaitlistStep', () => {
 			contactMethod: null,
 			phone: null
 		});
-		[row] = await rows();
-		expect(row.contactPermission).toBe(false);
-	});
+		row = await rowById(id);
+		expect(row?.contactPermission).toBe(false);
 
-	// --- DAR-72: what a continuation-token holder may OVERWRITE ---------------------------------
-	// The token reaches any submitter of a known address (step 1's anti-enumeration success shape
-	// hands it over), so these two assert the columns that turn the record into an ACTION are not
-	// attacker-overwritable. Both bound overwriting only; the first write is still open by design.
-
-	it('4a: a grant can NOT overturn a stored decline (contact_permission is decline-wins)', async () => {
-		const id = await insert();
 		await applyWaitlistStep(db, id, {
 			step: '4a',
-			pilotInterest: 'possibly-contact-me',
-			deploymentScale: null,
-			contactPermission: false, // the real person declined
-			contactMethod: null,
-			phone: null
-		});
-		// A decline still lands on a never-asked (null) row — restrictive answers always write.
-		expect((await rows())[0].contactPermission).toBe(false);
-
-		// A later 4a claiming the grant — the flipped bit that would make the record read "wants to
-		// be called". It must not land.
-		const { updated } = await applyWaitlistStep(db, id, {
-			step: '4a',
-			pilotInterest: 'yes-within-3-months',
+			pilotInterest: null,
 			deploymentScale: null,
 			contactPermission: true,
-			contactMethod: 'phone-video',
+			contactMethod: null,
 			phone: null
 		});
-		expect(updated).toBe(true); // generic success — refusing to overwrite is not an error path
-
-		const [row] = await rows();
-		expect(row.contactPermission).toBe(false); // decline survived the grant
-		expect(row.pilotInterest).toBe('yes-within-3-months'); // judgement columns still provided-wins
+		expect((await rowById(id))?.contactPermission).toBe(true);
 	});
 
-	it('4a: phone is FILL-FORWARD — it cannot replace a stored number, but fills a null one', async () => {
-		// A row that already carries the phone its owner gave at step 1. Step 1's own enrich policy
-		// (fillIfEmpty) protects that value from an anonymous resubmit; before DAR-72 the token-gated
-		// step bypassed that protection for the same attacker, on the same column.
-		await upsertWaitlist(db, { ...base, name: 'Ada', phone: '+1 555 0100' }, 'h', null);
-		const id = (await rows())[0].id;
-
+	it('4a: a phone correction by the row’s own submitter lands', async () => {
+		// The genuine-visitor case DAR-72 had to break (fill-forward silently dropped a correction) and
+		// append-only restores: the only person who can reach this row is the one who created it.
+		const id = (
+			await insertWaitlistSubmission(db, { ...base, name: 'Ada', phone: '+1 555 0100' }, 'h', null)
+		).id;
 		await applyWaitlistStep(db, id, {
-			step: '4a',
-			pilotInterest: 'yes-within-3-months',
-			deploymentScale: null,
-			contactPermission: null,
-			contactMethod: null,
-			phone: '+1 555 9999' // attacker-controlled destination
-		});
-		expect((await rows())[0].phone).toBe('+1 555 0100'); // NOT redirected
-
-		// …while a row that never had one still accepts the step-4A answer (the flow's actual purpose,
-		// and the case this deliberately does NOT close — see waitlist-store.ts).
-		const fresh = (await upsertWaitlist(db, { ...base, email: 'grace@example.com' }, 'h2', null))
-			.id;
-		await applyWaitlistStep(db, fresh, {
 			step: '4a',
 			pilotInterest: 'yes-within-3-months',
 			deploymentScale: null,
@@ -347,8 +408,7 @@ describe('applyWaitlistStep', () => {
 			contactMethod: null,
 			phone: '+1 555 0177'
 		});
-		const grace = (await rows()).find((r) => r.id === fresh);
-		expect(grace?.phone).toBe('+1 555 0177');
+		expect((await rowById(id))?.phone).toBe('+1 555 0177');
 	});
 
 	it('stores step-4b research preferences', async () => {
@@ -357,9 +417,9 @@ describe('applyWaitlistStep', () => {
 			step: '4b',
 			researchPreferences: ['technical-reports', 'open-source-releases']
 		});
-		const [row] = await rows();
-		expect(row.researchPreferences).toEqual(['technical-reports', 'open-source-releases']);
-		expect(row.qualificationStep).toBe(4);
+		const row = await rowById(id);
+		expect(row?.researchPreferences).toEqual(['technical-reports', 'open-source-releases']);
+		expect(row?.qualificationStep).toBe(4);
 	});
 
 	it('reports updated=false for an unknown id and NEVER creates a row (decoy-token path)', async () => {
@@ -371,14 +431,16 @@ describe('applyWaitlistStep', () => {
 		});
 		expect(updated).toBe(false);
 		expect(await rows()).toHaveLength(0);
+		expect(await leads()).toHaveLength(0); // and no lead either
 	});
 });
 
-// DAR-68 — the per-row step-write budget. These steps are unauthenticated writes authorized only by
-// the continuation token, which the anti-enumeration success shape hands to any submitter of a known
-// address, so the bound has to hold against a holder who is deliberately hostile.
+// DAR-68 — the per-row step-write budget. Its threat model narrowed under DAR-88 (a token now
+// addresses the row its own holder created, so this no longer stands between an attacker and someone
+// else's data), but it still bounds how much write traffic one submission can absorb.
 describe('applyWaitlistStep step-write budget', () => {
-	const insert = async () => (await upsertWaitlist(db, { ...base, name: 'Ada' }, 'h', null)).id;
+	const insert = async () =>
+		(await insertWaitlistSubmission(db, { ...base, name: 'Ada' }, 'h', null)).id;
 
 	// One well-formed step-2 write, with a distinguishable role so a REFUSED write can be told from
 	// an applied one by looking at what is stored rather than only at the return value.
@@ -393,16 +455,16 @@ describe('applyWaitlistStep step-write budget', () => {
 	/** Age the row's window start so the fixed window has expired without waiting an hour. */
 	const expireWindow = (id: string) =>
 		client.execute({
-			sql: 'UPDATE waitlist SET step_write_window_at = ? WHERE id = ?',
+			sql: 'UPDATE waitlist_submission SET step_write_window_at = ? WHERE id = ?',
 			args: [Date.now() - WAITLIST_STEP_WRITE_WINDOW_MS - 60_000, id]
 		});
 
 	it('opens a window on the first step write and spends one unit per write', async () => {
 		const id = await insert();
 		await step2(id);
-		const [first] = await rows();
-		expect(first.stepWriteCount).toBe(1);
-		expect(first.stepWriteWindowAt).toBeInstanceOf(Date);
+		const first = await rowById(id);
+		expect(first?.stepWriteCount).toBe(1);
+		expect(first?.stepWriteWindowAt).toBeInstanceOf(Date);
 
 		// Move the window start to a known moment still INSIDE the window before the second write.
 		// Without this the next assertion is intermittently blind: two consecutive writes can land in
@@ -411,16 +473,16 @@ describe('applyWaitlistStep step-write budget', () => {
 		// back makes the two behaviours differ by half an hour.
 		const pinned = Date.now() - WAITLIST_STEP_WRITE_WINDOW_MS / 2;
 		await client.execute({
-			sql: 'UPDATE waitlist SET step_write_window_at = ? WHERE id = ?',
+			sql: 'UPDATE waitlist_submission SET step_write_window_at = ? WHERE id = ?',
 			args: [pinned, id]
 		});
 
 		await step2(id);
-		const [second] = await rows();
-		expect(second.stepWriteCount).toBe(2);
+		const second = await rowById(id);
+		expect(second?.stepWriteCount).toBe(2);
 		// Fixed window, not sliding: a write inside a live window must not push its start forward, or
 		// a steady drip would hold the window open indefinitely and the cap would never reset.
-		expect(second.stepWriteWindowAt?.getTime()).toBe(pinned);
+		expect(second?.stepWriteWindowAt?.getTime()).toBe(pinned);
 	});
 
 	it('refuses the write past the cap, and refuses it the SAME way a missing row is refused', async () => {
@@ -433,18 +495,18 @@ describe('applyWaitlistStep step-write budget', () => {
 		const over = await step2(id, 'researcher');
 		expect(over.updated).toBe(false);
 
-		const [row] = await rows();
-		expect(row.role).toBe('engineering-leader'); // the refused answer was not applied
-		expect(row.stepWriteCount).toBe(WAITLIST_STEP_WRITE_MAX); // …and refusing did not spend budget either
+		const row = await rowById(id);
+		expect(row?.role).toBe('engineering-leader'); // the refused answer was not applied
+		expect(row?.stepWriteCount).toBe(WAITLIST_STEP_WRITE_MAX); // …and refusing did not spend budget either
 	});
 
 	it('leaves the row byte-identical when it refuses — including the window start', async () => {
 		const id = await insert();
 		for (let i = 0; i < WAITLIST_STEP_WRITE_MAX; i++) await step2(id);
-		const [before] = await rows();
+		const before = await rowById(id);
 
 		await step2(id, 'researcher');
-		const [after] = await rows();
+		const after = await rowById(id);
 		// Whole-row equality, not a field or two: a refusal is a zero-row UPDATE, so NOTHING may move —
 		// not the answers, not qualification_step, not updated_at, and above all not step_write_window_at
 		// (were a refusal to stamp the window, hammering would keep resetting the clock and the row could
@@ -463,21 +525,31 @@ describe('applyWaitlistStep step-write budget', () => {
 
 		const resumed = await step2(id, 'researcher');
 		expect(resumed.updated).toBe(true);
-		const [row] = await rows();
-		expect(row.role).toBe('researcher');
-		expect(row.stepWriteCount).toBe(1); // a fresh window starts the count over, it does not resume
+		const row = await rowById(id);
+		expect(row?.role).toBe('researcher');
+		expect(row?.stepWriteCount).toBe(1); // a fresh window starts the count over, it does not resume
 	});
 
-	it('treats a pre-DAR-68 row (null counters) as having a full budget', async () => {
+	it('treats a row with null counters as having a full budget', async () => {
 		const id = await insert();
 		await client.execute({
-			sql: 'UPDATE waitlist SET step_write_count = NULL, step_write_window_at = NULL WHERE id = ?',
+			sql: 'UPDATE waitlist_submission SET step_write_count = NULL, step_write_window_at = NULL WHERE id = ?',
 			args: [id]
 		});
 		const { updated } = await step2(id);
 		expect(updated).toBe(true);
-		const [row] = await rows();
-		expect(row.stepWriteCount).toBe(1);
+		expect((await rowById(id))?.stepWriteCount).toBe(1);
+	});
+
+	it('budgets each submission separately, so one exhausted row does not block another', async () => {
+		// The cap is per ROW, and under append-only a row is one visit. Someone who fills the form
+		// twice must not find their second attempt pre-throttled by their first.
+		const first = await insert();
+		for (let i = 0; i < WAITLIST_STEP_WRITE_MAX; i++) await step2(first);
+		expect((await step2(first)).updated).toBe(false);
+
+		const second = await insert(); // same email, new submission
+		expect((await step2(second)).updated).toBe(true);
 	});
 
 	// A refusal is SILENT — the endpoints return the same generic success either way — so a cap set

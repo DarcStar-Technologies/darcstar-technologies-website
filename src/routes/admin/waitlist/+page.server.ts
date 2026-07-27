@@ -1,12 +1,17 @@
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 import { fail, type Actions } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
 import { getAuth } from '$lib/server/auth';
-import { waitlist } from '$lib/server/db/schema';
+import { waitlistLead, waitlistSubmission } from '$lib/server/db/schema';
 import { isStaff } from '$lib/server/admin-access';
-import { classifyWaitlistLead } from '$lib/server/waitlist-classify';
+import { collateWaitlistLeads } from '$lib/server/waitlist-collate';
 import { readWaitlistFunnelCounts, signupConversionRate } from '$lib/server/waitlist-funnel';
-import { findAccountByEmail, markWaitlistInvited } from '$lib/server/waitlist-invite';
+import {
+	findAccountByEmail,
+	findWaitlistInviteTarget,
+	markWaitlistInvited,
+	markWaitlistReviewed
+} from '$lib/server/waitlist-invite';
 import { linkSubmissionsToUser } from '$lib/server/contact-ownership';
 import { mintActivationLink } from '$lib/server/activation';
 import { sendActivationEmail } from '$lib/server/activation-email';
@@ -17,12 +22,15 @@ import {
 	waitlistLeadClassRank,
 	type WaitlistLeadClass
 } from '$lib/waitlist-qualification';
-import { waitlistInviteState } from '$lib/waitlist-invite';
 import type { PageServerLoad } from './$types';
 
 // Triage view of waitlist signups (sibling of /admin submissions). Reached only past the /admin route
 // guard (../+layout.server.ts), so this inherits the isStaff gate. Cap the read — a triage list, not
 // an archive; the UI notes when it's showing only the most recent slice.
+//
+// THE CAP IS ON LEADS, NOT SUBMISSIONS (DAR-88). One person is one line in this list however many
+// times they submitted, which is the unit an operator triages; capping submissions instead would let a
+// single repeat submitter push everyone else off the page.
 const WAITLIST_LIMIT = 200;
 
 /** `?class=` → a real lead class, or null for "no filter" (absent, or anything unrecognized). */
@@ -48,68 +56,82 @@ export const load: PageServerLoad = async ({ url }) => {
 		return null;
 	});
 
-	const rows = await db
+	// Two queries rather than a join: a join would repeat every lead column once per submission and
+	// then need re-grouping in memory anyway, and the second query is skipped entirely on an empty
+	// list. Ordering the leads here (and not after collation) is what the cap applies to.
+	const leads = await db
 		.select({
-			id: waitlist.id,
-			email: waitlist.email,
-			name: waitlist.name,
-			company: waitlist.company,
-			role: waitlist.role,
-			companySize: waitlist.companySize,
-			interest: waitlist.interest,
-			hearAbout: waitlist.hearAbout,
-			phone: waitlist.phone,
-			countryRegion: waitlist.countryRegion,
-			consentUpdates: waitlist.consentUpdates,
-			primaryApplication: waitlist.primaryApplication,
-			evaluationTimeline: waitlist.evaluationTimeline,
-			currentApproach: waitlist.currentApproach,
-			economicImpact: waitlist.economicImpact,
-			budgetRange: waitlist.budgetRange,
-			adoptionEvidence: waitlist.adoptionEvidence,
-			pilotInterest: waitlist.pilotInterest,
-			deploymentScale: waitlist.deploymentScale,
-			contactPermission: waitlist.contactPermission,
-			contactMethod: waitlist.contactMethod,
-			researchPreferences: waitlist.researchPreferences,
-			qualificationStep: waitlist.qualificationStep,
-			// Invite-only onboarding state (DAR-67). `invitedBy` is a staff user id rather than a name —
-			// the roster lives behind a different query and this is a breadcrumb, not a byline.
-			invitedAt: waitlist.invitedAt,
-			invitedBy: waitlist.invitedBy,
-			activatedAt: waitlist.activatedAt,
-			createdAt: waitlist.createdAt,
-			updatedAt: waitlist.updatedAt
+			id: waitlistLead.id,
+			email: waitlistLead.email,
+			invitedAt: waitlistLead.invitedAt,
+			invitedBy: waitlistLead.invitedBy,
+			activatedAt: waitlistLead.activatedAt,
+			reviewedAt: waitlistLead.reviewedAt,
+			reviewedBy: waitlistLead.reviewedBy,
+			createdAt: waitlistLead.createdAt
 		})
-		.from(waitlist)
-		.orderBy(desc(waitlist.createdAt))
+		.from(waitlistLead)
+		.orderBy(desc(waitlistLead.createdAt))
 		.limit(WAITLIST_LIMIT);
 
-	// Classification is COMPUTED ON READ, never stored (see waitlist-classify.ts): it's a pure
-	// function of columns already here, so a denormalized copy would only add a migration and a
-	// recompute obligation on every step write. `row` carries the money columns too — the classifier's
-	// input type simply doesn't have them, which is the guardrail.
-	const classified = rows.map((row) => ({
-		...row,
-		leadClass: classifyWaitlistLead(row),
-		// Derived here, beside the lead class and for the same reason (DAR-65): it's a pure function of
-		// two columns already on the row, so storing it would buy a migration and a recompute obligation
-		// and nothing else.
-		inviteState: waitlistInviteState(row)
-	}));
+	const submissions = leads.length
+		? await db
+				.select({
+					id: waitlistSubmission.id,
+					leadId: waitlistSubmission.leadId,
+					email: waitlistSubmission.email,
+					name: waitlistSubmission.name,
+					company: waitlistSubmission.company,
+					role: waitlistSubmission.role,
+					companySize: waitlistSubmission.companySize,
+					interest: waitlistSubmission.interest,
+					hearAbout: waitlistSubmission.hearAbout,
+					phone: waitlistSubmission.phone,
+					countryRegion: waitlistSubmission.countryRegion,
+					consentUpdates: waitlistSubmission.consentUpdates,
+					consentUpdatesAt: waitlistSubmission.consentUpdatesAt,
+					primaryApplication: waitlistSubmission.primaryApplication,
+					evaluationTimeline: waitlistSubmission.evaluationTimeline,
+					currentApproach: waitlistSubmission.currentApproach,
+					economicImpact: waitlistSubmission.economicImpact,
+					budgetRange: waitlistSubmission.budgetRange,
+					adoptionEvidence: waitlistSubmission.adoptionEvidence,
+					pilotInterest: waitlistSubmission.pilotInterest,
+					deploymentScale: waitlistSubmission.deploymentScale,
+					contactPermission: waitlistSubmission.contactPermission,
+					contactMethod: waitlistSubmission.contactMethod,
+					researchPreferences: waitlistSubmission.researchPreferences,
+					qualificationStep: waitlistSubmission.qualificationStep,
+					createdAt: waitlistSubmission.createdAt,
+					updatedAt: waitlistSubmission.updatedAt
+				})
+				.from(waitlistSubmission)
+				.where(
+					inArray(
+						waitlistSubmission.leadId,
+						leads.map((lead) => lead.id)
+					)
+				)
+		: [];
+
+	// Grouping, per-submission and per-lead classification, and conflict detection all happen here
+	// (waitlist-collate.ts) — read-time, nothing stored. The classification is COMPUTED ON READ for
+	// DAR-65's reason, and it now has a second one: the inputs are spread across N immutable rows, so
+	// a denormalized copy would need recomputing every time any of them arrived.
+	const collated = collateWaitlistLeads(leads, submissions);
 
 	// Counts over the WHOLE window, before filtering, so the chips keep showing the full picture
 	// while a filter is applied.
 	const counts = Object.fromEntries(
 		WAITLIST_LEAD_CLASSES.map((leadClass) => [
 			leadClass,
-			classified.filter((row) => row.leadClass === leadClass).length
+			collated.filter((lead) => lead.leadClass === leadClass).length
 		])
 	) as Record<WaitlistLeadClass, number>;
 
 	const filter = asLeadClass(url.searchParams.get('class'));
-	const signups = (
-		filter === null ? [...classified] : classified.filter((row) => row.leadClass === filter)
+	const visible = (
+		filter === null ? [...collated] : collated.filter((lead) => lead.leadClass === filter)
 	)
 		// Priority first so an A lead can't be buried under 199 newer subscribers. Array.sort is
 		// stable, so the SQL's newest-first ordering survives as the within-band tiebreak.
@@ -118,10 +140,14 @@ export const load: PageServerLoad = async ({ url }) => {
 	const funnelCounts = await funnel;
 
 	return {
-		signups,
+		leads: visible,
 		counts,
 		filter,
-		total: classified.length,
+		total: collated.length,
+		// How many submissions the window covers — a lead count alone hides that one line can be five
+		// people's worth of claims, which is precisely what an operator needs to notice.
+		submissionTotal: submissions.length,
+		reviewTotal: collated.filter((lead) => lead.needsReview).length,
 		limit: WAITLIST_LIMIT,
 		funnel: funnelCounts,
 		// The primary metric, resolved server-side beside the counts it comes from so the view can't
@@ -132,9 +158,13 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	// Delete a signup — staff (admin + operator). SvelteKit does NOT run the layout guard before a
+	// Delete a whole lead — staff (admin + operator). SvelteKit does NOT run the layout guard before a
 	// form action (only on the re-render), so authorize here; readEnv + getDb read request-scoped env,
 	// so call them before the first await. Idempotent: a missing/already-deleted id is a no-op.
+	//
+	// Takes the SUBMISSIONS with it, via the schema's `on delete cascade`. That's the right unit for
+	// "remove this person from the list": leaving their submissions behind would orphan rows nothing
+	// can reach, and re-signing-up would then produce a lead with a confusing history.
 	delete: async ({ request, locals }) => {
 		if (!isStaff(locals.user, readEnv('ADMIN_USER_IDS'))) {
 			return fail(403, { error: 'forbidden' as const });
@@ -143,12 +173,49 @@ export const actions: Actions = {
 		const data = await request.formData();
 		const id = String(data.get('id') ?? '');
 		if (!id) return fail(400, { error: 'missing' as const });
-		await db.delete(waitlist).where(eq(waitlist.id, id));
+		await db.delete(waitlistLead).where(eq(waitlistLead.id, id));
+		return { ok: true as const };
+	},
+
+	// Delete ONE submission, keeping the lead and its other submissions (DAR-88). This is the operator's
+	// answer to the cost append-only accepts: anyone can add a submission under a known address, so
+	// there has to be a way to drop a junk one without discarding the person. Deliberately separate
+	// from `delete` above — one removes a claim, the other removes a prospect, and a single button
+	// doing both by context would eventually delete the wrong thing.
+	deleteSubmission: async ({ request, locals }) => {
+		if (!isStaff(locals.user, readEnv('ADMIN_USER_IDS'))) {
+			return fail(403, { error: 'forbidden' as const });
+		}
+		const db = getDb();
+		const data = await request.formData();
+		const id = String(data.get('id') ?? '');
+		if (!id) return fail(400, { error: 'missing' as const });
+		await db.delete(waitlistSubmission).where(eq(waitlistSubmission.id, id));
+		return { ok: true as const };
+	},
+
+	// Mark a lead's submissions as reconciled by a human (DAR-88). A STAMP, not a merge — nothing is
+	// copied from a submission onto the lead, because a canonical-answers column set is the overwrite
+	// problem rebuilt with a friendlier interface. What it records is that someone looked; the outcome
+	// lives wherever they took it (an outreach, the CRM). A later submission re-opens the lead on its
+	// own, since `needsReview` compares the newest submission against this timestamp.
+	review: async ({ request, locals }) => {
+		if (!isStaff(locals.user, readEnv('ADMIN_USER_IDS'))) {
+			return fail(403, { error: 'forbidden' as const });
+		}
+		const db = getDb();
+		const actorId = locals.user!.id;
+		const data = await request.formData();
+		const id = String(data.get('id') ?? '');
+		if (!id) return fail(400, { error: 'missing' as const });
+		await markWaitlistReviewed(db, id, actorId);
 		return { ok: true as const };
 	},
 
 	// Invite a prospect to create an account (DAR-67). Public sign-up is closed, so this is one of the
 	// only two ways an account comes into existence (the other is the /admin/users roster).
+	//
+	// Addresses a LEAD since DAR-88 — an invitation goes to a person, not to one of their submissions.
 	//
 	// THE ORDER OF OPERATIONS IS THE DESIGN. The email is sent BEFORE `invited_at` is stamped, so the
 	// column means "a message was accepted by Resend", never "we tried". A send failure therefore
@@ -178,11 +245,10 @@ export const actions: Actions = {
 		const id = String(data.get('id') ?? '');
 		if (!id) return fail(400, { invite: { error: 'missing' as const } });
 
-		const [row] = await db
-			.select({ email: waitlist.email, name: waitlist.name })
-			.from(waitlist)
-			.where(eq(waitlist.id, id))
-			.limit(1);
+		// The address is the LEAD's (the one field no submission can change); the name comes from the
+		// EARLIEST submission that gave one, so a stranger adding a later submission can't choose how we
+		// greet the real person. See findWaitlistInviteTarget.
+		const row = await findWaitlistInviteTarget(db, id);
 		// Deleted from under the operator between render and click.
 		if (!row) return fail(404, { invite: { error: 'not_found' as const } });
 
@@ -286,7 +352,7 @@ export const actions: Actions = {
 		// WHOM over time — `invited_at` is overwritten by a resend, so history lives here or nowhere.
 		console.info(
 			'[invite] activation.sent',
-			JSON.stringify({ waitlistId: id, email: row.email, userId, invitedBy: actorId, created })
+			JSON.stringify({ leadId: id, email: row.email, userId, invitedBy: actorId, created })
 		);
 
 		return { invite: { ok: true as const, email: row.email, created } };

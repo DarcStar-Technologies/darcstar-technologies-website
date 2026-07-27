@@ -1,15 +1,15 @@
 // Waitlist signup — a SvelteKit remote `form` function, spread onto the /waitlist page's <form> so it
 // progressively enhances with JS and degrades to a native POST without. Lives in $lib (allowed);
 // remote functions may sit anywhere under src EXCEPT $lib/server. Mirrors submitContact
-// (contact.remote.ts); the key differences are the email-unique insert-or-enrich (waitlist-store.ts)
+// (contact.remote.ts); the key differences are the append-only submission insert (waitlist-store.ts)
 // and gating the notification emails on a genuine new signup.
 import { form, getRequestEvent } from '$app/server';
 import { invalid } from '@sveltejs/kit';
 import { and, eq, gt } from 'drizzle-orm';
 import { getDb } from '$lib/server/db';
-import { waitlist } from '$lib/server/db/schema';
+import { waitlistSubmission } from '$lib/server/db/schema';
 import { validateWaitlist } from '$lib/server/waitlist';
-import { upsertWaitlist } from '$lib/server/waitlist-store';
+import { insertWaitlistSubmission } from '$lib/server/waitlist-store';
 import { mintWaitlistToken, mintDecoyWaitlistToken } from '$lib/server/waitlist-token';
 import { readEnv } from '$lib/server/env';
 import { hashIp } from '$lib/server/contact'; // shared truncated-SHA-256 IP hash (same throttle model)
@@ -41,15 +41,15 @@ type WaitlistInput = {
 // `token` is the signed continuation handle for the optional qualification steps (DAR-59): the
 // step forms post it back and the server verifies (waitlist-token.ts) before enriching the row.
 //
-// SECURITY NOTE (deliberate, and the DAR-61+ step endpoints MUST account for it): the same success
-// shape — token included — is returned for a new AND an existing email, which is what keeps this
-// from being an email-enumeration oracle. The consequence is that anyone who submits a known
-// address receives a token bound to THAT row. The step writes are therefore built to be safe under
-// that exposure: they only ever touch qualification columns (never identity), and per-field
-// keep-existing / tri-state rules bound what a holder can change. This is a LARGER surface than v1's
-// enrich-by-email (which could only fill null step-1 fields), so each step endpoint must keep that
-// bound — do not add an absolute overwrite of a sensitive field. The embedded row id is an opaque
-// UUID and authorizes nothing without the MAC.
+// ANTI-ENUMERATION, AND WHY IT IS NOW FREE (DAR-88): the same success shape — token included — is
+// returned whether or not this address was already on the list, which is what keeps this from being an
+// email-enumeration oracle. It used to be hiding a real difference, and the price of hiding it was
+// that anyone who submitted a known address received a token bound to the FIRST submitter's row —
+// every per-column write policy in waitlist-store.ts existed to contain that. Signups are append-only
+// now, so there is no difference left to hide: each submit inserts its own row and the token binds to
+// THAT one. A stranger who guesses a known address gets a token for their own submission and can never
+// reach the real person's answers. The embedded row id is an opaque UUID and authorizes nothing
+// without the MAC.
 //
 // `flowId` is echoed for the same reason `token` is: without JS this response IS a page re-render, and
 // the load that runs alongside it mints a NEW flow id. Reflecting the submitted one back lets step 2's
@@ -100,30 +100,34 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 			invalid(...issues); // throws; fields.{name,email}.issues() populate client-side
 		}
 
-		// Light IP/time throttle (honeypot handles most bots; this caps floods).
+		// Light IP/time throttle (honeypot handles most bots; this caps floods). It counts SUBMISSIONS
+		// created per hashed IP — which since DAR-88 means it finally sees repeat-email signups too: they
+		// used to hide inside an UPDATE that added no row, so a same-address replay was throttle-exempt.
+		// This is the bound on append-only's cost (a stranger burying a real signup under junk rows);
+		// volumetric abuse from rotating IPs stays edge/WAF territory.
 		const ipHash = await hashIp(ip);
 		const since = new Date(Date.now() - THROTTLE_WINDOW_MS);
 		const recent = await db
-			.select({ id: waitlist.id })
-			.from(waitlist)
-			.where(and(eq(waitlist.ipHash, ipHash), gt(waitlist.createdAt, since)));
+			.select({ id: waitlistSubmission.id })
+			.from(waitlistSubmission)
+			.where(and(eq(waitlistSubmission.ipHash, ipHash), gt(waitlistSubmission.createdAt, since)));
 		if (recent.length >= THROTTLE_MAX) invalid(m.waitlist_error_ratelimit());
 
-		// Insert this email, or enrich the existing row (case-insensitive unique on lower(email)). The
-		// same success response either way keeps this from being an email-enumeration oracle.
-		// `isNew` is true only on a GENUINE first signup — see waitlist-store.ts.
-		const { isNew, id } = await upsertWaitlist(db, cleaned, ipHash, userAgent);
+		// Always inserts a submission; upserts the LEAD behind it. `isNew` is the lead insert winning,
+		// i.e. a GENUINE first signup for this address — see waitlist-store.ts.
+		const { isNew, id } = await insertWaitlistSubmission(db, cleaned, ipHash, userAgent);
 
 		// Fire-and-forget notifications (lead + signer ack), same pattern as the contact form: the row
 		// is already persisted, so a send failure must NOT fail the signup — log and move on.
 		// ctx.waitUntil keeps the Worker alive until the sends resolve after the response; without a key
 		// (unconfigured) or ctx (vite dev) we skip. Never awaited.
 		//
-		// Gated on `isNew`: a re-signup of an existing email must NOT re-mail. This is also the anti-
-		// abuse boundary — the row-count throttle above can't see same-email replays (they enrich, not
-		// insert, so they add no row), so without this gate the ack would be an unthrottled mailbomb
-		// aimed at any address a script submits, plus a flood into info@. New emails still hit the
-		// throttle (each is a fresh row), so distinct-email floods stay capped.
+		// Gated on `isNew`: a re-signup of an existing email must NOT re-mail. THIS IS THE MAILBOMB
+		// GUARD, and append-only makes it more important rather than less — every submit now inserts, so
+		// "it's a new row" is no longer any evidence that it's a new person. `isNew` is the LEAD insert
+		// winning, which is the only thing that means "we have never mailed this address". Without it, a
+		// script replaying one address would land an ack in that mailbox on every POST, plus a flood into
+		// info@; the per-IP throttle bounds the rate but not the targeting.
 		const resendKey = platform?.env?.RESEND_API_KEY;
 		if (isNew && resendKey) {
 			const send = sendWaitlistEmails(resendKey, cleaned, locale).catch((err) =>

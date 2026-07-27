@@ -91,34 +91,136 @@ export const loginAudit = sqliteTable(
 	]
 );
 
-// Waitlist signups (issue-tracked feature) — early-access lead capture, a lighter-touch sibling of
-// `contact_submission`. Written by the `joinWaitlist` remote function (src/lib/waitlist.remote.ts)
-// after honeypot + validation + throttle, mirroring the contact flow (`ip_hash` is the same
-// truncated SHA-256, never the raw IP; the (ip_hash, created_at) index backs the throttle lookback).
+// The COLLATED PERSON behind one or more waitlist submissions (DAR-88). One row per distinct email,
+// case-insensitively — this table carries the `lower(email)` unique index that `waitlist` used to.
 //
-// Differences from `contact_submission`:
-//   - `email` is UNIQUE, case-insensitively — the unique index is on `lower(email)`, so a
-//     mixed-case duplicate can't slip in even if some future writer forgets to normalize (the
-//     validator lowercases on write too, so stored values are already lowercase). A re-signup is an
-//     insert-or-enrich (see waitlist-store.ts) rather than piling up duplicate leads. Hence
-//     `updated_at`.
+// IT HOLDS NO ANSWERS, AND THAT IS THE DESIGN. Every answer stays on the submission that made it
+// (`waitlist_submission` below). A lead is an identity anchor plus the things that describe a PERSON
+// rather than a submission: whether we have invited them, whether they activated, whether a human has
+// reviewed their submissions. Nothing here is written by two different actors, so no "who may
+// overwrite what" policy can grow back — which is the whole point of DAR-88. Conflicting answers
+// across submissions are surfaced to an operator, never resolved into a column.
+//
+// TWO JOBS, AND THE FIRST ONE IS LOAD-BEARING:
+//
+//   1. It IS the `isNew` gate. `insert … onConflictDoNothing().returning()` against the unique index
+//      makes the DATABASE decide whether this address has ever been seen, atomically, in the same
+//      statement that creates the lead — so the welcome/ack email still fires only on a genuine first
+//      signup, with no counting query and no race between two concurrent first-signups. That gate is
+//      the mailbomb guard (see waitlist-store.ts): without it, a replay of a known address would mail
+//      the ack at whatever third party an attacker typed, and the per-IP throttle can't stop it
+//      because distinct-email floods are its only shape.
+//   2. It gives the invite state somewhere to live that survives N submissions. `invited_at` /
+//      `activated_at` describe an ACCOUNT handed to a person; hanging them off one arbitrary
+//      submission (as pre-DAR-88 rows did) would mean a later submission looked un-invited.
+//
+// Deliberately NOT a foreign key to `user`: the vast majority of leads have no account, and DAR-67's
+// invite is the only thing that ever mints one.
+export const waitlistLead = sqliteTable(
+	'waitlist_lead',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		// Stored lowercase (the validator normalizes, and the store lowercases again at its boundary).
+		// The unique index is functional on lower(email) anyway, so a mixed-case write still dedupes.
+		email: text('email').notNull(),
+		// --- Invite-only onboarding (DAR-67), moved here from the signup row by DAR-88 ---
+		// Public self-signup is closed, so an account exists only because staff invited this prospect
+		// from /admin/waitlist. These live on the LEAD because they describe the person, not one of
+		// their submissions — and because "not invited" is the default state of a prospect, not of an
+		// account, they can't live on `user` either (the un-invited majority has no `user` row).
+		//
+		// `invited_at` is the MOST RECENT send, not the first: the operational question a triage view
+		// answers is "did I already email them, and when", and a resend that left the timestamp stale
+		// would answer it wrongly. The full history is the per-invite Workers Logs line.
+		invitedAt: integer('invited_at', { mode: 'timestamp_ms' }),
+		// The staff account id that sent it. A plain text column, deliberately NOT a foreign key to
+		// `user`: this is an audit breadcrumb, and deleting a departed operator must not either cascade
+		// away the record of who invited whom or block the delete.
+		invitedBy: text('invited_by'),
+		// When the invitee actually set their password — stamped by auth.ts's `onPasswordReset` hook,
+		// and MONOTONIC (only ever fills a null). The hook additionally requires `invited_at` to be
+		// set, so an ordinary self-service reset by someone who was never invited can't backfill this
+		// and make the badge claim an activation that never happened.
+		activatedAt: integer('activated_at', { mode: 'timestamp_ms' }),
+		// --- Human review (DAR-88) ---
+		// "A human has looked at this lead's submissions and reconciled them." Deliberately a STAMP and
+		// not a merge: the reconciliation lands in whatever the operator does next (an outreach, a CRM
+		// record), not in columns here, because a merged-answers column set would be the overwrite
+		// problem again with a nicer UI. Null = awaiting review, which is every lead's initial state.
+		reviewedAt: integer('reviewed_at', { mode: 'timestamp_ms' }),
+		reviewedBy: text('reviewed_by'),
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+			.notNull()
+	},
+	(table) => [
+		// Functional unique index on lower(email) → case-insensitive dedupe at the DB layer,
+		// independent of the writer normalizing. The insert path uses onConflictDoNothing() with no
+		// explicit target (this is the only unique constraint), so it catches this conflict — and the
+		// returned row count IS `isNew`.
+		uniqueIndex('waitlist_lead_email_idx').on(sql`lower(${table.email})`),
+		index('waitlist_lead_created_idx').on(table.createdAt)
+	]
+);
+
+// Waitlist signups — early-access lead capture, a lighter-touch sibling of `contact_submission`.
+// Written by the `joinWaitlist` remote function (src/lib/waitlist.remote.ts) after honeypot +
+// validation + throttle, mirroring the contact flow (`ip_hash` is the same truncated SHA-256, never
+// the raw IP; the (ip_hash, created_at) index backs the throttle lookback).
+//
+// APPEND-ONLY SINCE DAR-88, and this is the security boundary rather than a storage preference. Every
+// submit inserts a row; a repeat email is a NEW row under the same lead, never an edit of the old one.
+// Before that, a repeat email collapsed into the existing row, which is what manufactured DAR-59's
+// keepExisting/fillIfEmpty split and DAR-72's actionable/judgement taxonomy: two different actors
+// could write one row, so every column needed a policy for who wins. Now they can't:
+//
+//   - Step 1's anti-enumeration property becomes TRUE instead of a cover story. The identical success
+//     response for a new and an existing email used to hide a real difference, and hiding it meant
+//     handing the second submitter a continuation token bound to the FIRST submitter's row. Now there
+//     is no difference to hide — every submit really is new — so a stranger who guesses a known
+//     address gets a token for THEIR OWN row and can never reach the real person's answers.
+//   - `updated_at` and the token-gated step writes (2–4) only ever touch the row whose own token
+//     minted them. A submission is immutable to everyone except the submitter who created it.
+//   - Conflicting values are PRESERVED. Two different phone numbers for one address is exactly what an
+//     operator should see; provided-wins and fill-forward both destroyed that, in opposite directions.
+//
+// What we store is now a fact ("someone submitted X at time T from this IP") rather than an inference
+// ("this person's phone is X"). Cost, accepted: a repeat submitter grows the table, and a stranger can
+// bury a real signup under junk rows. The per-IP row-count throttle bounds the rate — and it finally
+// SEES these writes, since an enrich now creates a row instead of hiding inside an UPDATE — and the
+// junk is visible rather than silently merged into the real record. Volumetric abuse from rotating IPs
+// stays edge/WAF territory, the same boundary DAR-68 drew.
+//
+// Other notes:
 //   - Only `email` is required; every other field is optional lead enrichment (progressive
 //     disclosure on the form). `role`/`company_size`/`hear_about` are validated slugs; `interest`
 //     is deliberately FREE TEXT (a growing list, not an enum) and `phone` is free text. The
 //     `interest` index backs the /waitlist datalist's frequency query (group by interest).
-//   - No `user_id`: a waitlist is pre-account lead capture, so rows are not linked to accounts.
+//   - No `user_id`: a waitlist is pre-account lead capture, so rows are not linked to accounts. The
+//     account-shaped state (invited/activated) lives on `waitlist_lead`.
 //   - The v2 progressive flow (DAR-59) adds the qualification columns below the v1 block. All are
 //     nullable (steps 2–4 are optional and reached via a signed continuation token — see
 //     waitlist-token.ts); slugs are validated against $lib/waitlist-qualification.ts; the two
 //     multi-selects store JSON string arrays. `company_size`/`interest`/`hear_about` predate v2 and
 //     stay for their historical data even after the v2 UI stops writing them. `role` is shared:
 //     v1 slugs remain as history, new writes use the v2 set.
-export const waitlist = sqliteTable(
-	'waitlist',
+export const waitlistSubmission = sqliteTable(
+	'waitlist_submission',
 	{
 		id: text('id')
 			.primaryKey()
 			.$defaultFn(() => crypto.randomUUID()),
+		// The collated person this submission belongs to. NOT NULL — a submission without a lead would
+		// be a signup nobody could be emailed about — and cascade-deleting, so removing a lead from the
+		// triage view takes its submissions with it rather than orphaning them.
+		leadId: text('lead_id')
+			.notNull()
+			.references(() => waitlistLead.id, { onDelete: 'cascade' }),
+		// What THIS submission claimed, kept alongside `lead_id` so a row reads standalone in a log or
+		// an export. Always equal to the lead's email (the lead is resolved by it), so it is a
+		// convenience, never a second source of truth.
 		email: text('email').notNull(),
 		name: text('name'),
 		company: text('company'),
@@ -129,14 +231,20 @@ export const waitlist = sqliteTable(
 		phone: text('phone'),
 		// --- v2 step 1 (DAR-60) ---
 		countryRegion: text('country_region'),
-		// Marketing-updates opt-in. False for every pre-v2 row (nobody was asked); grants are
-		// monotonic in the store (an unchecked re-submit never silently revokes) — revocation is a
-		// deliberate future mechanism, not a form default. IMPORTANT: this is an UNVERIFIED claim —
-		// the form is unauthenticated single-opt-in, so a third party can set it for any address. It
-		// must NOT drive a real send without double-opt-in + unsubscribe (see waitlist-store.ts).
+		// Marketing-updates opt-in, PER SUBMISSION since DAR-88 — which is a straight compliance
+		// upgrade over the monotonic row flag it replaces: the grant now carries the moment it was made
+		// and the hashed IP it came from, in the same immutable row, instead of a boolean that had been
+		// max()'d forward across an unknown number of submitters. False when the box wasn't ticked on
+		// THIS submit; that is not a revocation of an earlier grant, because this row says nothing
+		// about any other row. Revocation remains a deliberate future mechanism (an unsubscribe link),
+		// not a form default.
+		//
+		// IMPORTANT, unchanged: this is an UNVERIFIED claim — the form is unauthenticated single-opt-in,
+		// so a third party can submit any address with the box ticked. It must NOT drive a real send
+		// without double-opt-in + unsubscribe.
 		consentUpdates: integer('consent_updates', { mode: 'boolean' }).default(false).notNull(),
-		// When consent was FIRST granted (provenance for a compliance review). Null = never granted;
-		// separate from updated_at, which later step writes clobber.
+		// When consent was granted on this submission (provenance for a compliance review). Null = the
+		// box wasn't ticked here; separate from updated_at, which later step writes clobber.
 		consentUpdatesAt: integer('consent_updates_at', { mode: 'timestamp_ms' }),
 		// --- v2 step 2 (DAR-61) ---
 		primaryApplication: text('primary_application'),
@@ -165,6 +273,8 @@ export const waitlist = sqliteTable(
 		// The throttle for the token-gated steps 2–4, which are unauthenticated writes: a fixed window
 		// per ROW, because a continuation token addresses exactly one row and that makes the row the
 		// real abuse unit (per-IP would punish shared NATs for a bound this already gets exactly).
+		// Survives DAR-88 unchanged — the token now addresses its OWN submission, so this bounds a
+		// holder hammering the row they created rather than one they reached by guessing an address.
 		//
 		// These live on the row rather than in a counter table for one reason, and it's the whole
 		// design: `applyWaitlistStep` reads and bumps them INSIDE the UPDATE it was already making
@@ -180,25 +290,8 @@ export const waitlist = sqliteTable(
 		// live window — a fixed window from the first write, not a sliding one — and a REFUSED write
 		// doesn't touch it either, so hammering can't extend its own lockout.
 		stepWriteWindowAt: integer('step_write_window_at', { mode: 'timestamp_ms' }),
-		// --- Invite-only onboarding (DAR-67) ---
-		// Public self-signup is closed, so an account exists only because staff invited this prospect
-		// from /admin/waitlist. These three columns are the invite's state machine, and they live HERE
-		// rather than on `user` because the un-invited majority has no `user` row to hang them off —
-		// "not invited" is the default state of a waitlist entry, not of an account.
-		//
-		// `invited_at` is the MOST RECENT send, not the first: the operational question a triage view
-		// answers is "did I already email them, and when", and a resend that left the timestamp stale
-		// would answer it wrongly. The full history is the per-invite Workers Logs line.
-		invitedAt: integer('invited_at', { mode: 'timestamp_ms' }),
-		// The staff account id that sent it. A plain text column, deliberately NOT a foreign key to
-		// `user`: this is an audit breadcrumb, and deleting a departed operator must not either cascade
-		// away the record of who invited whom or block the delete.
-		invitedBy: text('invited_by'),
-		// When the invitee actually set their password — stamped by auth.ts's `onPasswordReset` hook,
-		// and MONOTONIC (only ever fills a null). The hook additionally requires `invited_at` to be
-		// set, so an ordinary self-service reset by someone who was never invited can't backfill this
-		// and make the badge claim an activation that never happened.
-		activatedAt: integer('activated_at', { mode: 'timestamp_ms' }),
+		// (DAR-67's invited_at / invited_by / activated_at moved to `waitlist_lead` in DAR-88 — they
+		// describe a person, and a person now has N submissions.)
 		ipHash: text('ip_hash'),
 		userAgent: text('user_agent'),
 		createdAt: integer('created_at', { mode: 'timestamp_ms' })
@@ -209,14 +302,17 @@ export const waitlist = sqliteTable(
 			.notNull()
 	},
 	(table) => [
-		// Functional unique index on lower(email) → case-insensitive dedupe at the DB layer,
-		// independent of the writer normalizing. The insert path uses onConflictDoNothing() with no
-		// explicit target (this is the only unique constraint), so it catches this conflict.
-		uniqueIndex('waitlist_email_idx').on(sql`lower(${table.email})`),
-		index('waitlist_ip_created_idx').on(table.ipHash, table.createdAt),
-		index('waitlist_created_idx').on(table.createdAt),
+		// NOTE what is NOT here any more: the `lower(email)` UNIQUE index. It moved to `waitlist_lead`,
+		// and that single line is the DAR-88 change — uniqueness on the person, multiplicity on the
+		// submissions. Re-adding it here would restore the collapse this table exists to prevent.
+		//
+		// Backs the admin view's per-lead grouping and the invite action's "name from the earliest
+		// submission" lookup; (lead_id, created_at) rather than lead_id alone so both arrive ordered.
+		index('waitlist_submission_lead_created_idx').on(table.leadId, table.createdAt),
+		index('waitlist_submission_ip_created_idx').on(table.ipHash, table.createdAt),
+		index('waitlist_submission_created_idx').on(table.createdAt),
 		// Backs the /waitlist datalist frequency query (group by interest having count >= n).
-		index('waitlist_interest_idx').on(table.interest)
+		index('waitlist_submission_interest_idx').on(table.interest)
 	]
 );
 
@@ -227,8 +323,8 @@ export const waitlist = sqliteTable(
 // the money questions) are internal-only by DAR-58 and have nowhere to land here.
 //
 // `flow_id` is minted by /waitlist's load as a random UUID and carried through the flow in a hidden
-// field. It is NOT the waitlist row id and NOT derived from the email — an analytics row must not be
-// walkable back to a person, and a derived id would be joinable to `waitlist` by anyone who could
+// field. It is NOT a submission or lead id and NOT derived from the email — an analytics row must not
+// be walkable back to a person, and a derived id would be joinable to those tables by anyone who could
 // recompute it. Shape-checked on write (isWaitlistFlowId).
 //
 // THE COMPOSITE PRIMARY KEY IS THE ABUSE CAP. The ticket asks for a per-flow event cap; making

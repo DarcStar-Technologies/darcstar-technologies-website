@@ -1,6 +1,6 @@
 // Pure waitlist helpers — no DB / SvelteKit-request imports, so they're unit-testable in isolation
 // (src/lib/server/waitlist.spec.ts). The remote function (src/lib/waitlist.remote.ts) is the only
-// caller: it maps `errors` to `invalid(issue.*())` and UPSERTs `cleaned`. The slug lists are the
+// caller: it maps `errors` to `invalid(issue.*())` and INSERTS `cleaned`. The slug lists are the
 // client-safe single sources the selects + admin view share; `interest` is a retained free-text
 // column — its form input and suggestion datalist were retired in DAR-60, the column kept per DAR-59.
 import { WAITLIST_ROLES, type WaitlistRole } from '$lib/waitlist-roles';
@@ -29,8 +29,8 @@ import {
 /**
  * The required core fields surface an inline error; everything else is optional and coerced, never
  * rejected. v2 step 1 (DAR-60) made `name` required alongside `email` — the v1 form asked for email
- * only. Old rows may still carry a null name (they predate the requirement); the store's keep-existing
- * enrich never erases one, and only NEW writes go through this gate.
+ * only. Old submissions may still carry a null name (they predate the requirement); they are immutable
+ * history, and only NEW writes go through this gate.
  */
 export type WaitlistFieldError = 'email' | 'name';
 
@@ -223,8 +223,7 @@ export interface CleanedWaitlistStep4A {
 	deploymentScale: string | null;
 	// TRI-STATE, matching schema.ts's contact_permission: null = the question wasn't shown (pilot
 	// interest not positive), false = shown and declined, true = granted. The store keep-existings a
-	// null so a not-shown submit can't clobber a real prior answer, and since DAR-72 it takes a
-	// decline absolutely but only fills a grant into a row that was never asked.
+	// null so a not-shown submit can't clobber this submitter's own earlier answer.
 	contactPermission: boolean | null;
 	contactMethod: string | null;
 	phone: string | null;

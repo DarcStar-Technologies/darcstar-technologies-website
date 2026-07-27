@@ -21,7 +21,11 @@ test('unauthenticated /admin/waitlist redirects to the login page', async ({ pag
 	expect(response).not.toBeNull();
 	const body = await response!.text();
 	expect(body).not.toContain('Priority A');
-	expect(body).not.toContain('Qualification detail');
+	// Strings unique to the triage table since DAR-88 — a lead's submission disclosure and the
+	// append-only caveat. Absence checks are only worth anything if they name text the page really
+	// renders, so these track the current copy rather than a retired label.
+	expect(body).not.toContain('Submissions (');
+	expect(body).not.toContain('append-only');
 });
 
 // The filter is a plain GET query, so a crafted `?class=` reaches the guard before it reaches the
