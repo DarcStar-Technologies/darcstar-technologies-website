@@ -1,6 +1,6 @@
-// Waitlist DB writes — extracted from the remotes (waitlist.remote.ts, waitlist-steps.remote.ts) so
-// they're testable against an in-memory libsql client (waitlist-store.spec.ts) without a request
-// context.
+// Waitlist DB access — extracted from the remotes (waitlist.remote.ts, waitlist-steps.remote.ts) and
+// from /admin/waitlist's load, so it's testable against an in-memory libsql client
+// (waitlist-store.spec.ts) without a request context.
 //
 // APPEND-ONLY SINCE DAR-88. Every signup INSERTS a submission; a repeat email is a new row under the
 // same lead, never an edit of the old one. The previous shape was insert-or-enrich, and collapsing two
@@ -10,7 +10,7 @@
 // there is exactly ONE rule left (provided-wins, below) and it is a UX nicety rather than a security
 // boundary — see the note above applyWaitlistStep.
 //
-// The two writes and what each is for:
+// The two writes and what each is for (the one read, `readWaitlistTriageWindow`, is at the bottom):
 //
 //   insertWaitlistSubmission — upserts the LEAD (the collated person, one row per email) and then
 //   always inserts a SUBMISSION under it. Returns `isNew` for the caller's email gate and the
@@ -20,10 +20,11 @@
 //   id (the caller resolves it from a verified token), building each step's SET clause from an
 //   explicit per-step column list. The token now addresses the row ITS OWN submitter created, so a
 //   step can only ever edit the answers that submitter gave.
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { SQLiteUpdateSetSource } from 'drizzle-orm/sqlite-core';
 import type { Db } from './db';
 import { waitlistLead, waitlistSubmission } from './db/schema';
+import type { WaitlistLeadRow, WaitlistSubmissionRow } from './waitlist-collate';
 import type {
 	CleanedWaitlist,
 	CleanedWaitlistStep2,
@@ -339,4 +340,94 @@ export async function applyWaitlistStep(
 		.returning({ id: waitlistSubmission.id });
 
 	return { updated: updated.length > 0 };
+}
+
+/**
+ * The /admin/waitlist triage window: the `limit` most recently ACTIVE leads, plus every submission
+ * belonging to them. Collation (grouping, classification, conflict detection) happens on the result
+ * in waitlist-collate.ts — this only reads.
+ *
+ * ORDERED BY LAST ACTIVITY, NOT LEAD CREATION, and that distinction is the reason this function
+ * exists. Ordering by `waitlist_lead.created_at` is a real hole once submissions append: a prospect
+ * who signed up months ago and submitted again this morning is exactly the row an operator needs to
+ * see, and they would drop out of the window the moment `limit` newer people existed. `coalesce` to
+ * the lead's own creation so a lead with no submissions still sorts somewhere sensible.
+ *
+ * The cap is on LEADS. One person is one line however many times they submitted, which is the unit
+ * being triaged; capping submissions would let a single repeat submitter push everyone else off the
+ * page.
+ *
+ * Cost: one correlated index lookup per lead for the sort (the `(lead_id, created_at)` index covers
+ * it), evaluated before the LIMIT. Cheap at this scale; if the lead count ever makes it hurt, the fix
+ * is a stored `last_activity_at` on the lead bumped by the insert, not a return to creation order.
+ *
+ * Two queries rather than a join: a join would repeat every lead column once per submission and then
+ * need re-grouping in memory anyway, and the second query is skipped entirely on an empty window.
+ */
+export async function readWaitlistTriageWindow(
+	db: Db,
+	limit: number
+): Promise<{ leads: WaitlistLeadRow[]; submissions: WaitlistSubmissionRow[] }> {
+	const lastActivityAt = sql`coalesce(
+		(select max(${waitlistSubmission.createdAt}) from ${waitlistSubmission}
+		 where ${waitlistSubmission.leadId} = ${waitlistLead.id}),
+		${waitlistLead.createdAt}
+	)`;
+
+	const leads = await db
+		.select({
+			id: waitlistLead.id,
+			email: waitlistLead.email,
+			invitedAt: waitlistLead.invitedAt,
+			invitedBy: waitlistLead.invitedBy,
+			activatedAt: waitlistLead.activatedAt,
+			reviewedAt: waitlistLead.reviewedAt,
+			reviewedBy: waitlistLead.reviewedBy,
+			createdAt: waitlistLead.createdAt
+		})
+		.from(waitlistLead)
+		.orderBy(desc(lastActivityAt))
+		.limit(limit);
+
+	if (leads.length === 0) return { leads, submissions: [] };
+
+	const submissions = await db
+		.select({
+			id: waitlistSubmission.id,
+			leadId: waitlistSubmission.leadId,
+			email: waitlistSubmission.email,
+			name: waitlistSubmission.name,
+			company: waitlistSubmission.company,
+			role: waitlistSubmission.role,
+			companySize: waitlistSubmission.companySize,
+			interest: waitlistSubmission.interest,
+			hearAbout: waitlistSubmission.hearAbout,
+			phone: waitlistSubmission.phone,
+			countryRegion: waitlistSubmission.countryRegion,
+			consentUpdates: waitlistSubmission.consentUpdates,
+			consentUpdatesAt: waitlistSubmission.consentUpdatesAt,
+			primaryApplication: waitlistSubmission.primaryApplication,
+			evaluationTimeline: waitlistSubmission.evaluationTimeline,
+			currentApproach: waitlistSubmission.currentApproach,
+			economicImpact: waitlistSubmission.economicImpact,
+			budgetRange: waitlistSubmission.budgetRange,
+			adoptionEvidence: waitlistSubmission.adoptionEvidence,
+			pilotInterest: waitlistSubmission.pilotInterest,
+			deploymentScale: waitlistSubmission.deploymentScale,
+			contactPermission: waitlistSubmission.contactPermission,
+			contactMethod: waitlistSubmission.contactMethod,
+			researchPreferences: waitlistSubmission.researchPreferences,
+			qualificationStep: waitlistSubmission.qualificationStep,
+			createdAt: waitlistSubmission.createdAt,
+			updatedAt: waitlistSubmission.updatedAt
+		})
+		.from(waitlistSubmission)
+		.where(
+			inArray(
+				waitlistSubmission.leadId,
+				leads.map((lead) => lead.id)
+			)
+		);
+
+	return { leads, submissions };
 }

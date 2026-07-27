@@ -1,10 +1,11 @@
-import { desc, eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { fail, type Actions } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
 import { getAuth } from '$lib/server/auth';
 import { waitlistLead, waitlistSubmission } from '$lib/server/db/schema';
 import { isStaff } from '$lib/server/admin-access';
 import { collateWaitlistLeads } from '$lib/server/waitlist-collate';
+import { readWaitlistTriageWindow } from '$lib/server/waitlist-store';
 import { readWaitlistFunnelCounts, signupConversionRate } from '$lib/server/waitlist-funnel';
 import {
 	findAccountByEmail,
@@ -30,7 +31,8 @@ import type { PageServerLoad } from './$types';
 //
 // THE CAP IS ON LEADS, NOT SUBMISSIONS (DAR-88). One person is one line in this list however many
 // times they submitted, which is the unit an operator triages; capping submissions instead would let a
-// single repeat submitter push everyone else off the page.
+// single repeat submitter push everyone else off the page. What the window is ORDERED by is last
+// activity — see `lastActivityAt` below.
 const WAITLIST_LIMIT = 200;
 
 /** `?class=` → a real lead class, or null for "no filter" (absent, or anything unrecognized). */
@@ -56,63 +58,11 @@ export const load: PageServerLoad = async ({ url }) => {
 		return null;
 	});
 
-	// Two queries rather than a join: a join would repeat every lead column once per submission and
-	// then need re-grouping in memory anyway, and the second query is skipped entirely on an empty
-	// list. Ordering the leads here (and not after collation) is what the cap applies to.
-	const leads = await db
-		.select({
-			id: waitlistLead.id,
-			email: waitlistLead.email,
-			invitedAt: waitlistLead.invitedAt,
-			invitedBy: waitlistLead.invitedBy,
-			activatedAt: waitlistLead.activatedAt,
-			reviewedAt: waitlistLead.reviewedAt,
-			reviewedBy: waitlistLead.reviewedBy,
-			createdAt: waitlistLead.createdAt
-		})
-		.from(waitlistLead)
-		.orderBy(desc(waitlistLead.createdAt))
-		.limit(WAITLIST_LIMIT);
-
-	const submissions = leads.length
-		? await db
-				.select({
-					id: waitlistSubmission.id,
-					leadId: waitlistSubmission.leadId,
-					email: waitlistSubmission.email,
-					name: waitlistSubmission.name,
-					company: waitlistSubmission.company,
-					role: waitlistSubmission.role,
-					companySize: waitlistSubmission.companySize,
-					interest: waitlistSubmission.interest,
-					hearAbout: waitlistSubmission.hearAbout,
-					phone: waitlistSubmission.phone,
-					countryRegion: waitlistSubmission.countryRegion,
-					consentUpdates: waitlistSubmission.consentUpdates,
-					consentUpdatesAt: waitlistSubmission.consentUpdatesAt,
-					primaryApplication: waitlistSubmission.primaryApplication,
-					evaluationTimeline: waitlistSubmission.evaluationTimeline,
-					currentApproach: waitlistSubmission.currentApproach,
-					economicImpact: waitlistSubmission.economicImpact,
-					budgetRange: waitlistSubmission.budgetRange,
-					adoptionEvidence: waitlistSubmission.adoptionEvidence,
-					pilotInterest: waitlistSubmission.pilotInterest,
-					deploymentScale: waitlistSubmission.deploymentScale,
-					contactPermission: waitlistSubmission.contactPermission,
-					contactMethod: waitlistSubmission.contactMethod,
-					researchPreferences: waitlistSubmission.researchPreferences,
-					qualificationStep: waitlistSubmission.qualificationStep,
-					createdAt: waitlistSubmission.createdAt,
-					updatedAt: waitlistSubmission.updatedAt
-				})
-				.from(waitlistSubmission)
-				.where(
-					inArray(
-						waitlistSubmission.leadId,
-						leads.map((lead) => lead.id)
-					)
-				)
-		: [];
+	// The windowed read (waitlist-store.ts). It lives there rather than inline because it carries a
+	// hand-written correlated-subquery ordering rule — "most recently ACTIVE first", not lead creation —
+	// and nothing in CI renders this page with data, so an inline fragment could only be validated in
+	// production. As a store function it is pinned against a real libsql in waitlist-store.spec.ts.
+	const { leads, submissions } = await readWaitlistTriageWindow(db, WAITLIST_LIMIT);
 
 	// Grouping, per-submission and per-lead classification, and conflict detection all happen here
 	// (waitlist-collate.ts) — read-time, nothing stored. The classification is COMPUTED ON READ for
@@ -134,7 +84,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		filter === null ? [...collated] : collated.filter((lead) => lead.leadClass === filter)
 	)
 		// Priority first so an A lead can't be buried under 199 newer subscribers. Array.sort is
-		// stable, so the SQL's newest-first ordering survives as the within-band tiebreak.
+		// stable, so the SQL's most-recently-active-first ordering survives as the within-band tiebreak.
 		.sort((a, b) => waitlistLeadClassRank(a.leadClass) - waitlistLeadClassRank(b.leadClass));
 
 	const funnelCounts = await funnel;

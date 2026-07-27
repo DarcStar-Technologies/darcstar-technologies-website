@@ -163,13 +163,17 @@
 
 <!-- One label/value pair in a submission's detail. `conflict` marks a field whose answers differ
      between this lead's submissions — the marker is what replaces the merge we deliberately don't
-     do, so it has a text label rather than only a colour. -->
+     do, so it carries real TEXT, not just a colour and a glyph: `title` on a <span> is not reliably
+     announced, so the glyph is aria-hidden and the label is sr-only beside it. -->
 {#snippet detail(label: string, value: string, conflict = false)}
 	<div>
 		<dt class="text-xs tracking-wide text-faint">
 			{label}{#if conflict}<span
 					class="ml-1 text-warning-400"
-					title={m.admin_waitlist_conflict_marker()}>&#8800;</span
+					title={m.admin_waitlist_conflict_marker()}
+					><span aria-hidden="true">&#8800;</span><span class="sr-only"
+						>{m.admin_waitlist_conflict_marker()}</span
+					></span
 				>{/if}
 		</dt>
 		<dd class="text-sm break-words text-body">{value}</dd>
@@ -576,10 +580,14 @@
 												<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 													<div class="flex flex-wrap items-center gap-2">
 														<span class="text-xs text-faint"
-															>{m.admin_waitlist_submission_n({
-																n: index + 1,
-																total: lead.submissions.length
-															})}</span
+															><!-- Counted from the OLDEST, while the list renders newest-first: "Submission
+															     3 of 3" is the most recent one, which is how a person would describe their
+															     own third attempt. `index + 1` would label the newest as "1 of 3". -->{m.admin_waitlist_submission_n(
+																{
+																	n: lead.submissions.length - index,
+																	total: lead.submissions.length
+																}
+															)}</span
 														>
 														<span class="text-xs text-body">{fmt.format(row.createdAt)}</span>
 														<!-- Per-submission band, so the lead's badge above is attributable

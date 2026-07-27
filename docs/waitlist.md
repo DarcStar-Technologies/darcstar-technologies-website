@@ -369,8 +369,9 @@ complete end to end and instrumented.
 
 ### Qualification columns
 
-`waitlist_submission` (the `waitlist` table before DAR-88) grew nullable columns for steps 1–4 (country/consent, application/role/timeline,
-approach/impact/budget/evidence, pilot details, research prefs). Slug values are validated against
+`waitlist_submission` (the `waitlist` table before DAR-88) grew nullable columns for steps 1–4
+(country/consent, application/role/timeline, approach/impact/budget/evidence, pilot details,
+research prefs). Slug values are validated against
 `$lib/waitlist-qualification.ts` (the single client-safe source shared by the step forms and the
 server validators). Two multi-selects (`adoption_evidence`, `research_preferences`) store JSON string
 arrays. `role` is shared between v1 and v2 slug sets — legacy v1 slugs remain as history, new writes
@@ -562,16 +563,19 @@ can carry a `value=` attribute without silently dropping the opt-in.
 
 `/admin/waitlist` is the staff triage view (gated by the `/admin` layout — access rules unchanged by
 DAR-65, which only added what a signed-in staffer sees). It is a triage window, not an archive: the
-read is capped at the **200 most recent leads** — a person is one line however many times they
-submitted, so capping submissions instead would let one repeat submitter push everyone else off the
-page — and classification/filtering happen over that window.
+read is capped at the **200 most recently ACTIVE leads** — a person is one line however many times
+they submitted, so capping submissions instead would let one repeat submitter push everyone else off
+the page, and ordering by lead _creation_ would hide the returning prospect who submitted again this
+morning behind 200 newer signups (a real hole once submissions append). Classification and filtering
+happen over that window.
 
 Collation happens at **read** time (`$lib/server/waitlist-collate.ts`) and resolves nothing: it groups
 submissions under their lead, classifies each one, and **flags** the fields they disagree about.
 
 - **Priority column** — `WaitlistLeadClassBadge.svelte` paints the class the load computed. Priority
   A is the only badge with a ring, and rows **sort by rank first** so an A lead can't be buried under
-  199 newer subscribers; `Array.sort` is stable, so newest-first survives as the within-band tiebreak.
+  199 newer subscribers; `Array.sort` is stable, so most-recently-active-first survives as the
+  within-band tiebreak.
   A lead's band is the **strongest** any single submission earned (`classifyWaitlistLeadGroup`), and
   each submission's own band renders beside it so the badge stays attributable. The rejected
   alternative — merge the fields, then classify — could assemble a Priority A out of a role one person

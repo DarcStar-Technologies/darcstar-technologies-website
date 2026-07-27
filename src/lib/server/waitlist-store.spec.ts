@@ -7,6 +7,7 @@ import { waitlistLead, waitlistSubmission } from './db/schema';
 import {
 	applyWaitlistStep,
 	insertWaitlistSubmission,
+	readWaitlistTriageWindow,
 	WAITLIST_STEP_WRITE_MAX,
 	WAITLIST_STEP_WRITE_WINDOW_MS
 } from './waitlist-store';
@@ -582,5 +583,73 @@ describe('applyWaitlistStep step-write budget', () => {
 			});
 		};
 		for (let pass = 0; pass < 5; pass++) expect((await walk()).updated).toBe(true);
+	});
+});
+
+// The /admin/waitlist read. Specced here because it carries a hand-written correlated-subquery
+// ordering rule, and nothing in CI renders that page with data — the e2e suite has neither a session
+// nor a reachable DB, so an untested fragment could only fail in production.
+describe('readWaitlistTriageWindow', () => {
+	/** Seed a lead created at `createdAt` with submissions at the given moments. */
+	const seed = async (email: string, createdAt: number, submissionsAt: number[]) => {
+		const leadId = `lead-${email}`;
+		await client.execute({
+			sql: 'INSERT INTO waitlist_lead (id, email, created_at) VALUES (?, ?, ?)',
+			args: [leadId, email, createdAt]
+		});
+		for (const at of submissionsAt) {
+			await client.execute({
+				sql: 'INSERT INTO waitlist_submission (id, lead_id, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+				args: [`sub-${email}-${at}`, leadId, email, at, at]
+			});
+		}
+		return leadId;
+	};
+
+	it('orders by LAST ACTIVITY, not by when the lead was created', async () => {
+		// `old` signed up first and has just submitted again; `recent` signed up later and went quiet.
+		// Ordering by lead creation would put `recent` first and, at the cap, hide `old` entirely — the
+		// returning prospect being exactly the row append-only exists to capture.
+		await seed('old@example.com', 1_000, [1_000, 9_000]);
+		await seed('recent@example.com', 5_000, [5_000]);
+
+		const { leads } = await readWaitlistTriageWindow(db, 10);
+		expect(leads.map((l) => l.email)).toEqual(['old@example.com', 'recent@example.com']);
+	});
+
+	it('caps LEADS, not submissions, so one repeat submitter cannot fill the window', async () => {
+		await seed('chatty@example.com', 1_000, [1_000, 2_000, 3_000, 4_000, 5_000]);
+		await seed('quiet@example.com', 900, [900]);
+
+		const { leads, submissions } = await readWaitlistTriageWindow(db, 2);
+		expect(leads).toHaveLength(2);
+		expect(submissions).toHaveLength(6); // every submission of both windowed leads
+	});
+
+	it('returns only the windowed leads’ submissions', async () => {
+		await seed('in@example.com', 1_000, [9_000]);
+		await seed('out@example.com', 1_000, [1_000]);
+
+		const { leads, submissions } = await readWaitlistTriageWindow(db, 1);
+		expect(leads.map((l) => l.email)).toEqual(['in@example.com']);
+		expect(submissions.every((s) => s.leadId === leads[0].id)).toBe(true);
+	});
+
+	it('still returns a lead with no submissions, sorted by its own creation', async () => {
+		// Reachable only if a submission insert failed after its lead was created. Dropping it would
+		// hide it; an operator needs to see and delete it. `coalesce` is what keeps it from sorting last
+		// forever behind a null.
+		await seed('orphan@example.com', 8_000, []);
+		await seed('normal@example.com', 1_000, [2_000]);
+
+		const { leads, submissions } = await readWaitlistTriageWindow(db, 10);
+		expect(leads.map((l) => l.email)).toEqual(['orphan@example.com', 'normal@example.com']);
+		expect(submissions).toHaveLength(1);
+	});
+
+	it('issues no second query when the window is empty', async () => {
+		const { leads, submissions } = await readWaitlistTriageWindow(db, 10);
+		expect(leads).toEqual([]);
+		expect(submissions).toEqual([]);
 	});
 });

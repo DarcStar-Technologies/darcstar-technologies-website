@@ -77,7 +77,10 @@ SELECT
 		substr(hex(randomblob(4)), 1, 8) || '-' ||
 		substr(hex(randomblob(2)), 1, 4) || '-4' ||
 		substr(hex(randomblob(2)), 2, 3) || '-' ||
-		substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' ||
+		-- abs() AFTER the modulo, not before: abs(random()) throws "integer overflow" for the single
+		-- value -2^63, which random() can return. abs(random() % 4) can't overflow (the remainder is
+		-- -3..3), and yields the same 0..3.
+		substr('89ab', 1 + abs(random() % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' ||
 		substr(hex(randomblob(6)), 1, 12)
 	),
 	lower(`email`),
