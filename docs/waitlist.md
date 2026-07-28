@@ -1086,8 +1086,77 @@ Deliberately NOT built: any automatic invitation. A Priority-A lead is announced
 link, so it stays a human decision behind a confirm. The notification exists precisely to put that
 decision in front of someone sooner.
 
+## What only the smoke can see (DAR-103)
+
+`pnpm smoke:waitlist` (`scripts/smoke-waitlist.ts`) walks the whole flow against a **real database**.
+It is hand-run, like [`smoke:invite`](commands.md#manual-smokes-not-in-ci), and it exists because the
+two automated suites each cover a half and neither covers the join:
+
+- **Unit specs** round-trip mint → verify _inside_ one module, with the secret handed in as a
+  parameter. Real, and hermetic by construction — no request, no database, no second module.
+- **e2e** builds and previews the actual Cloudflare bundle, but with a placeholder `DATABASE_URL`.
+  The enrich and the funnel insert swallow their own failures, so they are **no-ops there by design**
+  — that is what keeps the suite hermetic and green — and it reaches the token-gated steps through the
+  honeypot's decoy token, which addresses no row at all. The continuation token and flow claim are
+  asserted only by **shape** in the rendered hidden fields (`/^v1\./`, `/^f1\./`), never by being
+  verified by anything.
+
+So the following are observed **nowhere else**, and each is a composition rather than a unit: a step's
+`UPDATE` landing on the submission its token names; the load and the four step endpoints agreeing on
+the [signing secret](#one-signing-secret-and-it-is-a-type-dar-99) across a real request boundary (the
+brand is a compile-time guard, and only for code inside `src` — nothing proves the _running_ worker's
+mint and verify agree except a token minted by one and accepted by the other); funnel rows appearing
+under the flow the page minted, at most one per `(flow_id, event)` however many times a step is
+replayed, and **none** for a flow id the caller invented; DAR-68's budget counting real writes and
+then refusing **silently**; DAR-88's append-only insert; `classifyWaitlistLeadGroup` reading what the
+steps actually wrote; and DAR-82's `priority_a_notified_at` claiming exactly once.
+
+Four construction decisions are worth keeping.
+
+**It seeds the lead before the first signup.** A genuinely new signup fires two emails — the lead
+notification into `info@` and an ack to the submitter — both gated on `isNew`, which is the _lead_
+insert winning. Seeding the lead first makes every submission in the run a repeat, so neither send
+happens. That is not a dodge around the code under test: a repeat email under an existing lead is
+precisely [append-only](#append-only-submissions-dar-88), and it is what the run asserts twice. What
+it costs is the `isNew` email gate, which is not observable from outside the process anyway (the only
+evidence is mail arriving) and which `waitlist-store.spec.ts` covers.
+
+**A run still sends one email, disclosed rather than suppressed.** The step-4A answers classify
+Priority A on purpose, so DAR-82's notification fires once into `info@`. It cannot be separated from
+the claim being asserted — `captureWaitlistPriorityLead` checks the Resend key **before** it claims,
+so a run that sends nothing is a run where the column was never stamped, and the assertion collapses
+into its weaker "already claimed" half. Skipping the send behind an env flag would be DAR-79/DAR-81's
+defect again (one script testing two different things depending on whose machine it is on).
+
+**The funnel is anchored by time, not by a parsed handle.** The flow id travels signed and the column
+holds the bare UUID, so the obvious way to find a run's rows is to split the handle on `.` and take
+the payload. The script deliberately does not: it is a **client**, and a client that can take a signed
+value apart is one that will eventually be tempted to put one together. It reads the database's own
+clock first (not `Date.now()` — the rows are stamped by SQLite on a Turso host) and asserts that every
+funnel row written since belongs to exactly **one** flow. That is a stronger claim than "our rows are
+there": it also catches a second flow being minted mid-run, which is DAR-75's `__data.json`
+over-count. The cost is that a second person driving `/waitlist` against the same database during the
+run makes it fail — it says so when it does.
+
+**It reads every action and hidden field off the page it was handed.** SvelteKit's remote-form action
+is `?/remote=<build hash>/<fn>`, so writing one down would make the script need updating after an
+unrelated build — and "which form is present" is the honest answer to "which step am I on", since the
+step _is_ its form. The one thing it does restate is the answer slugs, which are imported from
+`$lib/waitlist-qualification` rather than typed out.
+
+Two things it deliberately does **not** cover. The restart escape hatch is thoroughly covered by the
+hermetic e2e, which can drive it through a real browser — and exercising it here would mint a second
+flow and break the one-flow claim above, so the second signup is POSTed without a fresh GET. And the
+funnel rows a **crashed** run leaves behind cannot be purged: they carry no lead, no address and no
+marker, which is exactly the anonymity DAR-66 built in. They are harmless (every query is anchored to
+the run's own start), so the script says so rather than adding a column that would make them findable.
+
 ## Setup
 
 `RESEND_API_KEY` (shared with contact) powers the emails; `BETTER_AUTH_SECRET` (already provisioned
 for auth) signs the continuation token. No new secret. Schema changes follow the usual
 `pnpm db:generate` + committed `drizzle/` migration (drizzle CI gate).
+
+The dev database must be at the current schema before `pnpm smoke:waitlist` can run
+(`pnpm db:push`) — a missing column surfaces as a **500 on the signup POST**, since the insert names
+every column the schema declares.
