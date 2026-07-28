@@ -578,12 +578,15 @@ const afterReload = await settled(
 	() => funnelSince(runStart),
 	(rows) => rows.some((row) => row.event === 'use_case_completed')
 );
+// The forged flow FIRST, and the order is not cosmetic: its rows would land inside the run's own
+// window, so the one-flow check below sees them too and reports "expected 1, got 2" about the reload.
+// Both catch it; only this one names it.
+assertEqual('forged flow', (await forgedRows()).length, 0);
+ok('a self-chosen flow id records nothing — a funnel row still costs a page view');
+
 assertEqual('reload', new Set(afterReload.map((row) => row.flowId)).size, 1);
 assertEqual('reload', afterReload.filter((row) => row.event === 'waitlist_viewed').length, 1);
 ok('a mid-flow reload stays on one flow and re-records no view');
-
-assertEqual('forged flow', (await forgedRows()).length, 0);
-ok('a self-chosen flow id records nothing — a funnel row still costs a page view');
 
 // ---------------------------------------------------------------------------------------------
 // G. Step 3. Its answers are the money questions, which is why branch A is reached at all — and the
