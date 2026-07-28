@@ -29,6 +29,7 @@
 	import PaperTopics from '$lib/components/PaperTopics.svelte';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
 	import TopicGuide from '$lib/components/TopicGuide.svelte';
+	import AuthorSuggestions from '$lib/components/AuthorSuggestions.svelte';
 	import Pager from '$lib/components/Pager.svelte';
 	import { inlineLinkClass, mutedLinkClass } from '$lib/styles';
 	import { fieldClass } from '$lib/styles';
@@ -41,6 +42,7 @@
 		parseResearchFilters,
 		researchTopicHref,
 		topicOptions,
+		type AuthorOption,
 		type FacetOption
 	} from '$lib/research-filters';
 	import { m } from '$lib/paraglide/messages.js';
@@ -75,7 +77,7 @@
 	//
 	// `null` means "show the seed", which is not the same as an empty match list: clearing the box
 	// must restore the team names rather than leave the visitor with an empty dropdown.
-	let authorMatches = $state<FacetOption[] | null>(null);
+	let authorMatches = $state<AuthorOption[] | null>(null);
 	const authorOptions = $derived(authorMatches ?? data.teamAuthors);
 
 	// Guards against a slow response for "da" landing after a fast one for "dao" and repopulating
@@ -102,7 +104,7 @@
 		try {
 			const res = await fetch(`/research/authors.json?q=${encodeURIComponent(term)}`);
 			if (!res.ok) return;
-			const body: { authors?: FacetOption[] } = await res.json();
+			const body: { authors?: AuthorOption[] } = await res.json();
 			if (request === authorRequest) authorMatches = body.authors ?? [];
 		} catch {
 			// Keep whatever the list already offers. The filter itself is server-side, so a failed
@@ -259,7 +261,10 @@
 				     into a readable name in the box; a typed term stays as typed.
 
 				     The datalist is progressive enhancement over a plain text field — with JS off it
-				     still offers the team seed, and typing + Apply still filters. -->
+				     still offers the team seed, and typing + Apply still filters. That fallback is
+				     what bounded DAR-105: the browser was filtering accented names out of the popup
+				     (measured in both engines), so `luk` offered nothing while submitting it still
+				     returned the paper. AuthorSuggestions carries the fix. -->
 				<label class="block">
 					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body">
 						{m.research_filter_author_label()}
@@ -274,11 +279,7 @@
 						class={fieldClass}
 						oninput={onAuthorInput}
 					/>
-					<datalist id="research-author-options">
-						{#each authorOptions as option (option.value)}
-							<option value={option.label}></option>
-						{/each}
-					</datalist>
+					<AuthorSuggestions id="research-author-options" options={authorOptions} />
 				</label>
 				{@render filterSelect(
 					FILTER_PARAM.origin,

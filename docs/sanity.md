@@ -334,15 +334,15 @@ spelling an English keyboard produces:
 So `PAPER_MATCH` and `authorSuggestionsQuery` each gained a `nameSortKey match (… + "*")` arm beside
 the `name` one. Four things worth keeping:
 
-- **The filter half is the one that is verified end-to-end.** The type-ahead arm makes the
-  _endpoint_ answer `?q=luk` with `Łukasz Kaiser`; whether the visitor SEES it is a separate
-  question, because the control is a native `<datalist>` that applies its own matching to the
-  options it is handed — and the option's value is the accented display name, so an
-  accent-sensitive browser filter would hide the row the server just found. Not verifiable with the
-  tooling here (the popup is browser chrome: absent from page screenshots, unresponsive to
-  synthetic keys — both probes failed their controls), so it is recorded as **open**, not claimed.
-  The datalist is progressive enhancement over a plain text field and `PAPER_MATCH` carries the
-  same arm, so typing `luk` and submitting returns the paper either way.
+- **The filter half is the one that was verified end-to-end**, and the type-ahead half was not: the
+  arm makes the _endpoint_ answer `?q=luk` with `Łukasz Kaiser`, but whether the visitor SEES it is
+  a separate question, because the control is a native `<datalist>` that applies its own matching to
+  the options it is handed. That was recorded as **open** rather than claimed, and **DAR-105 settled
+  it: the browser was hiding the row** — see [the datalist filters what the server
+  found](#the-datalist-filters-what-the-server-found-dar-105) below. The bound that made it a
+  separate ticket rather than a bug in this one still holds: the datalist is progressive enhancement
+  over a plain text field and `PAPER_MATCH` carries the same arm, so typing `luk` and submitting
+  returned the paper the whole time.
 - **The arm is additive, never a substitution.** A key is a `production` artifact, so on `dev` — or
   on any document written past promote — the folded arm simply doesn't fire and the predicate
   degrades to exactly the pre-DAR-104 behaviour. Measured against `dev`, where no document has a
@@ -360,6 +360,87 @@ the `name` one. Four things worth keeping:
 
 It does **not** revive DAR-100's retired `?author=ukasz-kaiser`: the folded key is `lukasz kaiser`,
 and `ukasz` is not a token prefix of it. Measured, still 0.
+
+### The datalist filters what the server found (DAR-105)
+
+DAR-104's endpoint fix was correct and invisible. `/research`'s author control is a native
+`<datalist>`, which applies its **own** matching to the options it is handed, and that matching is
+unspecified. Measured in headed Chromium and Firefox — a positive control (ASCII option, exact
+prefix) and a **negative** control (a term matching nothing) both holding in each — it is a
+case-insensitive **substring test that compares code points**. Typing `luk` against
+`value="Łukasz Kaiser"` produced **no popup at all**, in both engines.
+
+The measurement is the interesting part, because two instruments failed before one worked:
+
+| instrument                             | result                                                        |
+| -------------------------------------- | ------------------------------------------------------------- |
+| browser-automation extension (DAR-104) | control failed — synthetic keys do not drive the native popup |
+| Playwright real key events + ArrowDown | control failed in Chromium, **passed in Firefox**             |
+| **X root-window capture** of the popup | **control passed in both** — the popup is a separate X window |
+
+A page screenshot never contains the popup, which is what made this look unmeasurable; the root
+window does. Two environment traps on the way: Playwright's Chromium runs as a native **Wayland**
+client here, so it has no X window at all (`--ozone-platform=x11`), and `import -window root` cannot
+read an Xwayland root either — the probe has to run under `xvfb-run`, a real X server.
+
+**The two engines are opposites, and that decides the fix:**
+
+|          | Chromium                           | Firefox                                     |
+| -------- | ---------------------------------- | ------------------------------------------- |
+| matches  | `value` **or** `label`             | **`label` only** when present, else `value` |
+| displays | `value` bold, `label` grey beneath | `label` if present, else `value`            |
+
+So the obvious repair — ASCII slug in `value`, real name in `label` — works in Chromium and renders
+**nothing** in Firefox. That was the plan of record until the captures came back. The label has to
+be the accent-blind target instead, and it has to carry **both** spellings
+(`Łukasz Kaiser (lukasz kaiser)`), or making `luk` work would cost `Łuk` the suggestion in Firefox —
+trading one unreachable spelling for another rather than fixing anything.
+
+What ships (`authorOptionLabel` in `$lib/research-filters.ts`, rendered by
+`AuthorSuggestions.svelte`):
+
+- **`value` is untouched**, so every URL the control can produce is byte-identical to before. Only a
+  suggestion was ever broken, never a filter.
+- The label is emitted **only for a non-ASCII name** — 120 of the 123 authors carry no attribute at
+  all. Emitting one for them would be a pure regression, not a no-op: Firefox would start rendering
+  `Tri Dao` as its lowercased sort key.
+- The folded string is **read from the document** (`nameSortKey`, projected as `key` by both option
+  sources). `NFD` + strip `\p{Diacritic}` is the reflex and it fixes `Ré` and `Könighofer` while
+  leaving the headline `Ł` exactly as broken — DAR-95's lesson — so a second copy of the Studio's
+  folding map would be both wrong and unguarded. Absent key → no label → pre-DAR-105 behaviour,
+  the same fail-safe polarity as the folded `match` arm (verified against `dev`, which carries none).
+- **The emit condition is a containment test, not an accent test**, and that is what makes the
+  guarantee structural: a label is emitted exactly when the key offers a spelling the name does not
+  already contain. So the suggestion list can never offer **less** than the filter finds — the
+  server matches a token **prefix** of `name` or `nameSortKey`, the browser matches a **substring**
+  of the label if there is one and of the name if there is not, and either the label carries both
+  strings whole or the name already covers both. Phrasing it that way also picks up a case an accent
+  test would miss (a name whose whitespace `sortKey` collapses, `Tri  Dao` → `tri dao`, is reachable
+  by the typed spelling) and skips one it would wrongly catch (a CJK name folds to itself, so a
+  label would be noise). Pinned by a spec that enumerates every token prefix of both fields.
+- **Display cost, Firefox only — accepted, not incidental.** Firefox renders the label _in place of_
+  the value and sizes the popup row to the input, and that input is **~151px at every viewport**
+  (measured 390 / 768 / 1180 / 1280 / 1440 / 1920 — it is a `1fr` column in a width-capped filter
+  bar, so it never grows). About 18 characters fit, which makes this the normal Firefox rendering
+  rather than a narrow-screen edge case:
+
+  | author               | Firefox row            |                              |
+  | -------------------- | ---------------------- | ---------------------------- |
+  | `Christopher Ré`     | `Christopher Ré (chr…` | name in full, hint clipped   |
+  | `Łukasz Kaiser`      | `Łukasz Kaiser (luk…`  | name in full, hint clipped   |
+  | `Bettina Könighofer` | `Bettina Könighofe..`  | **name one character short** |
+
+  That last row is a real cost, not a nominal one: measured, the un-labelled value renders in full at
+  that width. It is why the name comes first — the hint is the first thing to go. Accepted anyway,
+  because the alternatives are worse: a folded-only label is short and never clips but renders the
+  person's name lowercase and unaccented _and_ stops Firefox suggesting the accented spelling, and
+  widening the Author column still leaves `Bettina Könighofer (bettina konighofer)` (~265px) clipped
+  at any plausible size. Chromium is unaffected (value bold, label grey beneath, nothing clipped).
+
+Honest residual: **WebKit is unmeasured** — Playwright's build cannot launch here (missing host
+dependencies) — but the change is safe there by construction, since it only adds a second string the
+engine may match on and leaves `value` alone. Whether Safari's popup then displays `value` or
+`label` is cosmetic, and confined to those three authors.
 
 ### Paper meta-rail charge mapping
 

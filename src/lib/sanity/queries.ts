@@ -132,7 +132,11 @@ const ORDER_PERSON_NAME = `coalesce(nameSortKey, lower(name)) asc`;
 // `teamAuthors` seeds the author input's <datalist> so the control offers something before the
 // visitor types, and it is bounded by the team rather than the corpus (the full author vocabulary
 // is ~7 new people per paper and never plateaus — 123 for 18 papers, ~2,000 at 300). `kind !=
-// "external"` mirrors peopleQuery's fail-open polarity: an unset kind counts as team.
+// "external"` mirrors peopleQuery's fail-open polarity: an unset kind counts as team. It carries
+// `key` for the same reason `authorSuggestionsQuery` does (DAR-105): the seed is what the datalist
+// filters until the visitor reaches the 3-character floor, so an accented teammate would be hidden
+// there by exactly the browser rule that hid the co-authors. Every teammate is ASCII today, which
+// is precisely why the symmetry has to be in the query rather than in someone remembering.
 //
 // `authorLabel` resolves the filter's slug back to a display name so `?author=tri-dao` shows "Tri
 // Dao" in the box. It matches on the SLUG ONLY — never the `match` form the filter accepts —
@@ -148,7 +152,8 @@ const PAPER_PAGE_META = `
 		},
 		"teamAuthors": *[_type == "person" && kind != "external" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(${ORDER_PERSON_NAME}) {
 			"value": slug.current,
-			"label": name
+			"label": name,
+			"key": nameSortKey
 		},
 		"authorLabel": *[_type == "person" && defined(slug.current) && slug.current == $author][0].name`;
 
@@ -215,23 +220,32 @@ export const AUTHOR_SUGGESTION_LIMIT = 12;
 // shipping. The `nameSortKey` arm does not weaken that — an empty term matches everything through
 // it too, for the same reason.
 //
-// That arm is DAR-104's accent-blind half. It makes the ENDPOINT answer `?q=luk` with `Łukasz
-// Kaiser`; whether the visitor SEES that suggestion is a second question this does not settle.
-// `/research`'s control is a native `<datalist>`, which applies its own matching to the options it
-// is given, and the option's value is the accented display name — so a browser filtering
-// accent-sensitively would hide the very row the server just found. That was not verifiable here
-// (the popup is browser chrome: absent from page screenshots and unresponsive to synthetic keys —
-// both probes failed their controls), so it is an open question, not a claim.
+// That arm is DAR-104's accent-blind half, and DAR-105 settled the question it left open: making
+// the ENDPOINT answer `?q=luk` with `Łukasz Kaiser` was not enough, because `/research`'s control
+// is a native `<datalist>` that applies its OWN matching to the options it is handed, and that
+// matching is accent-sensitive in both engines measured. The row the server found was then hidden
+// by the browser. `key` is what fixes it: the client folds it into each option's `label`
+// attribute, which is the only string Firefox matches on. See `authorOptionLabel`
+// ($lib/research-filters.ts) for the measurements and the per-engine rules.
 //
-// What does hold either way: the datalist is progressive enhancement over a plain text field, and
-// `PAPER_MATCH` carries the same arm — so typing `luk` and submitting returns the paper whether or
-// not the dropdown offered it. See `PAPER_MATCH` for the measurements and the fail-safe polarity;
-// the two arms must stay in step, which `queries.spec.ts` pins by counting them.
+// Projecting the STORED key rather than folding `name` in the browser is what lets the suggestion
+// list AGREE with the filter instead of approximating it, and the agreement is structural in both
+// directions. The server matches a token PREFIX of `name` or `nameSortKey`; the browser matches a
+// SUBSTRING of the label when there is one and of the name when there is not. A label is emitted
+// exactly when the name does not already contain the key, so either the label carries both strings
+// whole or the name alone already covers both — and a token prefix is always a substring of its own
+// string. No row this query returns can be one the datalist then hides.
+//
+// What held even while this was open: the datalist is progressive enhancement over a plain text
+// field, and `PAPER_MATCH` carries the same arm — so typing `luk` and submitting returns the paper
+// whether or not the dropdown offered it. See `PAPER_MATCH` for the measurements and the fail-safe
+// polarity; the two arms must stay in step, which `queries.spec.ts` pins by counting them.
 export const authorSuggestionsQuery = defineQuery(`
 	*[_type == "person" && defined(slug.current) && (name match ($q + "*") || nameSortKey match ($q + "*")) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0]
 		| order(select(kind != "external" => 0, 1) asc, ${ORDER_PERSON_NAME}) [0...${AUTHOR_SUGGESTION_LIMIT}] {
 			"value": slug.current,
-			"label": name
+			"label": name,
+			"key": nameSortKey
 		}
 `);
 
