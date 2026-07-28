@@ -515,6 +515,87 @@ in `wrangler.jsonc`).
   capped at 200) beside the submissions triage; the `/admin` layout guard is the only gate needed (no
   actions). _(Visible to all staff; narrow to `data.isAdmin` if you want roster-admins only.)_
 
+## What the limiter's 429 proves (DAR-92)
+
+The DB-backed limiter is a real security control on the public auth surface, and until DAR-92 every
+assertion about it was **config-level** — `auth.spec.ts` reads the options object and agrees with
+itself. `auth-api.e2e.ts` now watches the deployed worker actually refuse: `max` requests inside the
+cap answered by the endpoint, the next one answered by the limiter.
+
+**Bucket isolation is the whole reason this was blocked, and `x-forwarded-for` is the answer.** The
+limiter keys each bucket `<ip>|<path>` (`createRateLimitKey`) and resolves the ip from
+`x-forwarded-for` — the same header the `/login`, `/forgot-password` and `/reset-password` actions
+already set from `getClientAddress()`. Nothing rewrites it between Playwright and a local wrangler,
+so **a header the test chooses IS the bucket**. Each probe therefore spends a private allowance:
+
+- no rule ships that exists only for the tests, and no production limit changes (the ticket's
+  options 1 and 2, both rejected);
+- the DAR-67 boundary test stopped sharing a counter with anything — it used to spend one of the
+  three sign-up attempts per hour that every anonymous caller shared, which made a CI **retry** for
+  any unrelated reason land one step closer to a 429, and made the 4th run of an
+  `E2E_REUSE_SERVER=1` loop fail outright;
+- the addresses are drawn from **`2001:db8::/32`** (RFC 3849 documentation), randomised in the third
+  and fourth groups because better-auth normalises IPv6 to its /64 before keying — 2^32 buckets, so a
+  reused preview's hour-long counters can't hand a "fresh" probe a spent one.
+
+**The count alone cannot identify which rule refused.** better-auth's built-in rule for `/sign-up*`
+is `{ window: 10, max: 3 }` — the same `max` as ours — so "the 4th request 429s" holds just as well
+against a config that has lost `customRules` entirely. Only the window separates them, and
+`X-Retry-After` reports it; the test asserts it lands within a minute of `SIGN_UP_RULE.window`.
+Mutating our rule's window to 10 is what proves that assertion is live.
+
+**Isolation is asserted, not assumed.** After exhausting one probe's bucket the test sends a single
+request from a second address and requires a 400. Without it, a run of that test alone against a
+fresh preview would pass with the header doing nothing at all — and quietly break the two tests
+above. Both mutations (a fixed address; the header removed) fail on exactly that line.
+
+Three measured facts worth keeping:
+
+- **The default rule is 100/10s**, so the ticket's "check whether the default is cheap enough to
+  exhaust on an unused path" would have meant 101 requests — and would have asserted a better-auth
+  default rather than a rule this repo ships.
+- **The origin check runs after the limiter.** A request with no `Origin` is refused
+  `403 MISSING_OR_NULL_ORIGIN`, and it has already spent its allowance by then.
+- **A multi-token `x-forwarded-for` resolves to no ip at all.** With no `trustedProxies` configured,
+  `getIPFromHeader` trusts a single-value header only, so a chain falls back to better-auth's shared
+  `no-trusted-ip` bucket — one counter for every such caller. Preview logs say so out loud
+  (`Rate limiting could not determine a client IP…`), which is what any `/api/auth/*` request without
+  the header triggers. That is why the probe sends exactly one address.
+
+What this still cannot cover: the **database** storage. A preview runs the limiter in memory
+(`AUTH_RATE_LIMIT_STORAGE=memory`, DAR-81), so the counters these tests exhaust are per-isolate ones.
+That the shipped `storage: 'database'` persists correctly stays a config-level claim.
+
+### Known weakness this surfaced: the bucket key is client-controlled on the direct API
+
+Writing the test above meant reading how the bucket is keyed, and the answer has a consequence for
+production that DAR-92 did not set out to find and deliberately does **not** change — the fix alters
+how every auth request is attributed and cannot be measured from a local preview, so it belongs in
+its own ticket with its own review.
+
+The limiter resolves the client ip from `x-forwarded-for` (better-auth's default
+`advanced.ipAddress.ipAddressHeaders`). On a request that arrives at the Worker, **that header is
+whatever the caller sent**: Cloudflare's proxy re-adds `X-Forwarded-For` with the visitor's address
+_after_ all rule phases, and Workers run before that
+([Request Header Modification](https://developers.cloudflare.com/rules/transform/request-header-modification/)),
+so a Worker sees the client's own value or none at all. So on the **direct** `/api/auth/*` surface —
+the one `hooks.server.ts` mounts and `POST /api/auth/sign-in/email` reaches — a caller picks its own
+rate-limit bucket. Rotate the header and every request is a fresh counter; send none and every such
+caller shares the single `no-trusted-ip` one.
+
+Two things bound it, and neither makes it fine:
+
+- **The app's own form actions are unaffected.** `/login`, `/forgot-password` and `/reset-password`
+  build a **fresh sub-request** and set `x-forwarded-for` themselves from `getClientAddress()` — which
+  on this adapter reads **`cf-connecting-ip`** (`adapter-cloudflare/files/worker.js`), the header
+  Cloudflare sets and a caller cannot forge. A browser going through the UI is keyed correctly.
+- The endpoints most worth hammering are the ones that need the DB, so the cap is not the only thing
+  standing there — but it is the thing that is _supposed_ to stand there.
+
+The fix is a one-line `advanced.ipAddress.ipAddressHeaders: ['cf-connecting-ip']` (optionally with
+`x-forwarded-for` behind it, which is what keeps a local preview — where Cloudflare sets nothing —
+able to attribute requests at all, and therefore what keeps these tests working). Filed as **DAR-124**.
+
 ## Still deferred
 
 Pagination for the submissions **and roster** lists (both capped at 200, newest-first); GitHub OAuth

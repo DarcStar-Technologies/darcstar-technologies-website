@@ -142,19 +142,23 @@ test('the rate limiter refuses past the cap, before the endpoint', async ({ requ
 	const refused = await signUpProbe(request, probe);
 	expect(refused.status(), `request ${SIGN_UP_RULE.max + 1} is past the cap`).toBe(429);
 
-	// The limiter answered, not the endpoint: better-auth's refusal carries a `code` naming the
-	// reason (asserted above) and the limiter's carries none. Without this, "the limiter runs first"
-	// would still be an assumption — a 429 raised after the sign-up handler had done its work would
-	// look identical from the status alone.
-	expect(await refused.json()).not.toHaveProperty('code');
+	// The limiter answered, not the endpoint. The load-bearing evidence is above — the endpoint
+	// refuses UNCONDITIONALLY, so the three 400s prove it was reached and this 429 proves something
+	// upstream of it answered instead. This adds the one case that leaves: a refusal raised after the
+	// sign-up handler had already done its work. Phrased as "not the endpoint's error" rather than
+	// "carries no code at all", because better-auth giving its 429 body a `code` some day would be a
+	// perfectly ordinary upstream change and must not turn this red.
+	expect((await refused.json()).code).not.toBe('EMAIL_PASSWORD_SIGN_UP_DISABLED');
 
 	// WHICH rule refused. `max` is 3 in both ours and better-auth's built-in `/sign-up*` rule, so
 	// everything above holds just as well against a config that has lost `customRules`; only the
 	// window separates them, and the limiter reports it here (`getRetryAfter` — the remainder of the
 	// window from the last allowed request, which was milliseconds ago).
 	const retryAfter = Number(refused.headers()['x-retry-after']);
-	expect(retryAfter, 'X-Retry-After should report the window that refused this request')
-		.toBeGreaterThan(BUILT_IN_SIGN_UP_WINDOW_SECONDS);
+	expect(
+		retryAfter,
+		'X-Retry-After should report the window that refused this request'
+	).toBeGreaterThan(BUILT_IN_SIGN_UP_WINDOW_SECONDS);
 	expect(retryAfter).toBeLessThanOrEqual(SIGN_UP_RULE.window);
 	expect(retryAfter).toBeGreaterThan(SIGN_UP_RULE.window - 60);
 
