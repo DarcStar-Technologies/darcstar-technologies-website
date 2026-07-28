@@ -147,6 +147,21 @@ describe('the signed flow id', () => {
 		expect(await verifyWaitlistFlowId(SECRET, handle, dayOld)).toBe(FLOW);
 	});
 
+	// MONTHS, not "a bit more than the token". The test above passes at any TTL over ~25h, and the
+	// boundary test below derives its clock FROM the constant, so both stay green if someone trims this
+	// to 48h — which would reinstate DAR-98 for a three-day tab (verified: the whole file passes at
+	// 2 days). This is the one assertion that pins the MAGNITUDE, and it does it as the claim the
+	// design actually makes — a tab left open for months is still one visitor — rather than by
+	// restating the constant back to itself.
+	it('counts a tab left open for months, which is the point of the number', async () => {
+		const minted = Date.UTC(2026, 0, 1);
+		const handle = await mintWaitlistFlowId(SECRET, FLOW, minted);
+		const halfAYearOn = minted + 180 * 24 * 3600_000;
+
+		expect(await verifyWaitlistFlowId(SECRET, handle, halfAYearOn)).toBe(FLOW);
+		expect(WAITLIST_FLOW_ID_TTL_SECONDS).toBeGreaterThan(WAITLIST_TOKEN_TTL_SECONDS);
+	});
+
 	// Long, not unbounded — a value that cannot age out is a permanent bearer artifact, and "deliberately
 	// long" has to stay distinguishable from "someone dropped the expiry". Boundary either side, so the
 	// TTL a handle is minted with is the one it actually gets.
@@ -158,7 +173,6 @@ describe('the signed flow id', () => {
 
 		expect(await verifyWaitlistFlowId(SECRET, handle, justInside)).toBe(FLOW);
 		expect(await verifyWaitlistFlowId(SECRET, handle, atExpiry)).toBeNull();
-		expect(WAITLIST_FLOW_ID_TTL_SECONDS).toBeGreaterThan(WAITLIST_TOKEN_TTL_SECONDS);
 	});
 
 	// Domain separation, both directions. All four of the flow's signed values key off the same

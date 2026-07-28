@@ -332,8 +332,9 @@ the question that settles it is what an expiry buys here. The other three are **
 token authorizes a write, the flow claim carries a routing decision, the resume cookie re-mints both —
 and a capability has to age out. A handle authorizes nothing. Its bound is the composite primary key,
 which is absolute and permanent: one row per event however long it lives. A shorter life doesn't lower
-that ceiling, it only moves when the rows may land, and the readout is all-time and unfiltered. The
-24h was inherited symmetry with the token, not a property anyone needed.
+that ceiling, it only moves when the rows may land — banking a year of harvested handles buys no more
+rows than spending them the day they were minted, and the readout is all-time and unfiltered anyway.
+The 24h was inherited symmetry with the token, not a property anyone needed.
 
 What it cost was the one thing the handle is for. A step from a tab older than the window resolved to
 nothing, and that cost the visitor their flow **twice over**: the remaining stages recorded nothing (a
@@ -359,6 +360,12 @@ and is a half-fix anyway — the step carrying the expired handle still records 
 suppressing `waitlist_viewed` when a resumed visitor has no flow id, which trades denominator inflation
 for step events on a view-less flow, counting one visitor twice in the numerator. One flow throughout
 is the only shape that's simply correct.
+
+Left open, deliberately: the underlying "an empty stored flow id is never repaired" that the ticket
+called partly pre-existing. Reaching it now takes a **deliberately** malformed handle in the hidden
+field, and doing so only strands the author's own flow — every extra `waitlist_viewed` it produces
+still costs them a real page load, DAR-86's floor for the whole table. It dents your own row of the
+readout; it can't move anyone else's.
 
 ### The events
 
