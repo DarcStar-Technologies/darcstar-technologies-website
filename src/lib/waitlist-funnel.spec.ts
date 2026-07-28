@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	CLIENT_FIREABLE_FUNNEL_EVENTS,
+	SIGNED_FLOW_ID_MAX,
 	WAITLIST_FUNNEL_EVENTS,
 	echoFlowId,
 	isClientFireableFunnelEvent,
@@ -11,7 +12,8 @@ import {
 // The funnel's write guards (DAR-66). Both validators stand between a public request and a row, so
 // they're pinned here rather than left to the type system: `isClientFireableFunnelEvent` is the only
 // thing bounding what a script may add to the numbers, and `isWaitlistFlowId` is the only thing
-// bounding what can land in the column.
+// bounding what can land in the column — now applied to a signed handle's PAYLOAD rather than to a
+// wire value (DAR-86; the signature check itself lives in $lib/server/waitlist-funnel.ts).
 
 describe('the event vocabulary', () => {
 	it('lists every event exactly once', () => {
@@ -108,20 +110,30 @@ describe('isWaitlistFlowId', () => {
 });
 
 describe('echoFlowId', () => {
-	it('reflects a well-formed id verbatim', () => {
-		const id = crypto.randomUUID();
-		expect(echoFlowId(id)).toBe(id);
+	// Since DAR-86 the echoed value is the SIGNED handle, so this reflects rather than validates: the
+	// handle is verified again at the write, and re-minting here would put a second minter in the flow
+	// — the one thing "a page load is required to obtain a handle" depends on there not being.
+	it('reflects a submitted handle verbatim', () => {
+		const handle = 'n1.3f2504e0-4f89-41d3-9a0c-0305e82c3301.4102444800.bWFj';
+		expect(echoFlowId(handle)).toBe(handle);
 	});
 
-	// '' rather than the junk: the page treats an empty echo as "no echo" and falls back to the id its
-	// own load minted, so a malformed submission costs that visitor a split funnel and nothing else.
-	it.each([['junk'], [''], ['3f2504e0-4f89-41d3-9a0c-0305e82c3301 ']])(
-		'drops %j outright',
-		(value) => {
-			expect(echoFlowId(value)).toBe('');
-		}
-	);
+	// Junk is reflected, not rejected — there is nothing to gain from telling a caller their handle is
+	// bad, and it records nothing either way. What must not happen is an unbounded payload coming back.
+	it('truncates anything longer than a real handle', () => {
+		const long = 'n1.' + 'x'.repeat(SIGNED_FLOW_ID_MAX * 2);
+		expect(echoFlowId(long)).toHaveLength(SIGNED_FLOW_ID_MAX);
+		expect(long.startsWith(echoFlowId(long))).toBe(true);
+	});
 
+	// The cap has to be at least a real handle long, or the echo would corrupt every no-JS step: a
+	// truncated handle fails verification, and the visitor's whole flow stops being counted.
+	it('is long enough for what the load actually mints', () => {
+		// `n1.` + UUID + `.` + a 10-digit unix expiry + `.` + a 43-char base64url SHA-256 MAC.
+		expect(SIGNED_FLOW_ID_MAX).toBeGreaterThan(3 + 36 + 1 + 10 + 1 + 43);
+	});
+
+	// '' is what the page reads as "no echo", falling back to the handle its own load minted.
 	it('drops a non-string', () => {
 		expect(echoFlowId(undefined)).toBe('');
 		expect(echoFlowId(123)).toBe('');

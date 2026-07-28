@@ -101,10 +101,12 @@
 	// The funnel handle (DAR-66) for whichever step is showing. `data.flowId` is the one this render's
 	// load minted and recorded the view under; every step echoes back what it was given, so the whole
 	// funnel stays one flow even on the no-JS path, where each POST re-renders the page and its load
-	// mints a fresh id this chain then ignores.
+	// mints a fresh handle this chain then ignores. Opaque to the page: it is signed (DAR-86), and
+	// nothing here reads or produces one.
 	//
-	// `||`, not `??`: an echo is `''` when the submitted value wasn't a well-formed flow id, and that
-	// must fall through to the freshly minted one rather than pin the page to an empty handle.
+	// `||`, not `??`: an echo is `''` when the submitted value wasn't a string at all (and the load
+	// hands back `''` on a deploy with no signing secret), and that must fall through rather than pin
+	// the page to an empty handle.
 	const flowId = $derived(
 		submitWaitlistStep4A.result?.flowId ||
 			submitWaitlistStep4B.result?.flowId ||
@@ -207,8 +209,8 @@
 				</div>
 
 				<!-- The funnel handle (DAR-66) this render's view was recorded under, so the signup can be
-				     attributed to the same flow. Anonymous and authorizes nothing — see
-				     $lib/waitlist-funnel.ts. -->
+				     attributed to the same flow. Anonymous, and signed (DAR-86) so that only a real page
+				     load can produce one — see $lib/server/waitlist-funnel.ts. -->
 				<input {...joinWaitlist.fields.flowId.as('hidden', flowId)} />
 
 				<!-- Whole-form issues (e.g. rate limit); the name/email field issues render under them. -->

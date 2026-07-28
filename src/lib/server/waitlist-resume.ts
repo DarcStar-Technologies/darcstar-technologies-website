@@ -45,7 +45,7 @@ import {
 	type WaitlistStep4Branch
 } from './waitlist-flow';
 import { WAITLIST_CTAS, type WaitlistCta } from '$lib/waitlist-qualification';
-import { echoFlowId } from '$lib/waitlist-funnel';
+import { isWaitlistFlowId, type WaitlistFlowId } from '$lib/waitlist-funnel';
 /**
  * The stages a visitor can be resumed INTO — every screen the flow can leave someone on. It is
  * `WaitlistNextStep` (what a step endpoint routes to) plus `step2`, which only step 1 routes to and
@@ -91,8 +91,18 @@ export interface WaitlistResumeState {
 	branch: WaitlistStep4Branch | null;
 	audience: WaitlistAudience | null;
 	cta: WaitlistCta | null;
-	/** The funnel handle (DAR-66) this visitor's flow was recorded under. */
-	flowId: string;
+	/**
+	 * The funnel flow (DAR-66) this visitor's events were recorded under — the BARE id, like the
+	 * column, never the signed handle the hidden fields carry (DAR-86).
+	 *
+	 * Same shape as `submissionId` above and for a stronger reason than symmetry: the signing core
+	 * splits on '.', so a signed value simply cannot be a field inside another signed value. The load
+	 * re-mints a handle from this, exactly as it re-mints the continuation token from the row id.
+	 *
+	 * `null` when there is none — a deploy with no signing secret, an expired handle, or a value we
+	 * didn't write. Same absent-shape as every other optional field here.
+	 */
+	flowId: WaitlistFlowId | null;
 }
 
 /**
@@ -108,7 +118,8 @@ const RESUME_DOMAIN = 'darcstar:waitlist-resume:v1';
 const RESUME_PREFIX = 'r1';
 // Joins the payload fields. The signing core reserves '.', so anything else would do; every field is
 // either a closed vocabulary, a UUID, or a `decoy_`-prefixed base64url id, none of which can contain
-// this.
+// this. That reserved '.' is also why `flowId` is the bare id here rather than the signed handle the
+// hidden fields carry — a signed value cannot be a field inside another signed value.
 const RESUME_SEPARATOR = '|';
 const RESUME_FIELDS = 6;
 
@@ -146,7 +157,7 @@ export function mintWaitlistResume(
 		state.branch ?? '',
 		state.audience ?? '',
 		state.cta ?? '',
-		state.flowId
+		state.flowId ?? ''
 	].join(RESUME_SEPARATOR);
 
 	return mintSignedValue(
@@ -203,9 +214,11 @@ export async function verifyWaitlistResume(
 		branch,
 		audience,
 		cta,
-		// Shape-checked on the way out for the same reason the funnel checks it on the way in: the
-		// page hands it straight to the next request's hidden field.
-		flowId: echoFlowId(rawFlowId)
+		// Shape-checked on the way out for the same reason the funnel checks it on the way in: the load
+		// signs this into the handle it hands the page, and only ids of the column's own shape should
+		// ever be signed. A junk one degrades to '' — the load then starts a fresh flow — rather than
+		// taking the whole resume down with it.
+		flowId: isWaitlistFlowId(rawFlowId) ? rawFlowId : null
 	};
 }
 

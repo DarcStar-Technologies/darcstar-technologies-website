@@ -39,8 +39,8 @@ import { getDb, type Db } from '$lib/server/db';
 // The STEP entry point, never the bare `captureWaitlistFunnel`: these are the endpoints a
 // honeypot decoy token can reach, so their funnel writes go through the gate that drops them
 // (DAR-83). A spec pins this IMPORT — a call site can't exist without the binding.
-import { captureWaitlistStepFunnel } from '$lib/server/waitlist-funnel';
-import { echoFlowId, type WaitlistFunnelEvent } from '$lib/waitlist-funnel';
+import { captureWaitlistStepFunnel, resolveWaitlistFlowId } from '$lib/server/waitlist-funnel';
+import { echoFlowId, type WaitlistFlowId, type WaitlistFunnelEvent } from '$lib/waitlist-funnel';
 import {
 	hasAnyAnswer,
 	validateWaitlistStep2,
@@ -85,8 +85,10 @@ import type { Cookies } from '@sveltejs/kit';
  *   so the page renders a decision rather than making one; it names a DESTINATION and never echoes
  *   an answer.
  * - `flowId` echoes the submitted funnel handle (DAR-66) for exactly the reason `token` does — a
- *   no-JS step POST re-renders the page, whose load mints a fresh id — so one visitor stays one flow.
- *   Validated on the way out (`echoFlowId`), never re-minted.
+ *   no-JS step POST re-renders the page, whose load mints a fresh one — so one visitor stays one flow.
+ *   Signed since DAR-86, so this is a third value reflected verbatim rather than re-minted: the load
+ *   is the funnel's only minter, and an endpoint that could hand out a fresh handle would be a second
+ *   one. An unusable echo records nothing, which is the same answer a bare POST gets.
  */
 type WaitlistStepResult = {
 	success: true;
@@ -208,7 +210,8 @@ function rememberStep(
 		branch: WaitlistStep4Branch | null;
 		audience: WaitlistAudience | null;
 		cta: WaitlistCta | null;
-		flowId: string;
+		/** The BARE flow id (DAR-86) — the cookie can't hold the signed handle; see `WaitlistResumeState`. */
+		flowId: WaitlistFlowId | null;
 	}
 ): Promise<void> {
 	return setWaitlistResume(cookies, tokenSecret, {
@@ -227,7 +230,7 @@ function rememberStep(
 type WaitlistStep2Input = {
 	token: string;
 	intent: string;
-	/** Funnel handle (DAR-66) — anonymous, carried through the flow, never stored on the signup row. */
+	/** Signed funnel handle (DAR-66/86) — anonymous, carried through the flow, never stored on the row. */
 	flowId: string;
 	role: string;
 	primaryApplication: string;
@@ -249,6 +252,12 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 		const skipped = data.intent === 'skip';
 		const hasAnswer = hasAnyAnswer(cleaned);
 		const rowId = await resolveStepRow(tokenSecret, data.token);
+		// The funnel handle crosses from wire value to vouched-for id here, beside the token and for
+		// the same reason (DAR-86): this endpoint cannot mint one, so a bare POST with a self-chosen
+		// UUID records nothing. Resolved once for BOTH consumers, exactly as the row id above is — the
+		// capture and the resume cookie — so it is never wasted work, even on a step that ends up
+		// recording no event. `flowHandle` below is the separate thing: the wire string, reflected out.
+		const flowId = await resolveWaitlistFlowId(tokenSecret, data.flowId);
 
 		// Skip (the "Skip for now" button) writes nothing — the general path must not persist partial
 		// junk. A Continue with every select left blank has nothing to write either; short-circuiting it
@@ -277,11 +286,13 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 		//
 		// The row id goes in because a DECOY one records nothing at all (DAR-83): step 1's honeypot
 		// already withholds the signup event, and a trap that stopped there would let a bot inflate
-		// every stage after it.
+		// every stage after it. The SECRET goes in because the flow id is signed (DAR-86) — this
+		// endpoint takes a handle it cannot mint, and the capture verifies before it inserts, so a bare
+		// POST here with a self-chosen UUID writes nothing.
 		const events: WaitlistFunnelEvent[] = ['qualification_started'];
 		if (!skipped && hasAnswer) events.push('use_case_completed');
 		if (next === 'done') events.push('qualification_completed');
-		captureWaitlistStepFunnel(ctx.db, ctx.platform, rowId, data.flowId, events);
+		captureWaitlistStepFunnel(ctx.db, ctx.platform, rowId, flowId, events);
 
 		// Step 2 only terminates by SKIP, which persists nothing — so it leaves us knowing nothing, and
 		// `audience: null` is the honest input (DAR-64's "general signup, skipped early"). On every
@@ -296,7 +307,7 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 		// same "we know nothing about them" the CTA above is chosen from.
 		const branch = step4BranchFor(cleaned.evaluationTimeline);
 		const audience = audienceFor(cleaned);
-		const flowId = echoFlowId(data.flowId);
+		const flowHandle = echoFlowId(data.flowId);
 		await rememberStep(cookies, tokenSecret, rowId, {
 			next,
 			branch: skipped ? null : branch,
@@ -311,7 +322,7 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 			success: true,
 			next,
 			token: echoSigned(data.token),
-			flowId,
+			flowId: flowHandle,
 			flowClaim: tokenSecret ? await mintWaitlistFlowClaim(tokenSecret, { branch, audience }) : '',
 			cta
 		};
@@ -327,7 +338,7 @@ type WaitlistStep3Input = {
 	intent: string;
 	/** The signed step-2 decisions (branch + CTA audience) — carried through, never re-derived here. */
 	flowClaim: string;
-	/** Funnel handle (DAR-66) — anonymous, carried through the flow, never stored on the signup row. */
+	/** Signed funnel handle (DAR-66/86) — anonymous, carried through the flow, never stored on the row. */
 	flowId: string;
 	currentApproach: string;
 	economicImpact: string;
@@ -347,6 +358,10 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 		const skipped = data.intent === 'skip';
 		const hasAnswer = hasAnyAnswer(cleaned);
 		const rowId = await resolveStepRow(tokenSecret, data.token);
+		// The funnel handle crosses from wire value to vouched-for id here, beside the token and for
+		// the same reason (DAR-86): this endpoint cannot mint one, so a bare POST with a self-chosen
+		// UUID records nothing. `flowHandle` below is the string that goes back out.
+		const flowId = await resolveWaitlistFlowId(tokenSecret, data.flowId);
 
 		// Same rule as step 2: Skip persists nothing, and an all-blank Continue has nothing to enrich.
 		// The evidence cap is applied inside the validator, so more than WAITLIST_EVIDENCE_MAX boxes
@@ -369,7 +384,7 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 		const events: WaitlistFunnelEvent[] = [];
 		if (!skipped && hasAnswer) events.push('commercial_context_completed');
 		if (next === 'done') events.push('qualification_completed');
-		captureWaitlistStepFunnel(ctx.db, ctx.platform, rowId, data.flowId, events);
+		captureWaitlistStepFunnel(ctx.db, ctx.platform, rowId, flowId, events);
 
 		// Step 3 terminates by SKIP only. Skipping the money questions doesn't unlearn who they told us
 		// they were at step 2, so the audience still stands.
@@ -378,7 +393,7 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 		// Carry step 2's decisions sideways as well as forward — the resume cookie is the only copy a
 		// RELOAD can reach, since the claim itself lives in a hidden field that a fresh GET doesn't
 		// have. Same verified values the routing above used, never a re-derivation.
-		const flowId = echoFlowId(data.flowId);
+		const flowHandle = echoFlowId(data.flowId);
 		await rememberStep(cookies, tokenSecret, rowId, {
 			next,
 			branch: flow?.branch ?? null,
@@ -391,7 +406,7 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 			success: true,
 			next,
 			token: echoSigned(data.token),
-			flowId,
+			flowId: flowHandle,
 			// Echoed verbatim, like the token: step 4's hidden field has to survive a no-JS re-render,
 			// and re-minting here would be a second place that decides what the claim says.
 			flowClaim: echoSigned(data.flowClaim),
@@ -409,7 +424,7 @@ type WaitlistStep4AInput = {
 	intent: string;
 	/** Carried from step 2 (via step 3 when there was one) — read for the CTA audience, nothing else. */
 	flowClaim: string;
-	/** Funnel handle (DAR-66) — anonymous, carried through the flow, never stored on the signup row. */
+	/** Signed funnel handle (DAR-66/86) — anonymous, carried through the flow, never stored on the row. */
 	flowId: string;
 	pilotInterest: string;
 	deploymentScale: string;
@@ -430,6 +445,10 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 		const skipped = data.intent === 'skip';
 		const hasAnswer = hasAnyAnswer(cleaned);
 		const rowId = await resolveStepRow(tokenSecret, data.token);
+		// The funnel handle crosses from wire value to vouched-for id here, beside the token and for
+		// the same reason (DAR-86): this endpoint cannot mint one, so a bare POST with a self-chosen
+		// UUID records nothing. `flowHandle` below is the string that goes back out.
+		const flowId = await resolveWaitlistFlowId(tokenSecret, data.flowId);
 
 		// Same rule as steps 2–3: Skip persists nothing, an all-blank Continue has nothing to enrich.
 		if (!skipped && hasAnswer) {
@@ -449,7 +468,7 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 		const events: WaitlistFunnelEvent[] = [];
 		if (!skipped && cleaned.pilotInterest !== null) events.push('pilot_interest_selected');
 		events.push('qualification_completed'); // terminal step: both buttons land on the confirmation
-		captureWaitlistStepFunnel(ctx.db, ctx.platform, rowId, data.flowId, events);
+		captureWaitlistStepFunnel(ctx.db, ctx.platform, rowId, flowId, events);
 
 		const cta = confirmationCtaFor({
 			audience: flow?.audience ?? null,
@@ -460,7 +479,7 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 		// the row id at `done`, so a reload of the confirmation can't re-mint a write token. The
 		// RESOLVED cta is stored rather than the pilot answer it came from, both because it's the only
 		// thing the confirmation renders and because an answer has no business in a cookie.
-		const flowId = echoFlowId(data.flowId);
+		const flowHandle = echoFlowId(data.flowId);
 		await rememberStep(cookies, tokenSecret, rowId, {
 			next: 'done',
 			branch: null,
@@ -473,7 +492,7 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 			success: true,
 			next: 'done',
 			token: echoSigned(data.token),
-			flowId,
+			flowId: flowHandle,
 			cta
 		};
 	}
@@ -487,7 +506,7 @@ type WaitlistStep4BInput = {
 	intent: string;
 	/** Carried from step 2 (via step 3 when there was one) — read for the CTA audience, nothing else. */
 	flowClaim: string;
-	/** Funnel handle (DAR-66) — anonymous, carried through the flow, never stored on the signup row. */
+	/** Signed funnel handle (DAR-66/86) — anonymous, carried through the flow, never stored on the row. */
 	flowId: string;
 	researchPreferences: string[];
 };
@@ -503,6 +522,10 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 		const cleaned = validateWaitlistStep4B(data);
 		const skipped = data.intent === 'skip';
 		const rowId = await resolveStepRow(tokenSecret, data.token);
+		// The funnel handle crosses from wire value to vouched-for id here, beside the token and for
+		// the same reason (DAR-86): this endpoint cannot mint one, so a bare POST with a self-chosen
+		// UUID records nothing. `flowHandle` below is the string that goes back out.
+		const flowId = await resolveWaitlistFlowId(tokenSecret, data.flowId);
 
 		if (!skipped && hasAnyAnswer(cleaned)) {
 			await applyStepBestEffort(ctx, rowId, { step: '4b', ...cleaned });
@@ -515,15 +538,13 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 
 		// Funnel (DAR-66): terminal step, so the flow completed either way. No branch-B-specific event
 		// exists — `pilot_interest_selected` is branch A's, and this branch is never asked.
-		captureWaitlistStepFunnel(ctx.db, ctx.platform, rowId, data.flowId, [
-			'qualification_completed'
-		]);
+		captureWaitlistStepFunnel(ctx.db, ctx.platform, rowId, flowId, ['qualification_completed']);
 
 		const cta = confirmationCtaFor({ audience: flow?.audience ?? null });
 
 		// Terminal, same as branch A: the row id is dropped and the cookie keeps only the screen and
 		// its link.
-		const flowId = echoFlowId(data.flowId);
+		const flowHandle = echoFlowId(data.flowId);
 		await rememberStep(cookies, tokenSecret, rowId, {
 			next: 'done',
 			branch: null,
@@ -536,7 +557,7 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 			success: true,
 			next: 'done',
 			token: echoSigned(data.token),
-			flowId,
+			flowId: flowHandle,
 			cta
 		};
 	}

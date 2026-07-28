@@ -20,8 +20,10 @@
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 
-	// `flowId` is the funnel handle (DAR-66) carried from the page. It is anonymous and authorizes
-	// nothing — the only thing this screen does with it is attribute the pilot-CTA click.
+	// `flowId` is the funnel handle (DAR-66) carried from the page — anonymous, and since DAR-86 a
+	// signed string rather than a bare id, which is what stops this screen's command from being an
+	// endpoint anyone can feed fresh flows. Opaque here; the only thing this screen does with it is
+	// attribute the pilot-CTA click.
 	let { cta, flowId }: { cta: WaitlistCta; flowId: string } = $props();
 
 	// Where each variant points. All four are real links — the `pilot` one is the site's /contact page,

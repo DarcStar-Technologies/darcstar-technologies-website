@@ -279,13 +279,61 @@ client-fired event goes through a SvelteKit remote **`command`** — same-origin
 A random UUID minted per render by `/waitlist`'s `+page.server.ts` load, carried through the flow in
 a hidden field. It is **not** the waitlist row id and **not** derived from the email — an analytics
 row must not be walkable back to a person, and a derived id would be joinable to `waitlist` by anyone
-who could recompute it. It is shape-checked on write (`isWaitlistFlowId`), so the column can only ever
-hold UUIDs, and each step **echoes it verbatim** exactly as it echoes the continuation token: without
-JS every step is a native POST that re-renders the page, whose load mints a fresh id, so an unechoed
-handle would split one visitor across four flows. Since DAR-75 a **resumed** visitor keeps theirs too
-— the load reuses the id inside the resume cookie rather than minting — which closes the same split
-for a mid-flow reload, and makes the re-recorded `waitlist_viewed` a no-op against the composite key
-instead of a second view for one visitor.
+who could recompute it. Each step **echoes it verbatim** exactly as it echoes the continuation token:
+without JS every step is a native POST that re-renders the page, whose load mints a fresh one, so an
+unechoed handle would split one visitor across four flows. Since DAR-75 a **resumed** visitor keeps
+theirs too — the load reuses the id inside the resume cookie rather than generating a fresh one (it
+mints a handle around it either way) — which closes the
+same split for a mid-flow reload, and makes the re-recorded `waitlist_viewed` a no-op against the
+composite key instead of a second view for one visitor.
+
+### The flow id is signed on the wire (DAR-86)
+
+It used to travel bare, and that made the composite key cap a flow **the caller chose**: a fresh
+`crypto.randomUUID()` per POST defeated it outright, and the step endpoints and the public command
+reached the insert with **no continuation token at all** — a bare POST at step 2 wrote analytics rows
+for free. It now travels as `n1.<uuid>.<exp>.<mac>` on the shared signing core (`mintSignedValue`, its
+own domain + prefix, 24h), minted **only** by the load, so a row costs a page view — the same floor
+`waitlist_viewed`'s own plain GET has always had, and the one DAR-66 accepted as irreducible without a
+captcha. It doesn't make the table unwritable by a script; it makes each write cost what an honest
+visitor's write costs.
+
+Four things worth keeping:
+
+- **The column still holds the bare UUID.** Only the transport is signed, so the schema, every stored
+  row and every count are untouched: no migration, and "a count of distinct flows" still means what it
+  did. Handles in flight across the deploy simply stop being counted.
+- **The two forms are different TYPES.** `WaitlistFlowId` is branded, so every request crosses from
+  wire value to vouched-for id exactly once — at `resolveWaitlistFlowId`, which every public entry
+  point calls — and a call site that skipped the crossing wouldn't compile. The `isWaitlistFlowId`
+  check inside the capture is the runtime half, and it is why forgetting fails **closed** even under a
+  cast: a signed handle isn't UUID-shaped, so the mistake records nothing rather than filling the
+  column with attacker-supplied text.
+- **The resume cookie carries the BARE id**, and that isn't a preference — the signing core splits on
+  `.`, so a signed value cannot be a field inside another signed value. Which settles the rest of the
+  shape: the steps need the bare id for the cookie anyway, so they are the ones that verify, and the
+  capture keeps taking something already vouched for. (Tried the other way round first; the resume
+  spec caught it.)
+- **No secret means no funnel, uniformly.** A deploy missing `BETTER_AUTH_SECRET` can't mint handles
+  either, so every stage goes dark together rather than leaving `waitlist_viewed` climbing against zero
+  conversions — a readout that misleads worse than an absent one. Same posture as the rest of the flow
+  there: no continuation token, no resume, no enrich.
+
+The cap is on the **flow**, not the handle: two signed strings for one id still collapse to one row
+per event, so re-signing buys nothing. Rejected alternative (from the ticket): gating the capture on
+the step write having succeeded, which would make DAR-68's per-row budget bound this transitively. It
+destroys the metric — `qualification_started` fires for a **Skip**, which writes nothing, and skip-only
+flows are precisely the drop-off the funnel exists to measure.
+
+**Accepted cost: a sitting longer than the 24h window over-counts its own views by a few.** A handle's
+life starts at the first page load and the steps echo it verbatim, so a step submitted from a day-old
+tab resolves to nothing, so the resume cookie is written with no flow id — after which each reload
+mints a fresh flow (the load reads the cookie, it never writes one) and records another
+`waitlist_viewed`. The underlying "an empty stored flow id isn't repaired" behaviour predates this;
+expiry is a new way in. Left alone deliberately: fixing it means either a cookie write inside a load —
+which DAR-75 kept read-only on purpose — or accepting expired handles, which would put a second
+verification mode next to the one crossing. The magnitude is a handful of view rows for one visitor,
+on a readout that already counts bots and repeat visits and says so.
 
 ### The events
 
@@ -323,9 +371,10 @@ and closed the tab.
    `CLIENT_FIREABLE_FUNNEL_EVENTS` — today just `evaluation_conversation_requested`, the one funnel
    moment with no server request of its own — not the full vocabulary. It's the same mass-assignment
    guard `applyWaitlistStep` puts on columns: being able to POST `qualification_completed` would mean
-   being able to inflate the numbers this exists to report. What remains, and is accepted, is that a
-   script can mint fresh flow ids and add a row each time — true of any anonymous counter, including
-   the view GET, which is why the readout is labelled directional.
+   being able to inflate the numbers this exists to report. It used to remain true that a script could
+   mint fresh flow ids and add a row per call; **DAR-86 closed that** by signing the handle, so this
+   endpoint now costs a page load per flow like everything else. The readout is still labelled
+   directional — views include bots and repeat visits either way.
 
 ### Failure is silent, everywhere
 
@@ -398,11 +447,12 @@ stages under a flow with no signup.
 ### Caveats the readout states
 
 Views include bots and repeat visits, and `evaluation_conversation_requested` needs JS, so it
-undercounts. Two ways a later stage can still outrun `waitlist_signup_completed`, neither closed here:
-an unauthenticated POST straight at a step endpoint with a self-minted flow id (the flow id is
-client-minted and unsigned — DAR-86), and `evaluation_conversation_requested` from a decoy flow, whose
-row id the resume cookie has deliberately dropped by the time the confirmation renders, so the command
-that fires it cannot know. Directional, not a source of record.
+undercounts. **One** way a later stage can still outrun `waitlist_signup_completed`, deliberately open:
+`evaluation_conversation_requested` fired from a **decoy** flow, whose row id the resume cookie has
+deliberately dropped by the time the confirmation renders, so the command that fires it cannot know it
+is on one. (The other one — an unauthenticated POST straight at a step endpoint with a self-minted flow
+id — closed with DAR-86: a POST can no longer produce a handle at all.) Directional, not a source of
+record.
 
 ## The routing rules (`src/lib/server/waitlist-flow.ts`)
 
@@ -496,8 +546,10 @@ The state now rides a **signed, httpOnly resume cookie** — `waitlist_resume`,
   `privacy_collect_technical_body`, which used to state the only cookies are the sign-in ones. That
   sentence and `PRIVACY_UPDATED` were both updated; see [legal](legal.md).
 - **What it carries**: `stage|submissionId|branch|audience|cta|flowId`, signed with a **third**
-  domain + `r1` prefix on the shared `mintSignedValue` core (alongside the token's `v1` and the flow
-  claim's `f1`), so none of the three can be presented as another. Verification **fails closed** on
+  domain + `r1` prefix on the shared `mintSignedValue` core (alongside the token's `v1`, the flow
+  claim's `f1` and the funnel handle's `n1`), so none of the four can be presented as another. The
+  `flowId` field is the **bare** id, not the signed handle the hidden fields carry — the core splits
+  on `.`, so a signed value can't be a field inside another one (DAR-86). Verification **fails closed** on
   any component outside its vocabulary — a blank step-1 form is the safe answer, being exactly the
   behaviour this replaced.
 - **Signed, even though tampering grants nothing.** Routing is UX, not authorization
@@ -672,13 +724,12 @@ above a real visitor's ceiling. Related trade-off, unchanged: a refusal is **not
 no metric), because telling "refused" apart from "row gone" would take the extra read the design
 exists to avoid.
 
-The
-**funnel-event insert on these same endpoints is a separate, still-unbounded vector** — `flow_id` is
-client-minted, so rotating it defeats the composite-key cap, and it doesn't even need a valid token;
-the fix is to sign the flow id (DAR-86), not to gate analytics on the step write, which would stop
-counting the skips the funnel exists to measure. DAR-83 narrowed it by one case only: a **decoy** token
-records nothing, so a bot that trips the honeypot writes no analytics either. One that never trips it
-is untouched, which is why this stays DAR-86's.
+The **funnel-event insert on these same endpoints used to be a separate, unbounded vector** — `flow_id`
+was client-minted, so rotating it defeated the composite-key cap, and it didn't even need a valid
+token. **Closed by DAR-86**, which signs the flow id rather than gating analytics on the step write
+(that would stop counting the skips the funnel exists to measure): only the /waitlist load mints a
+handle, so a funnel row costs a page view. DAR-83 had already narrowed it by one case — a **decoy**
+token records nothing, so a bot that trips the honeypot writes no analytics either.
 
 The sibling hole this section used to name — the **step-1 enrich** being throttle-exempt, because a
 known email enriched an existing row and so never trips the row-count check (DAR-87) — **was closed by

@@ -16,7 +16,7 @@ import { clearWaitlistResume, setWaitlistResume } from '$lib/server/waitlist-res
 import { readEnv } from '$lib/server/env';
 import { hashIp } from '$lib/server/contact'; // shared truncated-SHA-256 IP hash (same throttle model)
 import { sendWaitlistEmails } from '$lib/server/waitlist-notify';
-import { captureWaitlistFunnel } from '$lib/server/waitlist-funnel';
+import { captureWaitlistFunnel, resolveWaitlistFlowId } from '$lib/server/waitlist-funnel';
 import { echoFlowId } from '$lib/waitlist-funnel';
 import { m } from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime';
@@ -37,7 +37,7 @@ type WaitlistInput = {
 	countryRegion: string; // v2 step 1 (DAR-60 renders it; validated slug)
 	consentUpdates: boolean; // v2 step 1 marketing opt-in checkbox (typed boolean so DAR-60 can use .as('checkbox'))
 	website: string; // honeypot — must stay empty
-	flowId: string; // funnel analytics handle minted by the page's load (DAR-66); anonymous, not stored on the row
+	flowId: string; // signed funnel handle minted by the page's load (DAR-66/86); anonymous, not stored on the row
 };
 
 // `token` is the signed continuation handle for the optional qualification steps (DAR-59): the
@@ -54,9 +54,10 @@ type WaitlistInput = {
 // without the MAC.
 //
 // `flowId` is echoed for the same reason `token` is: without JS this response IS a page re-render, and
-// the load that runs alongside it mints a NEW flow id. Reflecting the submitted one back lets step 2's
+// the load that runs alongside it mints a NEW handle. Reflecting the submitted one back lets step 2's
 // hidden field keep the visitor on ONE funnel flow across native per-step POSTs. It's the caller's own
-// value, re-validated (never a new one), so this hands out nothing they didn't already have.
+// value, reflected verbatim and never re-minted (DAR-86 makes the load the only minter), so this hands
+// out nothing they didn't already have.
 type WaitlistResult = { success: true; token?: string; flowId: string };
 
 export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
@@ -91,8 +92,8 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		// side-channel already accepted above — and it costs nothing, because a decoy id resumes into
 		// a flow whose every step write no-ops exactly as it does today.
 		if (typeof data.website === 'string' && data.website.trim() !== '') {
-			const flowId = echoFlowId(data.flowId);
-			if (!tokenSecret) return { success: true, flowId };
+			const flowHandle = echoFlowId(data.flowId);
+			if (!tokenSecret) return { success: true, flowId: flowHandle };
 
 			const decoyId = await decoyWaitlistId(tokenSecret, String(data.email ?? ''));
 			await setWaitlistResume(cookies, tokenSecret, {
@@ -101,12 +102,14 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 				branch: null,
 				audience: null,
 				cta: null,
-				flowId
+				// The cookie carries the bare id (DAR-86), so the trap pays for one more verification —
+				// and has to, or a resumed decoy would land on a fresh flow and re-record a view.
+				flowId: await resolveWaitlistFlowId(tokenSecret, data.flowId)
 			});
 			return {
 				success: true,
 				token: await mintWaitlistToken(tokenSecret, decoyId),
-				flowId
+				flowId: flowHandle
 			};
 		}
 
@@ -159,13 +162,17 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		// and the metric this feeds ("of the people who saw the form, how many finished it") would be
 		// wrong if it silently dropped them. It also keeps the two paths indistinguishable, which is
 		// the same anti-enumeration reason the response shape is identical.
-		captureWaitlistFunnel(db, platform, data.flowId, ['waitlist_signup_completed']);
+		// The submitted handle crosses to a vouched-for id here (DAR-86). This endpoint cannot mint one,
+		// so a POST carrying a self-chosen UUID records no signup — and `waitlist_signup_completed`, the
+		// numerator of the primary metric, is the event that most needed that.
+		const flowId = await resolveWaitlistFlowId(tokenSecret, data.flowId);
+		captureWaitlistFunnel(db, platform, flowId, ['waitlist_signup_completed']);
 
 		// Remember where this browser got to, so a reload lands on step 2 rather than a blank form
 		// (DAR-75). Written for new and existing emails alike, and on the honeypot path above — a
 		// cookie that appeared only sometimes would be a response difference, which is the one thing
 		// this endpoint is careful not to have. It carries only what we just handed back anyway.
-		const flowId = echoFlowId(data.flowId);
+		const flowHandle = echoFlowId(data.flowId);
 		await setWaitlistResume(cookies, tokenSecret, {
 			stage: 'step2',
 			submissionId: id,
@@ -180,7 +187,7 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		return {
 			success: true,
 			token: tokenSecret ? await mintWaitlistToken(tokenSecret, id) : undefined,
-			flowId
+			flowId: flowHandle
 		};
 	}
 );
