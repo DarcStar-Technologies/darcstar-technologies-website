@@ -20,13 +20,18 @@
 // Web Crypto (crypto.subtle) is available on workerd and in the Node test runner.
 
 /** Steps are a same-sitting affair; a day of validity is generous without leaving tokens live. */
+import type { WaitlistSigningSecret } from './waitlist-secret';
+
 export const WAITLIST_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 
 const DOMAIN = 'darcstar:waitlist-continuation:v1';
 const PREFIX = 'v1';
 const encoder = new TextEncoder();
 
-async function hmacKey(secret: string, usage: 'sign' | 'verify'): Promise<CryptoKey> {
+async function hmacKey(
+	secret: WaitlistSigningSecret,
+	usage: 'sign' | 'verify'
+): Promise<CryptoKey> {
 	return crypto.subtle.importKey(
 		'raw',
 		encoder.encode(secret),
@@ -58,18 +63,30 @@ function b64urlDecode(s: string): Uint8Array<ArrayBuffer> | null {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The signing core. BOTH of the flow's signed values share this shape — `<prefix>.<payload>.<exp>.
-// <mac>` — and, more importantly, one implementation of the canonicalization rules below: the
-// continuation token here, and the flow claim (waitlist-flow.ts, which owns routing
-// and therefore its own tamper-proof transport). `domain` + `prefix` keep them apart — a value
-// minted as one can never verify as the other, even though both key off BETTER_AUTH_SECRET.
+// The signing core. ALL FOUR of the flow's signed values share this shape — `<prefix>.<payload>.
+// <exp>.<mac>` — and, more importantly, one implementation of the canonicalization rules below:
+// the continuation token here (`v1`), the flow claim (`f1`, waitlist-flow.ts, which owns routing and
+// therefore its own tamper-proof transport), the resume cookie (`r1`, waitlist-resume.ts) and the
+// funnel handle (`n1`, waitlist-funnel.ts). `domain` + `prefix` keep them apart — a value minted as
+// one can never verify as another, even though all four key off the same secret.
+//
+// CHANGING WHICH SECRET THAT IS? It comes from `waitlistSigningSecret()` (waitlist-secret.ts) and
+// nowhere else, and that is DAR-99: each value is minted in one module and verified in another, so
+// while their domain and prefix are module-private constants both ends share, the SECRET used to be
+// resolved independently at seven call sites. Nothing proved they agreed and nothing could — the
+// specs round-trip inside one module, and a mismatch does not throw, it verifies to `null`, which
+// every caller treats as "this feature is off". Hence the type: `WaitlistSigningSecret` is branded,
+// so a call site that resolved its own key will not compile.
+//
+// A payload may not contain '.', which is what stops a signed value being a field inside another one
+// — the reason the resume cookie carries the bare flow id rather than its handle (DAR-86).
 
 /**
  * Mint `<prefix>.<payload>.<exp>.<mac>`. The payload must contain no '.' (verification splits on
  * it) — callers pass row UUIDs or fixed slugs. `now` is unix ms (injectable for tests).
  */
 export async function mintSignedValue(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	domain: string,
 	prefix: string,
 	payload: string,
@@ -94,7 +111,7 @@ export async function mintSignedValue(
  * break any future exact-string dedup / blocklist / replay-cache keyed on the value.
  */
 export async function verifySignedValue(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	domain: string,
 	prefix: string,
 	value: unknown,
@@ -117,7 +134,7 @@ export async function verifySignedValue(
 
 /** Mint `v1.<rowId>.<exp>.<mac>` for a waitlist row. `now` is unix ms (injectable for tests). */
 export function mintWaitlistToken(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	rowId: string,
 	now: number = Date.now()
 ): Promise<string> {
@@ -133,7 +150,10 @@ export function mintWaitlistToken(
  * every observable way, which since DAR-75 includes the resume cookie it sets — that cookie stores an
  * id, not a token, so the decoy needs its id in hand and not just a token wrapped around it.
  */
-export async function decoyWaitlistId(secret: string, email: string): Promise<string> {
+export async function decoyWaitlistId(
+	secret: WaitlistSigningSecret,
+	email: string
+): Promise<string> {
 	const key = await hmacKey(secret, 'sign');
 	const digest = await crypto.subtle.sign(
 		'HMAC',
@@ -150,7 +170,7 @@ export async function decoyWaitlistId(secret: string, email: string): Promise<st
  * side-channel remains (accepted — the goal is only that the JSON a bot parses looks identical).
  */
 export async function mintDecoyWaitlistToken(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	email: string,
 	now: number = Date.now()
 ): Promise<string> {
@@ -177,7 +197,7 @@ export const isDecoyWaitlistId = (id: string): boolean => id.startsWith(DECOY_ID
  * for the constant-time + canonicalization guarantees this inherits.
  */
 export function verifyWaitlistToken(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	token: unknown,
 	now: number = Date.now()
 ): Promise<string | null> {

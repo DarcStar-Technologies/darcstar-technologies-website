@@ -13,7 +13,7 @@ import { validateWaitlist } from '$lib/server/waitlist';
 import { insertWaitlistSubmission } from '$lib/server/waitlist-store';
 import { mintWaitlistToken, decoyWaitlistId } from '$lib/server/waitlist-token';
 import { clearWaitlistResume, setWaitlistResume } from '$lib/server/waitlist-resume';
-import { readEnv } from '$lib/server/env';
+import { waitlistSigningSecret } from '$lib/server/waitlist-secret';
 import { hashIp } from '$lib/server/contact'; // shared truncated-SHA-256 IP hash (same throttle model)
 import { sendWaitlistEmails } from '$lib/server/waitlist-notify';
 import { captureWaitlistFunnel, resolveWaitlistFlowId } from '$lib/server/waitlist-funnel';
@@ -75,7 +75,7 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		// The token signing secret, via the shared per-request resolver (sync — valid at this
 		// pre-await point). Reused from Better Auth (domain-separated inside waitlist-token.ts) so no
 		// new secret needs provisioning.
-		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
+		const tokenSecret = waitlistSigningSecret();
 
 		// Honeypot: humans never fill the hidden `website` field; bots do. Silently accept (don't
 		// persist, don't reveal the trap) — including a DECOY token so the response BODY matches a real

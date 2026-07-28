@@ -20,6 +20,7 @@ import {
 	WAITLIST_PILOT_INTERESTS,
 	WAITLIST_CTAS
 } from '$lib/waitlist-qualification';
+import type { WaitlistSigningSecret } from './waitlist-secret';
 
 describe('canonicalizeWaitlistRole', () => {
 	it('passes v2 slugs through unchanged', () => {
@@ -254,7 +255,12 @@ describe('step4BranchFor', () => {
 // CTA — by editing the hidden field it rides in (DAR-63 / DAR-64 acceptance). It inherits the token's
 // canonicalization + expiry rules (pinned in waitlist-token.spec.ts); what's pinned here is that it
 // can't be forged or confused with a continuation token.
-const SECRET = 'test-secret-not-a-real-one';
+// Branded since DAR-99: production earns a signing secret from `waitlistSigningSecret()`, the one
+// resolver every mint and verify now takes its key from. A fixture has no request to read, so the
+// cast is the honest way to state one — the same shape `WaitlistFlowId`'s fixtures use.
+const SECRET = 'test-secret-not-a-real-one' as WaitlistSigningSecret;
+/** Another deployment's secret — same brand, different bytes. Nothing minted under it may verify here. */
+const OTHER_SECRET = 'a-different-deployments-secret' as WaitlistSigningSecret;
 const NOW = 1_800_000_000_000; // fixed ms clock — determinism, no Date.now() flake
 
 describe('the flow claim', () => {
@@ -300,7 +306,7 @@ describe('the flow claim', () => {
 		const atExpiry = NOW + WAITLIST_TOKEN_TTL_SECONDS * 1000;
 		await expect(verifyWaitlistFlowClaim(SECRET, claim, atExpiry)).resolves.toBeNull();
 		await expect(
-			verifyWaitlistFlowClaim(SECRET, await mintWaitlistFlowClaim('other', state, NOW), NOW)
+			verifyWaitlistFlowClaim(SECRET, await mintWaitlistFlowClaim(OTHER_SECRET, state, NOW), NOW)
 		).resolves.toBeNull();
 	});
 

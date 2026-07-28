@@ -678,13 +678,53 @@ step-4 **branch** completed is NOT stored — derive it from the branch-specific
 (`pilot_interest` set → branch A; `research_preferences` set → branch B), which is why DAR-65's
 classifier and DAR-66's funnel needed no extra column and no backfill.
 
+### One signing secret, and it is a type (DAR-99)
+
+The flow has **four** signed values — the continuation token (`v1`), the flow claim (`f1`), the resume
+cookie (`r1`) and the funnel handle (`n1`) — all on the same `mintSignedValue` core, all keyed off
+`BETTER_AUTH_SECRET`, all told apart by their domain and prefix.
+
+Every one of them is **minted in one module and verified in another**. Their domain and prefix are
+module-private constants both ends read, so those cannot drift. The secret was the exception: seven
+call sites each resolved it independently, and nothing proved they agreed — the unit specs round-trip
+mint → verify _inside_ one module with the secret passed in, and the hermetic e2e has no reachable
+database, so the enrich and the funnel insert are no-ops there while the token and claim are checked
+only by **shape** in the rendered hidden fields. Two gates that fail closed into something that reads
+like a pass, which is DAR-81's pattern.
+
+A mismatch would be silent four different ways, none of them an error anyone sees: the funnel records
+views and nothing else (reading as "nobody converts"), steps 2–4 quietly stop enriching, every visitor
+routes to branch B and gets the least-committal CTA, and reloads drop back to the blank form.
+
+So there is one resolver — `waitlistSigningSecret()` in `$lib/server/waitlist-secret.ts` — and its
+return type is **branded**. One resolver alone would make a _rename_ safe; the brand is what catches
+the other two drifts, a per-purpose secret at one end or a new entry point resolving for itself, since
+both compile fine against `secret: string`. Now each is a compile error at the offending call site,
+the same move `WaitlistFlowId` makes for the flow id (DAR-86). It found a real one on the way in:
+`resolveStepRow` and `rememberStep` typed the secret as a bare `string`, so every step's token and
+cookie crossed an untyped hop.
+
+Three things worth keeping. The resolver lives in **its own module** rather than beside the signing
+core because `readEnv` pulls in `$app/server`, and the four signing modules are deliberately
+request-free — that purity is what lets their specs round-trip without a request. The brand is erased
+at runtime, so a **cast** still defeats it, and `waitlist-secret.spec.ts` is the backstop: across the
+surface the key may be named in one file, the brand may be cast into existence in one file, and every
+caller must import the resolver by name (an import pin, not call text — DAR-83's lesson). And that
+spec **derives its file list** from the directories rather than hand-listing paths, because the first
+cut hand-listed them and dropping one entry made the scan blind while staying green — measured, 7/7
+passing against a drifted file.
+
+The key stays Better Auth's own rather than a second secret to provision; the per-value domain
+separation is what makes sharing it safe. Repointing the resolver elsewhere would keep the four values
+consistent with each other while quietly ending that reuse — a decision, not a rename.
+
 ### Continuation token (`waitlist-token.ts`)
 
 Steps 2–4 are **unauthenticated** writes that enrich the row step 1 created, so step 1's response
 carries a signed, expiring token; each later step submits it back and the server verifies before
-updating. `v1.<rowId>.<exp>.<mac>` — HMAC-SHA-256, 24h TTL, over **`BETTER_AUTH_SECRET`** (reused,
-not a new secret; the `darcstar:waitlist-continuation:v1` domain prefix separates these MACs from
-anything Better Auth signs). Guarantees, all unit-pinned:
+updating. `v1.<rowId>.<exp>.<mac>` — HMAC-SHA-256, 24h TTL, over the shared signing secret above (the
+`darcstar:waitlist-continuation:v1` domain prefix separates these MACs from anything Better Auth
+signs). Guarantees, all unit-pinned:
 
 - A raw row id is never accepted; the MAC binds id **and** exp (no swap/extend).
 - Verification failure is a generic `null` — callers respond identically for bad-token / row-gone,

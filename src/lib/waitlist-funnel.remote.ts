@@ -29,7 +29,7 @@
 import { command, getRequestEvent } from '$app/server';
 import { getDb, type Db } from '$lib/server/db';
 import { captureWaitlistFunnel, resolveWaitlistFlowId } from '$lib/server/waitlist-funnel';
-import { readEnv } from '$lib/server/env';
+import { waitlistSigningSecret } from '$lib/server/waitlist-secret';
 import { isClientFireableFunnelEvent } from '$lib/waitlist-funnel';
 
 type WaitlistFunnelInput = {
@@ -45,7 +45,7 @@ export const recordWaitlistFunnelEvent = command<WaitlistFunnelInput, void>(
 		// Request-scoped handles first — platform.env is only valid during the request, and this
 		// function now awaits (the handle's signature check), so both reads must precede it.
 		const { platform } = getRequestEvent();
-		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
+		const tokenSecret = waitlistSigningSecret();
 		let db: Db | undefined;
 		try {
 			db = getDb();

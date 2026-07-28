@@ -27,6 +27,7 @@ import {
 	type WaitlistCta
 } from '$lib/waitlist-qualification';
 import { mintSignedValue, verifySignedValue, WAITLIST_TOKEN_TTL_SECONDS } from './waitlist-token';
+import type { WaitlistSigningSecret } from './waitlist-secret';
 
 /**
  * v1 role slug → nearest v2 equivalent. The `role` column holds BOTH slug sets (v1 values survive
@@ -199,7 +200,7 @@ const FLOW_CLAIM_SEPARATOR = '|';
  * wiring at every step for no added guarantee — the MAC covers the whole payload either way.
  */
 export function mintWaitlistFlowClaim(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	state: WaitlistFlowState,
 	now: number = Date.now()
 ): Promise<string> {
@@ -215,7 +216,7 @@ export function mintWaitlistFlowClaim(
 
 /** A flow claim → the state it carries, or null for any failure (absent, tampered, expired). */
 export async function verifyWaitlistFlowClaim(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	claim: unknown,
 	now: number = Date.now()
 ): Promise<WaitlistFlowState | null> {

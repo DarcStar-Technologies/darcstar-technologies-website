@@ -4,7 +4,7 @@ import {
 	mintWaitlistFlowId,
 	newWaitlistFlowId
 } from '$lib/server/waitlist-funnel';
-import { readEnv } from '$lib/server/env';
+import { waitlistSigningSecret } from '$lib/server/waitlist-secret';
 import { mintWaitlistFlowClaim } from '$lib/server/waitlist-flow';
 import { mintWaitlistToken } from '$lib/server/waitlist-token';
 import { verifyWaitlistResume, WAITLIST_RESUME_COOKIE } from '$lib/server/waitlist-resume';
@@ -30,8 +30,9 @@ import type { PageServerLoad } from './$types';
 // is known.
 export const load: PageServerLoad = async ({ request, cookies, platform, setHeaders }) => {
 	// Request-scoped reads FIRST, before any await: on workerd `platform.env` is only valid during the
-	// request. getDb() reads it sync, and so does readEnv.
-	const tokenSecret = readEnv('BETTER_AUTH_SECRET');
+	// request. getDb() reads it sync, and so does `waitlistSigningSecret()` (DAR-99's one resolver,
+	// a thin sync wrapper over readEnv — same timing contract it always had).
+	const tokenSecret = waitlistSigningSecret();
 	const cookie = cookies.get(WAITLIST_RESUME_COOKIE);
 
 	// NOTE: this load only ever READS the resume state. Clearing it is `restartWaitlist`

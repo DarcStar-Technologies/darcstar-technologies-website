@@ -15,6 +15,7 @@ import { count } from 'drizzle-orm';
 import { waitlistFunnelEvent } from './db/schema';
 import type { Db } from './db';
 import { isDecoyWaitlistId, mintSignedValue, verifySignedValue } from './waitlist-token';
+import type { WaitlistSigningSecret } from './waitlist-secret';
 import {
 	WAITLIST_FUNNEL_EVENTS,
 	SIGNED_FLOW_ID_MAX,
@@ -108,7 +109,7 @@ export const newWaitlistFlowId = (): WaitlistFlowId => crypto.randomUUID() as Wa
  * "a page load is required to obtain one" true.
  */
 export function mintWaitlistFlowId(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	flowId: WaitlistFlowId,
 	now: number = Date.now()
 ): Promise<string> {
@@ -136,7 +137,7 @@ export function mintWaitlistFlowId(
  * an echo could produce still verifies, and anything longer was never ours.
  */
 export async function verifyWaitlistFlowId(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	value: unknown,
 	now: number = Date.now()
 ): Promise<WaitlistFlowId | null> {
@@ -156,7 +157,7 @@ export async function verifyWaitlistFlowId(
  * distinction, and nothing a visitor should see.
  */
 export async function resolveWaitlistFlowId(
-	secret: string | undefined,
+	secret: WaitlistSigningSecret | undefined,
 	value: unknown
 ): Promise<WaitlistFlowId | null> {
 	if (!secret) return null; // misconfigured env: the flow still works, it just isn't measured

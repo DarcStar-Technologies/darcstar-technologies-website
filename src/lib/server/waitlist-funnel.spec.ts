@@ -30,6 +30,7 @@ import {
 	type WaitlistFlowId,
 	type WaitlistFunnelEvent
 } from '$lib/waitlist-funnel';
+import type { WaitlistSigningSecret } from './waitlist-secret';
 
 // The funnel write path (DAR-66), against a real in-memory libsql — because the two properties worth
 // testing are both properties of the DATABASE, not of the TypeScript: the composite primary key is
@@ -54,7 +55,12 @@ const rows = () =>
 
 // The signing secret every handle below is minted with. Any string works — what matters is that the
 // handles are the real thing the load mints rather than hand-written `n1.…` strings.
-const SECRET = 'spec-secret-not-a-real-one';
+// Branded since DAR-99: production earns a signing secret from `waitlistSigningSecret()`, the one
+// resolver every mint and verify now takes its key from. A fixture has no request to read, so the
+// cast is the honest way to state one — the same shape `WaitlistFlowId`'s fixtures use.
+const SECRET = 'spec-secret-not-a-real-one' as WaitlistSigningSecret;
+/** Another deployment's secret — same brand, different bytes. Nothing minted under it may verify here. */
+const OTHER_SECRET = 'a-different-deployments-secret' as WaitlistSigningSecret;
 
 // The two forms a flow id takes since DAR-86: the BARE id — branded, what the capture takes and what
 // the column holds — and the signed HANDLE that carries it on the wire. The casts are the honest way
@@ -124,7 +130,7 @@ describe('the signed flow id', () => {
 	});
 
 	it('rejects a handle signed with a different secret', async () => {
-		const foreign = await mintWaitlistFlowId('some-other-deployments-secret', FLOW);
+		const foreign = await mintWaitlistFlowId(OTHER_SECRET, FLOW);
 		expect(await verifyWaitlistFlowId(SECRET, foreign)).toBeNull();
 	});
 
@@ -215,7 +221,7 @@ describe('resolveWaitlistFlowId', () => {
 	// that misleads worse than an absent one.
 	it('is null without a signing secret, which takes the whole funnel dark together', async () => {
 		expect(await resolveWaitlistFlowId(undefined, HANDLE)).toBeNull();
-		expect(await resolveWaitlistFlowId('', HANDLE)).toBeNull();
+		expect(await resolveWaitlistFlowId('' as WaitlistSigningSecret, HANDLE)).toBeNull();
 	});
 
 	it.each([

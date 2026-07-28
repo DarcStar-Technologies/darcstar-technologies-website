@@ -37,6 +37,7 @@
 // mint/verify half is unit-testable without a request (waitlist-resume.spec.ts).
 import type { Cookies } from '@sveltejs/kit';
 import { mintSignedValue, verifySignedValue, WAITLIST_TOKEN_TTL_SECONDS } from './waitlist-token';
+import type { WaitlistSigningSecret } from './waitlist-secret';
 import {
 	WAITLIST_AUDIENCES,
 	WAITLIST_STEP4_BRANCHES,
@@ -147,7 +148,7 @@ const narrow = <T extends string>(vocabulary: readonly T[], value: string): T | 
 
 /** Mint the signed resume value. `now` is unix ms (injectable for tests). */
 export function mintWaitlistResume(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	state: WaitlistResumeState,
 	now: number = Date.now()
 ): Promise<string> {
@@ -179,7 +180,7 @@ export function mintWaitlistResume(
  * showing a blank step-1 form is the safe answer — it is exactly the behaviour this feature replaces.
  */
 export async function verifyWaitlistResume(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	value: unknown,
 	now: number = Date.now()
 ): Promise<WaitlistResumeState | null> {
@@ -236,7 +237,7 @@ export async function verifyWaitlistResume(
  */
 export async function setWaitlistResume(
 	cookies: Cookies,
-	secret: string | undefined,
+	secret: WaitlistSigningSecret | undefined,
 	state: WaitlistResumeState
 ): Promise<void> {
 	if (!secret) return;
