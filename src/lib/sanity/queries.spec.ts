@@ -18,6 +18,15 @@ import {
 // the slug flattening, the reference derefs, and the person `internal`-only filter. TypeGen already
 // proves the projections type-check; this guards the query SEMANTICS a type can't (filter/order/param).
 
+/**
+ * How many times a pattern appears in a query.
+ *
+ * Counting, rather than `toContain`, is what the sort-key and folded-name invariants below are
+ * built on: both are of the form "every use of X is accounted for", which a containment check
+ * cannot express — it passes as soon as ONE use is right, however many others are wrong.
+ */
+const occurrences = (query: string, pattern: RegExp) => query.match(pattern)?.length ?? 0;
+
 describe('sanity GROQ queries', () => {
 	it('postsPageQuery selects one page of published posts newest-first with dereferenced authors', () => {
 		expect(postsPageQuery).toContain('_type == "post"');
@@ -218,10 +227,13 @@ describe('the /research page queries differ ONLY in their sort order', () => {
 	);
 
 	// The author filter accepts a slug OR a typed name — the control is a text input, so both have
-	// to resolve, and existing `?author=<slug>` links must keep working.
-	it('resolves the author filter by slug or by name', () => {
+	// to resolve, and existing `?author=<slug>` links must keep working. The third arm is DAR-104's:
+	// `match` compares code points, so without it `?author=luk` misses `Łukasz Kaiser` and
+	// `?author=re` misses `Christopher Ré`.
+	it('resolves the author filter by slug, by name, or by folded name', () => {
 		expect(papersPageByDateQuery).toContain('$author in authors[]->slug.current');
 		expect(papersPageByDateQuery).toContain('authors[]->name match ($author + "*")');
+		expect(papersPageByDateQuery).toContain('authors[]->nameSortKey match ($author + "*")');
 	});
 
 	// The facet half — the reason pagination needed more than a slice. Derived from the taxonomy,
@@ -305,8 +317,9 @@ describe('authorSuggestionsQuery', () => {
 		);
 	});
 
-	it('matches on a name prefix', () => {
+	it('matches on a name prefix, accented or not', () => {
 		expect(authorSuggestionsQuery).toContain('name match ($q + "*")');
+		expect(authorSuggestionsQuery).toContain('nameSortKey match ($q + "*")');
 	});
 
 	// A lookup, not a way to page through the vocabulary — the cap is the second half of the
@@ -330,7 +343,6 @@ describe('sort keys never order without their fallback (DAR-95)', () => {
 		authorSuggestions: authorSuggestionsQuery,
 		people: peopleQuery
 	};
-	const occurrences = (query: string, pattern: RegExp) => query.match(pattern)?.length ?? 0;
 
 	// The load-bearing one, and the reason it counts rather than just looking for a `coalesce`
 	// somewhere: `order(titleSortKey asc)` would type-check, satisfy every other assertion in this
@@ -341,14 +353,21 @@ describe('sort keys never order without their fallback (DAR-95)', () => {
 	// It also pins the fallback's shape: `coalesce(titleSortKey, title)` fails here, because an
 	// un-keyed paper has to land exactly where it did before DAR-95 — which was case-insensitive, so
 	// dropping the `lower()` would regress "eDiffi" back to sorting after "Efficient".
+	//
+	// DAR-104 gave a key a SECOND legitimate use — matching, not just ordering — so the right side
+	// grew a term rather than the assertion being relaxed. The distinction is real: a bare
+	// `order(nameSortKey asc)` still fails, because ordering is where a missing key silently
+	// mis-places a document, while a `match` arm that finds nothing is simply one of two arms that
+	// did not fire. Enumerating both is what keeps "a key appeared somewhere new" a decision.
 	it.each(Object.entries(SORT_KEYED))(
-		'%s mentions no sort key outside its coalesce',
+		'%s mentions no sort key outside its coalesce or its match arm',
 		(_name, query) => {
 			expect(occurrences(query, /titleSortKey/g)).toBe(
 				occurrences(query, /coalesce\(titleSortKey, lower\(title\)\)/g)
 			);
 			expect(occurrences(query, /nameSortKey/g)).toBe(
-				occurrences(query, /coalesce\(nameSortKey, lower\(name\)\)/g)
+				occurrences(query, /coalesce\(nameSortKey, lower\(name\)\)/g) +
+					occurrences(query, /nameSortKey match \(\$\w+ \+ "\*"\)/g)
 			);
 		}
 	);
@@ -378,5 +397,72 @@ describe('sort keys never order without their fallback (DAR-95)', () => {
 	// forgotten" and "topics were considered and skipped" are distinguishable a year from now.
 	it('leaves the topic facet ordering alone', () => {
 		expect(papersPageByDateQuery).toContain('| order(title asc)');
+	});
+});
+
+// GROQ's `match` compares code points, so matching a person by typed text is accent-SENSITIVE:
+// measured against production, `luk` found nothing while `Łukasz Kaiser` sat in the index, and the
+// same held for `re`/`Christopher Ré` and `konighofer`/`Bettina Könighofer`. Every accented author
+// in the corpus was unreachable by the spelling an English keyboard produces. The fix reuses
+// DAR-95's stored fold, so the same key now answers "where does this sort?" and "did they mean
+// this person?".
+describe('a name is never matched without its folded key (DAR-104)', () => {
+	// Deliberately NOT the same table as SORT_KEYED above: this one is "queries that match a person
+	// by typed text", which excludes `peopleQuery` — /people is a listing, not a search, so it orders
+	// by the key without ever matching on it. Adding it here would make the vacuity guard below fail
+	// for the right reason and the wrong test.
+	const NAME_MATCHERS = {
+		papersPageByDate: papersPageByDateQuery,
+		papersPageByDateAsc: papersPageByDateAscQuery,
+		papersPageByTitle: papersPageByTitleQuery,
+		authorSuggestions: authorSuggestionsQuery
+	};
+
+	// The invariant, counted rather than spot-checked, for the reason DAR-95 counts: the two call
+	// sites CANNOT share one expression. `defineQuery` has to receive a const-interpolated template
+	// or TypeScript widens the argument to `string`, `overloadClientMethods` stops resolving, and
+	// `client.fetch()` silently returns `any` (DAR-94 proved this) — so a shared builder function is
+	// exactly the refactor that must not happen here, and the arms are written twice on purpose.
+	// Counting is what makes "someone widened one and not the other" a failure instead of a subtle
+	// difference between the type-ahead and the filter it feeds.
+	//
+	it.each(Object.entries(NAME_MATCHERS))('%s pairs every name match with a folded one', (_n, q) => {
+		expect(occurrences(q, /nameSortKey match /g)).toBe(occurrences(q, /name match /g));
+	});
+
+	// The pairing above is only meaningful if the two patterns are DISJOINT, which is a property of
+	// the field names rather than of the queries — so it is proven here instead of asserted in a
+	// comment. Were `/name match /` to also match `nameSortKey match `, the invariant would read
+	// `n === 2n` and could hold only when both sides were zero: a test that fails on every correct
+	// query and passes on a total revert. Exactly inverted, and silent.
+	it('counts the plain and folded patterns disjointly', () => {
+		expect(occurrences('nameSortKey match ', /name match /g)).toBe(0);
+		expect(occurrences('authors[]->nameSortKey match ', /name match /g)).toBe(0);
+		expect(occurrences('name match ', /name match /g)).toBe(1);
+	});
+
+	// ...and 0 === 0 satisfies the above, so this is what stops a revert passing vacuously. Every
+	// query in the table, not a representative two: the three paper queries share `PAPER_MATCH`
+	// today, but that is the thing under test, not something to assume while testing it.
+	it.each(Object.entries(NAME_MATCHERS))('%s really does match names at all', (_n, q) => {
+		expect(occurrences(q, /name match /g)).toBeGreaterThan(0);
+	});
+
+	// The suggestion arms must be OR'd inside one group. Dropping the parentheses would `&&` the
+	// published-papers filter against only the second arm, quietly changing which people the
+	// endpoint offers — a precedence bug no type can see and the counting above would not catch.
+	it('groups the two suggestion arms so the published filter applies to both', () => {
+		expect(authorSuggestionsQuery).toContain(
+			'(name match ($q + "*") || nameSortKey match ($q + "*")) && count('
+		);
+	});
+
+	// The folded key is a `production` artifact — `dev` carries none — so this arm has to be
+	// additive. It is OR'd, never substituted for the plain `name` match, which is what makes a
+	// key-less dataset degrade to exactly the pre-DAR-104 behaviour instead of matching nothing.
+	it('adds the folded arm rather than replacing the plain one', () => {
+		expect(papersPageByDateQuery).toContain(
+			'authors[]->name match ($author + "*") || authors[]->nameSortKey match ($author + "*")'
+		);
 	});
 });

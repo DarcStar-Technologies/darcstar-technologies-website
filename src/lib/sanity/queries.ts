@@ -51,9 +51,22 @@ const PAGE_SLICE = `[$offset...$end]`;
 // (the vocabulary is too large to ship — see the facets below), so `?author=dao` must work, while
 // `?author=tri-dao` links that already exist must keep working. `match` is case-insensitive and
 // token-prefixed (measured: "DAO" and "dao*" both hit, "ao*" does not).
+//
+// It is NOT accent-insensitive, though, and that is what the `nameSortKey` arm buys (DAR-104):
+// `match` compares code points, so `luk` did not find `Łukasz Kaiser` and `re` did not find
+// `Christopher Ré` — every accented author in the corpus was unreachable by the spelling an
+// English-keyboard visitor types, with no signal that the query was the problem. DAR-95 already
+// stores the folded form for `order()`; matching it too is that key answering the same question.
+// Measured against production, the arm adds exactly those three authors and moves nothing else
+// (`dao` 4, `da` 8, `gu` 2, `tri-dao` 4 — all unchanged), and it does NOT resurrect DAR-100's
+// retired `?author=ukasz-kaiser`, which stays at 0.
+//
+// FAIL-SAFE, like the origin polarity above: a sort key is a `production` artifact, so a person
+// without one just fails this arm and the predicate degrades to exactly the old behaviour rather
+// than erroring (measured against `dev`, where no document has the key).
 const PAPER_MATCH = `_type == "paper" && defined(slug.current)
 		&& ($topic == null || $topic in topics[]->slug.current)
-		&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*"))
+		&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*") || authors[]->nameSortKey match ($author + "*"))
 		&& ($origin == null
 			|| ($origin == "darcstar" && darcstarAuthored == true)
 			|| ($origin == "external" && darcstarAuthored != true))`;
@@ -199,9 +212,23 @@ export const AUTHOR_SUGGESTION_LIMIT = 12;
 // The caller enforces a minimum query length and strips `match` wildcards, and BOTH are
 // load-bearing rather than defensive: measured, `q = ""` and `q = "*"` each match all 123 people,
 // so without them this endpoint would hand out the whole vocabulary the page exists to avoid
-// shipping.
+// shipping. The `nameSortKey` arm does not weaken that — an empty term matches everything through
+// it too, for the same reason.
+//
+// That arm is DAR-104's accent-blind half. It makes the ENDPOINT answer `?q=luk` with `Łukasz
+// Kaiser`; whether the visitor SEES that suggestion is a second question this does not settle.
+// `/research`'s control is a native `<datalist>`, which applies its own matching to the options it
+// is given, and the option's value is the accented display name — so a browser filtering
+// accent-sensitively would hide the very row the server just found. That was not verifiable here
+// (the popup is browser chrome: absent from page screenshots and unresponsive to synthetic keys —
+// both probes failed their controls), so it is an open question, not a claim.
+//
+// What does hold either way: the datalist is progressive enhancement over a plain text field, and
+// `PAPER_MATCH` carries the same arm — so typing `luk` and submitting returns the paper whether or
+// not the dropdown offered it. See `PAPER_MATCH` for the measurements and the fail-safe polarity;
+// the two arms must stay in step, which `queries.spec.ts` pins by counting them.
 export const authorSuggestionsQuery = defineQuery(`
-	*[_type == "person" && defined(slug.current) && name match ($q + "*") && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0]
+	*[_type == "person" && defined(slug.current) && (name match ($q + "*") || nameSortKey match ($q + "*")) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0]
 		| order(select(kind != "external" => 0, 1) asc, ${ORDER_PERSON_NAME}) [0...${AUTHOR_SUGGESTION_LIMIT}] {
 			"value": slug.current,
 			"label": name
