@@ -14,12 +14,7 @@
 import { count } from 'drizzle-orm';
 import { waitlistFunnelEvent } from './db/schema';
 import type { Db } from './db';
-import {
-	isDecoyWaitlistId,
-	mintSignedValue,
-	verifySignedValue,
-	WAITLIST_TOKEN_TTL_SECONDS
-} from './waitlist-token';
+import { isDecoyWaitlistId, mintSignedValue, verifySignedValue } from './waitlist-token';
 import {
 	WAITLIST_FUNNEL_EVENTS,
 	SIGNED_FLOW_ID_MAX,
@@ -69,6 +64,40 @@ const FLOW_ID_DOMAIN = 'darcstar:waitlist-funnel:v1';
 const FLOW_ID_PREFIX = 'n1';
 
 /**
+ * How long a funnel handle stays valid — a YEAR, and deliberately NOT the 24h the flow's other three
+ * signed values share (DAR-98).
+ *
+ * WHAT AN EXPIRY BUYS HERE: nothing that matters. The other three are capabilities — the continuation
+ * token authorizes a write, the flow claim carries a routing decision, the resume cookie re-mints
+ * both — and a capability has to age out. A handle authorizes NOTHING. Its bound is the composite
+ * primary key `(flow_id, event)`, which is absolute and permanent: a handle is worth at most one row
+ * per event however long it lives. Shortening its life doesn't lower that ceiling, it only moves when
+ * the rows may be written, and the readout is all-time and unfiltered. The 24h was inherited symmetry
+ * with the token, not a property anyone needed.
+ *
+ * WHAT IT COST: the one thing the handle exists for. A step submitted from a tab older than the window
+ * resolved to null, which cost the visitor their flow TWICE OVER — their remaining stages recorded
+ * nothing (`captureWaitlistFunnel` drops a null id), and the null went into the resume cookie, after
+ * which every render minted a fresh flow and wrote another `waitlist_viewed`. The load reads that
+ * cookie and never writes one, so nothing repaired it, and each step re-issued it for another 24h.
+ * That is DAR-75's `__data.json` over-count exactly, resurrected: numerator down, denominator up.
+ *
+ * The principle is already settled here — DAR-83 kept the step funnel recording for a visitor whose
+ * CONTINUATION TOKEN had aged out, because they really did reach that stage. This is the same rule
+ * applied to the handle's own clock: measurement must not be gated on authorization. So the handle
+ * deliberately OUTLIVES the token, and a step from a day-old tab now fails to enrich (correct — the
+ * capability expired) while still being counted (also correct — the visitor is still that visitor).
+ *
+ * Still an expiry rather than none, for two reasons: the signing core requires one, and a
+ * never-expires mode would change shared code three other values depend on; and a value that cannot
+ * age out is a permanent bearer artifact. A year is longer than any sitting a browser will survive —
+ * it puts the failure out of reach instead of merely making it rarer. Nothing on the visitor's device
+ * lives longer as a result: the resume cookie, the only thing that persists an id there, is untouched
+ * at 24h.
+ */
+export const WAITLIST_FLOW_ID_TTL_SECONDS = 365 * 24 * 60 * 60;
+
+/**
  * A brand-new flow id. The ONE place a `WaitlistFlowId` comes into existence unverified — everything
  * else has to earn one from a signature — so it is deliberately tiny and deliberately server-side.
  */
@@ -77,12 +106,6 @@ export const newWaitlistFlowId = (): WaitlistFlowId => crypto.randomUUID() as Wa
 /**
  * Sign a flow id for transport. Minted in ONE place — /waitlist's server load — which is what makes
  * "a page load is required to obtain one" true.
- *
- * Same 24h TTL as the continuation token and the resume cookie: they all cover one sitting with the
- * form. The expiry is not what bounds abuse here (the composite key does that, absolutely and
- * forever — a handle is worth at most one row per event no matter how long it lives); it bounds how
- * long a visitor's flow stays attributable, which is why it matches the window the rest of the flow
- * already runs on.
  */
 export function mintWaitlistFlowId(
 	secret: string,
@@ -94,7 +117,7 @@ export function mintWaitlistFlowId(
 		FLOW_ID_DOMAIN,
 		FLOW_ID_PREFIX,
 		flowId,
-		WAITLIST_TOKEN_TTL_SECONDS,
+		WAITLIST_FLOW_ID_TTL_SECONDS,
 		now
 	);
 }

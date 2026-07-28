@@ -15,9 +15,15 @@ import {
 	resolveWaitlistFlowId,
 	signupConversionRate,
 	verifyWaitlistFlowId,
+	WAITLIST_FLOW_ID_TTL_SECONDS,
 	type WaitlistFunnelCounts
 } from './waitlist-funnel';
-import { decoyWaitlistId, mintWaitlistToken, verifyWaitlistToken } from './waitlist-token';
+import {
+	decoyWaitlistId,
+	mintWaitlistToken,
+	verifyWaitlistToken,
+	WAITLIST_TOKEN_TTL_SECONDS
+} from './waitlist-token';
 import {
 	WAITLIST_FUNNEL_EVENTS,
 	isWaitlistFlowId,
@@ -122,12 +128,51 @@ describe('the signed flow id', () => {
 		expect(await verifyWaitlistFlowId(SECRET, foreign)).toBeNull();
 	});
 
-	it('rejects a handle whose 24h window has passed', async () => {
+	// DAR-98. The handle deliberately OUTLIVES the continuation token, and this is the behavioural
+	// statement of that — through both real code paths, not by comparing two constants. A day-old tab
+	// is the case that used to break: the handle expired with the token, so the visitor's remaining
+	// stages recorded nothing AND the null went into the resume cookie, after which every render minted
+	// a fresh flow and wrote another `waitlist_viewed`. Numerator down, denominator up, for a day.
+	//
+	// Losing the WRITE at 24h is correct — that capability really did expire. Losing the visitor's
+	// identity with it was not: measurement must not be gated on authorization (DAR-83 settled the same
+	// point for a token that aged out mid-flow).
+	it('still counts a day-old tab, though its continuation token is gone', async () => {
+		const minted = Date.UTC(2026, 0, 1);
+		const dayOld = minted + 25 * 3600_000;
+		const handle = await mintWaitlistFlowId(SECRET, FLOW, minted);
+		const token = await mintWaitlistToken(SECRET, 'a1b2c3d4-0000-4000-8000-00000000beef', minted);
+
+		expect(await verifyWaitlistToken(SECRET, token, dayOld)).toBeNull();
+		expect(await verifyWaitlistFlowId(SECRET, handle, dayOld)).toBe(FLOW);
+	});
+
+	// MONTHS, not "a bit more than the token". The test above passes at any TTL over ~25h, and the
+	// boundary test below derives its clock FROM the constant, so both stay green if someone trims this
+	// to 48h — which reinstates DAR-98 for a three-day tab. That is not hypothetical: before THIS test
+	// existed, mutating the constant to 2 days passed all 47 of the others. So it is the one assertion
+	// pinning the MAGNITUDE, and it does that as the claim the design actually makes — a tab left open
+	// for months is still one visitor — rather than by restating the constant back to itself.
+	it('counts a tab left open for months, which is the point of the number', async () => {
 		const minted = Date.UTC(2026, 0, 1);
 		const handle = await mintWaitlistFlowId(SECRET, FLOW, minted);
+		const halfAYearOn = minted + 180 * 24 * 3600_000;
 
-		expect(await verifyWaitlistFlowId(SECRET, handle, minted + 23 * 3600_000)).toBe(FLOW);
-		expect(await verifyWaitlistFlowId(SECRET, handle, minted + 25 * 3600_000)).toBeNull();
+		expect(await verifyWaitlistFlowId(SECRET, handle, halfAYearOn)).toBe(FLOW);
+		expect(WAITLIST_FLOW_ID_TTL_SECONDS).toBeGreaterThan(WAITLIST_TOKEN_TTL_SECONDS);
+	});
+
+	// Long, not unbounded — a value that cannot age out is a permanent bearer artifact, and "deliberately
+	// long" has to stay distinguishable from "someone dropped the expiry". Boundary either side, so the
+	// TTL a handle is minted with is the one it actually gets.
+	it('does still expire, at its own window rather than the token’s', async () => {
+		const minted = Date.UTC(2026, 0, 1);
+		const handle = await mintWaitlistFlowId(SECRET, FLOW, minted);
+		const justInside = minted + (WAITLIST_FLOW_ID_TTL_SECONDS - 1) * 1000;
+		const atExpiry = minted + WAITLIST_FLOW_ID_TTL_SECONDS * 1000;
+
+		expect(await verifyWaitlistFlowId(SECRET, handle, justInside)).toBe(FLOW);
+		expect(await verifyWaitlistFlowId(SECRET, handle, atExpiry)).toBeNull();
 	});
 
 	// Domain separation, both directions. All four of the flow's signed values key off the same
