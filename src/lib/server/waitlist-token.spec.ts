@@ -6,12 +6,18 @@ import {
 	isDecoyWaitlistId,
 	WAITLIST_TOKEN_TTL_SECONDS
 } from './waitlist-token';
+import type { WaitlistSigningSecret } from './waitlist-secret';
 
 // The continuation token is the ONLY authorization for the flow's unauthenticated step writes
 // (DAR-59), so every acceptance property is pinned here: roundtrip, expiry, and — critically —
 // that no tampered variant (id, exp, mac, shape) ever verifies.
 
-const SECRET = 'test-secret-not-a-real-one';
+// Branded since DAR-99: production earns a signing secret from `waitlistSigningSecret()`, the one
+// resolver every mint and verify now takes its key from. A fixture has no request to read, so the
+// cast is the honest way to state one — the same shape `WaitlistFlowId`'s fixtures use.
+const SECRET = 'test-secret-not-a-real-one' as WaitlistSigningSecret;
+/** Another deployment's secret — same brand, different bytes. Nothing minted under it may verify here. */
+const OTHER_SECRET = 'a-different-deployments-secret' as WaitlistSigningSecret;
 const ID = '01890a5c-1111-4222-8333-444455556666';
 const NOW = 1_800_000_000_000; // fixed ms clock — determinism, no Date.now() flake
 
@@ -57,7 +63,7 @@ describe('mintWaitlistToken / verifyWaitlistToken', () => {
 	});
 
 	it('rejects a token minted with a different secret', async () => {
-		const token = await mintWaitlistToken('some-other-secret', ID, NOW);
+		const token = await mintWaitlistToken(OTHER_SECRET, ID, NOW);
 		await expect(verifyWaitlistToken(SECRET, token, NOW)).resolves.toBeNull();
 	});
 

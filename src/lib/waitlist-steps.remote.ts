@@ -69,6 +69,7 @@ import {
 } from '$lib/server/waitlist-flow';
 import type { WaitlistCta } from '$lib/waitlist-qualification';
 import { readEnv } from '$lib/server/env';
+import { waitlistSigningSecret, type WaitlistSigningSecret } from '$lib/server/waitlist-secret';
 import type { Cookies } from '@sveltejs/kit';
 
 /**
@@ -129,7 +130,7 @@ const echoSigned = (v: unknown): string =>
  * cookie is a response header, so it is written around the decoy like everything else the trap
  * returns, keeping its responses byte-identical to a real signup's.
  */
-async function resolveStepRow(tokenSecret: string | undefined, token: unknown) {
+async function resolveStepRow(tokenSecret: WaitlistSigningSecret | undefined, token: unknown) {
 	if (!tokenSecret) return null; // misconfigured env: the flow still works, it just can't enrich
 	try {
 		return await verifyWaitlistToken(tokenSecret, token);
@@ -201,7 +202,7 @@ async function applyStepBestEffort(
  */
 function rememberStep(
 	cookies: Cookies,
-	tokenSecret: string | undefined,
+	tokenSecret: WaitlistSigningSecret | undefined,
 	rowId: string | null,
 	state: {
 		// Assignable as-is: `WaitlistNextStep` is `WaitlistResumeStage` minus `step2`, which only
@@ -246,7 +247,7 @@ export const submitWaitlistStep2 = form<WaitlistStep2Input, WaitlistCarryingResu
 		// thing that touches the DB, and it runs only on the write path.
 		const { platform, cookies } = getRequestEvent();
 		const ctx = stepWriteContext(platform);
-		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
+		const tokenSecret = waitlistSigningSecret();
 
 		const cleaned = validateWaitlistStep2(data);
 		const skipped = data.intent === 'skip';
@@ -352,7 +353,7 @@ export const submitWaitlistStep3 = form<WaitlistStep3Input, WaitlistCarryingResu
 		// Request-scoped handles first — see the note in submitWaitlistStep2.
 		const { platform, cookies } = getRequestEvent();
 		const ctx = stepWriteContext(platform);
-		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
+		const tokenSecret = waitlistSigningSecret();
 
 		const cleaned = validateWaitlistStep3(data);
 		const skipped = data.intent === 'skip';
@@ -439,7 +440,7 @@ export const submitWaitlistStep4A = form<WaitlistStep4AInput, WaitlistStepResult
 		// Request-scoped handles first — see the note in submitWaitlistStep2.
 		const { platform, cookies } = getRequestEvent();
 		const ctx = stepWriteContext(platform);
-		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
+		const tokenSecret = waitlistSigningSecret();
 
 		const cleaned = validateWaitlistStep4A(data);
 		const skipped = data.intent === 'skip';
@@ -517,7 +518,7 @@ export const submitWaitlistStep4B = form<WaitlistStep4BInput, WaitlistStepResult
 		// Request-scoped handles first — see the note in submitWaitlistStep2.
 		const { platform, cookies } = getRequestEvent();
 		const ctx = stepWriteContext(platform);
-		const tokenSecret = readEnv('BETTER_AUTH_SECRET');
+		const tokenSecret = waitlistSigningSecret();
 
 		const cleaned = validateWaitlistStep4B(data);
 		const skipped = data.intent === 'skip';

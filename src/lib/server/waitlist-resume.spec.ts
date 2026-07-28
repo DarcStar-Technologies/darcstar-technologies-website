@@ -9,6 +9,7 @@ import {
 import { mintSignedValue, mintWaitlistToken, verifyWaitlistToken } from './waitlist-token';
 import { mintWaitlistFlowClaim } from './waitlist-flow';
 import type { WaitlistFlowId } from '$lib/waitlist-funnel';
+import type { WaitlistSigningSecret } from './waitlist-secret';
 
 // The resume value (DAR-75) is what a RELOAD of /waitlist is rebuilt from, so everything the page
 // then renders — which step, which CTA, which row the re-minted continuation token addresses — comes
@@ -16,7 +17,12 @@ import type { WaitlistFlowId } from '$lib/waitlist-funnel';
 // anything that isn't exactly what we wrote comes back as a plain `null` (which renders the blank
 // step-1 form, i.e. the behaviour this feature replaced — the safe answer).
 
-const SECRET = 'test-secret-not-a-real-one';
+// Branded since DAR-99: production earns a signing secret from `waitlistSigningSecret()`, the one
+// resolver every mint and verify now takes its key from. A fixture has no request to read, so the
+// cast is the honest way to state one — the same shape `WaitlistFlowId`'s fixtures use.
+const SECRET = 'test-secret-not-a-real-one' as WaitlistSigningSecret;
+/** Another deployment's secret — same brand, different bytes. Nothing minted under it may verify here. */
+const OTHER_SECRET = 'a-different-deployments-secret' as WaitlistSigningSecret;
 const NOW = 1_800_000_000_000; // fixed ms clock — determinism, no Date.now() flake
 const ROW = '01890a5c-1111-4222-8333-444455556666';
 // The BARE flow id, which is what the cookie carries — never the signed handle the hidden fields hold
@@ -70,7 +76,7 @@ describe('mintWaitlistResume / verifyWaitlistResume', () => {
 	});
 
 	it('rejects a value minted with a different secret, and absent/non-string input', async () => {
-		const foreign = await mintWaitlistResume('some-other-secret', state(), NOW);
+		const foreign = await mintWaitlistResume(OTHER_SECRET, state(), NOW);
 		await expect(verifyWaitlistResume(SECRET, foreign, NOW)).resolves.toBeNull();
 		await expect(verifyWaitlistResume(SECRET, undefined, NOW)).resolves.toBeNull();
 		await expect(verifyWaitlistResume(SECRET, '', NOW)).resolves.toBeNull();

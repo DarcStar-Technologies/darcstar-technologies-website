@@ -20,13 +20,18 @@
 // Web Crypto (crypto.subtle) is available on workerd and in the Node test runner.
 
 /** Steps are a same-sitting affair; a day of validity is generous without leaving tokens live. */
+import type { WaitlistSigningSecret } from './waitlist-secret';
+
 export const WAITLIST_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 
 const DOMAIN = 'darcstar:waitlist-continuation:v1';
 const PREFIX = 'v1';
 const encoder = new TextEncoder();
 
-async function hmacKey(secret: string, usage: 'sign' | 'verify'): Promise<CryptoKey> {
+async function hmacKey(
+	secret: WaitlistSigningSecret,
+	usage: 'sign' | 'verify'
+): Promise<CryptoKey> {
 	return crypto.subtle.importKey(
 		'raw',
 		encoder.encode(secret),
@@ -69,7 +74,7 @@ function b64urlDecode(s: string): Uint8Array<ArrayBuffer> | null {
  * it) — callers pass row UUIDs or fixed slugs. `now` is unix ms (injectable for tests).
  */
 export async function mintSignedValue(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	domain: string,
 	prefix: string,
 	payload: string,
@@ -94,7 +99,7 @@ export async function mintSignedValue(
  * break any future exact-string dedup / blocklist / replay-cache keyed on the value.
  */
 export async function verifySignedValue(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	domain: string,
 	prefix: string,
 	value: unknown,
@@ -117,7 +122,7 @@ export async function verifySignedValue(
 
 /** Mint `v1.<rowId>.<exp>.<mac>` for a waitlist row. `now` is unix ms (injectable for tests). */
 export function mintWaitlistToken(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	rowId: string,
 	now: number = Date.now()
 ): Promise<string> {
@@ -133,7 +138,10 @@ export function mintWaitlistToken(
  * every observable way, which since DAR-75 includes the resume cookie it sets — that cookie stores an
  * id, not a token, so the decoy needs its id in hand and not just a token wrapped around it.
  */
-export async function decoyWaitlistId(secret: string, email: string): Promise<string> {
+export async function decoyWaitlistId(
+	secret: WaitlistSigningSecret,
+	email: string
+): Promise<string> {
 	const key = await hmacKey(secret, 'sign');
 	const digest = await crypto.subtle.sign(
 		'HMAC',
@@ -150,7 +158,7 @@ export async function decoyWaitlistId(secret: string, email: string): Promise<st
  * side-channel remains (accepted — the goal is only that the JSON a bot parses looks identical).
  */
 export async function mintDecoyWaitlistToken(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	email: string,
 	now: number = Date.now()
 ): Promise<string> {
@@ -177,7 +185,7 @@ export const isDecoyWaitlistId = (id: string): boolean => id.startsWith(DECOY_ID
  * for the constant-time + canonicalization guarantees this inherits.
  */
 export function verifyWaitlistToken(
-	secret: string,
+	secret: WaitlistSigningSecret,
 	token: unknown,
 	now: number = Date.now()
 ): Promise<string | null> {
