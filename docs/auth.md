@@ -684,6 +684,28 @@ The e2e adds the end-to-end mirror of DAR-92's isolation test: one fixed client 
 turns it red on exactly that line. Before this ticket it was a 400, because each rotation bought a
 counter of its own and no number of requests ever reached the cap.
 
+A **fourth** guard covers the half none of the others can reach. Every test above drives the direct
+API, where the header arrives INBOUND; the form actions **construct** it on an in-process
+sub-request, and layer 1 proves that under vitest — Node, with undici's `Headers`. The runtime is
+workerd, and `cf-*` is exactly the family a runtime might treat specially, since Cloudflare's own
+edge refuses an inbound request carrying `cf-connecting-ip`. So a form-action test drives
+`/forgot-password` (its `/request-password-reset` cap is 3/hour, stated in our own config) through
+the whole path — `getClientAddress` → `authSubrequest` → workerd `Headers` → `auth.handler` →
+`getIp` → the bucket key — and requires that a **second address does not inherit** the exhausted
+bucket. _(`authSubrequest` forwarding nothing → red on that line.)_ Two notes on it:
+
+- **`accept: text/html` is load-bearing.** Without it SvelteKit answers a form-action POST with its
+  `ActionResult` envelope — HTTP **200** carrying `{"type":"failure","status":429,…}` in the body —
+  so `response.status()` reads 200 for a refusal, a success and a validation failure alike, and any
+  assertion on it is satisfied by every outcome. With the header the request takes the genuine no-JS
+  browser path, where the fail status IS the HTTP status. This is the repo's existing convention —
+  `formPost` in `scripts/smoke-http.mjs` and the step POSTs in `scripts/smoke-waitlist.ts` both do
+  it and say why.
+- **The probe address must not resolve to a real account.** `/request-password-reset` MAILS a reset
+  link when it does, and it is anti-enumerating, so the test cannot tell. CI is hermetic (the
+  placeholder `DATABASE_URL` kills the lookup first), but a local `pnpm test:e2e` runs against the
+  real dev DB with a real Resend key.
+
 **Not covered:** the production edge behaviour of the deployed fix. The e2e runs against a local
 wrangler, which has no Cloudflare ingress — so "the deployed Worker now keys on an address the caller
 cannot choose" rests on the measured edge facts above plus the local behavioural test, and is
