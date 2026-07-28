@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
 	AUTHOR_QUERY_MIN_LENGTH,
+	authorOptionLabel,
 	authorSearchTerm,
 	buildFilterQuery,
 	FILTER_PARAM,
@@ -9,6 +10,7 @@ import {
 	parseResearchFilters,
 	researchTopicHref,
 	topicOptions,
+	type AuthorOption,
 	type PaperRow,
 	type TopicEntry
 } from './research-filters';
@@ -221,5 +223,84 @@ describe('authorSearchTerm', () => {
 	// that is then removed — a 2-letter query reaching GROQ through the back door.
 	it('measures length after stripping, not before', () => {
 		expect(authorSearchTerm('da*')).toBeNull();
+	});
+});
+
+// The three accented authors in the corpus, with the folded key `pnpm promote` stores for each.
+const author = (label: string, key: string | null, value = 'x'): AuthorOption => ({
+	value,
+	label,
+	key
+});
+const LUKASZ = author('Łukasz Kaiser', 'lukasz kaiser', 'lukasz-kaiser');
+const RE = author('Christopher Ré', 'christopher re', 'christopher-re');
+const KONIGHOFER = author('Bettina Könighofer', 'bettina konighofer', 'bettina-konighofer');
+
+describe('authorOptionLabel (DAR-105)', () => {
+	// The whole point. Measured in headed chromium and firefox with both controls holding, a native
+	// <datalist> filters by a case-insensitive SUBSTRING over code points, so `luk` matched nothing
+	// in `Łukasz Kaiser` and no popup appeared at all. The label is the accent-blind match target.
+	it.each([
+		['Łukasz Kaiser', LUKASZ, 'luk'],
+		['Christopher Ré', RE, 're'],
+		['Bettina Könighofer', KONIGHOFER, 'koni']
+	])('gives %s a label an English keyboard can reach', (_n, option, typed) => {
+		const label = authorOptionLabel(option);
+		expect(label).toBeDefined();
+		expect(label!.toLowerCase()).toContain(typed);
+	});
+
+	// ...and the diacritic spelling has to keep working, which is why the label carries BOTH forms
+	// rather than just the folded one. Firefox matches ONLY the label when one is present (measured),
+	// so a label of `lukasz kaiser` alone would make `Łuk` stop offering him — trading one unreachable
+	// spelling for another instead of fixing anything.
+	it.each([
+		['Łukasz Kaiser', LUKASZ, 'łuk'],
+		['Christopher Ré', RE, 'ré'],
+		['Bettina Könighofer', KONIGHOFER, 'könig']
+	])('keeps %s reachable by the accented spelling too', (_n, option, typed) => {
+		expect(authorOptionLabel(option)!.toLowerCase()).toContain(typed);
+	});
+
+	// 120 of the 123 authors. Emitting a label here would be a pure regression rather than a no-op,
+	// because firefox DISPLAYS the label in place of the value — every one of them would start
+	// rendering as its lowercased sort key.
+	it('emits no label for a name that is already all-ASCII', () => {
+		expect(authorOptionLabel(author('Tri Dao', 'tri dao', 'tri-dao'))).toBeUndefined();
+		expect(authorOptionLabel(author('Albert Gu', 'albert gu', 'albert-gu'))).toBeUndefined();
+	});
+
+	// The key is a `production` publication artifact — `dev` has none, and so does anything written
+	// past promote. Absence must degrade to the pre-DAR-105 rendering, never throw or emit `undefined`
+	// into the attribute: same fail-safe polarity as the query's folded `match` arm.
+	it('emits no label when the document carries no key', () => {
+		expect(authorOptionLabel(author('Łukasz Kaiser', null))).toBeUndefined();
+		expect(authorOptionLabel(author('Łukasz Kaiser', ''))).toBeUndefined();
+	});
+
+	// A label that cannot be typed on an English keyboard cannot do the one job this label exists
+	// for, so a non-ASCII key is refused rather than emitted as a decorative duplicate.
+	it('emits no label when the key is not itself ASCII', () => {
+		expect(authorOptionLabel(author('Łukasz Kaiser', 'łukasz kaiser'))).toBeUndefined();
+	});
+
+	// NFD + strip-combining-marks is the reflex fix, and it is the one that fails: `Ł` (U+0141) has no
+	// decomposition (DAR-95). Asserted here so the reason the fold is READ from the document rather
+	// than derived in the browser stays visible — this is what a hand-rolled normalizer would ship.
+	it('is not something NFD could have derived', () => {
+		const stripped = 'Łukasz Kaiser'.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+		expect(stripped.toLowerCase()).not.toContain('luk');
+		expect(authorOptionLabel(LUKASZ)!.toLowerCase()).toContain('luk');
+	});
+
+	// The suggestion list must never offer LESS than the filter finds. The server matches a token
+	// PREFIX of `name` or `nameSortKey`; the browser matches a SUBSTRING of this label. Since the
+	// label contains both source strings whole, every term the server can match on is a substring of
+	// it — so the browser cannot hide a row the query returned. That containment is the property, and
+	// it is the reason the label is built from the two fields rather than from a third rendering.
+	it('contains both strings the server matches on, whole', () => {
+		const label = authorOptionLabel(LUKASZ)!;
+		expect(label).toContain(LUKASZ.label);
+		expect(label).toContain(LUKASZ.key!);
 	});
 });

@@ -354,20 +354,24 @@ describe('sort keys never order without their fallback (DAR-95)', () => {
 	// un-keyed paper has to land exactly where it did before DAR-95 — which was case-insensitive, so
 	// dropping the `lower()` would regress "eDiffi" back to sorting after "Efficient".
 	//
-	// DAR-104 gave a key a SECOND legitimate use — matching, not just ordering — so the right side
-	// grew a term rather than the assertion being relaxed. The distinction is real: a bare
-	// `order(nameSortKey asc)` still fails, because ordering is where a missing key silently
-	// mis-places a document, while a `match` arm that finds nothing is simply one of two arms that
-	// did not fire. Enumerating both is what keeps "a key appeared somewhere new" a decision.
+	// DAR-104 gave a key a SECOND legitimate use — matching, not just ordering — and DAR-105 a THIRD:
+	// projecting it to the client, which folds it into the datalist option's `label` so the browser's
+	// own accent-sensitive filter stops hiding the row the `match` arm just found. Each time the right
+	// side grew a term rather than the assertion being relaxed. The distinction between the three is
+	// real: a bare `order(nameSortKey asc)` still fails, because ordering is where a missing key
+	// silently mis-places a document, while a `match` arm that finds nothing is one of two arms that
+	// did not fire, and an un-projected `key` arrives as `null` and simply emits no label. Enumerating
+	// them is what keeps "a key appeared somewhere new" a decision rather than an accident.
 	it.each(Object.entries(SORT_KEYED))(
-		'%s mentions no sort key outside its coalesce or its match arm',
+		'%s mentions no sort key outside its coalesce, its match arm or its projection',
 		(_name, query) => {
 			expect(occurrences(query, /titleSortKey/g)).toBe(
 				occurrences(query, /coalesce\(titleSortKey, lower\(title\)\)/g)
 			);
 			expect(occurrences(query, /nameSortKey/g)).toBe(
 				occurrences(query, /coalesce\(nameSortKey, lower\(name\)\)/g) +
-					occurrences(query, /nameSortKey match \(\$\w+ \+ "\*"\)/g)
+					occurrences(query, /nameSortKey match \(\$\w+ \+ "\*"\)/g) +
+					occurrences(query, /"key": nameSortKey/g)
 			);
 		}
 	);
@@ -464,5 +468,45 @@ describe('a name is never matched without its folded key (DAR-104)', () => {
 		expect(papersPageByDateQuery).toContain(
 			'authors[]->name match ($author + "*") || authors[]->nameSortKey match ($author + "*")'
 		);
+	});
+});
+
+// DAR-104 stopped at the endpoint, and the browser undid it: a native <datalist> filters the options
+// it is handed by a case-insensitive SUBSTRING test over code points, so the row `?q=luk` had just
+// found was dropped before the visitor saw it (measured in headed chromium and firefox, both
+// controls holding). The client fixes that by folding `key` into each option's `label`, which means
+// every query that feeds those options has to project it.
+describe('every author option carries the folded key that makes it findable (DAR-105)', () => {
+	// Both option sources, not one: `teamAuthors` seeds the datalist until the visitor reaches the
+	// 3-character floor, so the seed is what the browser filters for the first two keystrokes. The
+	// suggestion query takes over after that. A fix applied to only one of them would work for
+	// exactly the queries that happened to be long enough.
+	const OPTION_SOURCES = {
+		papersPageByDate: papersPageByDateQuery,
+		papersPageByDateAsc: papersPageByDateAscQuery,
+		papersPageByTitle: papersPageByTitleQuery,
+		authorSuggestions: authorSuggestionsQuery
+	};
+
+	// Counted against the label projection rather than asserted as "contains a key somewhere", for
+	// the DAR-95 reason: a new person projection added later — a co-author facet, an /people search —
+	// would carry a label and no key, and the datalist would hide its accented names again with every
+	// existing assertion still green. Tying the count to `"label": name` makes the two grow together.
+	it.each(Object.entries(OPTION_SOURCES))('%s pairs every option label with a key', (_n, q) => {
+		expect(occurrences(q, /"key": nameSortKey/g)).toBe(occurrences(q, /"label": name\b/g));
+	});
+
+	// ...and 0 === 0 above, so this is the vacuity guard: dropping both projections must fail.
+	it.each(Object.entries(OPTION_SOURCES))('%s really does project author options', (_n, q) => {
+		expect(occurrences(q, /"label": name\b/g)).toBeGreaterThan(0);
+	});
+
+	// The pairing is only meaningful if the two patterns are disjoint on the FIELD NAMES, the same
+	// trap DAR-104 proved for its match arms: without the word boundary, `"label": name` would also
+	// count a hypothetical `"label": nameSortKey`, and the invariant could hold while every option
+	// shipped the folded string as its display name.
+	it('does not count a folded projection as a plain one', () => {
+		expect(occurrences('"label": nameSortKey', /"label": name\b/g)).toBe(0);
+		expect(occurrences('"label": name,', /"label": name\b/g)).toBe(1);
 	});
 });

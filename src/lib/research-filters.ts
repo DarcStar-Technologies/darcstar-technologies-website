@@ -50,6 +50,15 @@ export interface FacetOption {
 	label: string;
 }
 
+/**
+ * A facet option for the author control, which additionally carries the person's stored folded
+ * name (DAR-95's `nameSortKey`). `null` whenever the document has no key — it is a `production`
+ * publication artifact, so `dev` never has one.
+ */
+export interface AuthorOption extends FacetOption {
+	key: string | null;
+}
+
 /** A research topic in use by at least one paper, with the Studio's authored `description`. */
 export interface TopicEntry {
 	slug: string;
@@ -143,4 +152,56 @@ export const AUTHOR_QUERY_MIN_LENGTH = 3;
 export function authorSearchTerm(raw: string | null | undefined): string | null {
 	const cleaned = (raw ?? '').replace(/[*?]/g, '').trim();
 	return cleaned.length >= AUTHOR_QUERY_MIN_LENGTH ? cleaned : null;
+}
+
+/** A character an English keyboard cannot produce — the whole trigger condition below. */
+const NON_ASCII = /[^\p{ASCII}]/u;
+
+/**
+ * The `label` attribute for one author `<option>`, or `undefined` to emit none (DAR-105).
+ *
+ * DAR-104 made the SERVER accent-blind; the browser then hid the row it found. A native
+ * `<datalist>` applies its own matching to the options it is handed, and measured in headed
+ * Chromium and Firefox — both controls holding, positive and negative — that matching is a
+ * case-insensitive SUBSTRING test that compares CODE POINTS. So `luk` did not match
+ * `Łukasz Kaiser` and no popup appeared at all.
+ *
+ * The two engines disagree about WHAT they compare, and that disagreement is the entire reason this
+ * function returns the shape it does:
+ *
+ * | | chromium | firefox |
+ * | --- | --- | --- |
+ * | matches | `value` OR `label` | **`label` only** when present, else `value` |
+ * | displays | `value` bold, `label` grey beneath | `label` if present, else `value` |
+ *
+ * Firefox matching only the label rules out the obvious fix. Putting an ASCII string in `value`
+ * (the slug) and the real name in `label` works in Chromium and shows NOTHING in Firefox, which
+ * matches the accented label — measured, not reasoned. So the label has to be the accent-blind
+ * one, and it has to contain BOTH spellings, or making `luk` work would cost `Łuk` the suggestion
+ * in Firefox — trading one unreachable spelling for another.
+ *
+ * Hence `Łukasz Kaiser (lukasz kaiser)`: one option, both spellings matchable in both engines, and
+ * the person's actual name still on screen everywhere. `value` is untouched, so what a pick
+ * submits — and therefore every URL this control can produce — is byte-identical to before.
+ *
+ * Three fail-safe gates, all of which fall back to today's behaviour rather than to a guess:
+ *
+ *   • no `key` (a `dev` document, or one written past promote) → no label. Same polarity as the
+ *     query's folded arm: the key is a publication artifact, and its absence must degrade rather
+ *     than error.
+ *   • an all-ASCII name → no label. This is the 120-of-123 case, and emitting one would be a pure
+ *     regression: Firefox would start displaying the lowercased sort key in place of `Tri Dao`.
+ *   • a non-ASCII `key` → no label, because a label that is not typeable on an English keyboard
+ *     cannot serve the purpose this one exists for.
+ *
+ * NOT `String.normalize('NFD')` + strip combining marks, which is the reflex: `Ł` (U+0141) has no
+ * decomposition, so the reflex fixes `Ré` and `Könighofer` and leaves the headline case exactly as
+ * broken. That is DAR-95's lesson, and it is why the folded form is read from the document instead
+ * of derived here — the Studio owns the folding map, and a second copy of it in this repo could
+ * drift with nothing to catch it.
+ */
+export function authorOptionLabel(option: AuthorOption): string | undefined {
+	const { label, key } = option;
+	if (!key || !NON_ASCII.test(label) || NON_ASCII.test(key)) return undefined;
+	return `${label} (${key})`;
 }
