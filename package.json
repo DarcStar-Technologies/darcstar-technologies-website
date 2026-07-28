@@ -28,6 +28,7 @@
 		"admin:create": "tsx scripts/create-admin.ts",
 		"smoke:signin": "node scripts/smoke-signin.mjs",
 		"smoke:invite": "tsx scripts/smoke-invite.ts",
+		"smoke:waitlist": "tsx scripts/smoke-waitlist.ts",
 		"sanity:types": "sanity typegen generate"
 	},
 	"devDependencies": {

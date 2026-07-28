@@ -122,9 +122,10 @@ tolerate. Keep new tests that way; anything needing real credentials belongs in 
 
 ### Manual smokes (not in CI)
 
-Two scripts drive the real endpoints of a built preview over HTTP, no browser. Both are **run by
-hand** — they need real credentials and write to the dev database — and both exit non-zero on the
-first failed assertion. Start `pnpm build && pnpm preview` in one shell, then in another:
+Three scripts drive the real endpoints of a built preview over HTTP, no browser. All are **run by
+hand** — they need real secrets and write to the dev database — and all exit non-zero on the first
+failed assertion. (The first two also need a staff account; `smoke:waitlist` does not, since the flow
+it walks is public.) Start `pnpm build && pnpm preview` in one shell, then in another:
 
 - `pnpm smoke:signin` (`scripts/smoke-signin.mjs`, #69) — sign-in → `/admin` → the navbar's auth
   states → the full operator-roster lifecycle (create → non-admin guard → reset → force-logout →
@@ -139,6 +140,13 @@ first failed assertion. Start `pnpm build && pnpm preview` in one shell, then in
   note a run sends that address **two** emails since DAR-91, the invitation and a real password
   reset the anti-enumeration probe cannot ask its question without triggering. See
   [auth](auth.md#invite-only-onboarding-dar-67).
+- `pnpm smoke:waitlist` (`scripts/smoke-waitlist.ts`, DAR-103) — the whole v2 qualification flow
+  against a real database: step 1 → 2 → 3 → 4A, the resume cookie, the funnel rows, the per-row
+  write budget, append-only, the classifier and the Priority-A claim. Needs `DATABASE_*` +
+  `BETTER_AUTH_SECRET` + `RESEND_API_KEY` in `.env` and no sign-in at all (the flow is public). A run
+  sends **one** email, into `info@` — it seeds the lead so the signup notification and ack never
+  fire, but DAR-82's Priority-A notification is inseparable from the claim it asserts. See
+  [waitlist](waitlist.md#what-only-the-smoke-can-see-dar-103).
 
 **A run spends two of the 3/hour `/request-password-reset` budget** (the probe asks about an account
 and about a stranger), so a second run inside the hour fails there rather than at anything real. The
