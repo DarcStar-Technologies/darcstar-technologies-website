@@ -466,10 +466,72 @@ the row its own first GET already wrote. The first view is unknowable anyway —
 trap is tripped.
 
 No type can force the step endpoints through the gate (`captureWaitlistFunnel` stays exported for step
-1 and the page load), so `waitlist-funnel.spec.ts` reads `waitlist-steps.remote.ts` and pins two
-things: the **import** — a call site cannot exist without the binding, and pinning the import rather
-than the call text can't be tripped by a comment naming the ungated function — and at least one gated
-call per exported step form, so a fifth step can't quietly under-report.
+1 and the page load), so `waitlist-funnel.spec.ts` reads source and pins the **import** — a call site
+cannot exist without the binding, and pinning the import rather than the call text can't be tripped by
+a comment naming the ungated function — plus at least one gated call per exported step form.
+
+#### The scan covers all of `src`, not one file (DAR-102)
+
+That spec read `waitlist-steps.remote.ts` and nothing else, which made "a fifth step can't quietly
+under-report" true only of a fifth step written **into that same file**. One added as its own module
+could import the ungated `captureWaitlistFunnel`, skip the gate, and pass every assertion, because
+none of them ever looked at it — measured, not reasoned about: the pre-DAR-102 spec stayed 48/48 green
+with exactly that file sitting in the tree.
+
+The rule is now an **allowlist over every source file under `src`** (`source-scan.ts`). Three files
+may import the ungated entry point, each recorded with its reason — step 1 (mints the token, and the
+trap returns before its capture), the page load (the view precedes the trap), the client-fired command
+(DAR-75 has dropped the row id by then). Everything else either goes through the gate or doesn't touch
+the funnel.
+
+**It is `src` rather than the waitlist's own directories because the first cut reproduced the very
+defect one level down.** Scoped to those directories, a token-gated step planted at
+`src/routes/waitlist/step5/+page.server.ts` passed **56/56** — `readdirSync` was not recursive — and
+one under `src/routes/api/` would not have been looked at either. "Who imports the ungated capture
+function?" has no reason to stop at a directory boundary, and nothing outside the waitlist imports it,
+so the wider set costs nothing. The same correction applies to DAR-99's cast-route and caller checks,
+which are now app-wide for the same reason; only "the env key is named in exactly one file" stays
+scoped to the waitlist, because `auth.ts` names it legitimately. **The scope of each rule is set by
+where its exception actually lives.**
+
+Three things worth keeping:
+
+- **An allowlist, not a classifier.** The alternative was "a file that verifies a continuation token
+  must gate", and it is weaker in a way that matters: extract `resolveStepRow` into a shared helper
+  and the new step endpoint imports `verifyWaitlistToken` nowhere, so the classifier stops seeing it.
+  The allowlist doesn't care how a file came by its row id — it fails closed for **any** new file.
+- **A hand-written allowlist is fine where a hand-written scan list is not**, and the difference is
+  polarity. Deleting an entry from a scan list makes the scan blind — silent, and the exact defect
+  DAR-99 measured at 7/7 passing. Deleting one here makes the rule _stricter_, so that file starts
+  failing. A paired assertion keeps the list honest in the other direction too: an entry whose file
+  has stopped importing the ungated function fails, so the list can't rot into names nobody checks.
+- **The exemption is per CALL SITE, not per file**, and that was measured rather than designed in: a
+  file-level pass let a fifth step added _inside_ one of the three inherit its exemption — appending
+  one to `waitlist.remote.ts` that used the ungated function was invisible unless it also happened to
+  follow the `submitWaitlistStep` naming convention. Each exempt file therefore declares how many
+  ungated captures its reason covers (one, in all three cases), and the count is two-sided: adding a
+  second fails, and so does removing the one, which stops the entry rotting into a permanent pass.
+- **An import pin has four ways of being walked past, and all four are closed.** An **alias**
+  (`{ captureWaitlistFunnel as record }`) reports under its exported name; a **namespace**
+  (`import * as`) is banned; a **re-export** (`export { … } from`, `export * from`) counts as a
+  binding, because handing the name on is what an import does too, and reading only `import` leaves
+  a one-module laundering path; and a **relative specifier** counts, because a file inside
+  `$lib/server` reaches its neighbour as `'./waitlist-funnel'`. Each is mutation-proven.
+
+  That last one has a trap worth stating, since getting it wrong is a _false failure_ rather than a
+  miss: there are **two** `waitlist-funnel` modules — the gated server one and the client event
+  vocabulary — so `'./waitlist-funnel'` means different files depending on where it is written.
+  Specifiers are therefore **resolved against the importing file's directory**, not string-matched;
+  the string-matching cut would have reported a legal `import * as f from './waitlist-funnel'` in
+  `$lib` as reaching the server module.
+
+The remaining gap is honest and narrow, and it is no longer about the gate. Every route to the
+_ungated_ function is closed — by name, alias, namespace, re-export, specifier spelling, quote style,
+and now call-site count. What is still only convention-deep is **firing nothing at all**: the
+"one gated call per step form" assertion recognizes the `submitWaitlistStep` naming convention, so a
+step exported under some other name that captures no event simply under-reports. That fails quieter
+than a bypass but does not corrupt the funnel with events the gate should have dropped — a missing
+number rather than a wrong one.
 
 The honeypot's false positives (a password manager filling the hidden field) lose their funnel events
 along with everything else, which is the **same** trade the trap already makes: that visitor's signup
@@ -712,7 +774,13 @@ surface the key may be named in one file, the brand may be cast into existence i
 caller must import the resolver by name (an import pin, not call text — DAR-83's lesson). And that
 spec **derives its file list** from the directories rather than hand-listing paths, because the first
 cut hand-listed them and dropping one entry made the scan blind while staying green — measured, 7/7
-passing against a drifted file.
+passing against a drifted file. The reading, comment-stripping and import-parsing now live in
+`source-scan.ts`, shared with DAR-102's funnel-gate scan, so there is one implementation rather than
+two that can drift. The two rules do **not** share a surface, though: the funnel gate scans all of
+`src`, while "the env key is named in exactly one file" has to stay scoped to the waitlist, because
+`auth.ts` names that key legitimately — it is Better Auth's own. The other two secret assertions (the
+brand cast, and callers importing the resolver by name) have no such exception and so went app-wide
+with DAR-102.
 
 The key stays Better Auth's own rather than a second secret to provision; the per-value domain
 separation is what makes sharing it safe. Repointing the resolver elsewhere would keep the four values

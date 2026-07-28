@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
@@ -31,6 +30,7 @@ import {
 	type WaitlistFunnelEvent
 } from '$lib/waitlist-funnel';
 import type { WaitlistSigningSecret } from './waitlist-secret';
+import { appSourcePaths, importedNames, importsNamespace, sourceText } from './source-scan';
 
 // The funnel write path (DAR-66), against a real in-memory libsql — because the two properties worth
 // testing are both properties of the DATABASE, not of the TypeScript: the composite primary key is
@@ -449,39 +449,158 @@ describe('captureWaitlistStepFunnel', () => {
 
 // The gate is worth nothing unless the step endpoints actually go through it, and no type can force
 // that: `captureWaitlistFunnel` stays exported for step 1 and the page load, so it remains importable
-// from anywhere. The rule therefore lives in a spec that reads the file — the same move
+// from anywhere. The rule therefore lives in a spec that reads source — the same move
 // `evidence-boundary.spec.ts` makes for a rule TypeScript can't hold.
+//
+// SCANNED ACROSS ALL OF `src`, not one path (DAR-102). This block read `waitlist-steps.remote.ts`
+// and nothing else, which made DAR-83's stated purpose — "so a fifth step can't quietly
+// under-report" — true only for a fifth step written into that same file. One added as
+// `waitlist-step5.remote.ts` could import the ungated function, skip the honeypot gate, and pass
+// every assertion here, because none of them ever looked at it.
+//
+// The set is `src`, not the waitlist's own directories, and that is the second thing measurement
+// changed: scoping it to those directories reproduced the very defect one level down — a step planted
+// at `src/routes/waitlist/step5/+page.server.ts` passed 56/56, and one under `src/routes/api/` would
+// not have been looked at either. "Who imports the ungated capture function?" has no reason to stop
+// at a directory boundary, and nothing outside the waitlist imports it, so the wider set costs
+// nothing. (DAR-99's secret rule keeps the narrower one — `auth.ts` names that key legitimately.)
+//
+// THE RULE IS AN ALLOWLIST, and that is the part worth reading twice. The obvious tightening — nobody
+// may import `captureWaitlistFunnel` — is simply false: three surfaces use it legitimately, and each
+// has a reason recorded below. But naming those three and derived-scanning everything else is not the
+// blanket ban; it is a rule that fails CLOSED for any new file, however that file came by its row id.
+// A classifier ("files that verify a continuation token must gate") was the alternative and is weaker:
+// extract `resolveStepRow` into a shared helper and the new step endpoint imports `verifyWaitlistToken`
+// nowhere, so the classifier stops seeing it while the allowlist still does.
+//
+// A hand-written ALLOWLIST is fine where a hand-written SCAN list is not (DAR-99), and the difference
+// is polarity: deleting an entry from a scan list makes the scan blind — silent. Deleting one here
+// makes the rule stricter, so that file starts failing. Both directions of edit report themselves.
 describe('the step endpoints reach the funnel only through the gate', () => {
-	const source = readFileSync(new URL('../waitlist-steps.remote.ts', import.meta.url), 'utf8');
+	const FUNNEL_MODULE = '$lib/server/waitlist-funnel';
 
-	// Pinned at the IMPORT rather than at the call text: an ESM call site cannot exist without the
-	// binding, so this catches the same mistake one step earlier, and it can't be tripped by a comment
-	// that mentions the ungated function by name.
-	it('imports the gated entry point and not the ungated one', () => {
-		const imported = [
-			...source.matchAll(
-				/import\s+(?:type\s+)?\{([^}]+)\}\s+from\s+'\$lib\/server\/waitlist-funnel'/g
-			)
-		]
-			.flatMap(([, names]) => names.split(','))
-			.map((name) => name.trim())
-			.filter(Boolean);
+	/**
+	 * The three surfaces that may reach the funnel WITHOUT the honeypot gate, and why each one can't
+	 * use it. Adding a fourth is a deliberate, reviewable act — which is the point.
+	 */
+	// The `captures` count is what makes the exemption PER CALL SITE rather than per file, and that
+	// distinction is load-bearing: a file-level pass would let a fifth step added INSIDE one of these
+	// three inherit its exemption, which was measured — appending a step to `waitlist.remote.ts` that
+	// used the ungated function passed everything here unless it happened to follow the
+	// `submitWaitlistStep` naming convention. Each of these files makes exactly ONE ungated capture,
+	// which is the one its reason describes; a second is a new call site and needs its own argument.
+	const UNGATED = {
+		// Step 1 MINTS the continuation token rather than verifying one, so there is no resolved row id
+		// here to test for a decoy. It keeps bots out of the conversion metric a different way: the
+		// honeypot path returns long before this capture (DAR-66).
+		'src/lib/waitlist.remote.ts': {
+			captures: 1,
+			why: 'step 1 — mints the token, honeypot returns before the capture'
+		},
+		// The view event precedes the trap: a visitor has to see the form before they can fill the
+		// invisible field. A resumed decoy keeps its flow id, so the re-record collides with its own
+		// first GET under the composite key and costs nothing (DAR-83).
+		'src/routes/waitlist/+page.server.ts': {
+			captures: 1,
+			why: 'the page load — the view precedes the trap'
+		},
+		// The one inversion DAR-83 left standing, deliberately: `evaluation_conversation_requested`
+		// fires from the confirmation, and DAR-75 drops the row id at `done`, so this command cannot
+		// know whether the flow behind it was a decoy.
+		'src/lib/waitlist-funnel.remote.ts': {
+			captures: 1,
+			why: 'the client-fired command — no row id exists by then'
+		}
+	} as const;
 
-		expect(imported).toContain('captureWaitlistStepFunnel'); // also the vacuity guard: [] fails here
-		expect(imported).not.toContain('captureWaitlistFunnel');
-		// A namespace import would reach the ungated function without naming it.
-		expect(source).not.toMatch(/import\s+\*\s+as\s+\w+\s+from\s+'\$lib\/server\/waitlist-funnel'/);
+	const allowed = Object.keys(UNGATED) as (keyof typeof UNGATED)[];
+
+	// A derivation that matched nothing, or an allowlist naming files that no longer exist, would make
+	// the assertions below vacuously true. Pin both against the derived surface — and include a file
+	// OUTSIDE the waitlist's own directories, because "the scan reaches past src/routes/waitlist" is
+	// the property DAR-102's second measurement bought and nothing else here would notice losing it.
+	it('found the surface, and every allowlisted path is in it', () => {
+		for (const required of [
+			...allowed,
+			'src/lib/waitlist-steps.remote.ts',
+			'src/routes/admin/waitlist/+page.server.ts' // a nested route, and not under the waitlist tree
+		]) {
+			expect(appSourcePaths()).toContain(required);
+		}
+	});
+
+	// THE RULE. Everything on the surface except the three either goes through the gate or doesn't
+	// touch the funnel at all.
+	it('lets only the allowlisted three import the ungated entry point', () => {
+		const ungated = appSourcePaths().filter((path) =>
+			importedNames(path, FUNNEL_MODULE).includes('captureWaitlistFunnel')
+		);
+
+		expect(ungated.sort()).toEqual([...allowed].sort());
+	});
+
+	// An allowlist entry that no longer imports the thing it excuses is dead weight, and dead weight is
+	// how an allowlist rots into a list of files nobody checks. Same paired assertion
+	// `safety-language.spec.ts` makes about its one allowlisted message key.
+	it('keeps no allowlist entry that has stopped needing one', () => {
+		for (const path of allowed) {
+			expect(
+				importedNames(path, FUNNEL_MODULE),
+				`${path} is allowlisted as "${UNGATED[path].why}" but no longer imports the ungated ` +
+					`entry point — drop the entry rather than leaving an exemption nothing uses`
+			).toContain('captureWaitlistFunnel');
+		}
+	});
+
+	// AND THE EXEMPTION IS PER CALL SITE. Without this, a step added inside one of the three inherits
+	// the file's pass — measured: appending one to `waitlist.remote.ts` that used the ungated function
+	// was invisible here unless it also happened to be named `submitWaitlistStep…`.
+	it('holds each allowlisted file to the one ungated capture its reason covers', () => {
+		for (const path of allowed) {
+			const calls = sourceText(path).match(/captureWaitlistFunnel\(/g)?.length ?? 0;
+			expect(
+				calls,
+				`${path} is exempt for exactly one ungated capture ("${UNGATED[path].why}") but makes ` +
+					`${calls}. A second call site is a new decision: gate it, or give it its own reason here.`
+			).toBe(UNGATED[path].captures);
+		}
+	});
+
+	// A namespace import binds every export without naming one, so it would walk straight past the
+	// assertion above. Banned surface-wide, including for the allowlisted three: they already import
+	// what they need by name, so nothing legitimate wants this.
+	it('reaches the funnel module by name everywhere, never through a namespace', () => {
+		for (const path of appSourcePaths()) {
+			expect(
+				importsNamespace(path, FUNNEL_MODULE),
+				`${path} reaches the funnel module through a namespace import`
+			).toBe(false);
+		}
 	});
 
 	// A step that fires no funnel event at all is not a thing the flow has (every step reports at
 	// least that it was reached), so "one call per step form" is the shape a new step has to keep. It
 	// fails loudly rather than silently under-reporting the middle of the funnel.
+	//
+	// This half recognizes the naming convention, so a step exported under some other name slips it —
+	// the rule above is the one that doesn't depend on how anything is spelled.
 	it('calls the gated one at least once per step form', () => {
-		const forms = source.match(/export const submitWaitlistStep/g) ?? [];
-		const calls = source.match(/captureWaitlistStepFunnel\(/g) ?? [];
+		let forms = 0;
 
-		expect(forms.length).toBeGreaterThanOrEqual(4); // steps 2, 3, 4A, 4B — the file is intact
-		expect(calls.length).toBeGreaterThanOrEqual(forms.length);
+		for (const path of appSourcePaths()) {
+			const source = sourceText(path);
+			const declared = source.match(/export const submitWaitlistStep/g)?.length ?? 0;
+			if (declared === 0) continue;
+
+			const calls = source.match(/captureWaitlistStepFunnel\(/g)?.length ?? 0;
+			expect(
+				calls,
+				`${path} declares ${declared} step form(s) but makes ${calls} gated capture(s)`
+			).toBeGreaterThanOrEqual(declared);
+			forms += declared;
+		}
+
+		expect(forms).toBeGreaterThanOrEqual(4); // steps 2, 3, 4A, 4B — the flow is intact
 	});
 });
 
