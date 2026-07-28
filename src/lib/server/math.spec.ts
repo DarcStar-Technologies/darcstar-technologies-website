@@ -95,4 +95,26 @@ describe('renderMathIn', () => {
 		expect(link).not.toContain('<a ');
 		expect(link).not.toContain('href=');
 	});
+
+	it('is authoritative over `html` — a supplied one is replaced, at both levels', () => {
+		// The other half of the {@html} argument, and the one that is easy to lose. `latex` goes
+		// through KaTeX, but `html` is rendered VERBATIM, so a document written straight at the Sanity
+		// API — which never sees the Studio's schema, and where no such field exists — could otherwise
+		// hand the component arbitrary markup to inject. It cannot, because the renderer writes `html`
+		// last and unconditionally.
+		//
+		// Worth a test rather than a comment: reordering the spread to `{ html: …, ...node }` reads as
+		// a no-op cleanup and silently makes the supplied value win.
+		const injected = '<img src=x onerror=alert(1)>';
+		const out = renderMathIn([
+			{ ...blockMath('x'), html: injected },
+			{ ...block(span('so '), { ...inlineMath('y'), html: injected }) }
+		] as unknown as BlockContent)!;
+
+		expect(html(out[0])).not.toContain('onerror');
+		expect(html(out[0])).toContain('katex');
+		const child = (out[1] as { children: unknown[] }).children[1];
+		expect(html(child)).not.toContain('onerror');
+		expect(html(child)).toContain('katex');
+	});
 });

@@ -113,9 +113,13 @@ Behaviour worth knowing before touching it:
 - Malformed LaTeX degrades to its **own visible source** in the theme's error colour (`throwOnError:
 false`, plus a `catch` for what that misses — the spec for that found a real throw). Blank LaTeX
   renders nothing at all. Silence is the failure this ticket removed; don't reintroduce it.
-- `{@html}` is safe **by construction and by measurement**: KaTeX's default `trust: false` refuses the
-  commands that emit markup, and a `<script>` in an editor's string comes back escaped inside the
-  MathML annotation. Both are asserted in `src/lib/server/math.spec.ts`.
+- `{@html}` is safe **by construction and by measurement**, and it takes **two** properties, not one.
+  KaTeX's `trust: false` refuses the commands that emit markup, and a `<script>` in an editor's string
+  comes back escaped inside the MathML annotation — but `html` itself is rendered verbatim, so the
+  renderer also has to be **authoritative** over it: it writes `html` last and unconditionally, so a
+  document written straight at the Sanity API (which never sees the Studio schema, where no such field
+  exists) cannot supply its own. Reordering that spread to `{ html: …, ...node }` reads as a no-op
+  cleanup and silently inverts it, which is why all three are asserted in `src/lib/server/math.spec.ts`.
 - `onMissingComponent` is at the library default (**warn**). It was `false`, which is how these two
   types could ship in the Studio and render as nothing here with not even a console line. The library
   calls the handler from an `$effect`, which does not run during SSR — so it is a **browser** console
@@ -131,7 +135,18 @@ false`, plus a `catch` for what that misses — the spec for that found a real t
 - `.prose` does **not** fight KaTeX (checked at 390 px and 1280 px against the real worker). The
   displayed equation gets `my-6 overflow-x-auto`, so a too-wide equation scrolls in its own box and the
   page body never does; Typography's own "no top margin after a heading" rule applies to it exactly as
-  it would to a paragraph, which is correct.
+  it would to a paragraph, which is correct — as do its `:first-child` / `:last-child` rules, measured,
+  which **beat** the wrapper's `my-6`, so a body opening or closing with an equation keeps the rhythm.
+- **No `tabindex` on the scroll wrapper, and that is the measured answer, not an oversight.** The axe
+  rule `scrollable-region-focusable` is about a keyboard user being unable to reach a scroller — but
+  Chromium and Firefox both make an _overflowing_ container Tab-focusable on their own (measured in
+  both, real key events). Adding `tabindex="0"` would be strictly worse: it makes every displayed
+  equation a tab stop, including the ones that fit. WebKit is unmeasured (Playwright's build will not
+  launch here). `PortableCode`'s `<pre class="overflow-x-auto">` relies on the same behaviour.
+- **MathML-only output (`output: 'mathml'`) would drop the stylesheet and all 1.2 MB of fonts**, since
+  browsers render MathML natively. Not taken: the ticket specified shipping KaTeX's stylesheet with
+  self-hosted fonts, and native MathML typography varies by platform and by whichever math font happens
+  to be installed — KaTeX's HTML output is the reason to use KaTeX. Considered, not measured.
 
 ## What `siteSettings` actually drives (DAR-73)
 
