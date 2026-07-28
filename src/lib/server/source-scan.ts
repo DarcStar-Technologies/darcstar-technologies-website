@@ -30,7 +30,7 @@
 // `?raw` ("Cannot export `default` from a remote module"). The four remote modules are most of the
 // point of scanning at all, so the reader has to be one that treats them as plain text.
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, normalize } from 'node:path';
 
 /**
  * Every non-spec TypeScript file under `src`, RECURSIVELY, as `path → source`.
@@ -89,30 +89,41 @@ export const waitlistSourcePaths = (): string[] =>
 export const sourceText = (path: string): string =>
 	(SOURCES[path] ?? '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-const escapeRe = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 /**
- * Both spellings of a module specifier. A file inside `$lib/server` reaches its neighbour relatively,
- * so `'$lib/server/waitlist-funnel'` and `'./waitlist-funnel'` are the same import — a rule that saw
- * only one of them would report "you never imported this" at a file that plainly did.
- */
-const specifiers = (module: string): string =>
-	[module, `./${module.slice(module.lastIndexOf('/') + 1)}`].map(escapeRe).join('|');
-
-/**
- * The names `path` imports from `module`, as EXPORTED — `{ a as b }` reports `a`, because an alias
- * is exactly how a banned import would otherwise slip a scan (mutation-proven).
+ * Does the specifier `spec`, written inside the file `from`, refer to `module`?
  *
- * Pinning imports rather than call text is DAR-83's lesson: an ESM call site cannot exist without
- * the binding, so this catches the same mistake one step earlier, and unlike a call-text match it
- * cannot be tripped by prose that happens to name the function.
+ * RESOLVED, not string-matched, and the reason is a basename collision that is easy to miss: there
+ * are TWO `waitlist-funnel` modules — the server one this repo gates, and the client one holding the
+ * event vocabulary. So `'./waitlist-funnel'` means the server module from inside `$lib/server` and
+ * the CLIENT module from inside `$lib`. An earlier cut accepted the relative spelling wherever it
+ * appeared, which would have reported a perfectly legal `import * as f from './waitlist-funnel'` in
+ * `$lib` as a namespace import of the SERVER module — a false failure with a misleading message.
+ *
+ * Both spellings still have to count, because a file inside `$lib/server` reaches its neighbour
+ * relatively and a rule that saw only the alias form would miss it entirely (mutation-proven).
+ */
+function refersTo(from: string, spec: string, module: string): boolean {
+	if (spec === module) return true;
+	if (!spec.startsWith('.')) return false;
+	const target = module.startsWith('$lib/') ? `src/lib/${module.slice('$lib/'.length)}` : module;
+	return normalize(join(dirname(from), spec)) === normalize(target);
+}
+
+/**
+ * The names `path` binds from `module`, as EXPORTED — `{ a as b }` reports `a`, because an alias is
+ * exactly how a banned import would otherwise slip a scan (mutation-proven).
+ *
+ * `export … from` counts too: re-exporting a binding hands it to the next file just as an import
+ * does, so a rule that read only `import` could be walked past with one laundering module.
+ *
+ * Pinning the binding rather than call text is DAR-83's lesson: an ESM call site cannot exist without
+ * it, so this catches the same mistake one step earlier, and unlike a call-text match it cannot be
+ * tripped by prose that happens to name the function.
  */
 export function importedNames(path: string, module: string): string[] {
-	const named = new RegExp(
-		`import\\s+(?:type\\s+)?\\{([^}]*)\\}\\s*from\\s*'(?:${specifiers(module)})'`,
-		'g'
-	);
-	return [...sourceText(path).matchAll(named)]
+	const bindings = /(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\s*'([^']+)'/g;
+	return [...sourceText(path).matchAll(bindings)]
+		.filter(([, , spec]) => refersTo(path, spec, module))
 		.flatMap(([, names]) => names.split(','))
 		.map((name) =>
 			name
@@ -124,8 +135,11 @@ export function importedNames(path: string, module: string): string[] {
 		.filter(Boolean);
 }
 
-/** Does `path` reach `module` through `import * as ns`? That binds every export without naming one. */
+/**
+ * Does `path` reach `module` through `import * as ns` or `export * from`? Either binds every export
+ * without naming one, which is how a name-based rule gets walked past.
+ */
 export const importsNamespace = (path: string, module: string): boolean =>
-	new RegExp(`import\\s*\\*\\s*as\\s+\\w+\\s*from\\s*'(?:${specifiers(module)})'`).test(
-		sourceText(path)
+	[...sourceText(path).matchAll(/(?:import\s*\*\s*as\s+\w+|export\s*\*)\s*from\s*'([^']+)'/g)].some(
+		([, spec]) => refersTo(path, spec, module)
 	);
