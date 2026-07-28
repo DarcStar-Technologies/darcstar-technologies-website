@@ -45,7 +45,7 @@
 // ack to the submitter. Both are gated on `isNew`, which is the LEAD insert winning — so seeding the
 // lead first makes every submission in the run a repeat, and neither send happens. That is not a dodge
 // around the code under test: a repeat email under an existing lead is precisely DAR-88's append-only
-// case, and it is what steps D and M assert. What it costs is the `isNew` email gate itself, which is
+// case, and it is what steps D and L assert. What it costs is the `isNew` email gate itself, which is
 // not observable from outside the process anyway (the only evidence is mail arriving), and which
 // `waitlist-store.spec.ts` covers at the unit level.
 //
@@ -205,12 +205,21 @@ async function visit(): Promise<Page> {
  * `accept: text/html` so the answer is the page re-render a browser without JS would get rather than
  * the enhanced JSON response. That is the path this script wants: the re-render carries the next
  * step's hidden fields, which is how the flow is walked at all.
+ *
+ * `anonymous` sends and keeps NO cookies — a stranger with curl rather than this run's browser. Used
+ * once, for the forged-flow probe, and the isolation is the point: that POST must not move the resume
+ * cookie the rest of the walk depends on.
  */
-async function submit(action: string, body: Record<string, string | string[]>): Promise<Page> {
+async function submit(
+	action: string,
+	body: Record<string, string | string[]>,
+	options: { anonymous?: boolean } = {}
+): Promise<Page> {
 	const params = new URLSearchParams();
 	for (const [key, value] of Object.entries(body)) {
 		for (const one of Array.isArray(value) ? value : [value]) params.append(key, one);
 	}
+	const sendCookies = !options.anonymous && jar.size > 0;
 	const res = await fetch(`${BASE}/waitlist${action}`, {
 		method: 'POST',
 		redirect: 'manual',
@@ -218,11 +227,11 @@ async function submit(action: string, body: Record<string, string | string[]>): 
 			'content-type': 'application/x-www-form-urlencoded',
 			accept: 'text/html',
 			origin: ORIGIN,
-			...(jar.size ? { cookie: cookieHeader() } : {})
+			...(sendCookies ? { cookie: cookieHeader() } : {})
 		},
 		body: params
 	});
-	absorbCookies(res);
+	if (!options.anonymous) absorbCookies(res);
 	return { status: res.status, html: await res.text() };
 }
 
@@ -488,11 +497,33 @@ assertEqual('step 1', first.consentUpdates, true);
 if (!first.consentUpdatesAt) die('step 1: consent was recorded without its provenance timestamp');
 assertEqual('step 1', first.qualificationStep, 1);
 if (!first.ipHash) die('step 1: the submission carries no hashed IP — the throttle cannot see it');
-/** The row every assertion below is about — see step M for why it is remembered rather than sorted to. */
+/** The row every assertion below is about — see step L for why it is remembered rather than sorted to. */
 const firstSubmissionId = first.id;
 ok(
 	'step 1 appended a submission under the existing lead, with step-1 columns and consent provenance'
 );
+
+// THE FORGED-FLOW PROBE (DAR-86), fired here rather than later so the honest step 2 below can be its
+// anchor — see `settled`. This is the threat the ticket names literally: before DAR-86 the step
+// endpoints reached the funnel insert with NO continuation token at all, so a bare POST carrying a
+// self-chosen UUID wrote analytics rows for free and a fresh id per POST defeated the composite key
+// outright. So the probe carries no cookie, no token and an id it made up, and must record NOTHING.
+//
+// A bare UUID rather than junk on purpose: it is the COLUMN's own shape, so only the signature can
+// tell it apart. Junk would also be rejected by the shape check, which would make the probe pass for
+// the wrong reason.
+const forgedFlowId = randomUUID();
+const forged = await submit(
+	step2Action,
+	{ flowId: forgedFlowId, intent: 'skip' },
+	{ anonymous: true }
+);
+if (forged.status !== 200) die(`forged flow: expected 200, got ${forged.status}`);
+const forgedRows = async () =>
+	db
+		.select({ event: schema.waitlistFunnelEvent.event })
+		.from(schema.waitlistFunnelEvent)
+		.where(eq(schema.waitlistFunnelEvent.flowId, forgedFlowId));
 
 // ---------------------------------------------------------------------------------------------
 // E. Reload MID-FLOW. Two properties at once, and the "mid-flow" is load-bearing for the second.
@@ -538,9 +569,10 @@ assertEqual('step 2', afterStep2.qualificationStep, 2);
 assertEqual('step 2', afterStep2.stepWriteCount, 1);
 ok('step 2 enriched the token’s own submission and routed to step 3');
 
-// The reload above, settled. Step 2 carried the handle the RESUMED page rendered, so if the reload had
-// started a new flow this step's events would be sitting under it — which makes `use_case_completed`
-// a happens-after anchor for the reload's own (absent) view write rather than a guess at a duration.
+// The two negative claims made before this step, now settled. `use_case_completed` is the anchor: it
+// was issued by the step-2 POST above, AFTER the reload and after the forged probe, through the same
+// request path into the same database — so its arrival means both of theirs have had their chance.
+// Ordering, not a clock (see `settled`).
 const afterReload = await settled(
 	'reload',
 	() => funnelSince(runStart),
@@ -549,6 +581,9 @@ const afterReload = await settled(
 assertEqual('reload', new Set(afterReload.map((row) => row.flowId)).size, 1);
 assertEqual('reload', afterReload.filter((row) => row.event === 'waitlist_viewed').length, 1);
 ok('a mid-flow reload stays on one flow and re-records no view');
+
+assertEqual('forged flow', (await forgedRows()).length, 0);
+ok('a self-chosen flow id records nothing — a funnel row still costs a page view');
 
 // ---------------------------------------------------------------------------------------------
 // G. Step 3. Its answers are the money questions, which is why branch A is reached at all — and the
@@ -662,9 +697,10 @@ const walkedBack = await submit(step4aAction, {
 if (walkedBack.status !== 200) die(`walk-back: expected 200, got ${walkedBack.status}`);
 const [afterWalkBack] = await submissionsForLead();
 assertEqual('walk-back', afterWalkBack.stepWriteCount, 4);
-// Asserted here for the synchronous case, and AGAIN at the end of the run for the asynchronous one —
-// see step O. A second claim would move this permanently, so a later look is a stronger
-// wait than any sleep: by then the run has spent seventeen more round trips.
+// Read here and AGAIN at the end of the run (step N). The late read is the load-bearing one: the claim
+// runs inside `ctx.waitUntil`, so this one can only catch a re-claim fast enough to have already
+// landed. A second claim would move the timestamp permanently, so a later look needs no sleep — by
+// then the run has spent seventeen more round trips.
 assertEqual('walk-back', (await leadRow())?.priorityANotifiedAt?.getTime(), claimedAt);
 ok('a second Priority-A-classifying write claims nothing (at most once, ever)');
 
@@ -708,36 +744,14 @@ ok(
 );
 
 // ---------------------------------------------------------------------------------------------
-// L. A flow id the caller invented buys nothing (DAR-86). `intent: 'skip'` so the step writes no
-//    columns — this is a claim about the ANALYTICS bound, and mixing an enrich into it would spend
-//    budget the assertion doesn't need.
-// ---------------------------------------------------------------------------------------------
-const forgedFlowId = randomUUID();
-const forged = await submit(step2Action, {
-	token,
-	flowId: forgedFlowId, // a bare UUID: the column's own shape, but nobody signed it
-	intent: 'skip'
-});
-if (forged.status !== 200) die(`forged flow: expected 200, got ${forged.status}`);
-// Same shape as the walk-back: checked now, and again at the end once the run has moved on — a row
-// that appeared late would still be there. See step O.
-const forgedRows = async () =>
-	db
-		.select({ event: schema.waitlistFunnelEvent.event })
-		.from(schema.waitlistFunnelEvent)
-		.where(eq(schema.waitlistFunnelEvent.flowId, forgedFlowId));
-assertEqual('forged flow', (await forgedRows()).length, 0);
-ok('a self-chosen flow id records nothing — a funnel row still costs a page view');
-
-// ---------------------------------------------------------------------------------------------
-// M. Append-only (DAR-88). The same address again: a NEW submission under the SAME lead, with the
+// L. Append-only (DAR-88). The same address again: a NEW submission under the SAME lead, with the
 //    first one's answers untouched. This is the property that dissolved every per-column write policy
 //    the module used to carry, and the only place it is observed against a real insert.
 //
 //    POSTED WITHOUT A FRESH GET, and that is deliberate rather than a shortcut. The run's resume cookie
 //    now says `done`, so a GET would render the CONFIRMATION — the visitor would have to press "Start a
 //    new signup" first, which 303s to a bare path and therefore mints a SECOND flow (DAR-75 says so:
-//    a restarted visitor is a new arrival). That would break step N's "one visitor, one flow" claim for
+//    a restarted visitor is a new arrival). That would break step M's "one visitor, one flow" claim for
 //    no gain here, and the restart itself is thoroughly covered by the hermetic e2e, which can drive it
 //    through a real browser. What this step is about is the INSERT.
 // ---------------------------------------------------------------------------------------------
@@ -774,7 +788,7 @@ assertEqual('classification', classifyWaitlistLeadGroup(bothSubmissions), 'prior
 ok('the lead classifies on its strongest single submission, not on a merge');
 
 // ---------------------------------------------------------------------------------------------
-// N. The funnel, whole. Twenty-odd step POSTs went through the endpoints above; the composite primary
+// M. The funnel, whole. Twenty-odd step POSTs went through the endpoints above; the composite primary
 //    key means each event is one row per flow regardless (DAR-66), which is what makes
 //    `waitlist_signup_completed / waitlist_viewed` a conversion rate rather than a ratio of retries.
 // ---------------------------------------------------------------------------------------------
@@ -803,19 +817,19 @@ assertEqual('funnel', JSON.stringify(recorded), JSON.stringify([...EXPECTED_EVEN
 ok(`the whole walk recorded ${EXPECTED_EVENTS.length} events, one row each, under one flow`);
 
 // ---------------------------------------------------------------------------------------------
-// O. The two "this did NOT happen" claims, re-read now that the run has moved well past them.
+// N. The two "this did NOT happen" claims, re-read now that the run has moved well past them.
 //
-//    Both were checked at the moment they were made, which catches a synchronous bug. Neither could be
-//    trusted there on its own: the Priority-A claim and the funnel insert are handed to `ctx.waitUntil`
-//    and settle after the response, so an immediate read is a race the script would win by accident.
-//    A late read needs no clock — everything the run did afterwards is the wait.
+//    The forged-flow probe already has a happens-after anchor of its own (step F). This is the second
+//    look, and it is what covers the Priority-A claim, whose only earlier read was immediate and
+//    therefore racing a `ctx.waitUntil`. A late read needs no clock: everything the run did afterwards
+//    is the wait. Both are re-read together because the cost is two queries.
 // ---------------------------------------------------------------------------------------------
 assertEqual('claimed once', (await leadRow())?.priorityANotifiedAt?.getTime(), claimedAt);
 assertEqual('forged flow', (await forgedRows()).length, 0);
 ok('nothing drifted afterwards: still one claim, still no rows for the forged flow');
 
 // ---------------------------------------------------------------------------------------------
-// P. Tear down. Only what this run created.
+// O. Tear down. Only what this run created.
 //
 //    The funnel rows are deleted by the flow id learned in step C. A run that dies BEFORE that point
 //    can leave rows behind that nothing can key on afterwards — they carry no lead, no address and no
