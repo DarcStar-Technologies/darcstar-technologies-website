@@ -526,7 +526,9 @@ cap answered by the endpoint, the next one answered by the limiter.
 limiter keys each bucket `<ip>|<path>` (`createRateLimitKey`) and resolves the ip from
 `x-forwarded-for` — the same header the `/login`, `/forgot-password` and `/reset-password` actions
 already set from `getClientAddress()`. Nothing rewrites it between Playwright and a local wrangler,
-so **a header the test chooses IS the bucket**. Each probe therefore spends a private allowance:
+so **a header the test chooses IS the bucket**. (The probe sends the address as `cf-connecting-ip`
+too, so it keeps isolating buckets if DAR-124 below moves the limiter onto that header.) Each probe
+therefore spends a private allowance:
 
 - no rule ships that exists only for the tests, and no production limit changes (the ticket's
   options 1 and 2, both rejected);
@@ -592,9 +594,14 @@ Two things bound it, and neither makes it fine:
 - The endpoints most worth hammering are the ones that need the DB, so the cap is not the only thing
   standing there — but it is the thing that is _supposed_ to stand there.
 
-The fix is a one-line `advanced.ipAddress.ipAddressHeaders: ['cf-connecting-ip']` (optionally with
-`x-forwarded-for` behind it, which is what keeps a local preview — where Cloudflare sets nothing —
-able to attribute requests at all, and therefore what keeps these tests working). Filed as **DAR-124**.
+The fix is `advanced.ipAddress.ipAddressHeaders: ['cf-connecting-ip']` — but it is **not** one line,
+and measuring is what showed why. A local wrangler sets `cf-connecting-ip` itself (`127.0.0.1`) and
+passes a caller-supplied one through, so the header resolves everywhere and no `x-forwarded-for`
+fallback is needed. What does need changing with it are the **three form actions**: they build a
+fresh sub-request carrying only `x-forwarded-for`, so a `cf-connecting-ip`-only limiter would read
+nothing from them and drop the one path that is correctly keyed today into the shared bucket. The e2e
+probe already sends both headers for exactly this reason, so it survives the change. Filed as
+**DAR-124**.
 
 ## Still deferred
 

@@ -30,6 +30,10 @@ import { rateLimit } from '../lib/server/auth-options';
  *
  * Two consequences, both wanted: raising the cap updates the test, and DELETING the rule is a
  * `pnpm check` error rather than a test that keeps passing against better-auth's built-in default.
+ *
+ * Importing out of `$lib/server` is deliberate and is what `auth-options.ts` is for — it is the
+ * env-free half of the config, split from `auth.ts` precisely so tests can read it without dragging
+ * in `$app/server` or a DB client. `auth.spec.ts` does the same.
  */
 const SIGN_UP_RULE = rateLimit.customRules['/sign-up/email'];
 
@@ -65,10 +69,19 @@ function freshProbeIp(): string {
 	return `2001:db8:${randomBytes(2).toString('hex')}:${randomBytes(2).toString('hex')}::1`;
 }
 
-/** One POST at the public sign-up endpoint, attributed to `ip`. */
+/**
+ * One POST at the public sign-up endpoint, attributed to `ip`.
+ *
+ * Both headers carry the same address because the limiter reads whichever
+ * `advanced.ipAddress.ipAddressHeaders` names — `x-forwarded-for` is better-auth's default and what
+ * this repo runs today, and DAR-124 proposes moving to `cf-connecting-ip`. Measured: a local
+ * wrangler passes a caller-supplied value through for BOTH (and sets `cf-connecting-ip: 127.0.0.1`
+ * itself when the caller sends none), so supplying both means this test keeps isolating buckets
+ * across that change instead of silently sharing one.
+ */
 function signUpProbe(request: APIRequestContext, ip: string) {
 	return request.post('/api/auth/sign-up/email', {
-		headers: { 'x-forwarded-for': ip },
+		headers: { 'x-forwarded-for': ip, 'cf-connecting-ip': ip },
 		data: { name: 'Probe', email: 'probe@example.com', password: 'a-long-enough-password' },
 		failOnStatusCode: false
 	});
@@ -154,13 +167,21 @@ test('the rate limiter refuses past the cap, before the endpoint', async ({ requ
 	// everything above holds just as well against a config that has lost `customRules`; only the
 	// window separates them, and the limiter reports it here (`getRetryAfter` — the remainder of the
 	// window from the last allowed request, which was milliseconds ago).
-	const retryAfter = Number(refused.headers()['x-retry-after']);
+	// `Retry-After` as a fallback: better-auth emits the X- form today, and RFC 6648 deprecated that
+	// prefix, so a rename upstream is ordinary. Both mean delay-seconds, so reading either asserts the
+	// same thing — and a missing header leaves NaN, which fails every comparison below rather than
+	// passing one.
+	const headers = refused.headers();
+	const retryAfter = Number(headers['x-retry-after'] ?? headers['retry-after']);
+	// Two bounds, and the wide one is not redundant: `window - 60` is the tight check while the rule
+	// is measured in hours, but it goes NEGATIVE — and therefore vacuous — the moment someone shortens
+	// the window below a minute. The built-in floor is what still separates the rules there.
 	expect(
 		retryAfter,
 		'X-Retry-After should report the window that refused this request'
 	).toBeGreaterThan(BUILT_IN_SIGN_UP_WINDOW_SECONDS);
-	expect(retryAfter).toBeLessThanOrEqual(SIGN_UP_RULE.window);
 	expect(retryAfter).toBeGreaterThan(SIGN_UP_RULE.window - 60);
+	expect(retryAfter).toBeLessThanOrEqual(SIGN_UP_RULE.window);
 
 	// The buckets really are per-IP — which is both the property that makes a shared cap survivable
 	// in production and the assumption every other test in this file now rests on. A second probe,
