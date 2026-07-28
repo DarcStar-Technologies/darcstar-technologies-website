@@ -303,6 +303,19 @@ describe('authorOptionLabel (DAR-105)', () => {
 		expect(authorOptionLabel(author('Tri Dao', 'TRI DAO', 'tri-dao'))).toBeUndefined();
 	});
 
+	// `label` is typed `string`, and the cast below is the point: `teamAuthors` projects
+	// `"label": name` with no `defined(name)` filter, its `kind != "external"` is fail-OPEN, and a
+	// required field in the Studio is a UI affordance an API write skips (DAR-70). So a nameless
+	// person reaches this as `null` while TypeScript says it cannot — and that seed list renders on
+	// EVERY /research load, server-side, so a throw here is the whole page rather than one missing
+	// suggestion. There are no such documents today; this is about which way the code fails if one
+	// appears.
+	it('survives a null name that the type says is impossible', () => {
+		const nameless = { value: 'x', label: null, key: 'michael harris' } as unknown as AuthorOption;
+		expect(() => authorOptionLabel(nameless)).not.toThrow();
+		expect(authorOptionLabel(nameless)).toBeUndefined();
+	});
+
 	// NFD + strip-combining-marks is the reflex fix, and it is the one that fails: `Ł` (U+0141) has no
 	// decomposition (DAR-95). Asserted here so the reason the fold is READ from the document rather
 	// than derived in the browser stays visible — this is what a hand-rolled normalizer would ship.

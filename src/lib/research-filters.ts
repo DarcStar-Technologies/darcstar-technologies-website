@@ -207,6 +207,10 @@ export function authorSearchTerm(raw: string | null | undefined): string | null 
  */
 export function authorOptionLabel(option: AuthorOption): string | undefined {
 	const { label, key } = option;
-	if (!key || label.toLowerCase().includes(key.toLowerCase())) return undefined;
-	return `${label} (${key})`;
+	// `label` is TYPED as a string and can still arrive null. `teamAuthors` projects `"label": name`
+	// with no `defined(name)` filter, and a required field in the Studio is a UI affordance an API
+	// write skips (DAR-70's lesson about `rule.uri`). The seed renders on every /research load, so
+	// the cost of assuming here is the whole page rather than one missing suggestion.
+	if (!key || !label) return undefined;
+	return label.toLowerCase().includes(key.toLowerCase()) ? undefined : `${label} (${key})`;
 }

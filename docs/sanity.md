@@ -418,11 +418,13 @@ What ships (`authorOptionLabel` in `$lib/research-filters.ts`, rendered by
   test would miss (a name whose whitespace `sortKey` collapses, `Tri  Dao` → `tri dao`, is reachable
   by the typed spelling) and skips one it would wrongly catch (a CJK name folds to itself, so a
   label would be noise). Pinned by a spec that enumerates every token prefix of both fields.
-- **Display cost, Firefox only:** it renders the label _in place of_ the value and clips the row to
-  the input's width, so the dropdown reads `Łukasz Kaiser (luk…`. That is why the name comes first —
-  the parenthetical is the first thing truncated. The longest of the three (`Bettina Könighofer`)
-  clips near the end of the surname, which the un-labelled value very nearly did anyway at that
-  column width. Chromium is unaffected: it shows the value bold with the label grey beneath.
+- **Display cost, Firefox only** — it renders the label _in place of_ the value and clips the row to
+  the input's width, so the dropdown reads `Łukasz Kaiser (luk…`. That is why the name comes first:
+  the parenthetical is the first thing truncated. For the longest of the three the cost is real
+  rather than nominal — measured at the filter column's 148px, `Bettina Könighofer` renders **in
+  full** without a label and truncates to `Bettina Könighofe..` with one. So the label buys the
+  suggestion existing at all for an English-keyboard query, and pays the last character or two of
+  the longest surname for it. Chromium is unaffected (value bold, label grey beneath).
 
 Honest residual: **WebKit is unmeasured** — Playwright's build cannot launch here (missing host
 dependencies) — but the change is safe there by construction, since it only adds a second string the
