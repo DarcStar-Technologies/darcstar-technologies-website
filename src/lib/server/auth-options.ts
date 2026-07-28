@@ -94,6 +94,44 @@ export const rateLimit = {
 	}
 };
 
+// DAR-124: the request header Better Auth resolves the client address from — for the rate-limit
+// bucket key (`<ip>|<path>`, createRateLimitKey) AND for `login_audit.ip_address`, which both go
+// through the same `getIp`. ONE constant because those two facts have to be the same string: the
+// limiter reads whatever this names, and the form actions below set whatever this names, and a
+// deploy where they disagree is not a broken build — it is every caller silently collapsing into
+// better-auth's shared `no-trusted-ip` bucket, which is a lockout vector that looks like nothing.
+//
+// Better Auth's default is `x-forwarded-for`, and on Cloudflare that header is CALLER-CONTROLLED.
+// Measured against the deployed prod Worker rather than inferred (the mistake DAR-92 made twice in
+// its own docs): four POST /sign-up/email with a rotating x-forwarded-for all answered 400, while
+// four on one fixed value tripped the cap at the fourth with `x-retry-after: 3600` — so the limiter
+// was live, it was OUR rule enforcing, and the bucket was whatever the caller asked for. Rotating
+// the header defeated the sign-in, /request-password-reset and /send-verification-email caps too.
+//
+// Cloudflare's proxy re-adds x-forwarded-for only AFTER all rule phases and a Worker runs before
+// that (Request Header Modification docs), which is why nothing overwrites the caller's value.
+//
+// `cf-connecting-ip` is the one header a caller cannot influence, and the measurement was stronger
+// than "Cloudflare overwrites it": a request that CARRIES the header is rejected at the edge with
+// 403 error 1000 and never reaches the Worker at all. (Measured with a throwaway echo Worker on the
+// same account: x-forwarded-for and true-client-ip both arrive verbatim from the caller — so
+// true-client-ip, an Enterprise-only feature this plan does not have, would be no fix at all — while
+// x-real-ip is overwritten and cf-connecting-ip is refused outright.)
+//
+// NO FALLBACK LIST, deliberately. `getIp` walks `ipAddressHeaders` IN ORDER and takes the first that
+// resolves, so appending x-forwarded-for behind this one would re-open the forgeable path in exactly
+// the case that matters — an environment where the trustworthy header went missing. One header means
+// an unresolvable address yields no bucket key rather than a caller-chosen one.
+export const CLIENT_IP_HEADER = 'cf-connecting-ip';
+
+// Behavioral, NOT schema-affecting (it changes which header is read, not what is stored), so — like
+// `session` below and unlike `rateLimit` — this stays OUT of the CLI config (auth-cli.ts).
+export const advanced = {
+	ipAddress: {
+		ipAddressHeaders: [CLIENT_IP_HEADER]
+	}
+};
+
 // Cookie-cache the session. Since #87 exposed sign-in state site-wide, a signed-in operator's every
 // page view resolves the session via `getSession` in `hooks.server.ts` — which, by default, is a DB
 // round-trip per view. With `cookieCache`, Better Auth writes a **signed** (HMAC) snapshot of the

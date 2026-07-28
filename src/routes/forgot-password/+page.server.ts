@@ -1,5 +1,6 @@
 import { fail, redirect, type Actions } from '@sveltejs/kit';
 import { getAuth } from '$lib/server/auth';
+import { authSubrequest } from '$lib/server/auth-subrequest';
 import type { PageServerLoad } from './$types';
 
 // Password-reset request (step 1). Mirrors the /login + /signup form-action pattern: a native POST
@@ -28,25 +29,19 @@ export const actions: Actions = {
 		const email = String(data.get('email') ?? '').trim();
 		if (!email) return fail(400, { email: '', error: 'missing' as const });
 
-		// Forward the client IP so the rate limiter keys per-IP (default header: x-forwarded-for).
-		const headers = new Headers({ 'content-type': 'application/json' });
-		try {
-			const ip = getClientAddress();
-			if (ip) headers.set('x-forwarded-for', ip);
-		} catch {
-			// adapter couldn't resolve an address
-		}
+		// Forward the client IP so the rate limiter keys per-IP, on the header it actually reads
+		// (DAR-124 — `authSubrequest` owns that name so this can't drift from the config).
+		const { request: authRequest } = authSubrequest({
+			path: '/api/auth/request-password-reset',
+			origin: url.origin,
+			// redirectTo is where Better Auth's GET /reset-password/:token callback lands the user after
+			// validating the token: /reset-password?token=… (valid) or ?error=INVALID_TOKEN. Must be
+			// same-origin (the endpoint's originCheck); a relative path satisfies that.
+			body: { email, redirectTo: '/reset-password' },
+			getClientAddress
+		});
 
-		const res = await auth.handler(
-			new Request(new URL('/api/auth/request-password-reset', url.origin), {
-				method: 'POST',
-				headers,
-				// redirectTo is where Better Auth's GET /reset-password/:token callback lands the user after
-				// validating the token: /reset-password?token=… (valid) or ?error=INVALID_TOKEN. Must be
-				// same-origin (the endpoint's originCheck); a relative path satisfies that.
-				body: JSON.stringify({ email, redirectTo: '/reset-password' })
-			})
-		);
+		const res = await auth.handler(authRequest);
 
 		if (res.status === 429) return fail(429, { email, error: 'ratelimited' as const });
 		// Every other outcome — including a rare Resend/infra failure — resolves to the same generic
