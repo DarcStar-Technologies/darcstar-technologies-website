@@ -149,10 +149,10 @@ describe('the signed flow id', () => {
 
 	// MONTHS, not "a bit more than the token". The test above passes at any TTL over ~25h, and the
 	// boundary test below derives its clock FROM the constant, so both stay green if someone trims this
-	// to 48h — which would reinstate DAR-98 for a three-day tab (verified: the whole file passes at
-	// 2 days). This is the one assertion that pins the MAGNITUDE, and it does it as the claim the
-	// design actually makes — a tab left open for months is still one visitor — rather than by
-	// restating the constant back to itself.
+	// to 48h — which reinstates DAR-98 for a three-day tab. That is not hypothetical: before THIS test
+	// existed, mutating the constant to 2 days passed all 47 of the others. So it is the one assertion
+	// pinning the MAGNITUDE, and it does that as the claim the design actually makes — a tab left open
+	// for months is still one visitor — rather than by restating the constant back to itself.
 	it('counts a tab left open for months, which is the point of the number', async () => {
 		const minted = Date.UTC(2026, 0, 1);
 		const handle = await mintWaitlistFlowId(SECRET, FLOW, minted);
