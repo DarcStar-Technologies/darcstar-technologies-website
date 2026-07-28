@@ -51,12 +51,13 @@ const BUILT_IN_SIGN_UP_WINDOW_SECONDS = 10;
 /**
  * A client IP no other test, and no retry of this one, will use.
  *
- * DAR-92. The limiter keys each bucket `<ip>|<path>` and resolves the ip from `x-forwarded-for` —
- * the same header the app's own form actions set from `getClientAddress()` (login/+page.server.ts).
- * Nothing rewrites it between Playwright and a local wrangler, so the header we choose IS the
- * bucket. That is what makes a 429 assertable without shipping a rule that exists for the tests:
- * this file's probes spend private buckets, so exhausting one costs no other test its allowance and
- * ordering between them is not load-bearing.
+ * DAR-92. The limiter keys each bucket `<ip>|<path>` and resolves the ip from a client-address
+ * header (`x-forwarded-for` today — see `signUpProbe` for why the probe sends two), the same one
+ * the app's own form actions set from `getClientAddress()` (login/+page.server.ts). Nothing
+ * rewrites it between Playwright and a local wrangler, so the header we choose IS the bucket. That
+ * is what makes a 429 assertable without shipping a rule that exists for the tests: this file's
+ * probes spend private buckets, so exhausting one costs no other test its allowance and ordering
+ * between them is not load-bearing.
  *
  * The randomness goes in the third and fourth groups DELIBERATELY: better-auth normalizes an IPv6
  * address to its /64 before keying (`normalizeIP`, default `ipv6Subnet: 64`), so two addresses
@@ -186,10 +187,10 @@ test('the rate limiter refuses past the cap, before the endpoint', async ({ requ
 	// The buckets really are per-IP — which is both the property that makes a shared cap survivable
 	// in production and the assumption every other test in this file now rests on. A second probe,
 	// one request, against the endpoint whose bucket was just emptied: it must still be inside its
-	// own cap. If `x-forwarded-for` ever stopped reaching the limiter (a runtime that rewrites it,
-	// or an `advanced.ipAddress` config that reads a different header), every probe here would share
-	// better-auth's no-trusted-ip fallback bucket and this is the assertion that says so — the rest
-	// of the test would go on passing on a fresh preview and quietly break the two tests above.
+	// own cap. If the probe's address ever stopped reaching the limiter (a runtime that rewrites the
+	// header, or an `advanced.ipAddress` config naming one the probe does not send), every probe would
+	// share better-auth's no-trusted-ip fallback bucket, and this is the assertion that says so — the
+	// rest of the test would go on passing on a fresh preview and quietly break the two tests above.
 	const unrelated = await signUpProbe(request, freshProbeIp());
 	expect(unrelated.status(), 'a different IP must not inherit the exhausted bucket').toBe(400);
 });

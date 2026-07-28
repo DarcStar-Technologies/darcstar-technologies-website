@@ -585,6 +585,14 @@ the one `hooks.server.ts` mounts and `POST /api/auth/sign-in/email` reaches — 
 rate-limit bucket. Rotate the header and every request is a fresh counter; send none and every such
 caller shares the single `no-trusted-ip` one.
 
+**One link there is documented, not measured, and it is the load-bearing one.** Cloudflare's page
+establishes that the edge has _not_ added its own value by the time a Worker runs; the step from
+there to "a caller's value survives ingress unmodified" is inference. It is settleable without an
+echo endpoint, because the limiter itself is the instrument: four requests at a deployed preview's
+`/sign-up/email` with a rotating header either all answer 400 (the header reaches the limiter — the
+bucket is caller-chosen) or the fourth answers 429 (it does not). DAR-124 does that _before_ changing
+anything, since the fix is worthless if the premise is wrong.
+
 Two things bound it, and neither makes it fine:
 
 - **The app's own form actions are unaffected.** `/login`, `/forgot-password` and `/reset-password`
@@ -600,8 +608,13 @@ passes a caller-supplied one through, so the header resolves everywhere and no `
 fallback is needed. What does need changing with it are the **three form actions**: they build a
 fresh sub-request carrying only `x-forwarded-for`, so a `cf-connecting-ip`-only limiter would read
 nothing from them and drop the one path that is correctly keyed today into the shared bucket. The e2e
-probe already sends both headers for exactly this reason, so it survives the change. Filed as
-**DAR-124**.
+probe already sends both headers for exactly this reason, so it survives the change.
+
+**And nothing would catch that if it were missed.** No test asserts that a form action forwards the
+client address at all — `auth-audit.spec.ts` sets `x-forwarded-for` on a synthetic hook context,
+which asserts how the _audit_ resolves an ip, not that `/login` puts one on its sub-request. So the
+regression would be silent in both suites and visible only as buckets quietly merging in production.
+Filed as **DAR-124**.
 
 ## Still deferred
 
