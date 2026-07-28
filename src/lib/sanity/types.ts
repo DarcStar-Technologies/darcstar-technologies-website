@@ -37,14 +37,29 @@ export type Seo = {
 	noIndex?: boolean;
 };
 
+export type MathBlock = {
+	_type: 'mathBlock';
+	latex: string;
+};
+
+export type MathInline = {
+	_type: 'mathInline';
+	latex: string;
+};
+
 export type BlockContent = Array<
 	| {
-			children?: Array<{
-				marks?: Array<string>;
-				text?: string;
-				_type: 'span';
-				_key: string;
-			}>;
+			children?: Array<
+				| {
+						marks?: Array<string>;
+						text?: string;
+						_type: 'span';
+						_key: string;
+				  }
+				| ({
+						_key: string;
+				  } & MathInline)
+			>;
 			style?: 'normal' | 'h2' | 'h3' | 'h4' | 'blockquote';
 			listItem?: 'bullet' | 'number';
 			markDefs?: Array<{
@@ -70,6 +85,9 @@ export type BlockContent = Array<
 	| ({
 			_key: string;
 	  } & Code)
+	| ({
+			_key: string;
+	  } & MathBlock)
 >;
 
 export type SiteSettings = {
@@ -442,6 +460,8 @@ export type Geopoint = {
 export type AllSanitySchemaTypes =
 	| SanityImageAssetReference
 	| Seo
+	| MathBlock
+	| MathInline
 	| BlockContent
 	| SiteSettings
 	| SanityImageCrop
