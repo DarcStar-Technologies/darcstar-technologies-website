@@ -69,7 +69,7 @@ describe('sanity GROQ queries', () => {
 		expect(peopleQuery).toContain('_type == "person"');
 		// `!= "external"` (not `== "internal"`) so an unset `kind` still counts as team.
 		expect(peopleQuery).toContain('kind != "external"');
-		expect(peopleQuery).toContain('order(name asc)');
+		expect(peopleQuery).toContain('order(coalesce(nameSortKey, lower(name)) asc)');
 	});
 
 	// DAR-71: both detail queries must keep selecting `seo` — it carries metaTitle/metaDescription/
@@ -169,14 +169,8 @@ describe('the /research page queries differ ONLY in their sort order', () => {
 	// The title sort deliberately does NOT: it merges the sections into one A–Z list, as the page
 	// already did, because two separately-sorted sections read as broken.
 	it('title sorts merged, not origin-major', () => {
-		expect(papersPageByTitleQuery).toContain('| order(lower(title) asc)');
+		expect(papersPageByTitleQuery).toContain('| order(coalesce(titleSortKey, lower(title)) asc)');
 		expect(papersPageByTitleQuery).not.toContain('order(select(darcstarAuthored');
-	});
-
-	// `lower()` is the case-insensitive half of the `localeCompare(…, {sensitivity:'base'})` this
-	// replaced. Without it GROQ orders by code point and "eDiffi" sorts after "Efficient".
-	it('title sorts case-insensitively', () => {
-		expect(papersPageByTitleQuery).toContain('lower(title)');
 	});
 
 	// The JS sort put undated papers LAST explicitly ("a plain reverse would surface them first").
@@ -307,7 +301,7 @@ describe('authorSuggestionsQuery', () => {
 			'count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0'
 		);
 		expect(authorSuggestionsQuery).toContain(
-			'order(select(kind != "external" => 0, 1) asc, name asc)'
+			'order(select(kind != "external" => 0, 1) asc, coalesce(nameSortKey, lower(name)) asc)'
 		);
 	});
 
@@ -320,5 +314,69 @@ describe('authorSuggestionsQuery', () => {
 	it('caps one response', () => {
 		expect(authorSuggestionsQuery).toContain(`[0...${AUTHOR_SUGGESTION_LIMIT}]`);
 		expect(AUTHOR_SUGGESTION_LIMIT).toBeLessThanOrEqual(25);
+	});
+});
+
+// A sort key (DAR-95) is a STORED, normalized copy of a title/name that the Studio's promote script
+// derives on the way to `production`. It has to be stored because GROQ orders by code point and
+// cannot normalize a string at query time — its `string::` namespace has only `startsWith` and
+// `split`, and custom GROQ functions are projection-shaped. These pin the parts of that design that
+// are invisible in the query source.
+describe('sort keys never order without their fallback (DAR-95)', () => {
+	const SORT_KEYED = {
+		papersPageByDate: papersPageByDateQuery,
+		papersPageByDateAsc: papersPageByDateAscQuery,
+		papersPageByTitle: papersPageByTitleQuery,
+		authorSuggestions: authorSuggestionsQuery,
+		people: peopleQuery
+	};
+	const occurrences = (query: string, pattern: RegExp) => query.match(pattern)?.length ?? 0;
+
+	// The load-bearing one, and the reason it counts rather than just looking for a `coalesce`
+	// somewhere: `order(titleSortKey asc)` would type-check, satisfy every other assertion in this
+	// file, and silently break the index for every document that has no key — which is ALL of them
+	// until `pnpm promote` runs in the Studio, and any of them written past promote afterwards. The
+	// property is therefore that EVERY mention of a key sits inside its coalesce, not that one does.
+	//
+	// It also pins the fallback's shape: `coalesce(titleSortKey, title)` fails here, because an
+	// un-keyed paper has to land exactly where it did before DAR-95 — which was case-insensitive, so
+	// dropping the `lower()` would regress "eDiffi" back to sorting after "Efficient".
+	it.each(Object.entries(SORT_KEYED))(
+		'%s mentions no sort key outside its coalesce',
+		(_name, query) => {
+			expect(occurrences(query, /titleSortKey/g)).toBe(
+				occurrences(query, /coalesce\(titleSortKey, lower\(title\)\)/g)
+			);
+			expect(occurrences(query, /nameSortKey/g)).toBe(
+				occurrences(query, /coalesce\(nameSortKey, lower\(name\)\)/g)
+			);
+		}
+	);
+
+	// ...and the counting above is 0 === 0 for any query that stopped using a key at all, so this is
+	// what stops the whole block passing vacuously against a revert.
+	it('really does key every string ordering that has one', () => {
+		expect(papersPageByTitleQuery).toContain('titleSortKey');
+		expect(papersPageByDateQuery).toContain('nameSortKey'); // the teamAuthors facet seed
+		expect(authorSuggestionsQuery).toContain('nameSortKey');
+		expect(peopleQuery).toContain('nameSortKey');
+	});
+
+	// One expression, three call sites. They order the same vocabulary from different pages, so a
+	// per-site copy is exactly the kind of thing that drifts — and the type system cannot see it,
+	// since all three are just strings.
+	it('orders every by-name list through the one expression', () => {
+		const byName = 'coalesce(nameSortKey, lower(name)) asc';
+		expect(papersPageByDateQuery).toContain(`| order(${byName})`);
+		expect(peopleQuery).toContain(`| order(${byName})`);
+		// The suggestion endpoint keeps team members first, so its name key is the MINOR one.
+		expect(authorSuggestionsQuery).toContain(`asc, ${byName})`);
+	});
+
+	// The one string ordering deliberately left un-keyed: a bounded ten-term taxonomy, all ASCII,
+	// rendered in a <select> that is scanned rather than searched. Asserted so that "topics were
+	// forgotten" and "topics were considered and skipped" are distinguishable a year from now.
+	it('leaves the topic facet ordering alone', () => {
+		expect(papersPageByDateQuery).toContain('| order(title asc)');
 	});
 });
