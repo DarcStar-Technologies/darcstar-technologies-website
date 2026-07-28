@@ -304,7 +304,9 @@ The **Studio's `pnpm promote`** derives it (`scripts/lib/sort-key.ts`, `SORT_KEY
   returns the 18 titles **byte-identically** to `lower(title)`. That is what lets the two repos ship
   in either order, and what makes an un-promoted document degrade rather than jump to the front under
   a null. `queries.spec.ts` pins it by **counting**: every mention of a key must sit inside its
-  coalesce, because `order(titleSortKey asc)` would type-check and break every un-keyed row.
+  coalesce **or a `match` arm** (DAR-104 below), because `order(titleSortKey asc)` would type-check
+  and break every un-keyed row. The right-hand side of that count enumerates the permitted uses, so
+  a key turning up somewhere new is a decision rather than an accident.
 - **Derived at promote, so it cannot go stale.** Promote is the chokepoint every published document
   crosses on its way to the dataset this site reads, and it recomputes the key from the document's
   own text rather than copying one through. A stale key would be **worse than none** — it sorts a
@@ -315,6 +317,49 @@ The **Studio's `pnpm promote`** derives it (`scripts/lib/sort-key.ts`, `SORT_KEY
 - **`topic.title` is deliberately left un-keyed** — a bounded ten-term vocabulary, all ASCII, in a
   `<select>` that is scanned rather than searched. Asserted in the spec so "skipped" stays
   distinguishable from "forgotten".
+
+### The same key answers "did they mean this person?" (DAR-104)
+
+`match` compares code points too, so author **search** was accent-sensitive long after the ordering
+was fixed. Measured against production, every accented author in the corpus was unreachable by the
+spelling an English keyboard produces:
+
+| `?author=`                      | before        | after                    |
+| ------------------------------- | ------------- | ------------------------ |
+| `luk` · `lukasz`                | 0             | 1 — `Łukasz Kaiser`      |
+| `re`                            | 0             | 1 — `Christopher Ré`     |
+| `konighofer`                    | 0             | 1 — `Bettina Könighofer` |
+| `dao` · `tri-dao` · `da` · `gu` | 4 · 4 · 8 · 2 | unchanged                |
+
+So `PAPER_MATCH` and `authorSuggestionsQuery` each gained a `nameSortKey match (… + "*")` arm beside
+the `name` one. Four things worth keeping:
+
+- **The filter half is the one that is verified end-to-end.** The type-ahead arm makes the
+  _endpoint_ answer `?q=luk` with `Łukasz Kaiser`; whether the visitor SEES it is a separate
+  question, because the control is a native `<datalist>` that applies its own matching to the
+  options it is handed — and the option's value is the accented display name, so an
+  accent-sensitive browser filter would hide the row the server just found. Not verifiable with the
+  tooling here (the popup is browser chrome: absent from page screenshots, unresponsive to
+  synthetic keys — both probes failed their controls), so it is recorded as **open**, not claimed.
+  The datalist is progressive enhancement over a plain text field and `PAPER_MATCH` carries the
+  same arm, so typing `luk` and submitting returns the paper either way.
+- **The arm is additive, never a substitution.** A key is a `production` artifact, so on `dev` — or
+  on any document written past promote — the folded arm simply doesn't fire and the predicate
+  degrades to exactly the pre-DAR-104 behaviour. Measured against `dev`, where no document has a
+  key: no error, same results. Same fail-safe polarity as the origin flag two sections up.
+- **The two call sites cannot share one expression**, and that is DAR-94's constraint, not an
+  oversight: `defineQuery` must receive a const-interpolated template, so a shared builder function
+  would widen the query's type to `string`, break `overloadClientMethods`, and make `client.fetch()`
+  return `any`. The arms are therefore written twice and the spec **counts** them: each plain match
+  must be paired with a folded one, so widening one call site and forgetting the other fails rather
+  than quietly desyncing the type-ahead from the filter it feeds.
+- **The suggestion arms must stay parenthesised.** Without the group, `&&` binds tighter than `||`
+  and the published-papers filter would apply to only the second arm — a precedence bug no type can
+  see, which the counting pin does **not** catch (the counts stay equal). It has its own assertion,
+  mutation-verified.
+
+It does **not** revive DAR-100's retired `?author=ukasz-kaiser`: the folded key is `lukasz kaiser`,
+and `ukasz` is not a token prefix of it. Measured, still 0.
 
 ### Paper meta-rail charge mapping
 
