@@ -38,6 +38,15 @@ import { CLIENT_IP_HEADER, rateLimit } from '../lib/server/auth-options';
 const SIGN_UP_RULE = rateLimit.customRules['/sign-up/email'];
 
 /**
+ * The rule behind `/forgot-password`, used by the form-action test at the bottom of this file.
+ *
+ * That test needs an endpoint a FORM ACTION reaches whose cap is small and stated in our own config
+ * — `/request-password-reset` is both (3/hour). `/sign-in/email` would have meant asserting
+ * better-auth's built-in `/sign-in*` numbers, which is the mistake the sign-up rule above documents.
+ */
+const RESET_REQUEST_RULE = rateLimit.customRules['/request-password-reset'];
+
+/**
  * The window of better-auth's OWN built-in rule for `/sign-up*` (api/rate-limiter, 10s/3), which is
  * what applies if ours is ever removed.
  *
@@ -231,4 +240,76 @@ test('a spoofed x-forwarded-for cannot mint a fresh rate-limit bucket', async ({
 		refused.status(),
 		'400 = the limiter is keying on a header the caller controls, so the cap does not bind'
 	).toBe(429);
+});
+
+// DAR-124, and the gap the rest of this file cannot reach. Every test above drives the DIRECT
+// /api/auth/* surface, where the client-address header arrives INBOUND. The form actions are the
+// other half of the fix and they work the opposite way round: they CONSTRUCT a header on a
+// sub-request that `auth.handler()` reads in-process (`auth-subrequest.ts`).
+//
+// `auth-subrequest.spec.ts` proves that construction under vitest — which is Node, with undici's
+// Headers. The deployed runtime is workerd, and `cf-*` is exactly the header family a runtime might
+// treat specially: Cloudflare's own edge refuses an INBOUND request that carries `cf-connecting-ip`
+// (403, error 1000 — measured). If workerd were to drop or ignore the header on a request built
+// inside the isolate, every form submission would fall into better-auth's shared `no-trusted-ip`
+// bucket, turning a per-IP cap into a global one — with nothing failing anywhere. That is the
+// regression DAR-124 names as the real risk of its own fix, and until this test nothing could see it.
+//
+// It works because a local wrangler passes a caller-supplied `cf-connecting-ip` through, so
+// Playwright controls what `getClientAddress()` returns (adapter-cloudflare reads that same header)
+// — the request goes in as a normal form POST and comes back out having crossed the whole path:
+// getClientAddress → authSubrequest → workerd Headers → auth.handler → getIp → the bucket key.
+function forgotPasswordPost(request: APIRequestContext, origin: string, ip: string) {
+	return request.post('/forgot-password', {
+		headers: {
+			[CLIENT_IP_HEADER]: ip,
+			// `origin` satisfies SvelteKit's CSRF check, which rejects a cross-origin form-encoded POST.
+			origin,
+			// `accept: text/html` is LOAD-BEARING, and the first cut of this test failed because it was
+			// missing. Without it SvelteKit answers a form-action POST with its `ActionResult` JSON
+			// envelope — `HTTP 200` carrying `{"type":"failure","status":429,…}` in the BODY — so
+			// `response.status()` reads 200 for a refusal, a success and a validation failure alike.
+			// An assertion on it is satisfied by every outcome, which is this repo's recurring bug
+			// (DAR-81's two gates, DAR-103's vacuous probes). With the header this takes the genuine
+			// no-JS browser path, where the fail status IS the HTTP status — measured: 200/200/200/429.
+			accept: 'text/html'
+		},
+		form: { email: 'probe@example.com' },
+		failOnStatusCode: false
+	});
+}
+
+test('a form action forwards the client address, so its cap is per-IP in workerd too', async ({
+	request,
+	baseURL
+}) => {
+	const origin = baseURL ?? '';
+	expect(origin, 'the preview origin is needed for the CSRF header').not.toBe('');
+
+	const probe = freshProbeIp();
+
+	// Inside the cap. Asserted as "not 429" rather than a specific status: this suite is DB-free, so
+	// better-auth's own lookup fails behind the limiter and /forgot-password answers with its generic
+	// anti-enumerating confirmation. WHICH non-429 it is belongs to the reset flow's own tests; what
+	// this one claims is only where the limiter draws its line.
+	for (let attempt = 1; attempt <= RESET_REQUEST_RULE.max; attempt++) {
+		const allowed = await forgotPasswordPost(request, origin, probe);
+		expect(
+			allowed.status(),
+			`request ${attempt} of ${RESET_REQUEST_RULE.max} is inside the cap`
+		).not.toBe(429);
+	}
+
+	// The cap binds — so the address really did reach the limiter through the sub-request.
+	const refused = await forgotPasswordPost(request, origin, probe);
+	expect(
+		refused.status(),
+		'the form action did not forward a client address the limiter could read'
+	).toBe(429);
+
+	// …and it is that address, not one bucket for everybody. Without this line the test would pass
+	// against an action that forwarded nothing at all: the shared `no-trusted-ip` bucket also fills
+	// up and also answers 429, which looks identical from here.
+	const unrelated = await forgotPasswordPost(request, origin, freshProbeIp());
+	expect(unrelated.status(), 'a second address inherited the exhausted bucket').not.toBe(429);
 });
