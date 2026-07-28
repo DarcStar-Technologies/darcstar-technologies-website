@@ -113,10 +113,12 @@ export const rateLimit = {
 //
 // `cf-connecting-ip` is the one header a caller cannot influence, and the measurement was stronger
 // than "Cloudflare overwrites it": a request that CARRIES the header is rejected at the edge with
-// 403 error 1000 and never reaches the Worker at all. (Measured with a throwaway echo Worker on the
-// same account: x-forwarded-for and true-client-ip both arrive verbatim from the caller — so
-// true-client-ip, an Enterprise-only feature this plan does not have, would be no fix at all — while
-// x-real-ip is overwritten and cf-connecting-ip is refused outright.)
+// 403 error 1000 and never reaches the Worker at all. Confirmed on BOTH surfaces — the throwaway
+// echo Worker's workers.dev host and the production custom domain (403 with the header, 200
+// without) — because the whole fix rests on it and workers.dev is not where the site serves.
+// The same echo Worker measured the alternatives: x-forwarded-for and true-client-ip both arrive
+// verbatim from the caller — so true-client-ip, an Enterprise-only feature this plan does not have,
+// would be no fix at all — while x-real-ip is overwritten.
 //
 // NO FALLBACK LIST, deliberately. `getIp` walks `ipAddressHeaders` IN ORDER and takes the first that
 // resolves, so appending x-forwarded-for behind this one would re-open the forgeable path in exactly

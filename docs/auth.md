@@ -621,6 +621,11 @@ deleted answered it, and the result is stronger than "Cloudflare overwrites it":
 With no client-address headers sent at all, the Worker sees `cf-connecting-ip` = the real address and
 `x-forwarded-for` = **absent**, exactly as the Cloudflare page describes.
 
+The echo Worker served on **`workers.dev`**, which is not where the site serves, and the whole fix
+rests on that first row — so it was re-confirmed against the **production custom domain**:
+`GET https://darcstar.tech/` answers **403 error 1000** when the caller sends `cf-connecting-ip` and
+**200** without it. The rejection is Cloudflare-wide, not a workers.dev quirk.
+
 Two things fall out of that table. `true-client-ip` would have been **no fix at all** — it is an
 Enterprise-only feature this plan does not have, so Cloudflare never sets it and a caller's value
 sails through. And a request carrying `cf-connecting-ip` never reaching the Worker means **an e2e
