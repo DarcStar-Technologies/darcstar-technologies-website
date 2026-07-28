@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-	waitlistImportedNames,
-	waitlistImportsNamespace,
-	waitlistSource,
-	waitlistSourcePaths
-} from './waitlist-source-scan';
+import { importedNames, importsNamespace, sourceText, waitlistSourcePaths } from './source-scan';
 
 // DAR-99's backstop. The real guard is the type: every mint and verify across the flow's four signed
 // values takes a `WaitlistSigningSecret`, so a call site that resolved its own key does not compile.
@@ -20,8 +15,10 @@ import {
 // does not throw, it verifies to `null`, and every caller treats null as "this feature is off". Same
 // reason `waitlist-funnel.spec.ts` scans for DAR-83's honeypot gate.
 //
-// The surface is DERIVED, not hand-listed, and `waitlist-source-scan.ts` carries the measurement
-// behind that (a hand-written list went blind to a drifted file and passed 7/7).
+// The surface is DERIVED, not hand-listed, and `source-scan.ts` carries the measurement behind that
+// (a hand-written list went blind to a drifted file and passed 7/7). It is the NARROWER of the two
+// sets that module offers, deliberately: `auth.ts` names this key legitimately — it is Better Auth's
+// own — so "named in exactly one file" is a claim about the waitlist, not about `src`.
 
 /** The one file allowed to name the key and to mint the brand. */
 const RESOLVER = 'src/lib/server/waitlist-secret.ts';
@@ -52,7 +49,7 @@ describe('the waitlist signing secret has one resolver (DAR-99)', () => {
 	});
 
 	it('names the env key in exactly one file across the whole surface', () => {
-		expect(waitlistSourcePaths().filter((path) => waitlistSource(path).includes(KEY))).toEqual([
+		expect(waitlistSourcePaths().filter((path) => sourceText(path).includes(KEY))).toEqual([
 			RESOLVER
 		]);
 	});
@@ -64,7 +61,7 @@ describe('the waitlist signing secret has one resolver (DAR-99)', () => {
 	it('mints the brand in exactly one file', () => {
 		expect(
 			waitlistSourcePaths().filter((path) =>
-				/\bas\s+WaitlistSigningSecret\b/.test(waitlistSource(path))
+				/\bas\s+WaitlistSigningSecret\b/.test(sourceText(path))
 			)
 		).toEqual([RESOLVER]);
 	});
@@ -74,24 +71,24 @@ describe('the waitlist signing secret has one resolver (DAR-99)', () => {
 	// sharing it safe. Repointing this elsewhere would keep the four values consistent with each other
 	// while quietly ending the reuse, so it should be a deliberate edit rather than a rename.
 	it('resolves that key through readEnv', () => {
-		expect(waitlistSource(RESOLVER)).toContain(`readEnv('${KEY}')`);
+		expect(sourceText(RESOLVER)).toContain(`readEnv('${KEY}')`);
 	});
 
 	// Anything reaching for the secret must bind the resolver by name; a namespace import would reach
 	// it without naming it.
 	it('makes every caller import the resolver by name', () => {
 		const callers = waitlistSourcePaths().filter(
-			(path) => path !== RESOLVER && waitlistSource(path).includes('waitlistSigningSecret(')
+			(path) => path !== RESOLVER && sourceText(path).includes('waitlistSigningSecret(')
 		);
 		expect(callers.length).toBeGreaterThanOrEqual(4);
 
 		for (const path of callers) {
 			expect(
-				waitlistImportedNames(path, RESOLVER_MODULE),
+				importedNames(path, RESOLVER_MODULE),
 				`${path} calls the resolver without importing it by name`
 			).toContain('waitlistSigningSecret');
 			expect(
-				waitlistImportsNamespace(path, RESOLVER_MODULE),
+				importsNamespace(path, RESOLVER_MODULE),
 				`${path} reaches the resolver through a namespace import`
 			).toBe(false);
 		}

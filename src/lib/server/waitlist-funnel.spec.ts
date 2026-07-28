@@ -30,12 +30,7 @@ import {
 	type WaitlistFunnelEvent
 } from '$lib/waitlist-funnel';
 import type { WaitlistSigningSecret } from './waitlist-secret';
-import {
-	waitlistImportedNames,
-	waitlistImportsNamespace,
-	waitlistSource,
-	waitlistSourcePaths
-} from './waitlist-source-scan';
+import { appSourcePaths, importedNames, importsNamespace, sourceText } from './source-scan';
 
 // The funnel write path (DAR-66), against a real in-memory libsql — because the two properties worth
 // testing are both properties of the DATABASE, not of the TypeScript: the composite primary key is
@@ -457,11 +452,18 @@ describe('captureWaitlistStepFunnel', () => {
 // from anywhere. The rule therefore lives in a spec that reads source — the same move
 // `evidence-boundary.spec.ts` makes for a rule TypeScript can't hold.
 //
-// SCANNED ACROSS THE WHOLE SURFACE, not one path (DAR-102). This block read
-// `waitlist-steps.remote.ts` and nothing else, which made DAR-83's stated purpose — "so a fifth step
-// can't quietly under-report" — true only for a fifth step written into that same file. One added as
+// SCANNED ACROSS ALL OF `src`, not one path (DAR-102). This block read `waitlist-steps.remote.ts`
+// and nothing else, which made DAR-83's stated purpose — "so a fifth step can't quietly
+// under-report" — true only for a fifth step written into that same file. One added as
 // `waitlist-step5.remote.ts` could import the ungated function, skip the honeypot gate, and pass
 // every assertion here, because none of them ever looked at it.
+//
+// The set is `src`, not the waitlist's own directories, and that is the second thing measurement
+// changed: scoping it to those directories reproduced the very defect one level down — a step planted
+// at `src/routes/waitlist/step5/+page.server.ts` passed 56/56, and one under `src/routes/api/` would
+// not have been looked at either. "Who imports the ungated capture function?" has no reason to stop
+// at a directory boundary, and nothing outside the waitlist imports it, so the wider set costs
+// nothing. (DAR-99's secret rule keeps the narrower one — `auth.ts` names that key legitimately.)
 //
 // THE RULE IS AN ALLOWLIST, and that is the part worth reading twice. The obvious tightening — nobody
 // may import `captureWaitlistFunnel` — is simply false: three surfaces use it legitimately, and each
@@ -499,18 +501,24 @@ describe('the step endpoints reach the funnel only through the gate', () => {
 	const allowed = Object.keys(UNGATED) as (keyof typeof UNGATED)[];
 
 	// A derivation that matched nothing, or an allowlist naming files that no longer exist, would make
-	// the assertions below vacuously true. Pin both against the derived surface.
+	// the assertions below vacuously true. Pin both against the derived surface — and include a file
+	// OUTSIDE the waitlist's own directories, because "the scan reaches past src/routes/waitlist" is
+	// the property DAR-102's second measurement bought and nothing else here would notice losing it.
 	it('found the surface, and every allowlisted path is in it', () => {
-		for (const required of [...allowed, 'src/lib/waitlist-steps.remote.ts']) {
-			expect(waitlistSourcePaths()).toContain(required);
+		for (const required of [
+			...allowed,
+			'src/lib/waitlist-steps.remote.ts',
+			'src/routes/admin/waitlist/+page.server.ts' // a nested route, and not under the waitlist tree
+		]) {
+			expect(appSourcePaths()).toContain(required);
 		}
 	});
 
 	// THE RULE. Everything on the surface except the three either goes through the gate or doesn't
 	// touch the funnel at all.
 	it('lets only the allowlisted three import the ungated entry point', () => {
-		const ungated = waitlistSourcePaths().filter((path) =>
-			waitlistImportedNames(path, FUNNEL_MODULE).includes('captureWaitlistFunnel')
+		const ungated = appSourcePaths().filter((path) =>
+			importedNames(path, FUNNEL_MODULE).includes('captureWaitlistFunnel')
 		);
 
 		expect(ungated.sort()).toEqual([...allowed].sort());
@@ -522,7 +530,7 @@ describe('the step endpoints reach the funnel only through the gate', () => {
 	it('keeps no allowlist entry that has stopped needing one', () => {
 		for (const path of allowed) {
 			expect(
-				waitlistImportedNames(path, FUNNEL_MODULE),
+				importedNames(path, FUNNEL_MODULE),
 				`${path} is allowlisted as "${UNGATED[path]}" but no longer imports the ungated entry ` +
 					`point — drop the entry rather than leaving an exemption nothing uses`
 			).toContain('captureWaitlistFunnel');
@@ -533,9 +541,9 @@ describe('the step endpoints reach the funnel only through the gate', () => {
 	// assertion above. Banned surface-wide, including for the allowlisted three: they already import
 	// what they need by name, so nothing legitimate wants this.
 	it('reaches the funnel module by name everywhere, never through a namespace', () => {
-		for (const path of waitlistSourcePaths()) {
+		for (const path of appSourcePaths()) {
 			expect(
-				waitlistImportsNamespace(path, FUNNEL_MODULE),
+				importsNamespace(path, FUNNEL_MODULE),
 				`${path} reaches the funnel module through a namespace import`
 			).toBe(false);
 		}
@@ -550,8 +558,8 @@ describe('the step endpoints reach the funnel only through the gate', () => {
 	it('calls the gated one at least once per step form', () => {
 		let forms = 0;
 
-		for (const path of waitlistSourcePaths()) {
-			const source = waitlistSource(path);
+		for (const path of appSourcePaths()) {
+			const source = sourceText(path);
 			const declared = source.match(/export const submitWaitlistStep/g)?.length ?? 0;
 			if (declared === 0) continue;
 
