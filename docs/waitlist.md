@@ -505,6 +505,12 @@ Three things worth keeping:
   DAR-99 measured at 7/7 passing. Deleting one here makes the rule _stricter_, so that file starts
   failing. A paired assertion keeps the list honest in the other direction too: an entry whose file
   has stopped importing the ungated function fails, so the list can't rot into names nobody checks.
+- **The exemption is per CALL SITE, not per file**, and that was measured rather than designed in: a
+  file-level pass let a fifth step added _inside_ one of the three inherit its exemption — appending
+  one to `waitlist.remote.ts` that used the ungated function was invisible unless it also happened to
+  follow the `submitWaitlistStep` naming convention. Each exempt file therefore declares how many
+  ungated captures its reason covers (one, in all three cases), and the count is two-sided: adding a
+  second fails, and so does removing the one, which stops the entry rotting into a permanent pass.
 - **An import pin has four ways of being walked past, and all four are closed.** An **alias**
   (`{ captureWaitlistFunnel as record }`) reports under its exported name; a **namespace**
   (`import * as`) is banned; a **re-export** (`export { … } from`, `export * from`) counts as a
@@ -519,9 +525,13 @@ Three things worth keeping:
   the string-matching cut would have reported a legal `import * as f from './waitlist-funnel'` in
   `$lib` as reaching the server module.
 
-The remaining gap is honest and narrow: the per-step-form count recognizes the `submitWaitlistStep`
-naming convention, so a step exported under some other name slips **that half**. The allowlist rule
-above doesn't depend on how anything is spelled.
+The remaining gap is honest and narrow, and it is no longer about the gate. Every route to the
+_ungated_ function is closed — by name, alias, namespace, re-export, specifier spelling, quote style,
+and now call-site count. What is still only convention-deep is **firing nothing at all**: the
+"one gated call per step form" assertion recognizes the `submitWaitlistStep` naming convention, so a
+step exported under some other name that captures no event simply under-reports. That fails quieter
+than a bypass but does not corrupt the funnel with events the gate should have dropped — a missing
+number rather than a wrong one.
 
 The honeypot's false positives (a password manager filling the hidden field) lose their funnel events
 along with everything else, which is the **same** trade the trap already makes: that visitor's signup
