@@ -123,8 +123,9 @@ tolerate. Keep new tests that way; anything needing real credentials belongs in 
 ### Manual smokes (not in CI)
 
 Three scripts drive the real endpoints of a built preview over HTTP, no browser. All are **run by
-hand** — they need real credentials and write to the dev database — and all exit non-zero on the
-first failed assertion. Start `pnpm build && pnpm preview` in one shell, then in another:
+hand** — they need real secrets and write to the dev database — and all exit non-zero on the first
+failed assertion. (The first two also need a staff account; `smoke:waitlist` does not, since the flow
+it walks is public.) Start `pnpm build && pnpm preview` in one shell, then in another:
 
 - `pnpm smoke:signin` (`scripts/smoke-signin.mjs`, #69) — sign-in → `/admin` → the navbar's auth
   states → the full operator-roster lifecycle (create → non-admin guard → reset → force-logout →

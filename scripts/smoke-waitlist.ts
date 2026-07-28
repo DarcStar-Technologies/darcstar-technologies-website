@@ -269,6 +269,21 @@ function hidden(page: Page, name: string): string {
 	return raw.replace(/&(amp|lt|gt|quot|#39);/g, (_, entity: string) => ENTITIES[entity]);
 }
 
+/**
+ * `hidden`, but an absent or empty field stops the run where it happened.
+ *
+ * The step endpoints are ANTI-ORACLE: an unusable token, claim or handle produces the same generic
+ * success as a good one. So carrying an empty string forward does not fail here — it fails three
+ * assertions later as `expected "evaluating-now", got null`, which reads as "the enrich is broken"
+ * when the truth is "the field was never on the page". Every value this script forwards is one the
+ * page is required to have rendered, so the honest place to notice is where it was read.
+ */
+function requiredHidden(page: Page, name: string, label: string): string {
+	const value = hidden(page, name);
+	if (!value) die(`${label}: the rendered form carries no "${name}" field`);
+	return value;
+}
+
 /** Assert which step a response is showing, and hand back the action to post the next one to. */
 function expectStep(page: Page, fn: string, label: string): string {
 	if (page.status !== 200) die(`${label}: expected 200, got ${page.status}`);
@@ -495,8 +510,7 @@ const step2Page = await submit(step1Action, {
 	flowId: flowHandle
 });
 const step2Action = expectStep(step2Page, 'submitWaitlistStep2', 'step 1');
-const token = hidden(step2Page, 'token');
-if (!token) die('step 1: the step-2 form carries no continuation token');
+const token = requiredHidden(step2Page, 'token', 'step 1');
 
 const afterSignup = await submissionsForLead();
 assertEqual('step 1', afterSignup.length, 1);
@@ -554,8 +568,7 @@ const forgedRows = async () =>
 if (!jar.has(WAITLIST_RESUME_COOKIE)) die('step 1: no resume cookie was set');
 const resumed = await visit();
 expectStep(resumed, 'submitWaitlistStep2', 'resume');
-const resumedToken = hidden(resumed, 'token');
-if (!resumedToken) die('resume: the resumed step-2 form carries no continuation token');
+const resumedToken = requiredHidden(resumed, 'token', 'resume');
 ok('a reload resumes at step 2 with a freshly minted token');
 
 // ---------------------------------------------------------------------------------------------
@@ -565,13 +578,12 @@ ok('a reload resumes at step 2 with a freshly minted token');
 // ---------------------------------------------------------------------------------------------
 const step3Page = await submit(step2Action, {
 	token: resumedToken,
-	flowId: hidden(resumed, 'flowId'),
+	flowId: requiredHidden(resumed, 'flowId', 'resume'),
 	intent: 'continue',
 	...STEP2
 });
 const step3Action = expectStep(step3Page, 'submitWaitlistStep3', 'step 2');
-const flowClaim = hidden(step3Page, 'flowClaim');
-if (!flowClaim) die('step 2: the step-3 form carries no flow claim');
+const flowClaim = requiredHidden(step3Page, 'flowClaim', 'step 2');
 
 const [afterStep2] = await submissionsForLead();
 assertEqual('step 2', afterStep2.role, STEP2.role);
@@ -606,9 +618,9 @@ ok('a mid-flow reload stays on one flow and re-records no view');
 //    anti-oracle rule), so this also proves the claim survives a round trip through the browser.
 // ---------------------------------------------------------------------------------------------
 const step4Page = await submit(step3Action, {
-	token: hidden(step3Page, 'token'),
+	token: requiredHidden(step3Page, 'token', 'step 2'),
 	flowClaim,
-	flowId: hidden(step3Page, 'flowId'),
+	flowId: requiredHidden(step3Page, 'flowId', 'step 2'),
 	intent: 'continue',
 	currentApproach: STEP3.currentApproach,
 	economicImpact: STEP3.economicImpact,
@@ -640,9 +652,9 @@ ok('step 3 enriched the same row, kept step 2’s answers, and forked to branch 
 //    pilot answer — so a `true` here is evidence of that gate agreeing with the render.
 // ---------------------------------------------------------------------------------------------
 const donePage = await submit(step4aAction, {
-	token: hidden(step4Page, 'token'),
-	flowClaim: hidden(step4Page, 'flowClaim'),
-	flowId: hidden(step4Page, 'flowId'),
+	token: requiredHidden(step4Page, 'token', 'step 3'),
+	flowClaim: requiredHidden(step4Page, 'flowClaim', 'step 3'),
+	flowId: requiredHidden(step4Page, 'flowId', 'step 3'),
 	intent: 'continue',
 	pilotInterest: STEP4A.pilotInterest,
 	deploymentScale: STEP4A.deploymentScale,
@@ -704,14 +716,17 @@ ok(`the Priority-A notification was claimed once (and one email went to info@)`)
 // ---------------------------------------------------------------------------------------------
 const walkedBack = await submit(step4aAction, {
 	token,
-	flowClaim: hidden(step4Page, 'flowClaim'),
+	flowClaim: requiredHidden(step4Page, 'flowClaim', 'walk-back'),
 	flowId: flowHandle,
 	intent: 'continue',
 	pilotInterest: STEP4A.pilotInterest
 });
 if (walkedBack.status !== 200) die(`walk-back: expected 200, got ${walkedBack.status}`);
 const [afterWalkBack] = await submissionsForLead();
-assertEqual('walk-back', afterWalkBack.stepWriteCount, 4);
+// One more than step 4A's, whatever that was. Derived rather than written down: a hard-coded 4 is true
+// only for exactly this sequence of steps, and the next ticket to insert one would get a budget
+// failure pointing at the budget.
+assertEqual('walk-back', afterWalkBack.stepWriteCount, (afterStep4a.stepWriteCount ?? 0) + 1);
 // Read here and AGAIN at the end of the run (step N). The late read is the load-bearing one: the claim
 // runs inside `ctx.waitUntil`, so this one can only catch a re-claim fast enough to have already
 // landed. A second claim would move the timestamp permanently, so a later look needs no sleep — by
@@ -724,7 +739,10 @@ ok('a second Priority-A-classifying write claims nothing (at most once, ever)');
 //    refusal is SILENT by design — a refused step, a decoy token, an expired token and a deleted row
 //    are one generic success — so the only way to see it is in the columns.
 // ---------------------------------------------------------------------------------------------
-const spent = 4; // steps 2, 3, 4A and the walk-back above
+// Read from the row rather than counted up from the steps above. The same rot argument as the
+// walk-back's: a hard-coded "4" would send this loop over or under the cap the moment a step is added
+// or removed, and the failure would name the budget rather than the arithmetic.
+const spent = afterWalkBack.stepWriteCount ?? 0;
 for (let i = spent; i < WAITLIST_STEP_WRITE_MAX; i++) {
 	const res = await submit(step2Action, {
 		token,
@@ -806,6 +824,22 @@ ok('the lead classifies on its strongest single submission, not on a merge');
 // M. The funnel, whole. Twenty-odd step POSTs went through the endpoints above; the composite primary
 //    key means each event is one row per flow regardless (DAR-66), which is what makes
 //    `waitlist_signup_completed / waitlist_viewed` a conversion rate rather than a ratio of retries.
+//
+//    WHY THIS NEEDS NO ANCHOR OF ITS OWN, which is worth stating because the check below LOOKS like one
+//    and is not: `qualification_completed` was recorded back at step H, so this `eventually` returns on
+//    its first read. The set is CLOSED by then, for two separate reasons —
+//
+//      * no new FLOW can appear: only a GET mints one that records anything (`waitlist_viewed` is
+//        GET-only, DAR-66), and this run's last GET was step E. Every POST after it carries the handle
+//        step B was given.
+//      * no new EVENT can appear: `qualification_completed` is the last one a server-side path can
+//        produce, and step H fired it. Steps J–L replay events already recorded, which the composite
+//        key turns into no-ops — that being the property under test. (The one remaining slug,
+//        `evaluation_conversation_requested`, is the client-fired command this script leaves alone.)
+//
+//    So the honest anchor for the whole set is the one that covered its last new member, and the
+//    earlier `settled` covered the flow count. If a later ticket adds a step that emits something new,
+//    this needs a real anchor again.
 // ---------------------------------------------------------------------------------------------
 const finalRows = await eventually(
 	'funnel',

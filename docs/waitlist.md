@@ -1193,12 +1193,24 @@ shape constraint DAR-86 documents, confirming itself from the outside. And casti
 single call site takes the whole step funnel silent rather than letting junk through, because
 `isWaitlistFlowId` inside the capture is the runtime half that makes the mistake fail **closed**.
 
-Two things it deliberately does **not** cover. The restart escape hatch is thoroughly covered by the
-hermetic e2e, which can drive it through a real browser — and exercising it here would mint a second
-flow and break the one-flow claim above, so the second signup is POSTed without a fresh GET. And the
-funnel rows a **crashed** run leaves behind cannot be purged: they carry no lead, no address and no
-marker, which is exactly the anonymity DAR-66 built in. They are harmless (every query is anchored to
-the run's own start), so the script says so rather than adding a column that would make them findable.
+Three things it deliberately does **not** cover.
+
+The **restart escape hatch** is thoroughly covered by the hermetic e2e, which can drive it through a
+real browser — and exercising it here would mint a second flow and break the one-flow claim above, so
+the second signup is POSTed without a fresh GET.
+
+The **client-fired command** (`evaluation_conversation_requested`, `waitlist-funnel.remote.ts`) is the
+one funnel surface this leaves alone. It is a remote `command`, not a `form`, so it has no rendered
+action to read off the page — reaching it would mean writing down SvelteKit's remote-command wire
+format, which is exactly the coupling the "read it off the page" rule exists to avoid. It is also what
+lets the final funnel check need no anchor of its own: with that event out of scope,
+`qualification_completed` is the last new event the run can produce, so the set is closed once step 4A
+has fired and everything after it is a replay.
+
+And the funnel rows a **crashed** run leaves behind cannot be purged: they carry no lead, no address
+and no marker, which is exactly the anonymity DAR-66 built in. They are harmless (every query is
+anchored to the run's own start), so the script says so rather than adding a column that would make
+them findable.
 
 ## Setup
 
