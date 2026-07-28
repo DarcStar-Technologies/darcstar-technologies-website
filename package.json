@@ -90,6 +90,7 @@
 		"@sanity/image-url": "^2.1.1",
 		"@zag-js/select": "1.39.1",
 		"@zag-js/svelte": "1.39.1",
-		"groq": "^6.5.0"
+		"groq": "^6.5.0",
+		"katex": "^0.18.1"
 	}
 }
