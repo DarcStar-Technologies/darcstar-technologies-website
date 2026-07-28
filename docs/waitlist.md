@@ -1144,6 +1144,55 @@ unrelated build — and "which form is present" is the honest answer to "which s
 step _is_ its form. The one thing it does restate is the answer slugs, which are imported from
 `$lib/waitlist-qualification` rather than typed out.
 
+### A negative assertion needs a happens-after, not a sleep
+
+Everything this script asserts on is **fire-and-forget**: the funnel insert, the Priority-A claim and
+the notification all run inside `ctx.waitUntil`, which by contract settles _after_ the response. So
+"assert that X did **not** happen" read straight after a POST is a race the script wins by accident —
+DAR-81's pattern (a guard that passes hardest when nothing has happened yet) in the one place a
+`waitUntil` makes it easy to write without noticing.
+
+It shipped that bug twice before it shipped anything else, and both were found by mutation rather than
+by reading:
+
+- The first cut reloaded `/waitlist` **before** step 1 and asserted "still one flow, still one view".
+  Wrong on the merits — with no resume cookie yet, two arrivals are correctly two flows and two views,
+  the floor DAR-66 accepted — and it passed anyway, because the row proving it arrived **235 ms** after
+  the read. The reload check now sits **mid-flow**, which is where DAR-75's guarantee actually applies.
+- The forged-flow probe asserted zero rows immediately after its POST. Mutating
+  `verifyWaitlistFlowId` to accept a bare UUID alongside a signed handle — the exact regression DAR-86
+  removed — left that assertion **green**; the run only failed later, on the whole-funnel count, with a
+  message about the reload.
+
+The fix is not a longer sleep, which only encodes a duration measured on one machine. It is a
+**happens-after anchor**: something the run does _later_, through the same request path into the same
+database, whose arrival means the earlier write has had its chance. Both negative claims now anchor on
+`use_case_completed` from the step-2 POST that follows them (`settled()`), and the forged probe is
+asserted **before** the one-flow count so the failure names itself rather than surfacing as an
+off-by-one somewhere else. The Priority-A claim, which has no later event to anchor on, is instead
+re-read at the end of the run — a second claim would move the timestamp permanently, so seventeen
+intervening round trips are the wait.
+
+### What the mutations proved
+
+Seven, each reverted with the tree asserted clean in between:
+
+| Mutation                                                        | Caught by                          |
+| --------------------------------------------------------------- | ---------------------------------- |
+| step 2 stops writing `evaluation_timeline`                      | step 2's column check              |
+| the budget predicate is dropped from the step `UPDATE`          | the refused write's answer landing |
+| `claimPriorityLeadNotification` loses its `IS NULL` guard       | the walk-back's timestamp          |
+| `resolveWaitlistFlowId` returns the wire value                  | the **resume**, not the funnel     |
+| step 2's capture casts past the `WaitlistFlowId` brand          | the reload anchor never arriving   |
+| a bare UUID is accepted alongside a signed handle               | the forged-flow probe              |
+| a repeat email edits the newest submission instead of inserting | append-only's row count            |
+
+Two are worth reading twice. Undoing DAR-86's verification breaks the **resume cookie** before it
+breaks the funnel, because the signing core splits on `.` and the cookie carries the bare id — the
+shape constraint DAR-86 documents, confirming itself from the outside. And casting past the brand at a
+single call site takes the whole step funnel silent rather than letting junk through, because
+`isWaitlistFlowId` inside the capture is the runtime half that makes the mistake fail **closed**.
+
 Two things it deliberately does **not** cover. The restart escape hatch is thoroughly covered by the
 hermetic e2e, which can drive it through a real browser — and exercising it here would mint a second
 flow and break the one-flow claim above, so the second signup is POSTed without a fresh GET. And the
