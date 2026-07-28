@@ -265,13 +265,15 @@ function forgotPasswordPost(request: APIRequestContext, origin: string, ip: stri
 			[CLIENT_IP_HEADER]: ip,
 			// `origin` satisfies SvelteKit's CSRF check, which rejects a cross-origin form-encoded POST.
 			origin,
-			// `accept: text/html` is LOAD-BEARING, and the first cut of this test failed because it was
-			// missing. Without it SvelteKit answers a form-action POST with its `ActionResult` JSON
+			// `accept: text/html` is LOAD-BEARING, and the first cut of this test failed for want of it.
+			// Without the header SvelteKit answers a form-action POST with its `ActionResult` JSON
 			// envelope — `HTTP 200` carrying `{"type":"failure","status":429,…}` in the BODY — so
-			// `response.status()` reads 200 for a refusal, a success and a validation failure alike.
-			// An assertion on it is satisfied by every outcome, which is this repo's recurring bug
-			// (DAR-81's two gates, DAR-103's vacuous probes). With the header this takes the genuine
-			// no-JS browser path, where the fail status IS the HTTP status — measured: 200/200/200/429.
+			// `response.status()` reads 200 for a refusal, a success and a validation failure alike,
+			// and any assertion on it is satisfied by every outcome. With the header this takes the
+			// genuine no-JS browser path, where the fail status IS the HTTP status (measured here:
+			// 200/200/200/429). The hand-run smokes already do this for the same reason — see
+			// `formPost` in scripts/smoke-http.mjs and the step POSTs in scripts/smoke-waitlist.ts —
+			// so this is the repo's existing convention for driving a form action, not a new trick.
 			accept: 'text/html'
 		},
 		form: { email: 'probe@example.com' },
