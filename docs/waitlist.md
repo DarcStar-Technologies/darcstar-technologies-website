@@ -505,10 +505,19 @@ Three things worth keeping:
   DAR-99 measured at 7/7 passing. Deleting one here makes the rule _stricter_, so that file starts
   failing. A paired assertion keeps the list honest in the other direction too: an entry whose file
   has stopped importing the ungated function fails, so the list can't rot into names nobody checks.
-- **Aliases and namespaces are closed**, because both are how an import pin gets walked past —
-  `{ captureWaitlistFunnel as record }` reports under its exported name, and `import * as` is banned
-  surface-wide. Both verified by mutation, along with the blind-derivation case (narrowing the scan to
-  one directory fails six tests across the two specs rather than passing quietly).
+- **An import pin has four ways of being walked past, and all four are closed.** An **alias**
+  (`{ captureWaitlistFunnel as record }`) reports under its exported name; a **namespace**
+  (`import * as`) is banned; a **re-export** (`export { … } from`, `export * from`) counts as a
+  binding, because handing the name on is what an import does too, and reading only `import` leaves
+  a one-module laundering path; and a **relative specifier** counts, because a file inside
+  `$lib/server` reaches its neighbour as `'./waitlist-funnel'`. Each is mutation-proven.
+
+  That last one has a trap worth stating, since getting it wrong is a _false failure_ rather than a
+  miss: there are **two** `waitlist-funnel` modules — the gated server one and the client event
+  vocabulary — so `'./waitlist-funnel'` means different files depending on where it is written.
+  Specifiers are therefore **resolved against the importing file's directory**, not string-matched;
+  the string-matching cut would have reported a legal `import * as f from './waitlist-funnel'` in
+  `$lib` as reaching the server module.
 
 The remaining gap is honest and narrow: the per-step-form count recognizes the `submitWaitlistStep`
 naming convention, so a step exported under some other name slips **that half**. The allowlist rule
