@@ -466,10 +466,44 @@ the row its own first GET already wrote. The first view is unknowable anyway —
 trap is tripped.
 
 No type can force the step endpoints through the gate (`captureWaitlistFunnel` stays exported for step
-1 and the page load), so `waitlist-funnel.spec.ts` reads `waitlist-steps.remote.ts` and pins two
-things: the **import** — a call site cannot exist without the binding, and pinning the import rather
-than the call text can't be tripped by a comment naming the ungated function — and at least one gated
-call per exported step form, so a fifth step can't quietly under-report.
+1 and the page load), so `waitlist-funnel.spec.ts` reads source and pins the **import** — a call site
+cannot exist without the binding, and pinning the import rather than the call text can't be tripped by
+a comment naming the ungated function — plus at least one gated call per exported step form.
+
+#### The scan covers the surface, not one file (DAR-102)
+
+That spec read `waitlist-steps.remote.ts` and nothing else, which made "a fifth step can't quietly
+under-report" true only of a fifth step written **into that same file**. One added as its own module
+could import the ungated `captureWaitlistFunnel`, skip the gate, and pass every assertion, because
+none of them ever looked at it — measured, not reasoned about: the pre-DAR-102 spec stayed 48/48 green
+with exactly that file sitting in the tree.
+
+The rule is now an **allowlist over the derived surface** (`waitlist-source-scan.ts`, shared with
+DAR-99's signing-secret spec — two copies of "which files are the waitlist" is the drift both tickets
+exist to prevent). Three files may import the ungated entry point, each recorded with its reason —
+step 1 (mints the token, and the trap returns before its capture), the page load (the view precedes
+the trap), the client-fired command (DAR-75 has dropped the row id by then). Everything else either
+goes through the gate or doesn't touch the funnel.
+
+Three things worth keeping:
+
+- **An allowlist, not a classifier.** The alternative was "a file that verifies a continuation token
+  must gate", and it is weaker in a way that matters: extract `resolveStepRow` into a shared helper
+  and the new step endpoint imports `verifyWaitlistToken` nowhere, so the classifier stops seeing it.
+  The allowlist doesn't care how a file came by its row id — it fails closed for **any** new file.
+- **A hand-written allowlist is fine where a hand-written scan list is not**, and the difference is
+  polarity. Deleting an entry from a scan list makes the scan blind — silent, and the exact defect
+  DAR-99 measured at 7/7 passing. Deleting one here makes the rule _stricter_, so that file starts
+  failing. A paired assertion keeps the list honest in the other direction too: an entry whose file
+  has stopped importing the ungated function fails, so the list can't rot into names nobody checks.
+- **Aliases and namespaces are closed**, because both are how an import pin gets walked past —
+  `{ captureWaitlistFunnel as record }` reports under its exported name, and `import * as` is banned
+  surface-wide. Both verified by mutation, along with the blind-derivation case (narrowing the scan to
+  one directory fails six tests across the two specs rather than passing quietly).
+
+The remaining gap is honest and narrow: the per-step-form count recognizes the `submitWaitlistStep`
+naming convention, so a step exported under some other name slips **that half**. The allowlist rule
+above doesn't depend on how anything is spelled.
 
 The honeypot's false positives (a password manager filling the hidden field) lose their funnel events
 along with everything else, which is the **same** trade the trap already makes: that visitor's signup
@@ -712,7 +746,9 @@ surface the key may be named in one file, the brand may be cast into existence i
 caller must import the resolver by name (an import pin, not call text — DAR-83's lesson). And that
 spec **derives its file list** from the directories rather than hand-listing paths, because the first
 cut hand-listed them and dropping one entry made the scan blind while staying green — measured, 7/7
-passing against a drifted file.
+passing against a drifted file. The derivation itself now lives in `waitlist-source-scan.ts`, shared
+with DAR-102's funnel-gate scan: both specs need the same answer to "which files are the waitlist",
+and two copies of that answer is the drift they were each written to prevent.
 
 The key stays Better Auth's own rather than a second secret to provision; the per-value domain
 separation is what makes sharing it safe. Repointing the resolver elsewhere would keep the four values
