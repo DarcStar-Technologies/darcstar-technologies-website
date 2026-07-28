@@ -63,11 +63,23 @@ function b64urlDecode(s: string): Uint8Array<ArrayBuffer> | null {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The signing core. BOTH of the flow's signed values share this shape — `<prefix>.<payload>.<exp>.
-// <mac>` — and, more importantly, one implementation of the canonicalization rules below: the
-// continuation token here, and the flow claim (waitlist-flow.ts, which owns routing
-// and therefore its own tamper-proof transport). `domain` + `prefix` keep them apart — a value
-// minted as one can never verify as the other, even though both key off BETTER_AUTH_SECRET.
+// The signing core. ALL FOUR of the flow's signed values share this shape — `<prefix>.<payload>.
+// <exp>.<mac>` — and, more importantly, one implementation of the canonicalization rules below:
+// the continuation token here (`v1`), the flow claim (`f1`, waitlist-flow.ts, which owns routing and
+// therefore its own tamper-proof transport), the resume cookie (`r1`, waitlist-resume.ts) and the
+// funnel handle (`n1`, waitlist-funnel.ts). `domain` + `prefix` keep them apart — a value minted as
+// one can never verify as another, even though all four key off the same secret.
+//
+// CHANGING WHICH SECRET THAT IS? It comes from `waitlistSigningSecret()` (waitlist-secret.ts) and
+// nowhere else, and that is DAR-99: each value is minted in one module and verified in another, so
+// while their domain and prefix are module-private constants both ends share, the SECRET used to be
+// resolved independently at seven call sites. Nothing proved they agreed and nothing could — the
+// specs round-trip inside one module, and a mismatch does not throw, it verifies to `null`, which
+// every caller treats as "this feature is off". Hence the type: `WaitlistSigningSecret` is branded,
+// so a call site that resolved its own key will not compile.
+//
+// A payload may not contain '.', which is what stops a signed value being a field inside another one
+// — the reason the resume cookie carries the bare flow id rather than its handle (DAR-86).
 
 /**
  * Mint `<prefix>.<payload>.<exp>.<mac>`. The payload must contain no '.' (verification splits on

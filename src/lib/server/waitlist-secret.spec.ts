@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 // DAR-99's backstop. The real guard is the type: every mint and verify across the flow's four signed
@@ -6,94 +7,133 @@ import { describe, expect, it } from 'vitest';
 // But the brand is erased at runtime, so a cast defeats it — and the drift this exists to catch is
 // exactly the kind someone reaches for a cast to get past ("just this one value needs its own key").
 //
-// So this pins the other half structurally: across the whole waitlist surface, the env key may be
-// NAMED as a resolver argument in one file. Anything else — a second `readEnv` for it at a step, a new
-// entry point resolving it for itself — fails here even if it type-checks.
+// So this pins the rest structurally: across the whole waitlist surface the env key may be NAMED in
+// one file, the brand may be CAST INTO EXISTENCE in one file, and anything calling the resolver must
+// import it by name. A second `readEnv` for the key at a step, or a new entry point resolving it for
+// itself, fails here even when it type-checks.
 //
 // It reads source rather than behaviour because there is no behaviour to read: a mismatched secret
 // does not throw, it verifies to `null`, and every caller treats null as "this feature is off". Same
 // reason `waitlist-funnel.spec.ts` reads `waitlist-steps.remote.ts` for DAR-83's honeypot gate.
 
-/** Every file that mints, verifies, or resolves one of the flow's signed values. */
-const WAITLIST_SURFACE = [
-	'src/lib/server/waitlist-secret.ts',
-	'src/lib/server/waitlist-token.ts',
-	'src/lib/server/waitlist-flow.ts',
-	'src/lib/server/waitlist-resume.ts',
-	'src/lib/server/waitlist-funnel.ts',
-	'src/lib/waitlist.remote.ts',
-	'src/lib/waitlist-steps.remote.ts',
-	'src/lib/waitlist-funnel.remote.ts',
-	'src/routes/waitlist/+page.server.ts'
-] as const;
+/**
+ * The surface, DERIVED — every non-spec source file in the waitlist's three homes.
+ *
+ * A hand-written path list was the first cut, and it had the defect every hand-written path list has:
+ * deleting an entry makes the scan blind to that file while the suite stays green. Measured rather
+ * than assumed — dropping `waitlist-steps.remote.ts` from the list and drifting it in the same breath
+ * passed 7/7. Deriving removes the entry there is to delete, and a new waitlist module is covered the
+ * day it lands rather than the day someone remembers. (`message-catalogs.spec.ts` derives its
+ * catalogs the same way, for the same reason.)
+ *
+ * Read through `node:fs` rather than `import.meta.glob`, which is the idiom elsewhere: a raw glob asks
+ * Vite to load `.remote.ts` files and SvelteKit's remote-module plugin refuses them ("Cannot export
+ * `default` from a remote module"). Those four files are most of the point, so the reader has to be
+ * one that treats them as text.
+ *
+ * Specs are excluded deliberately, and it is the one exclusion: a fixture has no request to resolve a
+ * secret from, so casting one is the honest way to state it.
+ */
+const DIRECTORIES = ['src/lib/server', 'src/lib', 'src/routes/waitlist'] as const;
 
-/** The one file allowed to name the key. */
+const SOURCES: Record<string, string> = Object.fromEntries(
+	DIRECTORIES.flatMap((dir) =>
+		readdirSync(dir, { withFileTypes: true })
+			.filter(
+				(entry) =>
+					entry.isFile() &&
+					entry.name.endsWith('.ts') &&
+					!entry.name.includes('.spec.') &&
+					!entry.name.includes('.e2e.') &&
+					// `src/routes/waitlist` is the waitlist by definition; the two `$lib` directories hold
+					// far more than it, so there the filename prefix is what scopes the scan.
+					(dir === 'src/routes/waitlist' || entry.name.startsWith('waitlist'))
+			)
+			.map((entry) => [join(dir, entry.name), readFileSync(join(dir, entry.name), 'utf8')])
+	)
+);
+
+/** The one file allowed to name the key and to mint the brand. */
 const RESOLVER = 'src/lib/server/waitlist-secret.ts';
 
 /**
  * Source with comments removed.
  *
- * Load-bearing, and DAR-83 learned it the hard way: these files discuss `BETTER_AUTH_SECRET` in prose
- * constantly ("all four key off BETTER_AUTH_SECRET"), so a scan over raw text would either trip on
- * every explanation or have to be loosened until it stopped catching anything. Stripping first lets
- * the assertion be exact.
+ * Load-bearing, and it is DAR-83's lesson in a new place: these files discuss `BETTER_AUTH_SECRET` in
+ * prose constantly ("all four key off BETTER_AUTH_SECRET"), so a scan over raw text would either trip
+ * on every explanation or be loosened until it stopped catching anything. Stripping first lets the
+ * assertion be exact.
  */
 const code = (path: string): string =>
-	readFileSync(path, 'utf8')
-		.replace(/\/\*[\s\S]*?\*\//g, '')
-		.replace(/^\s*\/\/.*$/gm, '');
+	SOURCES[path].replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+const paths = () => Object.keys(SOURCES);
 
 describe('the waitlist signing secret has one resolver (DAR-99)', () => {
-	// The env key, spelled so this file's own text can't satisfy the scan it performs.
+	// The env key, assembled so this file's own text cannot satisfy the scan it performs.
 	const KEY = ['BETTER', 'AUTH', 'SECRET'].join('_');
 
-	it('is named in exactly one file across the whole surface', () => {
-		const naming = WAITLIST_SURFACE.filter((path) => code(path).includes(KEY));
-		expect(naming).toEqual([RESOLVER]);
+	// A derivation that matched nothing would make every assertion below vacuously true, which is how
+	// a derived list fails. Pin the files that must be in it: the resolver, the four modules that mint
+	// or verify, and the four request entry points.
+	it('found the surface it is supposed to be scanning', () => {
+		for (const required of [
+			RESOLVER,
+			'src/lib/server/waitlist-token.ts',
+			'src/lib/server/waitlist-flow.ts',
+			'src/lib/server/waitlist-resume.ts',
+			'src/lib/server/waitlist-funnel.ts',
+			'src/lib/waitlist.remote.ts',
+			'src/lib/waitlist-steps.remote.ts',
+			'src/lib/waitlist-funnel.remote.ts',
+			'src/routes/waitlist/+page.server.ts'
+		]) {
+			expect(paths()).toContain(required);
+		}
 	});
 
-	// The resolver has to read the key Better Auth signs sessions with — that reuse is the reason
-	// there is no second secret to provision, and the domain separation inside `mintSignedValue` is
-	// what makes sharing it safe. Repointing it elsewhere would keep the four values consistent with
-	// each other while quietly ending the reuse, so it should be a deliberate edit, not a rename.
+	it('names the env key in exactly one file across the whole surface', () => {
+		expect(paths().filter((path) => code(path).includes(KEY))).toEqual([RESOLVER]);
+	});
+
+	// THE CAST ROUTE, which the assertion above leaves open. Naming a DIFFERENT key —
+	// `readEnv('WAITLIST_FUNNEL_SECRET') as WaitlistSigningSecret` — never mentions this key and
+	// satisfies the compiler, because that is what a cast is for. What it cannot do is avoid writing
+	// the cast, so the brand is minted in one place exactly as the flow id is.
+	it('mints the brand in exactly one file', () => {
+		expect(paths().filter((path) => /\bas\s+WaitlistSigningSecret\b/.test(code(path)))).toEqual([
+			RESOLVER
+		]);
+	});
+
+	// The resolver must read the key Better Auth signs sessions with — that reuse is why there is no
+	// second secret to provision, and the domain separation inside `mintSignedValue` is what makes
+	// sharing it safe. Repointing this elsewhere would keep the four values consistent with each other
+	// while quietly ending the reuse, so it should be a deliberate edit rather than a rename.
 	it('resolves that key through readEnv', () => {
 		expect(code(RESOLVER)).toContain(`readEnv('${KEY}')`);
 	});
 
-	// Every entry point must reach the secret through the resolver. Pinning the IMPORT rather than the
-	// call text is DAR-83's lesson: a call-text match can be tripped by a comment, and a binding cannot
-	// exist without something to bind. Namespace imports are blocked for the same reason.
-	it.each(
-		WAITLIST_SURFACE.filter(
-			(path) => path.endsWith('.remote.ts') || path.endsWith('+page.server.ts')
-		)
-	)('%s imports the resolver rather than resolving for itself', (path) => {
-		const src = code(path);
-		expect(src).toMatch(
-			/import\s*\{[^}]*\bwaitlistSigningSecret\b[^}]*\}\s*from\s*'\$lib\/server\/waitlist-secret'/
+	// Anything reaching for the secret must bind the resolver by name. Pinning the IMPORT rather than
+	// the call text is DAR-83's lesson: a binding cannot exist without something to bind, while a
+	// call-text match can be tripped by a comment. Namespace imports are blocked for the same reason.
+	it('makes every caller import the resolver by name', () => {
+		const callers = paths().filter(
+			(path) => path !== RESOLVER && code(path).includes('waitlistSigningSecret(')
 		);
-		expect(src).not.toMatch(/import\s*\*\s*as\s+\w+\s*from\s*'\$lib\/server\/waitlist-secret'/);
-	});
+		expect(callers.length).toBeGreaterThanOrEqual(4);
 
-	// THE CAST ROUTE, which is the one the other two assertions leave open. Naming a DIFFERENT key —
-	// `readEnv('WAITLIST_FUNNEL_SECRET') as WaitlistSigningSecret` — passes the scan above (it never
-	// mentions this key) and satisfies the compiler (that is what a cast is for). What it cannot do is
-	// avoid writing the cast, so the brand must be MINTED in one place just as the flow id is: the
-	// resolver is the only file allowed to assert something is a signing secret.
-	//
-	// Specs are exempt by construction — they are not on the surface list, and a fixture has no
-	// request to resolve from, so casting is the honest way for one to state a secret.
-	it('is cast into existence only by the resolver', () => {
-		const casting = WAITLIST_SURFACE.filter((path) =>
-			/\bas\s+WaitlistSigningSecret\b/.test(code(path))
-		);
-		expect(casting).toEqual([RESOLVER]);
-	});
-
-	// The scan is only worth anything if it would notice. A surface file that no longer exists — a
-	// rename, a move — must fail loudly here rather than silently stop being checked, which is the
-	// failure mode every path-list-based test has.
-	it('checks files that actually exist', () => {
-		for (const path of WAITLIST_SURFACE) expect(code(path).length).toBeGreaterThan(0);
+		for (const path of callers) {
+			expect(
+				/import\s*\{[^}]*\bwaitlistSigningSecret\b[^}]*\}\s*from\s*'\$lib\/server\/waitlist-secret'/.test(
+					code(path)
+				),
+				`${path} calls the resolver without importing it by name`
+			).toBe(true);
+			expect(
+				/import\s*\*\s*as\s+\w+\s*from\s*'\$lib\/server\/waitlist-secret'/.test(code(path)),
+				`${path} reaches the resolver through a namespace import`
+			).toBe(false);
+		}
 	});
 });
