@@ -10,11 +10,11 @@
 	let { id, options }: { id: string; options: AuthorOption[] } = $props();
 </script>
 
+<!-- `value` is what a pick puts in the box and therefore what the filter receives; it stays the
+     display name. `label` is the accent-blind match target, emitted only for the names that need
+     one — see authorOptionLabel for why it carries both spellings. -->
 <datalist {id}>
 	{#each options as option (option.value)}
-		<!-- `value` is what a pick puts in the box and therefore what the filter receives; it stays
-		     the display name. `label` is the accent-blind match target, emitted only for the names
-		     that need one — see authorOptionLabel for why it carries both spellings. -->
 		<option value={option.label} label={authorOptionLabel(option)}></option>
 	{/each}
 </datalist>

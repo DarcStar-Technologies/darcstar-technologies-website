@@ -409,9 +409,20 @@ What ships (`authorOptionLabel` in `$lib/research-filters.ts`, rendered by
   leaving the headline `Ł` exactly as broken — DAR-95's lesson — so a second copy of the Studio's
   folding map would be both wrong and unguarded. Absent key → no label → pre-DAR-105 behaviour,
   the same fail-safe polarity as the folded `match` arm (verified against `dev`, which carries none).
-- The suggestion list can no longer offer **less** than the filter finds, and that is structural
-  rather than tested case-by-case: the server matches a token **prefix** of `name` or `nameSortKey`,
-  the browser matches a **substring** of a label containing both strings whole.
+- **The emit condition is a containment test, not an accent test**, and that is what makes the
+  guarantee structural: a label is emitted exactly when the key offers a spelling the name does not
+  already contain. So the suggestion list can never offer **less** than the filter finds — the
+  server matches a token **prefix** of `name` or `nameSortKey`, the browser matches a **substring**
+  of the label if there is one and of the name if there is not, and either the label carries both
+  strings whole or the name already covers both. Phrasing it that way also picks up a case an accent
+  test would miss (a name whose whitespace `sortKey` collapses, `Tri  Dao` → `tri dao`, is reachable
+  by the typed spelling) and skips one it would wrongly catch (a CJK name folds to itself, so a
+  label would be noise). Pinned by a spec that enumerates every token prefix of both fields.
+- **Display cost, Firefox only:** it renders the label _in place of_ the value and clips the row to
+  the input's width, so the dropdown reads `Łukasz Kaiser (luk…`. That is why the name comes first —
+  the parenthetical is the first thing truncated. The longest of the three (`Bettina Könighofer`)
+  clips near the end of the surname, which the un-labelled value very nearly did anyway at that
+  column width. Chromium is unaffected: it shows the value bold with the label grey beneath.
 
 Honest residual: **WebKit is unmeasured** — Playwright's build cannot launch here (missing host
 dependencies) — but the change is safe there by construction, since it only adds a second string the

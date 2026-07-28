@@ -154,9 +154,6 @@ export function authorSearchTerm(raw: string | null | undefined): string | null 
 	return cleaned.length >= AUTHOR_QUERY_MIN_LENGTH ? cleaned : null;
 }
 
-/** A character an English keyboard cannot produce — the whole trigger condition below. */
-const NON_ASCII = /[^\p{ASCII}]/u;
-
 /**
  * The `label` attribute for one author `<option>`, or `undefined` to emit none (DAR-105).
  *
@@ -184,15 +181,23 @@ const NON_ASCII = /[^\p{ASCII}]/u;
  * the person's actual name still on screen everywhere. `value` is untouched, so what a pick
  * submits — and therefore every URL this control can produce — is byte-identical to before.
  *
- * Three fail-safe gates, all of which fall back to today's behaviour rather than to a guess:
+ * The condition is ONE containment test, and it is not a stand-in for "the name has an accent": a
+ * label is emitted exactly when the key offers a spelling the name does not already contain. That
+ * phrasing is what makes the whole thing structural rather than a property of today's corpus —
+ * when no label is emitted the name CONTAINS the key, so matching the value alone already covers
+ * every term the server could have matched, and when one is emitted it contains both strings whole.
+ * The server matches a token PREFIX of `name` or `nameSortKey`, a token prefix is a substring of its
+ * own string, so no row the query returns can be one the datalist then hides. Either way.
  *
- *   • no `key` (a `dev` document, or one written past promote) → no label. Same polarity as the
- *     query's folded arm: the key is a publication artifact, and its absence must degrade rather
- *     than error.
- *   • an all-ASCII name → no label. This is the 120-of-123 case, and emitting one would be a pure
- *     regression: Firefox would start displaying the lowercased sort key in place of `Tri Dao`.
- *   • a non-ASCII `key` → no label, because a label that is not typeable on an English keyboard
- *     cannot serve the purpose this one exists for.
+ * It also picks up cases an accent test would miss — a name whose whitespace `sortKey` collapses
+ * (`Tri  Dao` → `tri dao`) is reachable by the typed spelling too — and skips ones it would wrongly
+ * catch: a CJK name folds to itself, so the key adds nothing and a label would be noise.
+ *
+ * Fail-safe in both directions. No `key` at all (a `dev` document, or one written past promote) →
+ * no label, the same polarity as the query's folded arm: a publication artifact's absence must
+ * degrade rather than error. And the 120-of-123 all-ASCII case → no label, which is not merely a
+ * no-op but load-bearing, since Firefox DISPLAYS the label in place of the value and every one of
+ * them would start rendering as its lowercased sort key.
  *
  * NOT `String.normalize('NFD')` + strip combining marks, which is the reflex: `Ł` (U+0141) has no
  * decomposition, so the reflex fixes `Ré` and `Könighofer` and leaves the headline case exactly as
@@ -202,6 +207,6 @@ const NON_ASCII = /[^\p{ASCII}]/u;
  */
 export function authorOptionLabel(option: AuthorOption): string | undefined {
 	const { label, key } = option;
-	if (!key || !NON_ASCII.test(label) || NON_ASCII.test(key)) return undefined;
+	if (!key || label.toLowerCase().includes(key.toLowerCase())) return undefined;
 	return `${label} (${key})`;
 }

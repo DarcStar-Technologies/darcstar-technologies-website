@@ -228,10 +228,13 @@ export const AUTHOR_SUGGESTION_LIMIT = 12;
 // attribute, which is the only string Firefox matches on. See `authorOptionLabel`
 // ($lib/research-filters.ts) for the measurements and the per-engine rules.
 //
-// Projecting the STORED key rather than folding `name` in the browser is what makes the suggestion
-// list agree with the filter by construction: the server matches a token PREFIX of `name` or
-// `nameSortKey`, the browser matches a SUBSTRING of a label containing both, and a token prefix is
-// always a substring. So a row this query returns can never be one the datalist hides.
+// Projecting the STORED key rather than folding `name` in the browser is what lets the suggestion
+// list AGREE with the filter instead of approximating it, and the agreement is structural in both
+// directions. The server matches a token PREFIX of `name` or `nameSortKey`; the browser matches a
+// SUBSTRING of the label when there is one and of the name when there is not. A label is emitted
+// exactly when the name does not already contain the key, so either the label carries both strings
+// whole or the name alone already covers both — and a token prefix is always a substring of its own
+// string. No row this query returns can be one the datalist then hides.
 //
 // What held even while this was open: the datalist is progressive enhancement over a plain text
 // field, and `PAPER_MATCH` carries the same arm — so typing `luk` and submitting returns the paper
