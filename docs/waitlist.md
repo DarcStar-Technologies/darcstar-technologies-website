@@ -293,7 +293,7 @@ It used to travel bare, and that made the composite key cap a flow **the caller 
 `crypto.randomUUID()` per POST defeated it outright, and the step endpoints and the public command
 reached the insert with **no continuation token at all** — a bare POST at step 2 wrote analytics rows
 for free. It now travels as `n1.<uuid>.<exp>.<mac>` on the shared signing core (`mintSignedValue`, its
-own domain + prefix, 24h), minted **only** by the load, so a row costs a page view — the same floor
+own domain + prefix; TTL below), minted **only** by the load, so a row costs a page view — the same floor
 `waitlist_viewed`'s own plain GET has always had, and the one DAR-66 accepted as irreducible without a
 captcha. It doesn't make the table unwritable by a script; it makes each write cost what an honest
 visitor's write costs.
@@ -325,15 +325,40 @@ the step write having succeeded, which would make DAR-68's per-row budget bound 
 destroys the metric — `qualification_started` fires for a **Skip**, which writes nothing, and skip-only
 flows are precisely the drop-off the funnel exists to measure.
 
-**Accepted cost: a sitting longer than the 24h window over-counts its own views by a few.** A handle's
-life starts at the first page load and the steps echo it verbatim, so a step submitted from a day-old
-tab resolves to nothing, so the resume cookie is written with no flow id — after which each reload
-mints a fresh flow (the load reads the cookie, it never writes one) and records another
-`waitlist_viewed`. The underlying "an empty stored flow id isn't repaired" behaviour predates this;
-expiry is a new way in. Left alone deliberately: fixing it means either a cookie write inside a load —
-which DAR-75 kept read-only on purpose — or accepting expired handles, which would put a second
-verification mode next to the one crossing. The magnitude is a handful of view rows for one visitor,
-on a readout that already counts bots and repeat visits and says so.
+### The handle outlives the token, on purpose (DAR-98)
+
+A funnel handle is good for a **year**, not the 24h the flow's other three signed values share, and
+the question that settles it is what an expiry buys here. The other three are **capabilities** — the
+token authorizes a write, the flow claim carries a routing decision, the resume cookie re-mints both —
+and a capability has to age out. A handle authorizes nothing. Its bound is the composite primary key,
+which is absolute and permanent: one row per event however long it lives. A shorter life doesn't lower
+that ceiling, it only moves when the rows may land, and the readout is all-time and unfiltered. The
+24h was inherited symmetry with the token, not a property anyone needed.
+
+What it cost was the one thing the handle is for. A step from a tab older than the window resolved to
+nothing, and that cost the visitor their flow **twice over**: the remaining stages recorded nothing (a
+null id records nothing), and the null went into the resume cookie, after which every render minted a
+fresh flow and wrote another `waitlist_viewed` — the load reads that cookie and never writes one, so
+nothing repaired it, and each step re-issued it for another 24h. Numerator down, denominator up; DAR-75's
+`__data.json` over-count exactly, resurrected by expiry.
+
+The principle was already settled: DAR-83 keeps the step funnel recording for a visitor whose
+**continuation token** aged out, because they really did reach that stage. This is the same rule
+applied to the handle's own clock — **measurement must not be gated on authorization** — so a day-old
+tab now fails to enrich (correct, the capability expired) while still being counted (also correct, the
+visitor is still that visitor). It stays an expiry rather than none: the signing core requires one, a
+never-expires mode would change shared code three other values depend on, and a value that cannot age
+out is a permanent bearer artifact. Nothing on the visitor's device lives longer — the resume cookie,
+the only thing that persists an id there, is untouched at 24h.
+
+Rejected (the ticket's other two options): a **cookie write inside the load**, which DAR-75 kept
+read-only on purpose — `<body>` sets `preload-data="hover"`, so a mouse-over runs it, and that is the
+`?restart` trap next door; and **accepting expired handles for the cookie only**, which puts a second
+verification mode beside DAR-86's one crossing in exchange for a property just shown to be worthless,
+and is a half-fix anyway — the step carrying the expired handle still records nothing. Also rejected:
+suppressing `waitlist_viewed` when a resumed visitor has no flow id, which trades denominator inflation
+for step events on a view-less flow, counting one visitor twice in the numerator. One flow throughout
+is the only shape that's simply correct.
 
 ### The events
 
