@@ -1,5 +1,5 @@
 import { page } from 'vitest/browser';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import PortableBody from './PortableBody.svelte';
 import type { RenderedBlockContent } from '$lib/sanity/block-content';
@@ -70,5 +70,25 @@ describe('PortableBody', () => {
 		const { container } = render(PortableBody, { value: withMath });
 		expect(container.querySelector('[data-testid="inline"]')).not.toBeNull();
 		expect(container.querySelector('[data-testid="display"]')).not.toBeNull();
+	});
+
+	it('warns about a type it has no component for', async () => {
+		// Guards the flag, not the library: `onMissingComponent={false}` is what made DAR-106's gap
+		// silent, and re-adding it would be a one-word change with no other visible effect. The
+		// warning is the ONLY observable, so nothing else could catch it.
+		//
+		// Worth knowing where it lands: the library calls the handler from an `$effect`, which does
+		// not run during SSR — so this is a BROWSER console line, never a Workers Logs one. That is
+		// also why the assertion has to be here, in a real browser, rather than in a server spec.
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		try {
+			render(PortableBody, {
+				value: [{ _type: 'somethingNew', _key: 'x' }] as unknown as RenderedBlockContent
+			});
+			await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+			expect(warn.mock.calls.flat().join(' ')).toContain('somethingNew');
+		} finally {
+			warn.mockRestore();
+		}
 	});
 });

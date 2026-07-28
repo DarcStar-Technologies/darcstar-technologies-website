@@ -82,15 +82,20 @@ to each math node, and `PortableMath.svelte` only prints it.
 
 Measured, because the ticket sketched the opposite:
 
-|                                          | server-rendered (shipped)                                                                                      | KaTeX in the component                     |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| JS on `/news/[slug]`, `/research/[slug]` | **0 B**                                                                                                        | 76.3 KB gz                                 |
-| per equation, on the wire                | ~561 B gz — and that **counts both copies**, the SSR markup and the hydration payload Kit serializes beside it | ~30 B gz (the LaTeX source, still doubled) |
+|                                          | server-rendered (shipped)                                               | KaTeX in the component                                |
+| ---------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------- |
+| JS on `/news/[slug]`, `/research/[slug]` | **0 B** (grepped out of the build output)                               | 76.3 KB gz                                            |
+| per equation, on the wire                | **+661 B gz** — the hydration payload's second copy of the typeset HTML | +0 — the payload already carries the LaTeX either way |
 
-So a page needs roughly **136 equations** before shipping the library would be the cheaper wire
-choice, and that ignores parsing it. The corpus contains **zero** LaTeX today. DAR-53 treated 39 KB —
-6.8% of the client bundle — as a saving worth its own ticket; this is twice that, in the other
-direction.
+**Both** approaches render the markup during SSR, so that half cancels; what is actually being traded
+is one payload copy per equation against the library, once. Crossover: **~115 equations on a single
+page** — and that ignores parsing the library. The corpus contains **zero** LaTeX today. DAR-53
+treated 39 KB (6.8% of the client bundle) as a saving worth its own ticket; this is twice that, in the
+other direction.
+
+The 661 B is measured rather than derived — the real four-equation page was 12,813 B gz, and stripping
+just the payload's `html` values from it and re-gzipping gave 10,168 B. A per-equation figure computed
+from isolated strings came out ~15% lower, which is why the page was used.
 
 Two things keep it that way rather than merely arranging it that way once:
 
@@ -112,7 +117,12 @@ false`, plus a `catch` for what that misses — the spec for that found a real t
   commands that emit markup, and a `<script>` in an editor's string comes back escaped inside the
   MathML annotation. Both are asserted in `src/lib/server/math.spec.ts`.
 - `onMissingComponent` is at the library default (**warn**). It was `false`, which is how these two
-  types could ship in the Studio and render as nothing here with not even a console line.
+  types could ship in the Studio and render as nothing here with not even a console line. The library
+  calls the handler from an `$effect`, which does not run during SSR — so it is a **browser** console
+  line, never a Workers Logs one. Guarded by a spec, since the flag has no other observable effect.
+- **No render cache, deliberately.** Measured at **0.17 ms per equation** warm, so a ten-equation page
+  spends ~1.7 ms of Worker CPU — noise even against the free tier's 10 ms, and well under what a cache
+  keyed by every equation ever published would cost in retained memory.
 - **`katex.min.css` is imported by the component**, not `layout.css`, so Vite scopes it (8 KB gz) to
   the two detail routes. It drags in **59 font files / 1.2 MB** of deployed assets, ~900 KB of which
   is `woff`/`ttf` no supported browser will ever fetch. Accepted deliberately: trimming to `woff2`
