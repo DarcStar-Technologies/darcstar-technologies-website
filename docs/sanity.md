@@ -418,13 +418,24 @@ What ships (`authorOptionLabel` in `$lib/research-filters.ts`, rendered by
   test would miss (a name whose whitespace `sortKey` collapses, `Tri  Dao` → `tri dao`, is reachable
   by the typed spelling) and skips one it would wrongly catch (a CJK name folds to itself, so a
   label would be noise). Pinned by a spec that enumerates every token prefix of both fields.
-- **Display cost, Firefox only** — it renders the label _in place of_ the value and clips the row to
-  the input's width, so the dropdown reads `Łukasz Kaiser (luk…`. That is why the name comes first:
-  the parenthetical is the first thing truncated. For the longest of the three the cost is real
-  rather than nominal — measured at the filter column's 148px, `Bettina Könighofer` renders **in
-  full** without a label and truncates to `Bettina Könighofe..` with one. So the label buys the
-  suggestion existing at all for an English-keyboard query, and pays the last character or two of
-  the longest surname for it. Chromium is unaffected (value bold, label grey beneath).
+- **Display cost, Firefox only — accepted, not incidental.** Firefox renders the label _in place of_
+  the value and sizes the popup row to the input, and that input is **~151px at every viewport**
+  (measured 390 / 768 / 1180 / 1280 / 1440 / 1920 — it is a `1fr` column in a width-capped filter
+  bar, so it never grows). About 18 characters fit, which makes this the normal Firefox rendering
+  rather than a narrow-screen edge case:
+
+  | author               | Firefox row            |                              |
+  | -------------------- | ---------------------- | ---------------------------- |
+  | `Christopher Ré`     | `Christopher Ré (chr…` | name in full, hint clipped   |
+  | `Łukasz Kaiser`      | `Łukasz Kaiser (luk…`  | name in full, hint clipped   |
+  | `Bettina Könighofer` | `Bettina Könighofe..`  | **name one character short** |
+
+  That last row is a real cost, not a nominal one: measured, the un-labelled value renders in full at
+  that width. It is why the name comes first — the hint is the first thing to go. Accepted anyway,
+  because the alternatives are worse: a folded-only label is short and never clips but renders the
+  person's name lowercase and unaccented _and_ stops Firefox suggesting the accented spelling, and
+  widening the Author column still leaves `Bettina Könighofer (bettina konighofer)` (~265px) clipped
+  at any plausible size. Chromium is unaffected (value bold, label grey beneath, nothing clipped).
 
 Honest residual: **WebKit is unmeasured** — Playwright's build cannot launch here (missing host
 dependencies) — but the change is safe there by construction, since it only adds a second string the
