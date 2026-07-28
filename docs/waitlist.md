@@ -470,7 +470,7 @@ No type can force the step endpoints through the gate (`captureWaitlistFunnel` s
 cannot exist without the binding, and pinning the import rather than the call text can't be tripped by
 a comment naming the ungated function — plus at least one gated call per exported step form.
 
-#### The scan covers the surface, not one file (DAR-102)
+#### The scan covers all of `src`, not one file (DAR-102)
 
 That spec read `waitlist-steps.remote.ts` and nothing else, which made "a fifth step can't quietly
 under-report" true only of a fifth step written **into that same file**. One added as its own module
@@ -478,12 +478,21 @@ could import the ungated `captureWaitlistFunnel`, skip the gate, and pass every 
 none of them ever looked at it — measured, not reasoned about: the pre-DAR-102 spec stayed 48/48 green
 with exactly that file sitting in the tree.
 
-The rule is now an **allowlist over the derived surface** (`waitlist-source-scan.ts`, shared with
-DAR-99's signing-secret spec — two copies of "which files are the waitlist" is the drift both tickets
-exist to prevent). Three files may import the ungated entry point, each recorded with its reason —
-step 1 (mints the token, and the trap returns before its capture), the page load (the view precedes
-the trap), the client-fired command (DAR-75 has dropped the row id by then). Everything else either
-goes through the gate or doesn't touch the funnel.
+The rule is now an **allowlist over every source file under `src`** (`source-scan.ts`). Three files
+may import the ungated entry point, each recorded with its reason — step 1 (mints the token, and the
+trap returns before its capture), the page load (the view precedes the trap), the client-fired command
+(DAR-75 has dropped the row id by then). Everything else either goes through the gate or doesn't touch
+the funnel.
+
+**It is `src` rather than the waitlist's own directories because the first cut reproduced the very
+defect one level down.** Scoped to those directories, a token-gated step planted at
+`src/routes/waitlist/step5/+page.server.ts` passed **56/56** — `readdirSync` was not recursive — and
+one under `src/routes/api/` would not have been looked at either. "Who imports the ungated capture
+function?" has no reason to stop at a directory boundary, and nothing outside the waitlist imports it,
+so the wider set costs nothing. The same correction applies to DAR-99's cast-route and caller checks,
+which are now app-wide for the same reason; only "the env key is named in exactly one file" stays
+scoped to the waitlist, because `auth.ts` names it legitimately. **The scope of each rule is set by
+where its exception actually lives.**
 
 Three things worth keeping:
 
@@ -746,9 +755,13 @@ surface the key may be named in one file, the brand may be cast into existence i
 caller must import the resolver by name (an import pin, not call text — DAR-83's lesson). And that
 spec **derives its file list** from the directories rather than hand-listing paths, because the first
 cut hand-listed them and dropping one entry made the scan blind while staying green — measured, 7/7
-passing against a drifted file. The derivation itself now lives in `waitlist-source-scan.ts`, shared
-with DAR-102's funnel-gate scan: both specs need the same answer to "which files are the waitlist",
-and two copies of that answer is the drift they were each written to prevent.
+passing against a drifted file. The reading, comment-stripping and import-parsing now live in
+`source-scan.ts`, shared with DAR-102's funnel-gate scan, so there is one implementation rather than
+two that can drift. The two rules do **not** share a surface, though: the funnel gate scans all of
+`src`, while "the env key is named in exactly one file" has to stay scoped to the waitlist, because
+`auth.ts` names that key legitimately — it is Better Auth's own. The other two secret assertions (the
+brand cast, and callers importing the resolver by name) have no such exception and so went app-wide
+with DAR-102.
 
 The key stays Better Auth's own rather than a second secret to provision; the per-value domain
 separation is what makes sharing it safe. Repointing the resolver elsewhere would keep the four values

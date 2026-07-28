@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { importedNames, importsNamespace, sourceText, waitlistSourcePaths } from './source-scan';
+import {
+	appSourcePaths,
+	importedNames,
+	importsNamespace,
+	sourceText,
+	waitlistSourcePaths
+} from './source-scan';
 
 // DAR-99's backstop. The real guard is the type: every mint and verify across the flow's four signed
 // values takes a `WaitlistSigningSecret`, so a call site that resolved its own key does not compile.
@@ -58,11 +64,15 @@ describe('the waitlist signing secret has one resolver (DAR-99)', () => {
 	// `readEnv('WAITLIST_FUNNEL_SECRET') as WaitlistSigningSecret` — never mentions this key and
 	// satisfies the compiler, because that is what a cast is for. What it cannot do is avoid writing
 	// the cast, so the brand is minted in one place exactly as the flow id is.
-	it('mints the brand in exactly one file', () => {
+	//
+	// APP-WIDE, unlike the assertion above (DAR-102). The scope of each rule here is set by where its
+	// exception legitimately lives, not by habit: `auth.ts` really does name this key, so "named once"
+	// can only ever be a claim about the waitlist — but NOTHING anywhere should be minting this brand,
+	// so scoping the cast route to three directories just leaves the escape hatch open one directory
+	// over. Same correction the funnel gate took.
+	it('mints the brand in exactly one file, anywhere in src', () => {
 		expect(
-			waitlistSourcePaths().filter((path) =>
-				/\bas\s+WaitlistSigningSecret\b/.test(sourceText(path))
-			)
+			appSourcePaths().filter((path) => /\bas\s+WaitlistSigningSecret\b/.test(sourceText(path)))
 		).toEqual([RESOLVER]);
 	});
 
@@ -75,9 +85,10 @@ describe('the waitlist signing secret has one resolver (DAR-99)', () => {
 	});
 
 	// Anything reaching for the secret must bind the resolver by name; a namespace import would reach
-	// it without naming it.
+	// it without naming it. App-wide for the same reason as the cast route: a new entry point is no
+	// less a caller for sitting outside the waitlist's own folders.
 	it('makes every caller import the resolver by name', () => {
-		const callers = waitlistSourcePaths().filter(
+		const callers = appSourcePaths().filter(
 			(path) => path !== RESOLVER && sourceText(path).includes('waitlistSigningSecret(')
 		);
 		expect(callers.length).toBeGreaterThanOrEqual(4);
