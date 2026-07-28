@@ -523,7 +523,8 @@ describe('the step endpoints reach the funnel only through the gate', () => {
 		for (const path of allowed) {
 			expect(
 				waitlistImportedNames(path, FUNNEL_MODULE),
-				`${path} is allowlisted but no longer imports the ungated entry point — drop the entry`
+				`${path} is allowlisted as "${UNGATED[path]}" but no longer imports the ungated entry ` +
+					`point — drop the entry rather than leaving an exemption nothing uses`
 			).toContain('captureWaitlistFunnel');
 		}
 	});

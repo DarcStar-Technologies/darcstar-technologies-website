@@ -55,10 +55,11 @@ export const waitlistSourcePaths = (): string[] => Object.keys(SOURCES);
 /**
  * One file's source, with comments removed.
  *
- * Load-bearing. These files discuss the very names the specs scan for — "the STEP entry point, never
- * the bare `captureWaitlistFunnel`", "all four key off BETTER_AUTH_SECRET" — so a scan over raw text
- * would either trip on every explanation or be loosened until it stopped catching anything.
- * Stripping first is what lets the assertions be exact.
+ * Load-bearing. These files discuss the very names the specs scan for — the ungated capture function
+ * and the signing-secret env key are both named in prose, repeatedly — so a scan over raw text would
+ * either trip on every explanation or be loosened until it stopped catching anything. Stripping first
+ * is what lets the assertions be exact. (This comment deliberately paraphrases rather than quoting
+ * those names: a scanned file shouldn't rely on the stripper to stay clean.)
  *
  * Deliberately conservative: only WHOLE-LINE `//` comments go, so a trailing one naming a scanned
  * symbol fails its spec. That is the safe direction — loud and wrong beats silent and wrong — and it
