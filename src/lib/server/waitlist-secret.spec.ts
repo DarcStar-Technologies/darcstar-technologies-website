@@ -63,6 +63,11 @@ const RESOLVER = 'src/lib/server/waitlist-secret.ts';
  * prose constantly ("all four key off BETTER_AUTH_SECRET"), so a scan over raw text would either trip
  * on every explanation or be loosened until it stopped catching anything. Stripping first lets the
  * assertion be exact.
+ *
+ * Deliberately conservative: only WHOLE-LINE `//` comments go, so a trailing one naming the key would
+ * fail this spec. That is the safe direction — loud and wrong beats silent and wrong — and it is why
+ * the stripper doesn't try to be clever about `//` inside string literals, where a URL would make it
+ * eat real code and produce the false PASS this whole file exists to prevent.
  */
 const code = (path: string): string =>
 	SOURCES[path].replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');

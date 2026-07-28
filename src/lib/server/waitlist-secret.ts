@@ -27,6 +27,14 @@
 // money columns (DAR-65). It is erased at runtime, so a cast still defeats it; `waitlist-secret.spec.ts`
 // is the backstop for that, and the cast is the thing to question in review.
 //
+// WHY THIS IS ITS OWN MODULE rather than a function beside the signing core: `readEnv` reaches for
+// `$app/server`, and the four signing modules are deliberately request-free — they take the secret as
+// a parameter, which is what lets their specs round-trip mint → verify with no request in flight.
+// Importing the BRAND there costs nothing (a type import is erased), but importing this FUNCTION
+// there would not, and that boundary enforces itself: a signing module that resolved its own secret
+// would call `getRequestEvent()` outside a request and take its entire spec red. Verified, not
+// assumed — mutating `mintWaitlistToken` to resolve for itself fails 6 of its 12 tests.
+//
 // The key is deliberately Better Auth's own (`auth.ts` reads it too, for sessions) rather than a
 // second secret to provision — the per-value domain separation inside `mintSignedValue` is what makes
 // sharing it safe. Repointing this function at some other variable would keep the four values

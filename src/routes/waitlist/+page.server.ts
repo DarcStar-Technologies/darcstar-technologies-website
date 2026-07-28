@@ -30,7 +30,8 @@ import type { PageServerLoad } from './$types';
 // is known.
 export const load: PageServerLoad = async ({ request, cookies, platform, setHeaders }) => {
 	// Request-scoped reads FIRST, before any await: on workerd `platform.env` is only valid during the
-	// request. getDb() reads it sync, and so does readEnv.
+	// request. getDb() reads it sync, and so does `waitlistSigningSecret()` (DAR-99's one resolver,
+	// a thin sync wrapper over readEnv — same timing contract it always had).
 	const tokenSecret = waitlistSigningSecret();
 	const cookie = cookies.get(WAITLIST_RESUME_COOKIE);
 
