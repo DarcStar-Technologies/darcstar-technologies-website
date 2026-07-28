@@ -50,6 +50,9 @@ perspective: 'published', token })`, where `token = readEnv('SANITY_VIEWER_TOKEN
   `person.{fullBio, focusAreas, responsibilities, experience, education}` (DAR-47's schema half).
   Those land as types only; `peopleQuery` doesn't select them, so nothing renders until that ticket
   wires them. Expect unrelated additions in a `types.ts` diff and check they're additive.
+  **Diff the two files type-by-type before copying**, so what rides along is known rather than
+  discovered: DAR-106's sync turned out to be exactly `+mathBlock`, `+mathInline` and the two
+  `blockContent` union members, with no drift at all.
 - **The Studio's `seo` object reaches `<Seo>` only through
   [`content-seo.ts`](../src/lib/sanity/content-seo.ts)** (DAR-71). Add new `seo` fields there, not at
   the detail-page call sites — the previous per-page mapping is how `noIndex` came to be fetched and
@@ -67,8 +70,58 @@ wraps `urlFor` into a sized `<img>` (used by cards, covers, avatars, and PT imag
 
 **`src/lib/components/portable/PortableBody.svelte`** wraps `@portabletext/svelte`'s `<PortableText>`
 in a `.prose` container (Tailwind Typography). Default blocks/lists render standard tags; we override
-only the schema's custom members: `PortableImage` (image block), `PortableCode` (code block), and the
-`link` mark (`PortableLink`).
+only the schema's custom members: `PortableImage` (image block), `PortableCode` (code block),
+`PortableMath` (both LaTeX types), and the `link` mark (`PortableLink`).
+
+### Math is typeset on the server (DAR-106)
+
+The Studio's `mathInline` (atomic node inside a text block) and `mathBlock` (displayed equation) both
+store bare LaTeX in a `latex` string. **KaTeX runs in `$lib/server/math.ts`, never in the browser** —
+`renderMathIn(body)` walks the body during the `+page.server.ts` load and attaches the rendered HTML
+to each math node, and `PortableMath.svelte` only prints it.
+
+Measured, because the ticket sketched the opposite:
+
+|                                          | server-rendered (shipped)                                                                                      | KaTeX in the component                     |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| JS on `/news/[slug]`, `/research/[slug]` | **0 B**                                                                                                        | 76.3 KB gz                                 |
+| per equation, on the wire                | ~561 B gz — and that **counts both copies**, the SSR markup and the hydration payload Kit serializes beside it | ~30 B gz (the LaTeX source, still doubled) |
+
+So a page needs roughly **136 equations** before shipping the library would be the cheaper wire
+choice, and that ignores parsing it. The corpus contains **zero** LaTeX today. DAR-53 treated 39 KB —
+6.8% of the client bundle — as a saving worth its own ticket; this is twice that, in the other
+direction.
+
+Two things keep it that way rather than merely arranging it that way once:
+
+- The renderer lives in **`$lib/server`**, so Kit refuses to bundle it into the browser.
+- **`RenderedBlockContent`** (`src/lib/sanity/block-content.ts`) makes `html` **required** on the math
+  members, and that — not `BlockContent` — is what `PortableBody` accepts. A route that renders a body
+  it forgot to typeset **fails `pnpm check`**. The type lives outside `$lib/server` only because a
+  component cannot import from it. `block-content.spec.ts` pins the gate with a `@ts-expect-error`
+  that reports itself as unused the day the type stops discriminating.
+
+Behaviour worth knowing before touching it:
+
+- `displayMode` comes from **where a node sits**, not from its `_type` — top level is displayed,
+  inside `children` is inline — so the rendering always matches the markup it is emitted into.
+- Malformed LaTeX degrades to its **own visible source** in the theme's error colour (`throwOnError:
+false`, plus a `catch` for what that misses — the spec for that found a real throw). Blank LaTeX
+  renders nothing at all. Silence is the failure this ticket removed; don't reintroduce it.
+- `{@html}` is safe **by construction and by measurement**: KaTeX's default `trust: false` refuses the
+  commands that emit markup, and a `<script>` in an editor's string comes back escaped inside the
+  MathML annotation. Both are asserted in `src/lib/server/math.spec.ts`.
+- `onMissingComponent` is at the library default (**warn**). It was `false`, which is how these two
+  types could ship in the Studio and render as nothing here with not even a console line.
+- **`katex.min.css` is imported by the component**, not `layout.css`, so Vite scopes it (8 KB gz) to
+  the two detail routes. It drags in **59 font files / 1.2 MB** of deployed assets, ~900 KB of which
+  is `woff`/`ttf` no supported browser will ever fetch. Accepted deliberately: trimming to `woff2`
+  means hand-copying upstream's 20-face `@font-face` table, which goes stale silently — and it costs a
+  visitor nothing, only the bundle.
+- `.prose` does **not** fight KaTeX (checked at 390 px and 1280 px against the real worker). The
+  displayed equation gets `my-6 overflow-x-auto`, so a too-wide equation scrolls in its own box and the
+  page body never does; Typography's own "no top margin after a heading" rule applies to it exactly as
+  it would to a paragraph, which is correct.
 
 ## What `siteSettings` actually drives (DAR-73)
 
