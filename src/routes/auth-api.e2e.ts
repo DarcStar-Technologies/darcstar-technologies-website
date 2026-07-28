@@ -276,7 +276,15 @@ function forgotPasswordPost(request: APIRequestContext, origin: string, ip: stri
 			// so this is the repo's existing convention for driving a form action, not a new trick.
 			accept: 'text/html'
 		},
-		form: { email: 'probe@example.com' },
+		// An address that must never resolve to a real account, and the reason is a side effect rather
+		// than an assertion: `/request-password-reset` MAILS a reset link when the address exists (it
+		// is anti-enumerating, so the response is identical either way and this test cannot tell). CI
+		// is hermetic and its placeholder DATABASE_URL makes the lookup fail before that — but a local
+		// `pnpm test:e2e` runs against the real dev DB with a real Resend key, so a probe address that
+		// someone had seeded would mail a live password-reset link on every run. `example.com` is
+		// IANA-reserved and this local-part is nobody's; the limiter runs BEFORE the endpoint, so what
+		// this test measures is unaffected by the address either way.
+		form: { email: 'rate-limit-probe@example.com' },
 		failOnStatusCode: false
 	});
 }
