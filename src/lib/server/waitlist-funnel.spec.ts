@@ -483,19 +483,34 @@ describe('the step endpoints reach the funnel only through the gate', () => {
 	 * The three surfaces that may reach the funnel WITHOUT the honeypot gate, and why each one can't
 	 * use it. Adding a fourth is a deliberate, reviewable act — which is the point.
 	 */
+	// The `captures` count is what makes the exemption PER CALL SITE rather than per file, and that
+	// distinction is load-bearing: a file-level pass would let a fifth step added INSIDE one of these
+	// three inherit its exemption, which was measured — appending a step to `waitlist.remote.ts` that
+	// used the ungated function passed everything here unless it happened to follow the
+	// `submitWaitlistStep` naming convention. Each of these files makes exactly ONE ungated capture,
+	// which is the one its reason describes; a second is a new call site and needs its own argument.
 	const UNGATED = {
 		// Step 1 MINTS the continuation token rather than verifying one, so there is no resolved row id
 		// here to test for a decoy. It keeps bots out of the conversion metric a different way: the
 		// honeypot path returns long before this capture (DAR-66).
-		'src/lib/waitlist.remote.ts': 'step 1 — mints the token, honeypot returns before the capture',
+		'src/lib/waitlist.remote.ts': {
+			captures: 1,
+			why: 'step 1 — mints the token, honeypot returns before the capture'
+		},
 		// The view event precedes the trap: a visitor has to see the form before they can fill the
 		// invisible field. A resumed decoy keeps its flow id, so the re-record collides with its own
 		// first GET under the composite key and costs nothing (DAR-83).
-		'src/routes/waitlist/+page.server.ts': 'the page load — the view precedes the trap',
+		'src/routes/waitlist/+page.server.ts': {
+			captures: 1,
+			why: 'the page load — the view precedes the trap'
+		},
 		// The one inversion DAR-83 left standing, deliberately: `evaluation_conversation_requested`
 		// fires from the confirmation, and DAR-75 drops the row id at `done`, so this command cannot
 		// know whether the flow behind it was a decoy.
-		'src/lib/waitlist-funnel.remote.ts': 'the client-fired command — no row id exists by then'
+		'src/lib/waitlist-funnel.remote.ts': {
+			captures: 1,
+			why: 'the client-fired command — no row id exists by then'
+		}
 	} as const;
 
 	const allowed = Object.keys(UNGATED) as (keyof typeof UNGATED)[];
@@ -531,9 +546,23 @@ describe('the step endpoints reach the funnel only through the gate', () => {
 		for (const path of allowed) {
 			expect(
 				importedNames(path, FUNNEL_MODULE),
-				`${path} is allowlisted as "${UNGATED[path]}" but no longer imports the ungated entry ` +
-					`point — drop the entry rather than leaving an exemption nothing uses`
+				`${path} is allowlisted as "${UNGATED[path].why}" but no longer imports the ungated ` +
+					`entry point — drop the entry rather than leaving an exemption nothing uses`
 			).toContain('captureWaitlistFunnel');
+		}
+	});
+
+	// AND THE EXEMPTION IS PER CALL SITE. Without this, a step added inside one of the three inherits
+	// the file's pass — measured: appending one to `waitlist.remote.ts` that used the ungated function
+	// was invisible here unless it also happened to be named `submitWaitlistStep…`.
+	it('holds each allowlisted file to the one ungated capture its reason covers', () => {
+		for (const path of allowed) {
+			const calls = sourceText(path).match(/captureWaitlistFunnel\(/g)?.length ?? 0;
+			expect(
+				calls,
+				`${path} is exempt for exactly one ungated capture ("${UNGATED[path].why}") but makes ` +
+					`${calls}. A second call site is a new decision: gate it, or give it its own reason here.`
+			).toBe(UNGATED[path].captures);
 		}
 	});
 
