@@ -116,14 +116,19 @@ function refersTo(from: string, spec: string, module: string): boolean {
  * `export … from` counts too: re-exporting a binding hands it to the next file just as an import
  * does, so a rule that read only `import` could be walked past with one laundering module.
  *
+ * BOTH QUOTE STYLES, deliberately, even though `prettier.config.js` sets `singleQuote` and
+ * `prettier --check` is a required CI job. `.prettierignore` exempts several paths that are still
+ * inside `src` and therefore still inside this scan, so single quotes are not actually universal
+ * here — and a rule about who may call a function should not be resting on a formatter either way.
+ *
  * Pinning the binding rather than call text is DAR-83's lesson: an ESM call site cannot exist without
  * it, so this catches the same mistake one step earlier, and unlike a call-text match it cannot be
  * tripped by prose that happens to name the function.
  */
 export function importedNames(path: string, module: string): string[] {
-	const bindings = /(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\s*'([^']+)'/g;
+	const bindings = /(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\s*(['"])([^'"]+)\2/g;
 	return [...sourceText(path).matchAll(bindings)]
-		.filter(([, , spec]) => refersTo(path, spec, module))
+		.filter(([, , , spec]) => refersTo(path, spec, module))
 		.flatMap(([, names]) => names.split(','))
 		.map((name) =>
 			name
@@ -140,6 +145,8 @@ export function importedNames(path: string, module: string): string[] {
  * without naming one, which is how a name-based rule gets walked past.
  */
 export const importsNamespace = (path: string, module: string): boolean =>
-	[...sourceText(path).matchAll(/(?:import\s*\*\s*as\s+\w+|export\s*\*)\s*from\s*'([^']+)'/g)].some(
-		([, spec]) => refersTo(path, spec, module)
-	);
+	[
+		...sourceText(path).matchAll(
+			/(?:import\s*\*\s*as\s+\w+|export\s*\*)\s*from\s*(['"])([^'"]+)\1/g
+		)
+	].some(([, , spec]) => refersTo(path, spec, module));
