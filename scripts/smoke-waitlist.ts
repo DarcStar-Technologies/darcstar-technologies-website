@@ -246,15 +246,27 @@ async function submit(
 const stepAction = (page: Page, fn: string): string | null =>
 	page.html.match(new RegExp(`action="(\\?/remote=[^"]*/${fn})"`))?.[1] ?? null;
 
-/** A hidden field's value, decoded — the token, the flow claim and the flow handle all ride these. */
+const ENTITIES: Record<string, string> = {
+	amp: '&',
+	lt: '<',
+	gt: '>',
+	quot: '"',
+	'#39': "'"
+};
+
+/**
+ * A hidden field's value, decoded — the token, the flow claim and the flow handle all ride these.
+ *
+ * ONE PASS, not a chain of `.replace()` calls. A chain has to unescape `&amp;` at some point, and
+ * whichever end it sits at is wrong: first, and `&amp;lt;` decodes to `<` (an entity that was never in
+ * the document); last, and an `&` produced by an earlier step can be re-consumed. A single regex with
+ * a lookup table can't compose its own output, so the question doesn't arise. Today's values are
+ * base64url with `.` separators and contain none of these characters, which is exactly why the chain
+ * version looked fine and stayed wrong.
+ */
 function hidden(page: Page, name: string): string {
 	const raw = page.html.match(new RegExp(`name="${name}"[^>]*value="([^"]*)"`))?.[1] ?? '';
-	return raw
-		.replace(/&amp;/g, '&')
-		.replace(/&lt;/g, '<')
-		.replace(/&gt;/g, '>')
-		.replace(/&#39;/g, "'")
-		.replace(/&quot;/g, '"');
+	return raw.replace(/&(amp|lt|gt|quot|#39);/g, (_, entity: string) => ENTITIES[entity]);
 }
 
 /** Assert which step a response is showing, and hand back the action to post the next one to. */
