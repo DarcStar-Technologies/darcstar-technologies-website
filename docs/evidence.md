@@ -30,14 +30,45 @@ audit — this repo holds only the public prose, never the artifacts):
   /evidence card values, and the number-bearing message prose (via Paraglide `{param}`s —
   `evidence_theorems_claim` etc.) all consume those constants, and `DOMAINS` is the shared
   domain spine (count, order, names) both surfaces iterate. Re-measure → change the constant
-  (plus the card's `*_dated` line) and every surface follows; never re-inline a figure. The
-  e2e pins the rendered `219` on both pages, so a partial edit fails loudly.
+  (plus the card's `*_dated` line) and every surface follows; never re-inline a figure. The e2e
+  pins the rendered figures on both pages — reading them FROM the constants, so a re-measure
+  updates the assertions with the copy and a partial edit still fails loudly.
 - **Numbers are dated claims.** A figure and its `*_dated` line change together, never
   alone. Re-measured → update both; don't quietly bump a figure.
 - **The theorems figure is the machine-checked count** from the conformance registry
   (`.met = true` = complete + axiom-backed) — NOT the Layer-1 catalog size. The site shipped
   "150 theorems proven" for a while; that was the Layer-1 count, not a proven count, and
   DAR-43 corrected it to 219 (`THEOREMS_CHECKED`). Don't reintroduce it.
+- **The homepage leads with `THEOREMS_COMPLETE`, /evidence with `THEOREMS_CHECKED`** (DAR-117),
+  and that split is deliberate, not drift. The homepage readout is the largest type on the site
+  and had the raw total in it, unqualified — most of the checked corpus rests on local axioms
+  awaiting discharge, so a formal-methods reviewer reads a bare total as inflated. The readout now
+  shows the complete count with the total as its denominator (`readout_theorems_label` takes
+  `{checked}` as a param — a figure passed into prose, never re-typed into it), and `/evidence`
+  keeps the full catalog: card value `219`, breakdown in the claim sentence. **"Complete" is a
+  term of art, so the homepage defines it where it uses it** — `section_proven_body`, DAR-46's
+  rule. `src/lib/evidence-disclosure.spec.ts` is the third copy guard (IP boundary → truth
+  boundary → **disclosure** boundary: a figure we do publish must not be shown stripped of its
+  qualification), and the evidence e2e is the only thing that can see WHICH constant the readout
+  renders — swapping it back type-checks and keeps every unit spec green.
+- **Assumptions and local axioms are different things, and `/evidence/proofs` says so** (DAR-117).
+  The card and the methodology page both used the word "declared" for each, one paragraph apart,
+  and a reviewer conflating them reads every framework hypothesis as proof debt. Three cases, in
+  `evidence_proofs_axioms_*`: **hypotheses** the theorems are stated under (Lipschitz, compact
+  sets, bounded disturbance, hardware isolation — declared inputs that hold for the complete
+  theorems too, since complete means "introduces no axiom of its own", not "needs no
+  assumptions"); **local axioms**, named stand-ins for a result the proof does not derive —
+  general mathematics the prover libraries do not yet formalize, or a result established elsewhere
+  in the corpus that this proof does not yet build on — which are the debt, and are exactly what
+  keeps a theorem out of the complete count; and **carried physical premises**, where
+  the implication is machine-checked but the theorem is not counted as proven at all. They are
+  **not a split of one number**: the axioms separate the two published counts, the assumptions sit
+  under all of them. Deliberately **no counts** in that section — how many carry what is the
+  backlog. The named assumptions are pinned against `evidence_theorems_not_covered` so the card
+  and the detail page can't list different premises. Careful with quantifiers here: how the local
+  axioms divide between those two kinds is not something this repo can source, so the copy says
+  both exist and ranks neither — an unmeasured "mostly" is the same defect as an unmeasured
+  figure, on the page that exists to not have them.
 - **Never claim a proven latency bound.** GIDE's proof corpus proves no microsecond/latency
   bound anywhere; latency is measured, the 13,000× is derived. The internal whitepaper is
   explicit that "proven microsecond safety" phrasing would be falsified on review.

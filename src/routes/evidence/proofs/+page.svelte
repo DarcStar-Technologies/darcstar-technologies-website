@@ -8,6 +8,7 @@
 	import PageHero from '$lib/components/PageHero.svelte';
 	import Seo from '$lib/components/Seo.svelte';
 	import LegalSection from '$lib/components/LegalSection.svelte';
+	import TitledItems from '$lib/components/TitledItems.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { inlineLinkClass } from '$lib/styles';
@@ -50,6 +51,38 @@
 				heading={m.evidence_proofs_definition_heading()}
 				body={m.evidence_proofs_definition_body()}
 			/>
+			<!-- DAR-117. The definition above uses "declared local axioms" and the trust boundary
+			     below uses "declared assumptions", and a reviewer meeting both in one page will read
+			     them as one thing — they are materially different, and only one is proof debt. The
+			     three items are the whole distinction: a hypothesis a theorem is stated under, at any
+			     proof status (a complete proof introduces no axiom of its own — it does not run
+			     without assumptions); a named stand-in for a result that proof does not derive; and a
+			     carried physical premise that disqualifies the row from the count entirely. The first
+			     two are not a split of one number. Deliberately no counts here: how
+			     many carry what is the backlog, and the backlog is not published (docs/evidence.md).
+			     The named assumptions must stay the ones evidence_theorems_not_covered names — two
+			     pages listing different premises is the drift evidence-disclosure.spec.ts guards. -->
+			<LegalSection
+				heading={m.evidence_proofs_axioms_heading()}
+				body={m.evidence_proofs_axioms_body()}
+			>
+				<TitledItems
+					entries={[
+						{
+							title: m.evidence_proofs_axioms_assumptions_title(),
+							body: m.evidence_proofs_axioms_assumptions_body()
+						},
+						{
+							title: m.evidence_proofs_axioms_local_title(),
+							body: m.evidence_proofs_axioms_local_body()
+						},
+						{
+							title: m.evidence_proofs_axioms_carried_title(),
+							body: m.evidence_proofs_axioms_carried_body()
+						}
+					]}
+				/>
+			</LegalSection>
 			<LegalSection heading={m.evidence_label_provers()} body={m.evidence_theorems_provers()} />
 			<LegalSection heading={m.evidence_label_method()} body={m.evidence_theorems_method()} />
 			<LegalSection

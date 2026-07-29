@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { THEOREMS_CHECKED, THEOREMS_COMPLETE } from '$lib/evidence';
 
 // /evidence (DAR-43) — static content page (no Sanity, no DB), so unlike the content-feed
 // specs this needs no degradation guard: the full surface must render in every environment.
@@ -18,8 +19,8 @@ test('evidence page renders the hero, the claim cards, and the IP boundary', asy
 	// AND its prose — both flow from $lib/evidence.ts, so this pins the constants end-to-end)
 	// and the IP boundary. The catalog total / remainder is deliberately NOT published — assert
 	// its absence so it can't quietly come back.
-	await expect(page.getByText('219', { exact: true })).toBeVisible();
-	await expect(page.getByText('219 theorems in the GIDE framework')).toBeVisible();
+	await expect(page.getByText(String(THEOREMS_CHECKED), { exact: true })).toBeVisible();
+	await expect(page.getByText(`${THEOREMS_CHECKED} theorems in the GIDE framework`)).toBeVisible();
 	await expect(page.getByText('338')).toHaveCount(0);
 	await expect(page.getByText('parameter')).toHaveCount(0);
 	await expect(
@@ -69,6 +70,18 @@ test('proofs detail page defines machine-checked without the backlog', async ({ 
 	await expect(page.getByText('Isabelle2025-2')).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'What counts as proven' })).toBeVisible();
 	await expect(page.getByText('338')).toHaveCount(0);
+
+	// DAR-117's second half: the page separates a theorem's declared hypotheses from the local
+	// axioms that keep it out of the complete count. The three item headings ARE the distinction,
+	// so losing any one of them collapses the two ideas the section exists to keep apart.
+	await expect(page.getByRole('heading', { name: 'Assumptions vs. local axioms' })).toBeVisible();
+	await expect(
+		page.getByRole('heading', { name: 'Assumptions the theorems are stated under' })
+	).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Local axioms inside the proofs' })).toBeVisible();
+	await expect(
+		page.getByRole('heading', { name: 'Physical premises carried as hypotheses' })
+	).toBeVisible();
 });
 
 // The nested pages carry Home → Evidence → self breadcrumbs (DAR-48's builder) — the site's
@@ -93,14 +106,25 @@ test('detail pages emit breadcrumb structured data', async ({ page }) => {
 	}
 });
 
-// The DAR-43 complaint was "no path from claim to evidence" — pin the path: the homepage
-// stats row shows the corrected machine-checked count (219, NOT the old Layer-1 "150" —
-// the readout renders THEOREMS_CHECKED from $lib/evidence.ts) and links through to /evidence.
-test('homepage stats row links through to the evidence page', async ({ page }) => {
+// The DAR-43 complaint was "no path from claim to evidence" — pin the path: the homepage stats
+// row shows a real, qualified theorem figure (not the old Layer-1 "150", which was a catalog size
+// rather than a proven count) and links through to /evidence.
+//
+// Which figure leads is DAR-117, and this is the ONLY place that can see it: the readout renders
+// a constant, so swapping THEOREMS_COMPLETE back to THEOREMS_CHECKED type-checks, keeps every
+// unit spec green, and quietly restores the bare total in the largest type on the site. The
+// standalone-total assertion is the one that catches it — after the change the checked count
+// appears only inside the qualifying label, never as a headline value of its own.
+test('homepage stats row leads with the complete count and links to the evidence page', async ({
+	page
+}) => {
 	await page.goto('/');
 
-	await expect(page.getByText('219', { exact: true })).toBeVisible();
-	await expect(page.getByText('theorems machine-checked')).toBeVisible();
+	await expect(page.getByText(String(THEOREMS_COMPLETE), { exact: true })).toBeVisible();
+	await expect(
+		page.getByText(`theorems complete of ${THEOREMS_CHECKED} machine-checked`)
+	).toBeVisible();
+	await expect(page.getByText(String(THEOREMS_CHECKED), { exact: true })).toHaveCount(0);
 	await page.getByRole('link', { name: 'How we verify these numbers' }).click();
 
 	await expect(page).toHaveURL(/\/evidence$/);

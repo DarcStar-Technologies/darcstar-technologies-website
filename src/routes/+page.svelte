@@ -7,7 +7,13 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import Icon from '$lib/components/Icon.svelte';
 	import { inlineLinkClass, mutedLinkClass } from '$lib/styles';
-	import { CFC_KERNEL_LATENCY, DOMAINS, REALTIME_MULTIPLE, THEOREMS_CHECKED } from '$lib/evidence';
+	import {
+		CFC_KERNEL_LATENCY,
+		DOMAINS,
+		REALTIME_MULTIPLE,
+		THEOREMS_CHECKED,
+		THEOREMS_COMPLETE
+	} from '$lib/evidence';
 
 	// Domains the one engine has actually shipped into — the shared spine in $lib/evidence.ts
 	// (DAR-43), so the rows here, the "domains running end-to-end" figure, and the /evidence
@@ -22,15 +28,40 @@
 	// Stats row — REAL, verifiable numbers only (issue #13), each scoped on /evidence (DAR-43).
 	// Every figure comes from $lib/evidence.ts, the single source the /evidence cards read too:
 	// latency is measured, the multiple is derived from it (10 ms budget ÷ latency), and the
-	// theorem figure is the machine-checked conformance-registry count (the old "150" was the
-	// Layer-1 catalog size, not a proven count — see docs/evidence.md). Only the LABELS are
-	// messages — the values stay as data: they're en-formatted figures, not translatable prose
-	// (a real `es` would run them through Intl.NumberFormat, e.g. "13.000×"), and the numbers
-	// must read identically across locales.
+	// theorem figures are the conformance-registry counts (the old "150" was the Layer-1 catalog
+	// size, not a proven count — see docs/evidence.md). Only the LABELS are messages — the values
+	// stay as data: they're en-formatted figures, not translatable prose (a real `es` would run
+	// them through Intl.NumberFormat, e.g. "13.000×"), and the numbers must read identically
+	// across locales. THEOREMS_CHECKED rides IN the theorem label as a `{checked}` param for the
+	// same reason `pillar_realtime_body` takes its figures that way: still data, still one source.
+	//
+	// The headline theorem figure is THEOREMS_COMPLETE, not THEOREMS_CHECKED (DAR-117). Leading
+	// with the larger number put the least-qualified figure in the biggest type — most of the
+	// checked corpus rests on local axioms awaiting discharge, and a formal-methods reviewer reads
+	// a bare total that way. The complete cluster is the stronger claim anyway (zero local axioms,
+	// both provers), so the readout leads with it and carries the total as its denominator. Both
+	// numbers stay on screen; only which one is the headline changed. "complete" is a term of art,
+	// so section_proven_body defines it further down the page — DAR-46's rule, and the reason
+	// evidence-disclosure.spec.ts pins the label and that definition together.
+	//
+	// The long label wraps this row to two lines at desktop widths, and that is accepted rather
+	// than unnoticed: measured in a real browser, the row fits four across at 1440px only while
+	// the widest label stays around 24 characters — the old "theorems machine-checked" sat exactly
+	// at that edge. Every shorter phrasing costs a word that is doing work. Dropping "theorems"
+	// leaves the unit unnamed; dropping "machine-checked" leaves a bare "of 219" that reads as the
+	// size of the whole corpus, which is the catalog total — a figure this site deliberately never
+	// publishes (docs/evidence.md), so the cheap-looking trim would quietly imply the one number
+	// the IP boundary exists to withhold. Capping the label width doesn't buy the row back either
+	// — measured, 12rem still wraps (just less tall) and 11rem is worse, three rows, because the
+	// cap wraps the other labels too. `flex-wrap` + `gap-y-4` on the container is a designed
+	// state, and it already wraps at tablet widths; the honest label wins the tie.
 	const readouts = $derived([
 		{ v: CFC_KERNEL_LATENCY, l: m.readout_cfc_label() },
 		{ v: REALTIME_MULTIPLE, l: m.readout_realtime_label() },
-		{ v: String(THEOREMS_CHECKED), l: m.readout_theorems_label() },
+		{
+			v: String(THEOREMS_COMPLETE),
+			l: m.readout_theorems_label({ checked: THEOREMS_CHECKED })
+		},
 		{ v: String(DOMAINS.length), l: m.readout_domains_label() }
 	]);
 	const pillars = $derived([

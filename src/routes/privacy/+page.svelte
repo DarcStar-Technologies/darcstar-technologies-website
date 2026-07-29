@@ -12,6 +12,7 @@
 	import PageHero from '$lib/components/PageHero.svelte';
 	import Seo from '$lib/components/Seo.svelte';
 	import LegalSection from '$lib/components/LegalSection.svelte';
+	import TitledItems from '$lib/components/TitledItems.svelte';
 	import ContactLinks from '$lib/components/ContactLinks.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime';
@@ -22,21 +23,6 @@
 <Seo title={m.privacy_page_title()} description={m.privacy_page_description()} />
 
 <CosmicBackdrop />
-
-<!-- A titled list inside a section (what we collect / who processes it). Index-keyed: the
-     entries are static per locale, and value keys would crash (each_key_duplicate) if a
-     translation ever rendered two of them identically. h3 (not dt) so the per-item titles
-     stay in screen-reader heading navigation — the /about principles pattern. -->
-{#snippet items(entries: { title: string; body: string }[])}
-	<div class="mt-5 space-y-5">
-		{#each entries as entry, i (i)}
-			<div>
-				<h3 class="text-base font-medium text-white">{entry.title}</h3>
-				<p class="mt-1.5 text-sm leading-relaxed text-body">{entry.body}</p>
-			</div>
-		{/each}
-	</div>
-{/snippet}
 
 <div class="space-y-14">
 	<PageHero
@@ -55,12 +41,14 @@
 			<LegalSection heading={m.privacy_overview_heading()} body={m.privacy_overview_body()} />
 
 			<LegalSection heading={m.privacy_collect_heading()} body={m.privacy_collect_intro()}>
-				{@render items([
-					{ title: m.privacy_collect_contact_title(), body: m.privacy_collect_contact_body() },
-					{ title: m.privacy_collect_waitlist_title(), body: m.privacy_collect_waitlist_body() },
-					{ title: m.privacy_collect_account_title(), body: m.privacy_collect_account_body() },
-					{ title: m.privacy_collect_technical_title(), body: m.privacy_collect_technical_body() }
-				])}
+				<TitledItems
+					entries={[
+						{ title: m.privacy_collect_contact_title(), body: m.privacy_collect_contact_body() },
+						{ title: m.privacy_collect_waitlist_title(), body: m.privacy_collect_waitlist_body() },
+						{ title: m.privacy_collect_account_title(), body: m.privacy_collect_account_body() },
+						{ title: m.privacy_collect_technical_title(), body: m.privacy_collect_technical_body() }
+					]}
+				/>
 			</LegalSection>
 
 			<!-- Two categories, named explicitly (DAR-121). This section used to be one paragraph
@@ -69,25 +57,32 @@
 			     what we DON'T send: it stops being true the day a marketing sender ships, which is
 			     what `email-senders.spec.ts` exists to make a declared act rather than a silent one. -->
 			<LegalSection heading={m.privacy_use_heading()} body={m.privacy_use_body()}>
-				{@render items([
-					{
-						title: m.privacy_use_operational_title(),
-						body: m.privacy_use_operational_body()
-					},
-					{ title: m.privacy_use_updates_title(), body: m.privacy_use_updates_body() }
-				])}
+				<TitledItems
+					entries={[
+						{
+							title: m.privacy_use_operational_title(),
+							body: m.privacy_use_operational_body()
+						},
+						{ title: m.privacy_use_updates_title(), body: m.privacy_use_updates_body() }
+					]}
+				/>
 			</LegalSection>
 
 			<LegalSection heading={m.privacy_processors_heading()} body={m.privacy_processors_intro()}>
-				{@render items([
-					{
-						title: m.privacy_processors_cloudflare_title(),
-						body: m.privacy_processors_cloudflare_body()
-					},
-					{ title: m.privacy_processors_turso_title(), body: m.privacy_processors_turso_body() },
-					{ title: m.privacy_processors_resend_title(), body: m.privacy_processors_resend_body() },
-					{ title: m.privacy_processors_sanity_title(), body: m.privacy_processors_sanity_body() }
-				])}
+				<TitledItems
+					entries={[
+						{
+							title: m.privacy_processors_cloudflare_title(),
+							body: m.privacy_processors_cloudflare_body()
+						},
+						{ title: m.privacy_processors_turso_title(), body: m.privacy_processors_turso_body() },
+						{
+							title: m.privacy_processors_resend_title(),
+							body: m.privacy_processors_resend_body()
+						},
+						{ title: m.privacy_processors_sanity_title(), body: m.privacy_processors_sanity_body() }
+					]}
+				/>
 			</LegalSection>
 
 			<LegalSection heading={m.privacy_retention_heading()} body={m.privacy_retention_body()} />
