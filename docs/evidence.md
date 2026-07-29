@@ -116,6 +116,43 @@ audit — this repo holds only the public prose, never the artifacts):
   render) **plus the `$lib/evidence` constants** that supply the card values, and the
   evidence e2e asserts the rendered absences. A hit means reword the copy — never loosen the
   pattern.
+- **The catalog total is guarded by DERIVATION, never by a literal (DAR-152).** The rule was
+  `/\b338\b/`, labelled "the theorem-catalog total (338)" — which wrote the secret into a
+  **public repo in order to guard it**, and pinned it to a vintage, so the corpus outgrew the
+  figure and today's total would have passed. Both faults have one cause: the guard was written
+  in terms of the number it hides. `src/lib/evidence-boundary.ts` derives it from the number we
+  **publish** instead — every publishable theorem count is at most `THEOREMS_CHECKED` and the
+  catalog size is by construction above it, so the band names nothing and a re-measure carries
+  it along. Three routes, all in that one module so the unit spec (catalogs + constants) and the
+  e2e (rendered text) close together: a **bare integer above the published count near
+  theorem wording** — both halves load-bearing and both measured, since dropping the **band**
+  leaves "Lean 4" reporting itself in 7 keys, while dropping the **proximity** test leaves the
+  benchmark iteration counts reporting themselves (8 hits over 5 keys, led by
+  `evidence_cfc_method`'s "1,000 warmup iterations"); a
+  **numeric corpus percentage**, because a count beside "75.4% of the corpus" (the hub brief's
+  own phrasing) recovers the total to within a row; and **backlog wording**, which is the
+  complement — the remainder sits BELOW the band, so no value rule can reach it and computing
+  one would mean importing the secret. That third half is honestly partial: it catches the plain
+  spellings, not a paraphrase. Two exclusions are load-bearing and were found by measurement,
+  not by reasoning — **calendar years** (both dated lines put one beside "corpus"/"theorems")
+  and **numbers glued to a word, hyphen or dot** (`SHA-256`, `0.767`, `p50`, `Isabelle2025-2`).
+  "not yet mechanized" was a candidate and is **rejected**: `evidence_proofs_axioms_local_body`
+  legitimately says the prover libraries "do not yet formalize" a result — a fact about Mathlib,
+  not about our backlog. Over a rendered page the unit is **a line and its successor**, both
+  bounds measured: a whole-page scan reads the homepage's `13,000×` readout as neighbouring the
+  theorems one, while one line at a time misses the shape the cards actually use — a bare value
+  above its label, which is how a total would be published (`346` over "Theorems in the catalog"
+  passed the whole evidence suite). A pair reunites value with label; four lines would re-create
+  the readout collision, since `13,000×` renders three lines from the theorems readout.
+  **On a hit, this rule takes different action from the ones above it**, and the difference is
+  that those match an exact value so a hit is always a leak ("reword, never loosen"), while this
+  one is a heuristic — "500 trials against the theorem conformance registry" and "384 CI runners"
+  both fire, and neither is a total (measured). Check the figure against the hub's source of
+  record first: if it is the catalog total or derives it, reword; if it demonstrably is not, the
+  copy is fine and the fix belongs in the rule — narrow a context term, don't widen the band or
+  drop a route, which are the two edits that restore the defect this replaced. `CONTEXT_WINDOW`
+  is likewise a **choice inside a tested range**, bracketed to (44, 117) by two spec cases
+  because 20, 200 and 400 all passed every other assertion.
 - The rule covers **source comments too** — this repo is public, and the DAR-43 review found
   an `h=16` in a doc-comment — but **no automated guard reads comments**: a pattern scan over
   source false-positives immediately ("parameter" is legitimate prose in these files), so
