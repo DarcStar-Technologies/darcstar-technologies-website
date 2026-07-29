@@ -262,7 +262,12 @@
 					/>
 					<span>{m.waitlist_consent_label()}</span>
 				</label>
-				<p class={fieldHelpClass}>{m.waitlist_consent_help()}</p>
+				<!-- `-mt-2 ps-7` rather than the bare help class: this one sits BELOW its control instead of
+				     above a field, and the padding lines it up with the label text rather than with the
+				     checkbox, so it reads as part of the tick box and not as more form-level fine print
+				     next to the privacy notice underneath. (7 = the checkbox's `size-4` plus the label's
+				     `gap-3`.) -->
+				<p class="{fieldHelpClass} -mt-2 ps-7">{m.waitlist_consent_help()}</p>
 
 				<!-- Data-handling notice (DAR-44) — the shared FormPrivacyNotice, same as the
 				     contact form's (ContactFields). -->

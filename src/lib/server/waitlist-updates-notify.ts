@@ -41,8 +41,6 @@ const AUTO_REPLY_HEADERS: Record<string, string> = {
 export interface UpdatesConfirmEmailInput {
 	/** The recipient — the address whose consent is being confirmed. */
 	to: string;
-	/** Display name for the greeting, or null (the waitlist's name field is optional). */
-	name: string | null;
 	/** Absolute URL of the confirm landing page, carrying the `c1` token. */
 	confirmUrl: string;
 	/** Absolute URL of the unsubscribe landing page, carrying the `u1` token. */
@@ -50,9 +48,17 @@ export interface UpdatesConfirmEmailInput {
 }
 
 /**
- * Render the confirmation request. Pure — unit-tested. Copy is Paraglide, resolved for `locale`; every
- * dynamic value is HTML-escaped in the html body (both URLs included, defensively — they are ours, but
- * a builder that escapes only some of its inputs is one refactor from escaping none).
+ * Render the confirmation request. Pure — unit-tested. Copy is Paraglide, resolved for `locale`; the
+ * two URLs are HTML-escaped in the html body (they are ours, but a builder that escapes only some of
+ * its inputs is one refactor from escaping none).
+ *
+ * NO NAME, AND NOT BECAUSE THE FIELD IS OPTIONAL. The waitlist's name is supplied by whoever filled in
+ * the form, and this is the one message in the codebase whose whole premise is that the submitter and
+ * the RECIPIENT may be different people — so greeting them by that name would let a stranger choose
+ * how we address someone else in their own inbox. DAR-67 hit the same hazard on the invitation and
+ * answered it by taking the earliest submission's name; here there is a better answer available,
+ * because a message that says "someone asked us, was it you?" has no business claiming to know who it
+ * is writing to. Escaping stops injection and does nothing about abuse by content.
  */
 export function buildUpdatesConfirmEmail(
 	input: UpdatesConfirmEmailInput,
@@ -69,11 +75,7 @@ export function buildUpdatesConfirmEmail(
 	const separate = m.waitlist_updates_confirm_email_separate({}, o);
 	const signoff = m.waitlist_updates_confirm_email_signoff({}, o);
 
-	// A generic greeting when no name was given — name is optional on the waitlist, and it is also the
-	// field a stranger submitting someone else's address is least likely to get right.
-	const greeting = input.name
-		? m.waitlist_updates_confirm_email_greeting_named({ name: input.name }, o)
-		: m.waitlist_updates_confirm_email_greeting_generic({}, o);
+	const greeting = m.waitlist_updates_confirm_email_greeting({}, o);
 
 	// --- text/plain ---
 	const text = [
@@ -94,14 +96,11 @@ export function buildUpdatesConfirmEmail(
 	].join('\n');
 
 	// --- text/html (escape every dynamic value; the Paraglide prose is trusted) ---
-	const greetingHtml = input.name
-		? m.waitlist_updates_confirm_email_greeting_named({ name: escapeHtml(input.name) }, o)
-		: m.waitlist_updates_confirm_email_greeting_generic({}, o);
 	const confirmHref = escapeHtml(input.confirmUrl);
 	const unsubscribeHref = escapeHtml(input.unsubscribeUrl);
 	const html =
 		`<div style="font:14px/1.6 system-ui,sans-serif;color:#0f172a;max-width:560px">` +
-		`<p>${greetingHtml}</p>` +
+		`<p>${greeting}</p>` +
 		`<p>${body}</p>` +
 		`<p style="margin:24px 0"><a href="${confirmHref}" ` +
 		`style="display:inline-block;padding:10px 20px;background:#0f172a;color:#fff;` +
@@ -166,11 +165,10 @@ export interface UpdatesConfirmEnv {
 	secret: WaitlistSigningSecret | undefined;
 }
 
-/** Who to ask, and which lead the answer belongs to. */
+/** Who to ask, and which lead the answer belongs to. No name — see `buildUpdatesConfirmEmail`. */
 export interface UpdatesConfirmTarget {
 	leadId: string;
 	email: string;
-	name: string | null;
 }
 
 /**
@@ -213,7 +211,6 @@ export function captureUpdatesConsent(
 			resendKey,
 			{
 				to: target.email,
-				name: target.name,
 				confirmUrl: updatesUrl(
 					origin,
 					UPDATES_CONFIRM_PATH,

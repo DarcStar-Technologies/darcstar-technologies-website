@@ -8,7 +8,6 @@ import { m } from '$lib/paraglide/messages.js';
 
 const INPUT: UpdatesConfirmEmailInput = {
 	to: 'ada@example.com',
-	name: 'Ada Lovelace',
 	confirmUrl: 'https://darcstar.tech/updates/confirm?token=c1.lead.999.mac',
 	unsubscribeUrl: 'https://darcstar.tech/updates/unsubscribe?token=u1.lead.999.mac'
 };
@@ -49,21 +48,17 @@ describe('buildUpdatesConfirmEmail', () => {
 		}
 	});
 
-	it('greets a signup that gave no name without leaving a gap', () => {
-		const mail = build({ name: null });
-		expect(mail.text).toContain(
-			m.waitlist_updates_confirm_email_greeting_generic({}, { locale: 'en' })
-		);
-		expect(mail.text).not.toContain('null');
-		expect(mail.html).not.toContain('null');
-	});
-
-	// The name is submitter-supplied and the form is unauthenticated, so it is the one field an
-	// attacker fully controls in a message we send to somebody else's inbox.
-	it('escapes the name in the html body', () => {
-		const mail = build({ name: '<script>alert(1)</script>' });
-		expect(mail.html).not.toContain('<script>');
-		expect(mail.html).toContain('&lt;script&gt;');
+	// NAMES NOBODY, and it is the one message here where that is a security property rather than a
+	// missing nicety. The waitlist name is typed by whoever filled in the form, and this mail exists
+	// precisely because that person may not be the recipient — so a greeting would let a stranger choose
+	// how we address someone else in their own inbox (DAR-67 met the same hazard on the invitation).
+	// Pinned by TYPE as well: `UpdatesConfirmEmailInput` has no name field, so putting one back is a
+	// compile error at the call site rather than a quiet reintroduction here.
+	it('addresses the recipient generically, naming nobody', () => {
+		const mail = build();
+		const greeting = m.waitlist_updates_confirm_email_greeting({}, { locale: 'en' });
+		expect(mail.text.startsWith(greeting)).toBe(true);
+		expect(mail.html).toContain(greeting);
 	});
 
 	// Machine-generated, so an out-of-office responder must not answer it and open a loop — the same

@@ -177,7 +177,7 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 				db,
 				platform,
 				{ resendKey, origin: originUrl, secret: tokenSecret },
-				{ leadId, email: cleaned.email, name: cleaned.name },
+				{ leadId, email: cleaned.email },
 				locale
 			);
 		}

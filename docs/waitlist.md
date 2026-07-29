@@ -998,6 +998,13 @@ panel**, the continuation token's anti-oracle rule; a database failure is the on
 separately, because telling somebody their withdrawal went through when it threw is the worst answer
 these pages can give.
 
+**The confirmation email names nobody.** The waitlist name is supplied by whoever filled in the form,
+and this is the one message whose premise is that the submitter and the recipient may be different
+people — so a greeting would let a stranger choose how we address someone else in their own inbox
+(DAR-67 hit the same hazard on the invitation and answered it with "the earliest submission's name";
+here the better answer is none). The field is absent from `UpdatesConfirmEmailInput`, so putting it
+back is a compile error at the call site.
+
 Coverage is split the way DAR-103 describes: CI has no `BETTER_AUTH_SECRET`, so the e2e can only reach
 the generic-failure panel (which it asserts, along with noindex and "a GET mutates nothing"), and the
 confirm → audience → withdraw composition is `pnpm smoke:waitlist` step P against a real database.
