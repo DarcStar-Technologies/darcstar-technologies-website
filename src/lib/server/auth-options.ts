@@ -134,6 +134,43 @@ export const advanced = {
 	}
 };
 
+// DAR-131: the two deployed Cloudflare Workers, named ONCE.
+//
+// The preview environment is a SEPARATE Worker rather than a mode of the production one, and that is
+// forced rather than stylistic: secrets are per-Worker, and a Cloudflare preview URL is a *version*
+// of a Worker, so anything uploaded as a version of production inherits production's secrets — and
+// therefore the production database. Two Workers is what buys the dev-DB split; see
+// docs/deployment.md → "Environments & databases".
+//
+// `wrangler.jsonc` has to spell both names out again, because it is what wrangler itself reads. That
+// second copy is unavoidable, so `preview-worker.spec.ts` pins the two files against each other —
+// the `preview-port.spec.ts` situation, where one half of a rule lives outside TypeScript's reach.
+export const PROD_WORKER_NAME = 'darcstar-technologies-website';
+export const PREVIEW_WORKER_NAME = `${PROD_WORKER_NAME}-preview`;
+
+/**
+ * A Worker's own `workers.dev` origin — and therefore the value its `ORIGIN` var has to carry.
+ *
+ * Load-bearing for the preview Worker specifically: better-auth's `isAuthPath()` mounts `/api/auth/*`
+ * only for requests whose origin matches `baseURL` (= `ORIGIN`), so an `ORIGIN` that is not the
+ * Worker's own host leaves the auth API answering 404 on the only surface that was provisioned to
+ * exercise it. That is DAR-81's failure mode, and it is what the spec's ORIGIN assertion exists for.
+ */
+export const workersDevOrigin = (worker: string) => `https://${worker}.darcstar.workers.dev`;
+
+// Cloudflare `workers.dev` origins trusted for auth (CSRF / cookie origin checks). `ORIGIN` itself is
+// trusted automatically, so these cover the OTHER hosts each Worker answers on: its bare alias (an
+// exact match, so it needs the scheme) and its per-version / per-branch preview URLs (`*` matches the
+// prefix; a host pattern is matched against the hostname, so no scheme).
+//
+// DERIVED from the names above rather than typed out, because the preview Worker's hosts do NOT match
+// the production `*-…-website.` pattern — they end `-website-preview.` — which is the kind of
+// near-miss that reads as already covered and isn't.
+export const trustedOrigins = [PROD_WORKER_NAME, PREVIEW_WORKER_NAME].flatMap((worker) => [
+	workersDevOrigin(worker),
+	`*-${worker}.darcstar.workers.dev`
+]);
+
 // Cookie-cache the session. Since #87 exposed sign-in state site-wide, a signed-in operator's every
 // page view resolves the session via `getSession` in `hooks.server.ts` — which, by default, is a DB
 // round-trip per view. With `cookieCache`, Better Auth writes a **signed** (HMAC) snapshot of the

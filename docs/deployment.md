@@ -12,13 +12,29 @@ SvelteKit via `@sveltejs/adapter-cloudflare`, deployed to **Cloudflare Pages**. 
 
 Two Cloudflare Workers, **one per environment**, each with its own secrets → its own Turso DB. Nothing is shared, so integration testing never touches production data.
 
-| Environment    | Worker                                                    | Deploys from                                                                    | Serves                          | `DATABASE_*` →           |
-| -------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------- | ------------------------ |
-| **Production** | `darcstar-technologies-website`                           | `main` (GitHub Actions `deploy-prod` → migrate, then `wrangler deploy`)         | `darcstar.tech` + `workers.dev` | **prod** DB              |
-| **Preview**    | `darcstar-technologies-website-preview` (`[env.preview]`) | any non-prod branch (Workers Builds → `wrangler versions upload --env preview`) | `*-…-preview.…workers.dev`      | **dev** DB               |
-| **Local**      | `pnpm dev` / `pnpm preview`                               | your checkout                                                                   | `localhost`                     | **dev** DB (from `.env`) |
+| Environment    | Worker                                                    | Deploys from                                                                                    | Serves                                                | `DATABASE_*` →           |
+| -------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------ |
+| **Production** | `darcstar-technologies-website`                           | `main` (GitHub Actions `deploy-prod` → migrate, then `wrangler deploy`)                         | `darcstar.tech` + `workers.dev`                       | **prod** DB              |
+| **Preview**    | `darcstar-technologies-website-preview` (`[env.preview]`) | any non-prod branch (its OWN Workers Builds trigger → `wrangler versions upload --env preview`) | `…-preview.…workers.dev` + `*-…-preview.…workers.dev` | **dev** DB               |
+| **Local**      | `pnpm dev` / `pnpm preview`                               | your checkout                                                                                   | `localhost`                                           | **dev** DB (from `.env`) |
 
-Because each Worker holds its own `DATABASE_URL` / `DATABASE_AUTH_TOKEN` secret, `getDb()` (and the app) needs **no** environment branching — isolation is entirely at the secret layer. A Cloudflare preview URL is a _version_ of a Worker and inherits that Worker's secrets; that's exactly why previews deploy to the separate `[env.preview]` Worker instead of as versions of production (which would hand them prod's secrets). The preview Worker's `workers.dev` hosts are trusted in `auth.ts` `trustedOrigins`.
+Because each Worker holds its own `DATABASE_URL` / `DATABASE_AUTH_TOKEN` secret, `getDb()` (and the app) needs **no** environment branching — isolation is entirely at the secret layer. A Cloudflare preview URL is a _version_ of a Worker and inherits that Worker's secrets; that's exactly why previews deploy to the separate `[env.preview]` Worker instead of as versions of production (which would hand them prod's secrets). The preview Worker's `workers.dev` hosts are trusted in `auth.ts` `trustedOrigins` — derived from the Worker names in `auth-options.ts`, and pinned against `wrangler.jsonc` by `preview-worker.spec.ts`.
+
+Only the **bare** `…-preview.…workers.dev` host mounts `/api/auth/*`, because `ORIGIN` is a single value and better-auth matches the request origin against it. Measured across all three host shapes the Worker answers on:
+
+| Host                               | `/`   | `/api/auth/ok` |
+| ---------------------------------- | ----- | -------------- |
+| bare `…-preview.…workers.dev`      | `200` | `200`          |
+| branch alias `dar-131-…-preview.…` | `200` | `404`          |
+| version `88b33599-…-preview.…`     | `200` | `404`          |
+
+So branch and version URLs are for **looking at the site**; point auth/limiter probing at the bare host. It is also the only deployed non-production surface that mounts the auth API at all, which is why DAR-124 had to run its verification against production.
+
+One trap when provisioning: a version uploaded **before** its secrets existed keeps answering with no bindings forever, so an old version URL returns `500` from `/api/auth/*` (the DB-backed limiter runs ahead of every auth route and has no database). That is a frozen artifact, not a live failure — check the bare host, which always serves the newest version.
+
+**Reachability differs between the two Workers, and it is not configured in this repo.** A Cloudflare Access application covers `*-darcstar-technologies-website.darcstar.workers.dev`, so production's per-version URLs sit behind an Access login. The preview Worker's hosts end `-website-preview.…` and therefore do **not** match that pattern — they are publicly reachable. That is deliberate here (a probe target you have to authenticate against is not one). Be precise about what it holds, though: no production **database** credential and no `RESEND_API_KEY`, but it does carry a live dev DB and a `SANITY_VIEWER_TOKEN` — read-only, yet scoped to the **production** dataset and very likely the same token production uses. So it is a public surface holding one shared read credential, not a credential-free one.
+
+> **A Workers Build can only ever deploy the Worker it is connected to (DAR-131).** Each build passes `WRANGLER_CI_OVERRIDE_NAME`, so a build connected to the production script overrides whatever `name` the config asks for and uploads to production regardless — `--env preview` still applies that env's **vars**, which makes the result look preview-shaped while carrying production's **secrets**. So the split needs **two build triggers on two scripts**, not one command flag. This is not hypothetical: the non-prod deploy command already said `--env preview` (its trigger was last modified 2026-07-22 — the API reports a modification time, not what changed), and every feature-branch preview URL was a version of production reading the production database until DAR-131. The tell is in the build log — `Failed to match Worker name … Overriding using the CI provided Worker name`.
 
 Schema reaches each DB differently:
 
@@ -44,19 +60,30 @@ Runbook to split the currently-shared DB. Order matters so the live site never b
    ```
    Provision a dev operator: `ADMIN_EMAIL=… ADMIN_PASSWORD=… pnpm admin:create` (prints the id for the preview Worker's `ADMIN_USER_IDS`).
 4. **GitHub Actions secrets** (Settings → Secrets and variables → Actions): add `PROD_DATABASE_URL`, `PROD_DATABASE_AUTH_TOKEN` (prod Turso), plus `CLOUDFLARE_API_TOKEN` (use the **"Edit Cloudflare Workers"** API-token template so it covers Workers Scripts edit + `workers.dev` subdomain + assets upload) and `CLOUDFLARE_ACCOUNT_ID` — `deploy-prod` migrates **then** deploys with these. Until all four exist, the deploy job is skipped (never red-Xes `main`; Workers Builds keeps deploying prod meanwhile).
-5. **Create + provision the preview Worker.** Its secrets are its own. The first `wrangler deploy --env preview` needs build output, so `pnpm build` first (or skip it and let Workers Builds create the Worker on the first preview build in step 6):
+5. **Create + provision the preview Worker.** It has to be created **out of band** — Workers Builds cannot create it for you, because a build connected to the production script would override the name and upload to production instead (see the callout above). So `pnpm build` first, then deploy it by hand once; after that its own trigger (step 6) keeps it current:
+
    ```sh
    pnpm build                                             # produces .svelte-kit/cloudflare/_worker.js
-   wrangler deploy --env preview                          # first deploy creates the Worker
+   wrangler deploy --env preview                          # first deploy CREATES the Worker
    wrangler secret put DATABASE_URL --env preview         # dev DB
    wrangler secret put DATABASE_AUTH_TOKEN --env preview  # dev DB
-   wrangler secret put BETTER_AUTH_SECRET --env preview   # its own secret
+   wrangler secret put BETTER_AUTH_SECRET --env preview   # its own secret, NOT prod's or your .env's
    wrangler secret put ADMIN_USER_IDS --env preview       # the dev operator's id
-   # RESEND_API_KEY optional — omit to disable contact email on preview (submissions still persist)
+   wrangler secret put SANITY_VIEWER_TOKEN --env preview  # CMS reads (/news · /research · /people)
+   # RESEND_API_KEY deliberately OMITTED — a preview that can send mail will mail real people from a
+   # feature branch. Contact + waitlist mail then no-ops (`if (resendKey)`) and submissions persist.
    ```
-   `ORIGIN` is a plain var already set for the env in `wrangler.jsonc` — no secret needed.
-6. **⚠️ Reconfigure Workers Builds** (dash → Worker → Settings → Builds) — this is the activation gate, and it lives in the Cloudflare dashboard, not the repo, so **merging the PR changes nothing until you do it**:
-   - **Non-production** deploy command → `npx wrangler versions upload --env preview`, so preview branches deploy to the dev-DB Worker. Until this, previews keep deploying as versions of the _prod_ Worker (→ prod DB), defeating the split.
+
+   `ORIGIN` is a plain var already set for the env in `wrangler.jsonc` — no secret needed, and it must stay equal to the Worker's own `workers.dev` host or better-auth stops mounting `/api/auth/*` there (`preview-worker.spec.ts` pins this).
+
+   **The invite flow is the exception, and it does not degrade quietly.** DAR-67's activation mail is the one _awaited_ outbound send in the repo, so with no key `/admin/waitlist`'s invite action returns `500 email_unconfigured` rather than no-opping — and it `console.warn`s the **live activation link**, a week-long password-reset capability, into Workers Logs. That branch was written for local dev ("never reached in prod"); omitting the key makes it reachable on a _deployed_ Worker for the first time. It takes a staff sign-in against the dev DB to get there and the logs are behind the same Cloudflare account as the secrets, so this is a documented consequence rather than a hole — but do not invite from preview.
+
+   Each `wrangler secret put` redeploys the Worker, so probe it a few seconds after the last one: an immediate request can hit the previous version and answer `500`.
+
+6. **⚠️ Give the preview Worker its own build trigger** — this lives in the Cloudflare dashboard, not the repo, so **merging the PR changes nothing until you do it**:
+   - On the **preview** Worker (dash → Workers → `…-preview` → Settings → Builds), connect the same repo with a **non-production branches** trigger (include `*`, exclude `main`), build `pnpm run build`, deploy `npx wrangler versions upload --env preview`. Only a trigger bound to _this_ script deploys to it.
+   - On the **production** Worker, **delete** its "Deploy non-production branches" trigger. Leaving it means every feature-branch push builds twice, and the production copy uploads a version carrying **production secrets** — the exact hazard this split exists to remove. Keep its default-branch trigger (upload-only; the `deploy-prod` Action is what promotes prod).
+   - If you do it over the **API** instead: `POST /accounts/{id}/builds/triggers` with the preview Worker's `script_tag`, the existing `repo_connection_uuid` and `build_token_uuid`, `branch_includes: ["*"]`, `branch_excludes: ["main"]`. Do **not** reach for `POST /accounts/{id}/builds/workers` — on this account it fails `12044: This account does not have access to Workers Previews`, and the trigger endpoint is what actually works. (Get the `script_tag` from `GET /accounts/{id}/workers/services/{name}` → `default_environment.script_tag`; it is **not** the `etag` that `GET /workers/scripts` returns.)
    - **Turn off automatic production deployments** (the `main` branch) so the `deploy-prod` Action is the **sole** prod deployer — otherwise both deploy and the migrate-before-deploy guarantee is lost. Do this **after** step 4's secrets exist (so the Action is ready to take over), and **promptly**: while both deploy, Workers Builds ships prod with no migration gate, briefly re-introducing the pre-split race (tolerable only because prod changes stay additive/expand-then-contract). A gap where _neither_ deploys is worse than a brief overlap, so add secrets first, then disable — but don't leave the overlap running.
 7. **Prod stays as-is** if you kept the current DB as prod — its `DATABASE_*` secrets are already correct, nothing to change. (Fresh prod DB instead? `wrangler secret put DATABASE_URL` / `DATABASE_AUTH_TOKEN` on the prod Worker to repoint it, then `pnpm admin:create` against it.)
 

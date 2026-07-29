@@ -9,6 +9,7 @@ import {
 	emailAndPassword,
 	rateLimit,
 	session,
+	trustedOrigins,
 	RESET_PASSWORD_TOKEN_TTL_SECONDS
 } from '$lib/server/auth-options';
 import { parseAdminIds } from '$lib/server/admin-access';
@@ -33,20 +34,10 @@ function createAuth() {
 	return betterAuth({
 		baseURL: readEnv('ORIGIN'),
 		secret: readEnv('BETTER_AUTH_SECRET'),
-		// Trust the Cloudflare workers.dev origins for auth (CSRF / cookie origin
-		// checks). Production (ORIGIN) is trusted automatically.
-		// - bare production alias (exact match needs the scheme)
-		// - per-version preview URLs (`*` matches the version/branch prefix; host
-		//   form is matched against the hostname, so no scheme)
-		trustedOrigins: [
-			'https://darcstar-technologies-website.darcstar.workers.dev',
-			'*-darcstar-technologies-website.darcstar.workers.dev',
-			// Preview env Worker (wrangler.jsonc `[env.preview]`, non-prod branch deploys → the
-			// DEV DB): its own bare workers.dev host + per-version preview URLs. The `*-…website`
-			// pattern above does NOT cover these (they end in `-preview.…`), so list them too.
-			'https://darcstar-technologies-website-preview.darcstar.workers.dev',
-			'*-darcstar-technologies-website-preview.darcstar.workers.dev'
-		],
+		// Both Workers' `workers.dev` hosts (bare alias + per-version preview URLs). Derived from the
+		// Worker names in auth-options.ts since DAR-131, so a rename can't leave half the list stale —
+		// production (ORIGIN) is trusted automatically and needs no entry.
+		trustedOrigins,
 		database: drizzleAdapter(getDb(), { provider: 'sqlite' }),
 		// Base config (now `disableSignUp` — invite-only since DAR-67) in auth-options.ts. Augmented here
 		// with the env-bound password-reset sender (needs the Resend key), like emailVerification below.
