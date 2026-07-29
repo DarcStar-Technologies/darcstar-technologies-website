@@ -25,6 +25,7 @@
 	import PageHero from '$lib/components/PageHero.svelte';
 	import PaperStatus from '$lib/components/PaperStatus.svelte';
 	import PaperOrigin from '$lib/components/PaperOrigin.svelte';
+	import PaperVenueDate from '$lib/components/PaperVenueDate.svelte';
 	import PaperExternalDisclaimer from '$lib/components/PaperExternalDisclaimer.svelte';
 	import PaperTopics from '$lib/components/PaperTopics.svelte';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
@@ -47,8 +48,7 @@
 		type FacetOption
 	} from '$lib/research-filters';
 	import { m } from '$lib/paraglide/messages.js';
-	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
-	import { formatDate } from '$lib/sanity/date';
+	import { localizeHref } from '$lib/paraglide/runtime';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import type { PageServerData } from './$types';
@@ -167,13 +167,7 @@
 		<div class="mt-3 flex flex-wrap items-center gap-3">
 			<PaperStatus status={paper.status} />
 			<PaperOrigin darcstarAuthored={paper.darcstarAuthored} hasCommentary={paper.hasCommentary} />
-			{#if paper.venue || paper.publishedDate}
-				<span class="text-xs text-muted">
-					{#if paper.venue}{paper.venue}{/if}{#if paper.venue && paper.publishedDate}
-						·
-					{/if}{#if paper.publishedDate}{formatDate(paper.publishedDate, getLocale())}{/if}
-				</span>
-			{/if}
+			<PaperVenueDate venue={paper.venue} publishedDate={paper.publishedDate} />
 		</div>
 		{#if paper.authors && paper.authors.length > 0}
 			<p class="mt-2 text-xs text-muted">

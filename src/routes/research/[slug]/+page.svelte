@@ -10,14 +10,14 @@
 	import PageHero from '$lib/components/PageHero.svelte';
 	import PaperStatus, { pillClass } from '$lib/components/PaperStatus.svelte';
 	import PaperOrigin from '$lib/components/PaperOrigin.svelte';
+	import PaperVenueDate from '$lib/components/PaperVenueDate.svelte';
 	import PaperExternalDisclaimer from '$lib/components/PaperExternalDisclaimer.svelte';
 	import PaperTopics from '$lib/components/PaperTopics.svelte';
 	import { researchTopicHref } from '$lib/research-filters';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
 	import PortableBody from '$lib/components/portable/PortableBody.svelte';
 	import { m } from '$lib/paraglide/messages.js';
-	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
-	import { formatDate } from '$lib/sanity/date';
+	import { localizeHref } from '$lib/paraglide/runtime';
 	import { contentSeo } from '$lib/sanity/content-seo';
 	import { breadcrumbJsonLd, paperCanonicalUrl, scholarlyArticleJsonLd } from '$lib/jsonld';
 	import { page } from '$app/state';
@@ -79,13 +79,7 @@
 			<div class="flex flex-wrap items-center gap-3">
 				<PaperStatus status={paper.status} />
 				<PaperOrigin darcstarAuthored={paper.darcstarAuthored} />
-				{#if paper.venue || paper.publishedDate}
-					<span class="text-xs text-muted">
-						{#if paper.venue}{paper.venue}{/if}{#if paper.venue && paper.publishedDate}
-							·
-						{/if}{#if paper.publishedDate}{formatDate(paper.publishedDate, getLocale())}{/if}
-					</span>
-				{/if}
+				<PaperVenueDate venue={paper.venue} publishedDate={paper.publishedDate} />
 			</div>
 			<PaperExternalDisclaimer darcstarAuthored={paper.darcstarAuthored} />
 			{#if paper.authors && paper.authors.length > 0}

@@ -53,6 +53,16 @@ const mount = (papers: Paper[]) =>
 	});
 
 describe('/research', () => {
+	// DAR-153 wiring. PaperVenueDate owns the separator and has its own spec; this proves the index
+	// actually renders it, which is the half that was wrong in production — all 18 cards served
+	// `Zenodo·February 4, 2026`. Asserted on the card's whole normalised text rather than on a
+	// selector, because PaperStatus's pill also carries `text-xs text-muted` and would be matched
+	// first: the claim is about what a reader sees, not about which element carries it.
+	it('renders the venue and date with a separator between them', () => {
+		const { container } = mount([PAPER]);
+		expect(container.textContent?.replace(/\s+/g, ' ')).toContain('arXiv · February 4, 2026');
+	});
+
 	it('links a paper title to its page', async () => {
 		mount([PAPER]);
 		await expect
