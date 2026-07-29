@@ -4,7 +4,7 @@ import { memoryAdapter } from 'better-auth/adapters/memory';
 import { getIp } from 'better-auth/api';
 import { advanced, CLIENT_IP_HEADER } from './auth-options';
 import { authSubrequest } from './auth-subrequest';
-import { appSourcePaths, importedNames, importsNamespace, sourceText } from './source-scan';
+import { appSourcePaths, importedNames, sourceText } from './source-scan';
 
 // DAR-124. The auth rate limiter and the login audit both attribute a request to a client address,
 // and before this ticket they read it from `x-forwarded-for` — which, on the direct /api/auth/*
@@ -122,61 +122,69 @@ describe('the shipped ip config, through Better Auth’s own resolver', () => {
 	});
 });
 
-describe('every auth.handler() caller goes through authSubrequest', () => {
+describe('nothing hand-rolls an auth sub-request or a client-address header', () => {
 	const MODULE = '$lib/server/auth-subrequest';
+	const CLIENT_ADDRESS_HEADER =
+		/['"](?:x-forwarded-for|cf-connecting-ip|true-client-ip|x-real-ip)['"]/i;
 
-	// The derived surface: files that reach Better Auth's router. Derived rather than listed, for
-	// DAR-99's reason — a hand-written path list has no failure mode that points at itself, so
-	// deleting an entry makes the scan blind and stays green.
+	// THE RULE IS AN INVERSION, and getting here took three tries — each earlier cut tried to IDENTIFY
+	// the callers of Better Auth's router by text, and each was walked past by a spelling nobody had
+	// thought of:
 	//
-	// It matches the BINDING, `auth.handler`, not a call `auth.handler(`. The difference is not
-	// pedantry: the first cut required the call and a file doing `auth.handler.bind(auth)` — or
-	// `const forward = auth.handler` — escaped the surface entirely and passed 12/12 (mutation-proven,
-	// which is the only reason this reads the way it does now). That is DAR-102's lesson about call
-	// text being the walk-past-able half, reproduced here in one regex. Comments are stripped by
-	// `sourceText`, so the prose in `auth-audit.ts` that discusses `auth.handler()` is not a caller.
-	const callers = () =>
-		appSourcePaths().filter((path) => /\bauth\.handler\b/.test(sourceText(path)));
+	//   1. `auth.handler(`  — missed `auth.handler.bind(auth)`            (mutation: 12/12 green)
+	//   2. `auth.handler`   — missed `getAuth().handler(...)`, which is the MOST natural spelling of
+	//                         all, since it needs no variable named `auth` (mutation: 12/12 green)
+	//
+	// Deriving from `getAuth` importers is no better: eleven files import it and most reach
+	// `auth.api.*`, which builds no sub-request and must not be forced through this builder — the rule
+	// would be a false-positive machine. So the question "who calls the router?" is abandoned. What
+	// the fix actually needs is far simpler and needs no caller identification at all:
+	//
+	//   * only ONE file may NAME a client-address header, and
+	//   * NO file may hand-build a request at an /api/auth path.
+	//
+	// Both hold whatever the auth instance is called, so no spelling escapes them.
 
-	test('the scan finds the form actions it exists to cover', () => {
-		// A floor, so a derivation that stops matching fails loudly instead of vacuously passing over
-		// an empty set — the way a scan of this kind normally dies.
-		expect(callers()).toEqual(
-			expect.arrayContaining([
-				'src/routes/login/+page.server.ts',
-				'src/routes/forgot-password/+page.server.ts',
-				'src/routes/reset-password/+page.server.ts'
-			])
-		);
+	// ALLOWLIST, not a scan list, and the polarity is the point (DAR-102): deleting an entry makes the
+	// rule STRICTER, so an edit in either direction reports itself — where deleting a scan-list entry
+	// silently blinds the scan. Each entry carries its reason.
+	const MAY_NAME_A_HEADER: Record<string, string> = {
+		'src/lib/server/auth-options.ts':
+			'defines CLIENT_IP_HEADER — the single name the config reads and the builder sets'
+	};
+
+	test('exactly one file names a client-address header, and it is the one that defines the constant', () => {
+		const naming = appSourcePaths()
+			.filter((path) => CLIENT_ADDRESS_HEADER.test(sourceText(path)))
+			.sort();
+
+		// `toEqual` against the allowlist keys, not `arrayContaining`: this fails in BOTH directions.
+		// A new file naming a header is an offender; an allowlisted file that STOPS naming one means
+		// the entry has rotted into a name nobody checks, which is how an allowlist decays into
+		// decoration.
+		expect(naming).toEqual(Object.keys(MAY_NAME_A_HEADER).sort());
+	});
+
+	test('no file builds its own request at an /api/auth path', () => {
+		// The other half, and the one that survives a caller who forwards NOTHING — no header literal
+		// to catch, so the rule above would not see it, and the bucket silently becomes global.
+		// `auth-subrequest.ts` itself does not match: it takes the path as a parameter, so the literal
+		// lives at the call sites and the `new Request(` lives here, never in the same file.
+		const handRolled = appSourcePaths().filter((path) => {
+			const source = sourceText(path);
+			return /new Request\s*\(/.test(source) && /['"`]\/api\/auth/.test(source);
+		});
+		expect(handRolled).toEqual([]);
 	});
 
 	test.each([
 		'src/routes/login/+page.server.ts',
 		'src/routes/forgot-password/+page.server.ts',
 		'src/routes/reset-password/+page.server.ts'
-	])('%s imports the builder', (path) => {
+	])('%s builds its sub-request through the builder', (path) => {
+		// The positive floor. The two rules above are negative — they say what must not appear — and a
+		// negative rule over an empty set passes just as happily when the files it means to govern have
+		// been deleted or renamed. This says the actions that exist today do the right thing.
 		expect(importedNames(path, MODULE)).toContain('authSubrequest');
-	});
-
-	test('no caller builds its own client-address header', () => {
-		// The rule, over whatever the scan finds — including a file added tomorrow. An action that
-		// spells the header itself is the regression: it type-checks, it runs, and it is wrong only in
-		// how requests are attributed, which nothing else would report.
-		const offenders = callers().filter(
-			(path) =>
-				!importedNames(path, MODULE).includes('authSubrequest') && !importsNamespace(path, MODULE)
-		);
-		expect(offenders).toEqual([]);
-	});
-
-	test('and none of them names a client-address header directly', () => {
-		// Belt and braces, and it catches the case the import check cannot: a file that imports the
-		// builder AND ALSO sets a header of its own on some second request.
-		const naming = callers().filter((path) =>
-			/['"](?:x-forwarded-for|cf-connecting-ip|true-client-ip|x-real-ip)['"]/i.test(
-				sourceText(path)
-			)
-		);
-		expect(naming).toEqual([]);
 	});
 });

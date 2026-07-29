@@ -672,15 +672,28 @@ guard nobody has attacked is a guess:
    `isTest()`; asserting null would have been asserting the test environment. A separate assertion
    pins the list to exactly one entry, since the first can only see headers it thinks to send.
    _(Config reverted → 6 red across two specs; a fallback entry appended → 2 red.)_
-3. **A source scan: every file that touches `auth.handler` goes through the builder.** The surface is derived
-   from the tree, not listed — DAR-99's lesson, a hand-written path list goes blind when an entry is
-   deleted. A second assertion catches what the import check cannot: a file that imports the builder
-   _and also_ names a client-address header on some other request. _(A fifth action planted at
-   `src/routes/api/relay/+server.ts` → 2 red, naming the file; a hand-rolled second call added inside
-   `/login`, which still imports the builder → 1 red, on the second assertion alone; a caller using
-   `auth.handler.bind(auth)` → 2 red, which the FIRST cut of this scan missed entirely at 12/12 green,
-   because it matched the call `auth.handler(` rather than the binding — DAR-102's walk-past-able
-   call-text half, reproduced and then removed.)_
+3. **Two source rules, and they are an INVERSION.** Three cuts tried to IDENTIFY the callers of
+   Better Auth's router by text and each was walked past by a spelling nobody had thought of:
+   `auth.handler(` missed `auth.handler.bind(auth)`; widening to `auth.handler` missed
+   `getAuth().handler(...)`, which is the most natural spelling of all since it needs no variable
+   named `auth`. Both mutations passed **12/12 green** while hand-rolling `x-forwarded-for`.
+   Deriving from `getAuth` importers is worse, not better — eleven files import it and most reach
+   `auth.api.*`, which builds no sub-request and must not be forced through the builder. So the
+   question "who calls the router?" is abandoned, because the fix does not actually need it:
+   **only one file may NAME a client-address header** (an allowlist whose single entry is
+   `auth-options.ts`, which defines the constant), and **no file may hand-build a request at an
+   `/api/auth` path**. Neither cares what the auth instance is called, so no spelling escapes them.
+   The allowlist is asserted with `toEqual`, so it fails in both directions — a new file naming a
+   header, and an allowlisted file that STOPS naming one, which is how an allowlist decays into
+   decoration (DAR-102's polarity). `auth-subrequest.ts` needs no exception: it takes the path as a
+   parameter, so the `/api/auth` literal lives at the call sites and the `new Request(` lives in the
+   builder, never both in one file. _(Mutations, all four caught on their intended rule:
+   `getAuth().handler` + a header → 2 red; `auth.handler.bind` + a header → 2 red; a caller that
+   forwards NOTHING, so there is no header literal to find → 1 red on the hand-built-request rule
+   alone, which is what makes the pair non-redundant; the allowlisted file no longer naming a header
+   → 1 red.)_ A third, positive assertion pins that the three actions which exist today import the
+   builder — the two rules above are negative, and a negative rule over an empty set passes just as
+   happily when the files it governs have been renamed away.
 
 The e2e adds the end-to-end mirror of DAR-92's isolation test: one fixed client address, a **rotating
 `x-forwarded-for` on every request**, and the cap must still bind at `max + 1`. Reverting the config
