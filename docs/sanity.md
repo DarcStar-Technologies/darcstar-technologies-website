@@ -610,6 +610,65 @@ enhancement **only**, never the rendering. It is gone from the **list** cards: D
 `description` from the list projection (15 copies of one string per page), and the visible rendering
 there is `TopicGuide` (below).
 
+### The venue · date slot is a component, because Svelte eats the separator (DAR-153)
+
+`PaperVenueDate` renders the rail's third slot. It exists as a component because `/research` and
+`/research/[slug]` carried **byte-identical** copies of the markup and both shipped
+`Zenodo·February 4, 2026` — on all 18 cards and every paper page — for the life of the index:
+
+```svelte
+{#if paper.venue}{paper.venue}{/if}{#if paper.venue && paper.publishedDate}
+	·
+{/if}{#if paper.publishedDate}{formatDate(paper.publishedDate, getLocale())}{/if}
+```
+
+The `·` sits alone on its own line inside the `{#if}`, and **Svelte trims whitespace at a block
+boundary** — here on both sides at once, so nothing separated the two values. Five things worth
+keeping:
+
+1. **`&nbsp;` on BOTH sides**, which is where this differs from `/people/[slug]` and `/news/[slug]`:
+   those need only a leading one, because the space _after_ their separator is interior to its block
+   and survives. Here it would be the block's trailing whitespace and is trimmed, so the one-sided
+   fix leaves `Zenodo ·February 4, 2026` — half the bug, and the half that looks deliberate
+   (mutation-measured, and it was the fix the ticket prescribed). Entities are not ASCII whitespace,
+   so re-wrapping the block over three lines cannot bring the defect back — also measured, by
+   re-applying exactly the formatting that created it and watching the specs stay green.
+2. **Extracted, not patched twice.** One `Paper*` component beside the rest of the meta family means
+   one spec instead of two and no third surface to get wrong.
+3. **The condition and the content must read the same value.** Writing the spec surfaced a second,
+   inherited defect: the separator was gated on the raw `publishedDate` while the text came from
+   `formatDate`, which returns `''` for a null/empty/unparseable value — so a write bypassing the
+   Studio's date widget (DAR-70's rule: Studio validation is a UI affordance an API write skips)
+   rendered a dangling `Zenodo ·`. It now gates on the formatted string, so a paper whose only field
+   is an unrenderable date produces **no element at all** — not an empty `<span>`, which would still
+   be a flex item claiming a `gap-3` (DAR-56's empty-wrapper trap).
+4. **The scope table in the ticket was wrong, and how it was built is the lesson.** It listed four
+   surfaces and declared `/research` "the last one", because it was assembled by checking the
+   surfaces I thought of. `/research/[slug]` was equally broken and equally visible. Enumerating the
+   **pattern in source** (`grep -rn '·' src --include=*.svelte`) found it in seconds; enumerating
+   renderings from memory never would.
+5. **Nothing on the site catches this by rendering**, which is why each surface is pinned by a
+   `client`-project spec: the same trap in `/news/[slug]`'s related-papers row survived indefinitely
+   because no published post has related papers. The assertion normalises whitespace before
+   comparing — `\s` matches U+00A0, so it states "there IS separation" rather than pinning the
+   mechanism; a plain space would still go red the moment the block is re-wrapped.
+6. **One change here is not whitespace, and it is worth naming rather than slipping in**: the `·` is
+   now `aria-hidden`, which neither `/research` page had. The dot is decoration, so a screen reader
+   should hear "Zenodo February 4, 2026" rather than a punctuation name. The site's **seven** other
+   separators (Footer ×2, `/news`, `/news/[slug]`'s byline and its related-papers row,
+   `/people/[slug]` ×2) now all agree — the related-papers row was the last holdout and came along in
+   the same change. It is the only separator **inside a link**, so it is the only one where the
+   attribute changes an accessible **name** (`"The Intelligence Ratchet arXiv"`) rather than text
+   beside it; its venue stays in the name, because a venue is content and only the glyph is
+   decoration. That one therefore needs a **name** assertion rather than an attribute one — removing
+   the attribute must fail a `getByRole({ name })` lookup, mutation-verified, since role-name matching
+   normalises whitespace and could plausibly have swallowed the dot on its own. Two things this cost getting right: a **rendered-text** diff
+   cannot see an added element at all (the "byte-identical once whitespace is stripped" check runs on
+   tag-stripped text, so "whitespace is the only change" was true of the text and false of the
+   markup), and the first write-up of this rule said "the three other separators all do", which was
+   wrong in both the count and the "all" — the consistency argument is the whole justification for
+   the attribute, so it is the one claim here that had to be counted rather than recalled.
+
 ### Topic descriptions are rendered, not tooltipped (DAR-56)
 
 The Studio's `topic.description` ("shown alongside the papers tagged with it") reached nothing but

@@ -121,8 +121,16 @@
 								     `The Intelligence Ratchet· arXiv`. Same trap, same fix as /people/[slug]'s
 								     organization · years rail (DAR-122). Pre-existing and invisible until now
 								     because no published post has related papers — pinned by a spec, since
-								     nothing on the live site would show it breaking again. -->
-								{paper.title}{#if paper.venue}<span class="text-muted">&nbsp;· {paper.venue}</span
+								     nothing on the live site would show it breaking again.
+
+								     `aria-hidden` on the dot (DAR-153) brings the last of the site's seven
+								     separators into line with the other six. This is the ONLY one inside a link,
+								     so it is the one place the attribute changes an accessible NAME rather than
+								     text beside it: the link is announced "The Intelligence Ratchet arXiv". The
+								     venue stays in the name because it is content — only the punctuation goes,
+								     which is the whole point of hiding a decorative glyph. -->
+								{paper.title}{#if paper.venue}<span class="text-muted"
+										>&nbsp;<span aria-hidden="true">·</span>&nbsp;{paper.venue}</span
 									>{/if}
 							</a>
 							<PaperOrigin

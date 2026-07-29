@@ -76,6 +76,22 @@ describe('/news/[slug] related papers', () => {
 		expect(text).toBe('The Intelligence Ratchet · arXiv');
 	});
 
+	// DAR-153 brought this into line with the site's six other separators. It is the only one INSIDE
+	// a link, so unlike the rest it changes an accessible NAME — hence a name assertion rather than
+	// just an attribute one: the punctuation goes, the venue stays, because the venue is content.
+	// (`textContent` above still sees the dot, which is what keeps the two tests independent.)
+	it('drops the separator from the link name but keeps the venue', async () => {
+		mount([PAPER]);
+		await expect
+			.element(page.getByRole('link', { name: 'The Intelligence Ratchet arXiv', exact: true }))
+			.toBeVisible();
+	});
+
+	it('hides the separator from assistive technology', () => {
+		const { container } = mount([PAPER]);
+		expect(container.querySelector('li a [aria-hidden="true"]')?.textContent).toBe('·');
+	});
+
 	// Both halves of the guard: `../admin` and `a/b` are refused by the segment check, `..\admin` only
 	// by the URL round-trip (the parser folds `\` to `/`, so it escapes just as far without ever
 	// containing a slash).
