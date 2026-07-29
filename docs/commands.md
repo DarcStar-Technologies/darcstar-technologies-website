@@ -142,11 +142,16 @@ it walks is public.) Start `pnpm build && pnpm preview` in one shell, then in an
   [auth](auth.md#invite-only-onboarding-dar-67).
 - `pnpm smoke:waitlist` (`scripts/smoke-waitlist.ts`, DAR-103) — the whole v2 qualification flow
   against a real database: step 1 → 2 → 3 → 4A, the resume cookie, the funnel rows, the per-row
-  write budget, append-only, the classifier and the Priority-A claim. Needs `DATABASE_*` +
+  write budget, append-only, the classifier, the Priority-A claim, and DAR-139's updates gate
+  (ask → confirm → audience → login-free withdrawal → the form can't restart it). Needs `DATABASE_*` +
   `BETTER_AUTH_SECRET` + `RESEND_API_KEY` in `.env` and no sign-in at all (the flow is public). A run
-  sends **one** email, into `info@` — it seeds the lead so the signup notification and ack never
-  fire, but DAR-82's Priority-A notification is inseparable from the claim it asserts. See
-  [waitlist](waitlist.md#what-only-the-smoke-can-see-dar-103).
+  sends **two** emails and both are disclosed rather than suppressed: DAR-82's Priority-A notification
+  into `info@`, and DAR-139's confirmation request to the smoke address. It seeds the lead so the
+  signup notification and ack never fire, but each of those two is inseparable from the claim it
+  asserts — both mailers check the Resend key BEFORE claiming, so a silent run is a run where the
+  column was never stamped. The confirmation goes to `delivered@resend.dev` unless
+  `SMOKE_WAITLIST_EMAIL` says otherwise; point that at a mailbox you own to actually read the message.
+  See [waitlist](waitlist.md#what-only-the-smoke-can-see-dar-103).
 
 **A run spends two of the 3/hour `/request-password-reset` budget** (the probe asks about an account
 and about a stranger), so a second run inside the hour fails there rather than at anything real. The

@@ -933,7 +933,77 @@ mail from optional updates and states, to the visitor, that the updates aren't b
 until there is a confirmation step and a login-free unsubscribe. So building the send is not only a
 waitlist change: `privacy_use_updates_body` and `PRIVACY_UPDATED` change with it
 ([legal](legal.md)), and `email-senders.spec.ts` fails until the new mailer is declared —
-deliberately, so the page can't go stale quietly. The gate is tracked as DAR-139.
+deliberately, so the page can't go stale quietly.
+
+### The sending gate (DAR-139)
+
+**A ticked box is a request to be ASKED. The only thing that authorizes a send is a click from the
+mailbox.** Three columns on `waitlist_lead` — on the lead, and here that is forced rather than merely
+consistent with DAR-88: a withdrawal is a decision about a person, and recording it per submission
+would need a write reaching across N immutable rows.
+
+| column                    | meaning                                                               |
+| ------------------------- | --------------------------------------------------------------------- |
+| `updates_confirm_sent_at` | when we last asked. **The cap.**                                      |
+| `updates_confirmed_at`    | when the mailbox clicked confirm. **The only authorization.**         |
+| `updates_unsubscribed_at` | when they withdrew. Durable; suppresses asking and sending, for good. |
+
+`updates_confirmed_at` is **kept** after a withdrawal — the audit trail of what happened, and
+`mayReceiveUpdates` already excludes a withdrawn lead, so clearing it would destroy evidence to buy
+nothing. That is also why `waitlistUpdatesState` (`$lib/waitlist-updates.ts`) tests withdrawal
+**first**: checking confirmation first would report every opted-out address as still subscribed.
+
+**The rule lives in two encodings and they are pinned against each other.** `mayReceiveUpdates` (a
+predicate, client-safe, rendered as the `/admin/waitlist` badge) and `readUpdatesAudience`
+(waitlist-store.ts, the same rule as a `WHERE`) cannot be single-sourced because one is SQL —
+DAR-71's situation for the `noIndex` filter that lives half in GROQ — so `waitlist-store.spec.ts` runs
+a table of leads through both and requires them to agree. No sender calls the audience query yet;
+shipping the definition with the gate is the point, so the rule has one home before the first send is
+written. What that can't do is force a future author to use it — removing the _silent_ path is
+`email-senders.spec.ts`'s job, and its failure message names the function.
+
+**Asking is capped by a conditional UPDATE, and the polarity differs from DAR-82 on purpose.**
+`claimUpdatesConfirmSend` refuses when the address has confirmed, has withdrawn, or was asked inside
+the last 24h; one row back means this call and no other may send. A **rate**, not DAR-82's once-ever
+quota, because that notification lands in our own inbox with an operator standing over it while this
+one goes to a member of the public who may simply lose it — a re-tick tomorrow has to be able to ask
+again. **Not gated on `isNew`**, which is the other tempting reuse and would have shipped the gate
+unusable: every address already on the list, and anyone who signs up twice, could then tick the box
+forever and never be asked.
+
+**The new exposure, and its bound.** Before this a stranger submitting a known address caused zero
+mail. Now they can cause ≤1 confirmation request per day to it. Bounds: step 1's per-IP throttle, the
+per-lead window, and — decisively — the **"don't ask again" link carried in the confirmation email
+itself**, which ends it permanently in one click. That is why the unsubscribe link ships in the
+confirmation request rather than only in updates that don't exist yet: the person best placed to stop
+an unwanted ask is the one receiving it.
+
+**Withdrawal is durable against the form.** The tick box is the one surface a stranger controls, so a
+re-tick can't restart the asks and a stale confirmation link can't reverse an opt-out (`confirmUpdates`
+refuses inside its own SET expression, and the page says so rather than pretending the press did
+nothing). Re-entry needs a channel the form can't reach — email us, which `/privacy` offers.
+
+**Two signed values, two TTLs** (`waitlist-updates-token.ts`, fifth and sixth on the `mintSignedValue`
+core): `c1` confirm at **7 days**, `u1` unsubscribe at **1 year**. DAR-98's rule applied rather than
+copied — a TTL is sized to what the capability is FOR, and a grant goes stale where a removal must
+work whenever the mail is found. Folding them into one token would hand the grant the removal's
+lifetime.
+
+**Both mutations are POSTs behind a landing page** (`/updates/confirm`, `/updates/unsubscribe`; both in
+`GATED_PATHS`, both noindex). For confirm that is the entire security property: mail scanners follow
+every link in an inbound message, so a GET-confirm is confirmed by a machine on delivery — double
+opt-in that verifies nothing. For unsubscribe it is RFC 8058's own reasoning, and DAR-75's. Every token
+failure — absent, malformed, expired, minted for the other page, lead deleted — renders **one generic
+panel**, the continuation token's anti-oracle rule; a database failure is the one thing shown
+separately, because telling somebody their withdrawal went through when it threw is the worst answer
+these pages can give.
+
+Coverage is split the way DAR-103 describes: CI has no `BETTER_AUTH_SECRET`, so the e2e can only reach
+the generic-failure panel (which it asserts, along with noindex and "a GET mutates nothing"), and the
+confirm → audience → withdraw composition is `pnpm smoke:waitlist` step P against a real database.
+That script **mints** the two links with the same exported functions the mailer uses — the narrower
+version of its no-parsing rule: it may call what the server calls, and may not reimplement or
+decompose the format.
 
 ### `contact_permission` is tri-state
 

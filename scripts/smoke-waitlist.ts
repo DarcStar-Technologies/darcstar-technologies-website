@@ -49,14 +49,24 @@
 // not observable from outside the process anyway (the only evidence is mail arriving), and which
 // `waitlist-store.spec.ts` covers at the unit level.
 //
-// A RUN STILL SENDS ONE EMAIL, and it is disclosed rather than suppressed. The step-4A answers below
-// classify Priority A on purpose — that is the point of step I — so DAR-82's notification fires once
-// into info@, subject `Priority A waitlist lead: <the smoke address>`. It cannot be separated from the
-// claim being asserted: `captureWaitlistPriorityLead` checks the Resend key BEFORE it claims, so a run
-// that sends nothing is a run where the column was never stamped and the assertion inverts into its
-// weaker half. Skipping the send under an env flag would be DAR-79/DAR-81's defect again (one script
-// testing two different things depending on whose machine it is on), so the send stays real and the
-// address in the subject line is what makes it obviously a test.
+// A RUN SENDS TWO EMAILS, and both are disclosed rather than suppressed.
+//
+//   1. DAR-82's Priority-A notification, once, into info@ — subject
+//      `Priority A waitlist lead: <the smoke address>`. The step-4A answers below classify Priority A
+//      on purpose, that being the point of step I.
+//   2. DAR-139's updates confirmation, once, to the smoke address itself — because step 1 ticks the
+//      opt-in box, which is what step P exists to walk.
+//
+// Neither can be separated from the claim it belongs to, and for the same reason: both
+// `captureWaitlistPriorityLead` and `captureUpdatesConsent` check the Resend key BEFORE they claim, so
+// a run that sends nothing is a run where the column was never stamped and the assertion inverts into
+// its weaker half. Skipping a send under an env flag would be DAR-79/DAR-81's defect again (one script
+// testing two different things depending on whose machine it is on).
+//
+// The second one goes to `delivered@resend.dev` unless SMOKE_WAITLIST_EMAIL says otherwise — Resend's
+// own test recipient, so it is a real send that lands in nobody's inbox. Point that variable at a real
+// mailbox and you will get a real "confirm your updates" email; that is the intended way to eyeball the
+// message, and it is why the default is what it is.
 //
 // WHY THE FUNNEL IS ANCHORED BY TIME AND NOT BY A PARSED HANDLE. The flow id travels signed
 // (`n1.<uuid>.<exp>.<mac>`, DAR-86) and the column holds the bare UUID, so the obvious way to find this
@@ -82,8 +92,19 @@ import {
 	classifyWaitlistLead,
 	classifyWaitlistLeadGroup
 } from '../src/lib/server/waitlist-classify';
-import { WAITLIST_STEP_WRITE_MAX } from '../src/lib/server/waitlist-store';
+import { readUpdatesAudience, WAITLIST_STEP_WRITE_MAX } from '../src/lib/server/waitlist-store';
 import { WAITLIST_RESUME_COOKIE } from '../src/lib/server/waitlist-resume';
+import {
+	mintUpdatesConfirmToken,
+	mintUpdatesUnsubscribeToken
+} from '../src/lib/server/waitlist-updates-token';
+import {
+	UPDATES_CONFIRM_PATH,
+	UPDATES_UNSUBSCRIBE_PATH
+} from '../src/lib/server/waitlist-updates-notify';
+import { mayReceiveUpdates, waitlistUpdatesState } from '../src/lib/waitlist-updates';
+import type { WaitlistSigningSecret } from '../src/lib/server/waitlist-secret';
+import type { Db } from '../src/lib/server/db';
 import { die, ok, smokeBase } from './smoke-http.mjs';
 
 // DB credentials come from .env — the same source `wrangler dev` reads, so the script and the worker
@@ -232,6 +253,28 @@ async function submit(
 		body: params
 	});
 	if (!options.anonymous) absorbCookies(res);
+	return { status: res.status, html: await res.text() };
+}
+
+/**
+ * A native POST at one of DAR-139's landing pages. Its own helper rather than `submit`, because these
+ * are ordinary form actions on their own routes — no `?/remote=` action to read off a page, no resume
+ * cookie to carry, and deliberately anonymous: the login-free unsubscribe has to work for somebody who
+ * has never had a session, which is most of the people who will ever use it.
+ */
+async function updatesPost(path: string, token: string): Promise<Page> {
+	const res = await fetch(`${BASE}${path}`, {
+		method: 'POST',
+		redirect: 'manual',
+		headers: {
+			'content-type': 'application/x-www-form-urlencoded',
+			// Without this SvelteKit answers a form action with its ActionResult envelope instead of the
+			// page re-render — the same trap smoke-http.mjs documents.
+			accept: 'text/html',
+			origin: ORIGIN
+		},
+		body: new URLSearchParams({ token })
+	});
 	return { status: res.status, html: await res.text() };
 }
 
@@ -791,6 +834,9 @@ ok(
 const secondSignup = await submit(step1Action, {
 	name: 'Mallory Smoke', // a different name, which under append-only is a second claim, not an edit
 	email: smokeEmail,
+	// Ticked here as well as at step 1, which is neutral for THIS step and is what gives step P
+	// something to observe: DAR-139's per-lead window has to refuse the second ask.
+	'b:consentUpdates': 'on',
 	website: '',
 	flowId: flowHandle
 });
@@ -866,6 +912,101 @@ assertEqual('funnel', JSON.stringify(recorded), JSON.stringify([...EXPECTED_EVEN
 ok(`the whole walk recorded ${EXPECTED_EVENTS.length} events, one row each, under one flow`);
 
 // ---------------------------------------------------------------------------------------------
+// P. The updates sending gate (DAR-139), end to end against a real database.
+//
+//    THE COMPOSITION NEITHER SUITE REACHES, for the same reasons as everything else in this file. The
+//    unit specs round-trip mint → verify inside one module with the secret handed in; the hermetic e2e
+//    has no BETTER_AUTH_SECRET, so every token there resolves to `invalid` and the confirmed path is
+//    unreachable by construction. What is only observable here is the join: a token the MAILER minted
+//    being accepted by the ROUTE, against the running worker's own resolution of the signing secret
+//    (DAR-99's whole concern), and the conditional UPDATE behind it landing on a real row.
+//
+//    IT MINTS, AND DELIBERATELY DOES NOT PARSE. The rule this script follows elsewhere is that a client
+//    which can take a signed value apart will eventually be tempted to put one together — so the funnel
+//    is anchored by the database's clock rather than by splitting the handle. Minting is the other
+//    direction and is allowed here under a narrower rule: the script may CALL the same exported
+//    function the server calls, and may not reimplement or decompose the format. That is what makes
+//    this a test of agreement rather than a second implementation to keep in sync.
+// ---------------------------------------------------------------------------------------------
+const signingSecret = process.env.BETTER_AUTH_SECRET as WaitlistSigningSecret | undefined;
+if (!signingSecret) {
+	die(
+		'BETTER_AUTH_SECRET is not set (check .env) — the updates links cannot be minted without it.'
+	);
+}
+
+// P1. Step 1's ticked box asked for a confirmation. Fire-and-forget (the claim AND the send run inside
+//     ctx.waitUntil), so this polls rather than reading once.
+const askedLead = await eventually(
+	'updates ask',
+	leadRow,
+	(row) => row?.updatesConfirmSentAt != null,
+	() =>
+		'updates_confirm_sent_at was never stamped — the claim is fire-and-forget, so this means it failed, RESEND_API_KEY/ORIGIN are unset, or the worker is on another database'
+);
+const askedAt = askedLead!.updatesConfirmSentAt!.getTime();
+assertEqual('updates ask', waitlistUpdatesState(askedLead!), 'asked');
+assertEqual('updates ask', mayReceiveUpdates(askedLead!), false);
+ok('a ticked box asked this address to confirm — and asking is not yet permission to send');
+
+// P2. The confirmation itself. The token is minted with the same function the email uses and the same
+//     secret the worker loaded, so a POST it accepts is the two ends agreeing across a real request.
+const confirmed = await updatesPost(
+	UPDATES_CONFIRM_PATH,
+	await mintUpdatesConfirmToken(signingSecret, SMOKE_LEAD_ID)
+);
+if (!/works without signing in/i.test(confirmed.html)) {
+	die(`updates confirm: the page did not report a confirmation (status ${confirmed.status})`);
+}
+const confirmedLead = (await leadRow())!;
+assertEqual('updates confirm', waitlistUpdatesState(confirmedLead), 'confirmed');
+assertEqual('updates confirm', mayReceiveUpdates(confirmedLead), true);
+// …and the address is now IN the audience, which is the query a future sender would read. Two
+// encodings of one rule (waitlist-store.spec.ts pins them against each other); this is the only place
+// the SQL half runs against a row that arrived through the real flow.
+const audience = await readUpdatesAudience(db as unknown as Db);
+if (!audience.some((row) => row.id === SMOKE_LEAD_ID)) {
+	die('updates confirm: the confirmed address is not in readUpdatesAudience');
+}
+ok('the emailed link confirmed the address, and it is in the audience a sender may read');
+
+// P3. The login-free withdrawal /privacy promises. No session, no account — the token is the whole
+//     authorization.
+const unsubscribed = await updatesPost(
+	UPDATES_UNSUBSCRIBE_PATH,
+	await mintUpdatesUnsubscribeToken(signingSecret, SMOKE_LEAD_ID)
+);
+if (!/place on the early-access waitlist is unaffected/i.test(unsubscribed.html)) {
+	die(`updates unsubscribe: the page did not report a withdrawal (status ${unsubscribed.status})`);
+}
+const withdrawnLead = (await leadRow())!;
+assertEqual('updates unsubscribe', waitlistUpdatesState(withdrawnLead), 'unsubscribed');
+assertEqual('updates unsubscribe', mayReceiveUpdates(withdrawnLead), false);
+// The confirmation timestamp SURVIVES the withdrawal — it is the record of what happened, and the
+// state already excludes them (schema.ts says so). A cleared column here would be evidence destroyed.
+if (withdrawnLead.updatesConfirmedAt == null) {
+	die('updates unsubscribe: the confirmation timestamp was cleared — that is the audit trail');
+}
+if ((await readUpdatesAudience(db as unknown as Db)).some((row) => row.id === SMOKE_LEAD_ID)) {
+	die('updates unsubscribe: a withdrawn address is still in the audience');
+}
+ok('the login-free link withdrew the address, keeping the confirmation as the audit trail');
+
+// P4. And the form cannot bring them back. The tick box is the one surface a stranger controls, so a
+//     re-tick after a withdrawal must not restart the asks — otherwise unsubscribing stops one message
+//     instead of the relationship. Whether the claim was refused is checked in step N: it is a
+//     fire-and-forget write, so "it did not happen" needs a happens-after, and the rest of the run is
+//     the wait.
+await submit(step1Action, {
+	name: 'Mallory Smoke',
+	email: smokeEmail,
+	'b:consentUpdates': 'on',
+	website: '',
+	flowId: flowHandle
+});
+ok('a fresh signup ticked the box again after the withdrawal (the refusal is asserted at the end)');
+
+// ---------------------------------------------------------------------------------------------
 // N. The two "this did NOT happen" claims, re-read now that the run has moved well past them.
 //
 //    The forged-flow probe already has a happens-after anchor of its own (step F). This is the second
@@ -873,9 +1014,19 @@ ok(`the whole walk recorded ${EXPECTED_EVENTS.length} events, one row each, unde
 //    therefore racing a `ctx.waitUntil`. A late read needs no clock: everything the run did afterwards
 //    is the wait. Both are re-read together because the cost is two queries.
 // ---------------------------------------------------------------------------------------------
-assertEqual('claimed once', (await leadRow())?.priorityANotifiedAt?.getTime(), claimedAt);
+const finalLead = await leadRow();
+assertEqual('claimed once', finalLead?.priorityANotifiedAt?.getTime(), claimedAt);
 assertEqual('forged flow', (await forgedRows()).length, 0);
-ok('nothing drifted afterwards: still one claim, still no rows for the forged flow');
+// DAR-139's two refusals, both of them fire-and-forget writes that were supposed NOT to happen — so
+// they are read here, where everything the run did afterwards is the wait, rather than immediately
+// after the submits that could have made them.
+//
+// One timestamp covers both: `updates_confirm_sent_at` is still the value step P1 saw, which means
+// neither the second signup (asked inside the 24h window) nor the fourth (asked after a withdrawal)
+// re-stamped it. A refused ask leaves the column alone, so hammering cannot walk the window forward.
+assertEqual('updates ask window', finalLead?.updatesConfirmSentAt?.getTime(), askedAt);
+assertEqual('updates withdrawal', waitlistUpdatesState(finalLead!), 'unsubscribed');
+ok('nothing drifted afterwards: one claim, no forged rows, one ask, still withdrawn');
 
 // ---------------------------------------------------------------------------------------------
 // O. Tear down. Only what this run created.
