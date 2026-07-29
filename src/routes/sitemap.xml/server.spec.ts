@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { locales, overwriteGetLocale } from '$lib/paraglide/runtime';
-import { TRANSLATED_LOCALES } from '$lib/seo';
+import { GATED_PATHS, TRANSLATED_LOCALES } from '$lib/seo';
 
 // The sitemap endpoint had no test at all until DAR-122, and the gap it left is specific: a content
 // type here is TWO halves — an arm in `sitemapEntriesQuery` and a mapping in the handler — and the
@@ -54,6 +54,22 @@ const ROUTES: { collection: keyof typeof ENTRIES; path: string }[] = [
 	{ collection: 'papers', path: '/research' },
 	{ collection: 'people', path: '/people' }
 ];
+
+/** Every collection empty — a base to populate one at a time. */
+const NONE = { posts: [], papers: [], people: [] };
+
+const doc = (slug: string) => ({ slug, _updatedAt: '2026-07-29T00:00:00Z' });
+/** A slug crafted to climb out of its section into `gated`. `..` + `/admin` → `../admin`. */
+const escapeTo = (gated: string) => doc(`..${gated}`);
+/**
+ * The same escape with a backslash — the URL parser folds `\` to `/` in a special-scheme URL, so
+ * `..\admin` resolves to `/admin` just as `../admin` does, while containing no slash at all.
+ *
+ * Both spellings, because `contentPath`'s two checks OVERLAP on the first one and only the second
+ * reaches the round-trip half. Without this the whole round-trip could be deleted and every
+ * assertion in this file would stay green (mutation-measured).
+ */
+const escapeToViaBackslash = (gated: string) => doc(`..\\${gated.slice(1)}`);
 
 beforeEach(() => {
 	fetchSpy.mockReset();
@@ -129,6 +145,51 @@ describe('GET /sitemap.xml', () => {
 		expect(body.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
 		expect(body).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
 	});
+
+	// DAR-148. `<loc>` is built through `localizeHref` → `new URL`, which RESOLVES `../`, so a slug
+	// could put a gated path into the one document that promises never to list one — the invariant
+	// seo.e2e.ts asserts. That e2e cannot assert it about CMS-driven entries: CI runs without
+	// SANITY_VIEWER_TOKEN (DAR-96), so no such <loc> exists there. GATED_PATHS is IMPORTED, not
+	// restated, so both places assert the same list and a gated route added later is covered here the
+	// day it joins it.
+	it('emits no gated path, however a document spells its slug', async () => {
+		expect(GATED_PATHS.length).toBeGreaterThan(0);
+		fetchSpy.mockResolvedValue(
+			Object.fromEntries(
+				ROUTES.map(({ collection }) => [
+					collection,
+					GATED_PATHS.flatMap((gated) => [escapeTo(gated), escapeToViaBackslash(gated)])
+				])
+			)
+		);
+
+		const body = await (await call()).text();
+		for (const gated of GATED_PATHS) {
+			expect(
+				locs(body).filter((loc) => loc === ORIGIN + gated || loc.startsWith(`${ORIGIN}${gated}/`)),
+				`a slug resolved into ${gated} — see contentPath in $lib/content-path.ts`
+			).toEqual([]);
+		}
+		// The guard drops ENTRIES, never the document: a bad slug must not cost the whole sitemap.
+		expect(locs(body)).toContain(`${ORIGIN}/people`);
+	});
+
+	// Per collection, because the guard has to be applied to every one of them — a fix wired into
+	// posts and papers but not people would pass the test above only until someone reordered it.
+	it.each(ROUTES)(
+		'drops a $collection document whose slug $path/[slug] could not serve',
+		async ({ collection, path }) => {
+			for (const slug of ['../admin', '..\\admin', 'a/b']) {
+				fetchSpy.mockResolvedValue({ ...NONE, [collection]: [escapeTo('/admin'), doc(slug)] });
+				const body = await (await call()).text();
+				expect(
+					locs(body).filter((loc) => loc.startsWith(`${ORIGIN}${path}/`)),
+					`${collection} reached <loc> with the unroutable slug ${slug}`
+				).toEqual([]);
+				expect(locs(body)).not.toContain(`${ORIGIN}/admin`);
+			}
+		}
+	);
 
 	// A slug is interpolated straight into the document, so a markup character in one would produce
 	// invalid XML — which crawlers reject WHOLESALE, taking the entire sitemap down rather than

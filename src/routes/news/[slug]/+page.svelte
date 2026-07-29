@@ -12,6 +12,7 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import { formatDate } from '$lib/sanity/date';
+	import { contentPath } from '$lib/content-path';
 	import { contentSeo } from '$lib/sanity/content-seo';
 	import { articleJsonLd, breadcrumbJsonLd } from '$lib/jsonld';
 	import { page } from '$app/state';
@@ -44,6 +45,20 @@
 			{ name: post.title, url: pageUrl }
 		])
 	]);
+
+	// Related papers paired with the path each one resolves to, unroutable ones dropped (DAR-148).
+	// Resolved HERE rather than inside the `{#each}` so the section can gate on what will actually
+	// render: gating on the raw array puts the "Related papers" heading over an empty <ul> when every
+	// entry is dropped — DAR-56's empty-wrapper trap, and a heading promising links there are none of.
+	// A row is nothing BUT a cross-reference, so it goes entirely instead of rendering unlinked; the
+	// paper keeps its own card on /research. That is the opposite call from the /news · /research ·
+	// /people cards, where the card is that document's own listing and dropping it would hide it.
+	const relatedPapers = $derived(
+		(post.relatedPapers ?? []).flatMap((paper) => {
+			const path = contentPath('/research', paper.slug);
+			return path ? [{ paper, path }] : [];
+		})
+	);
 </script>
 
 <Seo {...seo} type="article" {jsonLd} />
@@ -91,27 +106,30 @@
 			<PortableBody value={post.body} />
 		</div>
 
-		{#if post.relatedPapers && post.relatedPapers.length > 0}
+		{#if relatedPapers.length > 0}
 			<section class="glass-card p-8 sm:p-10">
 				<h2 class="text-lg font-medium tracking-tight text-white">{m.news_related_heading()}</h2>
 				<ul class="mt-4 space-y-2">
-					{#each post.relatedPapers as paper (paper._id)}
-						{#if paper.slug}
-							<li class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-								<a
-									href={localizeHref(`/research/${paper.slug}`)}
-									class="text-sm text-primary-500 transition-colors hover-focus:text-primary-400 hover-focus:underline"
-								>
-									{paper.title}{#if paper.venue}<span class="text-muted">
-											· {paper.venue}</span
-										>{/if}
-								</a>
-								<PaperOrigin
-									darcstarAuthored={paper.darcstarAuthored}
-									hasCommentary={paper.hasCommentary}
-								/>
-							</li>
-						{/if}
+					{#each relatedPapers as { paper, path } (paper._id)}
+						<li class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+							<a
+								href={localizeHref(path)}
+								class="text-sm text-primary-500 transition-colors hover-focus:text-primary-400 hover-focus:underline"
+							>
+								<!-- `&nbsp;`, not a space: Svelte trims whitespace at an element/block boundary,
+								     so the space that used to open this span was dropped and the row rendered
+								     `The Intelligence Ratchet· arXiv`. Same trap, same fix as /people/[slug]'s
+								     organization · years rail (DAR-122). Pre-existing and invisible until now
+								     because no published post has related papers — pinned by a spec, since
+								     nothing on the live site would show it breaking again. -->
+								{paper.title}{#if paper.venue}<span class="text-muted">&nbsp;· {paper.venue}</span
+									>{/if}
+							</a>
+							<PaperOrigin
+								darcstarAuthored={paper.darcstarAuthored}
+								hasCommentary={paper.hasCommentary}
+							/>
+						</li>
 					{/each}
 				</ul>
 			</section>

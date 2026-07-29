@@ -237,6 +237,45 @@ otherwise ship every teammate's positions and summaries on every visit. It delib
 project `person.email`: a mailbox on an indexable page is a spam surface with no way back, and
 `/contact` exists and is throttled.
 
+### A slug the route can't serve never becomes a URL (DAR-148)
+
+`defined(slug.current)` says a slug EXISTS, not that `[slug]` can serve it. Every path built from one
+goes through `new URL` — which **resolves** `../` — so a `../admin` slug turned the team grid's link,
+the `Person` `@id` and the sitemap's `<loc>` into the login wall. It needs a hand-crafted API write
+(the Studio slugifies typed input), and the destinations are gated and noindex, so what it really
+costs is a false machine-readable claim; the sitemap half is a stated invariant `seo.e2e.ts` asserts.
+
+One predicate, `contentPath` ([`src/lib/content-path.ts`](../src/lib/content-path.ts)), at all six
+places a slug becomes a URL: the sitemap's three collections, `personId` in `jsonld.ts`, the `/news` ·
+`/research` · `/people` card links, and the related-papers list on `/news/[slug]`. Rules worth
+keeping:
+
+- **The card survives, the link doesn't** — DAR-122's posture for a slugless teammate, extended to
+  every index. The one exception earns it: `/news/[slug]`'s related-papers row is nothing BUT a
+  cross-reference, so it drops entirely rather than leaving a dead entry, and the paper keeps its own
+  card on `/research`. The test is whether the surface is the document's own listing. An editor who writes a broken slug gets a debuggable page, not a document that
+  silently vanishes from the feed. On `/news`, where the whole card is the anchor, it degrades to a
+  `<div>` and gives up the hover treatment **and** the "Read article" call to action: a card that
+  still says "Read article" and goes nowhere is a worse lie than the link was.
+- **The link and the `@id` ask the same question.** They are one claim about one person, so a card
+  that links must be a node that identifies, and both consult the same helper.
+- **Two checks, and the overlap is the trap.** `../admin` contains a slash, so the segment check
+  alone already refuses it — which means a spec whose hostile slugs are all slash-bearing stays green
+  with the entire round-trip deleted (measured). `..\admin` is the case that matters: the URL parser
+  folds `\` to `/`, so it escapes just as far while containing no slash at all. Both halves, and
+  every surface, carry the backslash spelling for that reason.
+- **Not `encodeURIComponent`** for the round-trip comparison. It escapes `&`, which would drop
+  `a&b<c` — a slug the route serves fine, and the sitemap's only case exercising XML escaping. The
+  guard must refuse the unroutable, never the merely unusual.
+
+Residual, and the first draft of this PR is the evidence for how weak it is: nothing fails closed
+for a **seventh** call site. The six are pinned by their own specs and the sitemap's mapping is
+written once for all collections, so a fourth content type inherits it there — but a new surface that
+interpolates a slug itself is caught by review, not by a test (**DAR-154**). That is not hypothetical: the
+related-papers row was an EXISTING sixth site, missed by the first sweep of this very change (a `grep`
+truncated by `head`), and found only by re-sweeping during review. A DAR-102-style source scan is what
+would make it structural.
+
 ### /research origin split (DAR-52)
 
 The `paper` type holds two kinds of entry — first-party DarcStar work (`darcstarAuthored: true`)

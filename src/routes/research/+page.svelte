@@ -31,6 +31,7 @@
 	import TopicGuide from '$lib/components/TopicGuide.svelte';
 	import AuthorSuggestions from '$lib/components/AuthorSuggestions.svelte';
 	import Pager from '$lib/components/Pager.svelte';
+	import { contentPath } from '$lib/content-path';
 	import { inlineLinkClass, mutedLinkClass } from '$lib/styles';
 	import { fieldClass } from '$lib/styles';
 	import {
@@ -151,9 +152,17 @@
 <!-- Title leads (it's the card's one internal link — the shared inlineLinkClass affordance so it
      unmistakably reads as one), then the status/origin/venue meta rail beneath it. -->
 {#snippet paperCard(paper: PageServerData['papers'][number])}
+	{@const path = contentPath('/research', paper.slug)}
 	<li class="glass-card p-6 sm:p-7">
 		<h3 class="text-xl font-medium tracking-tight">
-			<a href={localizeHref(`/research/${paper.slug}`)} class={inlineLinkClass}>{paper.title}</a>
+			<!-- Linked only when the slug names a page `[slug]` can serve (DAR-148) — `../login` would
+			     otherwise resolve out of the section and point this title at the login wall. The card
+			     keeps everything else it carries (status, origin, venue, authors, abstract, topics,
+			     external links), which is most of its value, so an unroutable slug costs the title link
+			     and nothing more. -->
+			{#if path}
+				<a href={localizeHref(path)} class={inlineLinkClass}>{paper.title}</a>
+			{:else}{paper.title}{/if}
 		</h3>
 		<div class="mt-3 flex flex-wrap items-center gap-3">
 			<PaperStatus status={paper.status} />

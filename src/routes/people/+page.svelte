@@ -8,6 +8,7 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { page } from '$app/state';
+	import { contentPath } from '$lib/content-path';
 	import { peopleJsonLd } from '$lib/jsonld';
 	import { imageUrl } from '$lib/sanity/image';
 	import type { PageServerData } from './$types';
@@ -45,6 +46,7 @@
 		{:else}
 			<ul class="grid gap-6 sm:grid-cols-2">
 				{#each data.people as person (person._id)}
+					{@const profilePath = contentPath('/people', person.slug)}
 					<li class="glass-card flex flex-col items-center p-8 text-center">
 						{#if person.image?.asset}
 							<SanityImage
@@ -56,14 +58,17 @@
 							/>
 						{/if}
 						<h2 class="mt-4 text-lg font-medium tracking-tight text-white">
-							<!-- Linked only when the person has a routable slug. TypeGen types `slug` as
-							     non-null because the Studio marks it required, but that describes the SCHEMA —
-							     a write straight at the API skips Studio validation, the same gap
-							     $lib/server/math.ts guards for `latex`. A slugless teammate keeps their card
-							     and loses the link, rather than being filtered off the team page. -->
-							{#if person.slug}
+							<!-- Linked only when the person has a routable slug — the SAME predicate the
+							     JSON-LD `@id` above asks, since the link and the identifier are one claim
+							     about one person. TypeGen types `slug` as non-null because the Studio marks
+							     it required, but that describes the SCHEMA — a write straight at the API
+							     skips Studio validation, the same gap $lib/server/math.ts guards for `latex`,
+							     and `../admin` would have linked the team page at the login wall (DAR-148).
+							     A teammate whose slug can't be served keeps their card and loses the link,
+							     rather than being filtered off the team page. -->
+							{#if profilePath}
 								<a
-									href={localizeHref(`/people/${person.slug}`)}
+									href={localizeHref(profilePath)}
 									class="transition-colors hover-focus:text-primary-400"
 									aria-label={m.person_profile_link({ name: person.name })}>{person.name}</a
 								>

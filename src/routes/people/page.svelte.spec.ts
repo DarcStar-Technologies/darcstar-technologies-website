@@ -49,6 +49,19 @@ describe('/people', () => {
 		expect(page.getByRole('link', { name: /Ada Lovelace/ }).elements()).toHaveLength(0);
 	});
 
+	// Same outcome, different cause (DAR-148): the slug is present but names a page /people/[slug]
+	// cannot serve. `../admin` resolves OUT of the section, so the truthiness check above would have
+	// linked the team page straight at the login wall — and the JSON-LD `@id`, which asks the same
+	// predicate, would have published it as this person's identity.
+	it.each(['../admin', '..\\admin', '../../login', 'a/b'])(
+		'keeps a teammate whose slug is %s on the page, without a link',
+		async (slug) => {
+			mount([{ ...ADA, slug }]);
+			await expect.element(page.getByText('Ada Lovelace')).toBeVisible();
+			expect(page.getByRole('link', { name: /Ada Lovelace/ }).elements()).toHaveLength(0);
+		}
+	);
+
 	it('says so when there is no team to show', async () => {
 		mount([]);
 		await expect.element(page.getByText('Team details coming soon.')).toBeVisible();
