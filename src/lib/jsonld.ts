@@ -76,6 +76,7 @@ export function organizationJsonLd(origin: string, opts: { sameAs?: string[] } =
 
 interface PersonInput {
 	name: string | null;
+	slug?: string | null;
 	role?: string | null;
 	/** Pre-resolved absolute image URL (build with image.ts's `imageUrl`) — see the
 	 * dependency-purity note at the top of this module. */
@@ -84,20 +85,99 @@ interface PersonInput {
 }
 
 /**
- * Person nodes for the /people team grid (there are no per-person detail routes — the index
- * IS the profile surface). Name-less docs are dropped: a Person without a name is noise.
+ * The URL that IDENTIFIES a person — their /people/[slug] profile (DAR-122).
+ *
+ * Both surfaces that describe a person emit this as `@id`, so the team grid's node and the profile
+ * page's node are one entity in a consumer's graph rather than two people who happen to share a name.
+ * A person with no routable slug has no page, so they stay an anonymous (id-less) node on the grid.
+ *
+ * Not localized: `@id` is an identifier, and the same person must not become two entities because a
+ * crawler arrived through a translated tree.
+ */
+function personId(slug: string | null | undefined, origin: string): string | undefined {
+	return slug ? `${origin}/people/${slug}` : undefined;
+}
+
+/**
+ * Where a person's other identities live. Gated through `isHttpUrl` for the same reason
+ * `organizationJsonLd` gates the org's: this is published as someone's identity on the web, and the
+ * Studio's `rule.uri` is a UI affordance an API write skips (DAR-70). A malformed entry is dropped
+ * rather than emitted — a `sameAs` pointing somewhere wrong is worse than one absent.
+ */
+function personSameAs(links: PersonInput['socialLinks']): string[] | undefined {
+	return nonEmpty(
+		links
+			?.map((link) => link.url)
+			.filter(isTruthy)
+			.filter(isHttpUrl)
+	);
+}
+
+/**
+ * Person nodes for the /people team grid. Name-less docs are dropped: a Person without a name is
+ * noise. The full profile — biography, credentials, focus areas — is emitted by the detail page
+ * below; these are the same entities seen from the index, which is what `@id` says.
  */
 export function peopleJsonLd(people: PersonInput[], origin: string) {
 	return people
 		.filter((person): person is PersonInput & { name: string } => Boolean(person.name))
 		.map((person) => ({
 			'@type': 'Person',
+			'@id': personId(person.slug, origin),
+			url: personId(person.slug, origin),
 			name: person.name,
 			jobTitle: person.role ?? undefined,
 			image: person.image ?? undefined,
-			sameAs: nonEmpty(person.socialLinks?.map((link) => link.url).filter(isTruthy)),
+			sameAs: personSameAs(person.socialLinks),
 			worksFor: { '@id': organizationId(origin) }
 		}));
+}
+
+// `image` is dropped rather than inherited: the grid builder takes a pre-resolved URL as a FIELD
+// (it maps a list, so there is nowhere else to put it), while a detail page has exactly one subject
+// and passes it in `opts` — the shape articleJsonLd and scholarlyArticleJsonLd already use. Omitting
+// it means the profile page can hand this builder its raw query result unspread, and a stray Sanity
+// image object in the `image` slot stays a compile error rather than a `[object Object]` in the graph.
+interface PersonProfileInput extends Omit<PersonInput, 'image'> {
+	bio?: string | null;
+	focusAreas?: string[] | null;
+	education?: { institution: string | null }[] | null;
+}
+
+/**
+ * The full Person node for a /people/[slug] profile (DAR-122) — the same entity the grid points at
+ * (`@id`), with the background fields only this page renders.
+ *
+ * `alumniOf` and `knowsAbout` are the schema.org properties the Studio's `education` and `focusAreas`
+ * already ARE; mapping them costs nothing and is the machine-readable half of what the page shows.
+ * Institutions are emitted as bare `EducationalOrganization` nodes with no `@id` — we know their
+ * names, not their canonical identifiers, and inventing one would assert a link we can't back.
+ *
+ * `url` is derived from the slug rather than taken from `opts.url`, so it stays this person's
+ * identity even when a localized tree serves the page — the same reason `@id` is un-localized.
+ * `mainEntityOfPage` IS the serving URL: that describes the page, not the person.
+ */
+export function personJsonLd(person: PersonProfileInput, opts: { url: string; image?: string }) {
+	const origin = new URL(opts.url).origin;
+	return {
+		'@type': 'Person',
+		'@id': personId(person.slug, origin),
+		url: personId(person.slug, origin),
+		name: person.name ?? undefined,
+		jobTitle: person.role ?? undefined,
+		description: person.bio ?? undefined,
+		image: opts.image,
+		sameAs: personSameAs(person.socialLinks),
+		knowsAbout: nonEmpty(person.focusAreas?.filter(isTruthy)),
+		alumniOf: nonEmpty(
+			(person.education ?? [])
+				.map((credential) => credential.institution)
+				.filter(isTruthy)
+				.map((institution) => ({ '@type': 'EducationalOrganization', name: institution }))
+		),
+		worksFor: { '@id': organizationId(origin) },
+		mainEntityOfPage: opts.url
+	};
 }
 
 interface AuthorInput {

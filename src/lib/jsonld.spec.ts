@@ -8,6 +8,7 @@ import {
 	paperCanonicalUrl,
 	paperSourceUrls,
 	peopleJsonLd,
+	personJsonLd,
 	scholarlyArticleJsonLd
 } from './jsonld';
 
@@ -135,6 +136,107 @@ describe('peopleJsonLd', () => {
 		expect(people).toHaveLength(1);
 		expect(people[0].sameAs).toBeUndefined();
 		expect(people[0].image).toBeUndefined();
+	});
+
+	// DAR-122: a person with a profile page is IDENTIFIED by it, so this node and the detail page's
+	// are one entity rather than two people who share a name. A slugless doc has no page, so it stays
+	// an anonymous node rather than claiming an id that 404s.
+	it('identifies a person by their profile URL, and only when they have one', () => {
+		const [linked, anonymous] = peopleJsonLd(
+			[{ name: 'Ada', slug: 'ada-lovelace' }, { name: 'Grace' }],
+			ORIGIN
+		);
+		expect(linked['@id']).toBe(`${ORIGIN}/people/ada-lovelace`);
+		expect(linked.url).toBe(`${ORIGIN}/people/ada-lovelace`);
+		expect(anonymous['@id']).toBeUndefined();
+		expect(anonymous.url).toBeUndefined();
+	});
+
+	// The same gate `organizationJsonLd` applies to the org's identities. It was truthiness-only here,
+	// so the two Person-identity builders disagreed about what a publishable URL is — and a person's
+	// `sameAs` is exactly as load-bearing as the org's, being the claim "this profile is also them".
+	it('drops unusable social URLs rather than publishing them as identities', () => {
+		const [person] = peopleJsonLd(
+			[
+				{
+					name: 'Ada',
+					socialLinks: [
+						{ label: 'GitHub', url: 'https://github.com/ada' },
+						{ label: 'Email', url: 'mailto:ada@example.com' },
+						{ label: 'Typo', url: 'https://exa mple.com/ada' }
+					]
+				}
+			],
+			ORIGIN
+		);
+		expect(person.sameAs).toEqual(['https://github.com/ada']);
+	});
+});
+
+describe('personJsonLd', () => {
+	const URL_ADA = `${ORIGIN}/people/ada-lovelace`;
+
+	it('builds the full profile node, tied to the org and to the grid entity', () => {
+		const person = personJsonLd(
+			{
+				name: 'Ada Lovelace',
+				slug: 'ada-lovelace',
+				role: 'Chief Scientist',
+				bio: 'Builds analytical engines.',
+				focusAreas: ['Distributed systems', 'Applied AI'],
+				education: [
+					{ institution: 'Northern Illinois University' },
+					// A credential with no institution can't become an organization node.
+					{ institution: null }
+				],
+				socialLinks: [{ label: 'GitHub', url: 'https://github.com/ada' }]
+			},
+			{ url: URL_ADA, image: 'https://cdn.sanity.io/images/p/d/ada-600x600.jpg' }
+		);
+		expect(person['@type']).toBe('Person');
+		// The SAME id peopleJsonLd emits — that identity is the whole point of the pair.
+		expect(person['@id']).toBe(URL_ADA);
+		expect(person.name).toBe('Ada Lovelace');
+		expect(person.jobTitle).toBe('Chief Scientist');
+		expect(person.description).toBe('Builds analytical engines.');
+		expect(person.image).toBe('https://cdn.sanity.io/images/p/d/ada-600x600.jpg');
+		expect(person.knowsAbout).toEqual(['Distributed systems', 'Applied AI']);
+		expect(person.alumniOf).toEqual([
+			{ '@type': 'EducationalOrganization', name: 'Northern Illinois University' }
+		]);
+		expect(person.sameAs).toEqual(['https://github.com/ada']);
+		expect(person.worksFor).toEqual({ '@id': organizationId(ORIGIN) });
+		expect(person.mainEntityOfPage).toBe(URL_ADA);
+	});
+
+	// `@id`/`url` identify the PERSON and are derived from the slug; `mainEntityOfPage` describes the
+	// PAGE and is the URL actually being served. They diverge exactly when a localized tree serves the
+	// profile — and if `@id` followed the serving path, one person would become one entity per locale.
+	it('keeps the person identifier out of the locale tree', () => {
+		const localized = `${ORIGIN}/es/people/ada-lovelace`;
+		const person = personJsonLd({ name: 'Ada', slug: 'ada-lovelace' }, { url: localized });
+		expect(person['@id']).toBe(URL_ADA);
+		expect(person.url).toBe(URL_ADA);
+		expect(person.mainEntityOfPage).toBe(localized);
+	});
+
+	it('serializes a bare profile without null noise', () => {
+		const parsed = parseScript(
+			jsonLdScript(personJsonLd({ name: 'Bare' }, { url: `${ORIGIN}/people/bare` }))
+		);
+		expect(parsed.name).toBe('Bare');
+		for (const absent of [
+			'@id',
+			'url',
+			'jobTitle',
+			'description',
+			'image',
+			'sameAs',
+			'knowsAbout',
+			'alumniOf'
+		]) {
+			expect(absent in parsed, `${absent} should be absent`).toBe(false);
+		}
 	});
 });
 

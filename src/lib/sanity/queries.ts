@@ -307,8 +307,21 @@ export const paperBySlugQuery = defineQuery(`
 	}
 `);
 
+// Who has a public profile. THREE surfaces now answer that question — the /people grid, the
+// /people/[slug] detail route, and the sitemap — so it is one interpolated const rather than three
+// copies of the predicate. The failure a copy invites is not cosmetic: if the sitemap's idea of "team"
+// is wider than the route's, we advertise URLs that 404; if it is narrower, the grid links to pages no
+// crawler is told about. (A const, never a builder function — see the `defineQuery` rule above.)
+//
+// Team = anyone NOT an external co-author. `kind != "external"` (rather than `== "internal"`) is
+// deliberate: `kind` is only explicitly set to "external" for citation-only authors, so an unset/null
+// kind (the schema's initialValue isn't applied to programmatic seeds) still counts as team. GROQ's
+// `!=` includes null here, so a person with no `kind` shows on /people. Fail-OPEN, the mirror of
+// `seo.noIndex != true` below: being hidden from the team surfaces requires a positive signal.
+const TEAM_PERSON = `_type == "person" && kind != "external"`;
+
 // Everything /sitemap.xml needs in ONE round trip: routable slugs + `_updatedAt` (the sitemap
-// <lastmod>) for both content types. Deliberately minimal — the endpoint runs on every crawler
+// <lastmod>) for each content type. Deliberately minimal — the endpoint runs on every crawler
 // fetch, so it shouldn't pay for bodies/authors/images it never renders.
 //
 // `seo.noIndex != true` honors the Studio's "Hide from search engines" toggle (DAR-71): a hidden
@@ -317,9 +330,14 @@ export const paperBySlugQuery = defineQuery(`
 // at all, so the inverse would empty the sitemap of every post and paper on the site. Same fail-open
 // shape as `peopleQuery`'s `kind != "external"`; hiding requires a POSITIVE signal. The robots-meta
 // half of this rule lives in content-seo.ts (`seo?.noIndex === true`) — keep the two in step.
+//
+// `people` carries NO `seo.noIndex` arm, and that is not an omission: `person` has no `seo` field in
+// the schema at all, so writing one would read as a wired toggle an editor could reach. If the Studio
+// ever grows one, it belongs here AND in the route's own robots meta — the two halves of DAR-71.
 export const sitemapEntriesQuery = defineQuery(`{
 	"posts": *[_type == "post" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt },
-	"papers": *[_type == "paper" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt }
+	"papers": *[_type == "paper" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt },
+	"people": *[${TEAM_PERSON} && defined(slug.current)]{ "slug": slug.current, _updatedAt }
 }`);
 
 // The `siteSettings` singleton, projected down to the ONE field the site consumes (DAR-73).
@@ -343,18 +361,53 @@ export const siteSettingsQuery = defineQuery(`
 	}
 `);
 
-// Team = anyone NOT an external co-author. `kind != "external"` (rather than `== "internal"`) is
-// deliberate: `kind` is only explicitly set to "external" for citation-only authors, so an unset/null
-// kind (the schema's initialValue isn't applied to programmatic seeds) still counts as team. GROQ's
-// `!=` includes null here, so a person with no `kind` shows on /people.
+// The team grid. Its projection stays the CARD's fields — see `personBySlugQuery` for why the
+// biography, positions and credentials are not in here.
+//
+// No `defined(slug.current)` filter, unlike every other list query: a person without a routable slug
+// still belongs on the team page, they just don't get a link (the grid guards that). Dropping them
+// would hide a teammate over a missing URL.
 export const peopleQuery = defineQuery(`
-	*[_type == "person" && kind != "external"] | order(${ORDER_PERSON_NAME}) {
+	*[${TEAM_PERSON}] | order(${ORDER_PERSON_NAME}) {
 		_id,
 		name,
 		"slug": slug.current,
 		role,
 		image,
 		bio,
+		socialLinks[]{ label, url }
+	}
+`);
+
+// One person's profile (DAR-122). The Studio has carried `fullBio`, `experience`, `education`,
+// `focusAreas` and `responsibilities` since DAR-47 and nothing on the site ever read them — the grid
+// rendered a single sentence of `bio` and there was no detail route to render the rest.
+//
+// A SEPARATE query rather than a wider `peopleQuery`, for the reason DAR-94 paginated the indexes:
+// the grid would otherwise ship every person's nine positions and their summaries on every visit to
+// /people, growing with the roster to render nothing.
+//
+// The filter is `TEAM_PERSON`, the same predicate the grid and the sitemap use — so the set of people
+// with a profile page is one decision. External co-authors (123 of them, name-only citation records)
+// deliberately have no page: they would be thin content on an indexable URL, and /people already
+// excludes them.
+//
+// `email` is deliberately NOT projected. The Studio holds one, and a mailbox published on a profile
+// page is a spam surface with no way back — the site's contact route is /contact, which is throttled.
+export const personBySlugQuery = defineQuery(`
+	*[${TEAM_PERSON} && slug.current == $slug][0] {
+		_id,
+		_updatedAt,
+		name,
+		"slug": slug.current,
+		role,
+		image,
+		bio,
+		fullBio,
+		focusAreas,
+		responsibilities,
+		experience[]{ _key, title, organization, startYear, endYear, summary, url },
+		education[]{ _key, qualification, institution, year },
 		socialLinks[]{ label, url }
 	}
 `);

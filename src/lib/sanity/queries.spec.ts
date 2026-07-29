@@ -9,6 +9,7 @@ import {
 	papersPageByTitleQuery,
 	paperBySlugQuery,
 	peopleQuery,
+	personBySlugQuery,
 	siteSettingsQuery,
 	sitemapEntriesQuery
 } from './queries';
@@ -79,6 +80,34 @@ describe('sanity GROQ queries', () => {
 		// `!= "external"` (not `== "internal"`) so an unset `kind` still counts as team.
 		expect(peopleQuery).toContain('kind != "external"');
 		expect(peopleQuery).toContain('order(coalesce(nameSortKey, lower(name)) asc)');
+		// NO slug filter, unlike every other list query. A teammate whose slug is missing still belongs
+		// on the team page — they just lose the link into their profile (the grid guards that). Pinned
+		// because `defined(slug.current)` is the reflex when copying one of the other list queries, and
+		// adding it here would silently drop a person from the page rather than from a link.
+		expect(peopleQuery).not.toContain('defined(slug.current)');
+	});
+
+	// DAR-122. The Studio has carried these five background fields since DAR-47 and no query read them.
+	it('personBySlugQuery pulls the background fields the profile page renders', () => {
+		expect(personBySlugQuery).toContain('slug.current == $slug');
+		for (const field of [
+			'fullBio',
+			'focusAreas',
+			'responsibilities',
+			'experience[]',
+			'education[]'
+		]) {
+			expect(personBySlugQuery, `${field} is what this query exists for`).toContain(field);
+		}
+		// The sitemap's <lastmod> for this page comes from the same document.
+		expect(personBySlugQuery).toContain('_updatedAt');
+	});
+
+	// The Studio holds an `email` on `person`. Publishing a mailbox on an indexable page is a spam
+	// surface with no way back — /contact exists and is throttled — so it must not be projected. Word-
+	// anchored so a future `emailVerified`-ish field isn't what trips this.
+	it('personBySlugQuery never publishes the private email field', () => {
+		expect(personBySlugQuery).not.toMatch(/\bemail\b/);
 	});
 
 	// DAR-71: both detail queries must keep selecting `seo` — it carries metaTitle/metaDescription/
@@ -128,6 +157,66 @@ describe('sitemapEntriesQuery honors seo.noIndex', () => {
 
 	it('never uses the fail-closed comparison', () => {
 		expect(sitemapEntriesQuery).not.toContain('== false');
+	});
+
+	// DAR-122 added a third content type, and `person` has no `seo` object in the schema at all — so
+	// the arm above genuinely does not apply to it. Pinned separately rather than folded into the
+	// it.each, because a `seo.noIndex` arm appearing here later would mean the Studio grew the field
+	// and the route needs its robots meta too (the other half of DAR-71).
+	it('lists routable team members, with no toggle it cannot honor', () => {
+		expect(sitemapEntriesQuery).toContain(
+			'"people": *[_type == "person" && kind != "external" && defined(slug.current)]'
+		);
+	});
+
+	// Every entry here becomes a URL, so an unslugged document would be advertised as /news/undefined.
+	// The people arm needs it for a second reason the others don't have: peopleQuery deliberately
+	// does NOT filter on the slug, so this is the only place the two diverge, and it has to.
+	it('advertises nothing without a routable slug', () => {
+		expect(occurrences(sitemapEntriesQuery, /\*\[_type/g)).toBe(
+			occurrences(sitemapEntriesQuery, /defined\(slug\.current\)/g)
+		);
+	});
+});
+
+// DAR-122. Three surfaces now answer "who has a public profile" — the /people grid, the
+// /people/[slug] route, and the sitemap — and they must answer identically. If the sitemap's idea of
+// team is WIDER than the route's it advertises URLs that 404; if it is NARROWER the grid links to
+// pages no crawler is told about. The queries share one interpolated const, and this is what says so
+// in a language TypeScript can't: they are strings, so nothing else can see them drift.
+describe('one team predicate, three surfaces (DAR-122)', () => {
+	const TEAM_PREDICATE = '_type == "person" && kind != "external"';
+	const TEAM_SCOPED = {
+		'the /people grid': peopleQuery,
+		'the /people/[slug] route': personBySlugQuery,
+		'the sitemap': sitemapEntriesQuery
+	};
+
+	// COUNTED, not merely contained: `toContain` passes the moment ONE person filter is right, so a
+	// second arm added to the sitemap with its own rule — the realistic way this drifts — would slip
+	// straight through. Within these three queries, every person filter must be the team one.
+	it.each(Object.entries(TEAM_SCOPED))('%s filters people only by the shared predicate', (_, q) => {
+		expect(occurrences(q, /_type == "person"/g)).toBe(
+			occurrences(q, /_type == "person" && kind != "external"/g)
+		);
+	});
+
+	// ...and the counting above is 0 === 0 for a query that stopped scoping to people at all, which is
+	// what a revert looks like. This is the floor that stops the block passing vacuously.
+	it.each(Object.entries(TEAM_SCOPED))('%s really does scope to the team', (_, q) => {
+		expect(q).toContain(TEAM_PREDICATE);
+	});
+
+	// The author-facing queries are deliberately NOT in that set, and the distinction is the whole
+	// reason this can't be a blanket rule over the file: `?author=` and its type-ahead search the
+	// PUBLICATION record, where external co-authors are most of the vocabulary (123 people for 18
+	// papers). Narrowing them to the team would break author filtering; widening the three above would
+	// give every citation-only name an indexable page.
+	it.each([
+		['authorSuggestionsQuery', authorSuggestionsQuery],
+		['the /research author facet', papersPageByDateQuery]
+	])('%s searches every person, not just the team', (_name, query) => {
+		expect(query).toContain('_type == "person" && defined(slug.current)');
 	});
 });
 

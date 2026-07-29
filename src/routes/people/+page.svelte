@@ -6,6 +6,7 @@
 	import PageHero from '$lib/components/PageHero.svelte';
 	import SanityImage from '$lib/components/SanityImage.svelte';
 	import { m } from '$lib/paraglide/messages.js';
+	import { localizeHref } from '$lib/paraglide/runtime';
 	import { page } from '$app/state';
 	import { peopleJsonLd } from '$lib/jsonld';
 	import { imageUrl } from '$lib/sanity/image';
@@ -13,10 +14,11 @@
 
 	let { data }: { data: PageServerData } = $props();
 
-	// Person JSON-LD lives on this index (DAR-48): there are no per-person detail routes, so the
-	// team grid IS each profile's canonical surface. Empty team → <Seo> emits no script at all.
-	// Image URLs are resolved HERE (this page's chunk carries the Sanity URL builder anyway, for
-	// the avatars) so $lib/jsonld stays out of the site-wide layout bundle — see its header note.
+	// Person JSON-LD (DAR-48). Each node carries the `@id` of that person's /people/[slug] profile
+	// (DAR-122), so this index and the detail page describe ONE entity rather than two. Empty team →
+	// <Seo> emits no script at all. Image URLs are resolved HERE (this page's chunk carries the Sanity
+	// URL builder anyway, for the avatars) so $lib/jsonld stays out of the site-wide layout bundle —
+	// see its header note.
 	const peopleGraph = $derived(
 		peopleJsonLd(
 			data.people.map((person) => ({ ...person, image: imageUrl(person.image, 600) })),
@@ -53,7 +55,20 @@
 								class="size-24 rounded-full border border-hairline object-cover"
 							/>
 						{/if}
-						<h2 class="mt-4 text-lg font-medium tracking-tight text-white">{person.name}</h2>
+						<h2 class="mt-4 text-lg font-medium tracking-tight text-white">
+							<!-- Linked only when the person has a routable slug. TypeGen types `slug` as
+							     non-null because the Studio marks it required, but that describes the SCHEMA —
+							     a write straight at the API skips Studio validation, the same gap
+							     $lib/server/math.ts guards for `latex`. A slugless teammate keeps their card
+							     and loses the link, rather than being filtered off the team page. -->
+							{#if person.slug}
+								<a
+									href={localizeHref(`/people/${person.slug}`)}
+									class="transition-colors hover-focus:text-primary-400"
+									aria-label={m.person_profile_link({ name: person.name })}>{person.name}</a
+								>
+							{:else}{person.name}{/if}
+						</h2>
 						{#if person.role}
 							<p class="mt-0.5 text-sm text-primary-400">{person.role}</p>
 						{/if}
