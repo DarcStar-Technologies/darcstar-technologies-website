@@ -21,6 +21,7 @@ import type {
 	WaitlistApproach,
 	WaitlistImpact,
 	WaitlistBudget,
+	WaitlistAnnualBudget,
 	WaitlistEvidence,
 	WaitlistPilotInterest,
 	WaitlistContactMethod,
@@ -119,14 +120,35 @@ export const waitlistImpactLabel: Record<WaitlistImpact, () => string> = {
 	'not-sure': m.waitlist_impact_not_sure
 };
 
-export const waitlistBudgetLabel: Record<WaitlistBudget, () => string> = {
-	'under-5k': m.waitlist_budget_under_5k,
-	'5k-25k': m.waitlist_budget_5k_25k,
-	'25k-100k': m.waitlist_budget_25k_100k,
-	'100k-500k': m.waitlist_budget_100k_500k,
-	'over-500k': m.waitlist_budget_over_500k,
+/**
+ * The budget a respondent could put behind an initial evaluation (DAR-126) — PLUS the retired annual
+ * bands, which is why the key type is the union.
+ *
+ * One map rather than the live/legacy pair `role` needs (see `roleFor` in /admin/waitlist): the two
+ * role sets share slugs that mean the same thing in both, so resolving them needs an ORDER, while
+ * these two sets are disjoint by construction and the shared non-figure slugs are scope-neutral — so
+ * every key here has exactly one right answer and a plain lookup is unambiguous. It also keeps the
+ * step-3 `<select>` honest for free: it builds its options from `WAITLIST_BUDGETS`, so a wider label
+ * map can't leak a retired band back into the form.
+ *
+ * The annual labels SAY they are annual. `budget_range` now holds answers to two different questions,
+ * and the operator reading a triage row has only the value to go on.
+ */
+export const waitlistBudgetLabel: Record<WaitlistBudget | WaitlistAnnualBudget, () => string> = {
+	'under-10k': m.waitlist_budget_under_10k,
+	'10k-25k': m.waitlist_budget_10k_25k,
+	'25k-50k': m.waitlist_budget_25k_50k,
+	'50k-100k': m.waitlist_budget_50k_100k,
+	'over-100k': m.waitlist_budget_over_100k,
 	'not-involved-in-purchasing': m.waitlist_budget_not_involved,
-	'not-sure': m.waitlist_budget_not_sure
+	'not-sure': m.waitlist_budget_not_sure,
+
+	// Retired with DAR-126 — answered under "what ANNUAL budget could you consider?".
+	'under-5k': m.waitlist_budget_annual_under_5k,
+	'5k-25k': m.waitlist_budget_annual_5k_25k,
+	'25k-100k': m.waitlist_budget_annual_25k_100k,
+	'100k-500k': m.waitlist_budget_annual_100k_500k,
+	'over-500k': m.waitlist_budget_annual_over_500k
 };
 
 /** The multi-select capped at `WAITLIST_EVIDENCE_MAX` — enforced server-side by the validator; the

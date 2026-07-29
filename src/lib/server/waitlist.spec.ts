@@ -7,6 +7,7 @@ import {
 	validateWaitlistStep4A,
 	validateWaitlistStep4B
 } from './waitlist';
+import { WAITLIST_ANNUAL_BUDGETS } from '$lib/waitlist-qualification';
 
 describe('validateWaitlist', () => {
 	it('accepts a name + email signup and normalizes the email to lowercase', () => {
@@ -170,6 +171,16 @@ describe('validateWaitlistStep3', () => {
 		expect(cleaned.adoptionEvidence).toEqual(['formal-proof-artifacts', 'production-references']);
 	});
 
+	// DAR-126's retired annual bands are stored history, never an answer to the question the form asks
+	// now. The allowlist is what enforces that — an accepted `25k-100k` would put an annual figure into
+	// the same column under the new question's meaning, which is precisely the ambiguity the re-banding
+	// exists to prevent.
+	it('refuses a retired annual budget band', () => {
+		for (const retired of WAITLIST_ANNUAL_BUDGETS) {
+			expect(validateWaitlistStep3({ budgetRange: retired }).budgetRange, retired).toBeNull();
+		}
+	});
+
 	it('caps adoption evidence at 3, dedupes, and drops junk entries', () => {
 		const { adoptionEvidence } = validateWaitlistStep3({
 			adoptionEvidence: [
@@ -279,7 +290,7 @@ describe('hasAnyAnswer', () => {
 		validateWaitlistStep3({
 			currentApproach: 'internal-system',
 			economicImpact: 'over-1m',
-			budgetRange: '25k-100k',
+			budgetRange: '25k-50k',
 			adoptionEvidence: ['evaluation-pilot']
 		}),
 		validateWaitlistStep4A({

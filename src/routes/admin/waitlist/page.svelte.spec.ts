@@ -53,7 +53,7 @@ const SUBMISSION: Submission = {
 	evaluationTimeline: 'within-3-months',
 	currentApproach: 'internal-system',
 	economicImpact: 'over-1m',
-	budgetRange: '25k-100k',
+	budgetRange: '25k-50k',
 	adoptionEvidence: ['evaluation-pilot', 'formal-proof-artifacts'],
 	pilotInterest: 'yes-within-3-months',
 	deploymentScale: 'Two inspection cells',
@@ -415,6 +415,36 @@ describe('/admin/waitlist collated submissions', () => {
 		await expect.element(page.getByText('+1 555 0100')).toBeInTheDocument();
 		await expect.element(page.getByText('Mallory').first()).toBeInTheDocument();
 		await expect.element(page.getByText('Ada Lovelace').first()).toBeInTheDocument();
+	});
+
+	// DAR-126 re-scoped the budget question from annual contract value to an initial evaluation, and
+	// append-only means one lead can hold an answer to each. Both have to render as what they are: the
+	// retired bands still resolve (a raw `25k-100k` beside a labelled band is the silent data loss the
+	// re-banding could have caused) AND the annual one says so, because $25k–$100k a year and $25k–$50k
+	// for a pilot are opposite buying signals and the operator has only the value to go on.
+	it('labels a retired annual budget as annual, beside a current evaluation band', async () => {
+		mount({
+			leads: [
+				{
+					...ROW,
+					submissions: [
+						{ ...SUBMISSION, id: 'sub-new', budgetRange: '50k-100k' },
+						{
+							...SUBMISSION,
+							id: 'sub-old',
+							budgetRange: '25k-100k',
+							createdAt: new Date('2026-06-01T12:00:00Z')
+						}
+					],
+					latestAt: new Date('2026-07-01T12:00:00Z')
+				}
+			],
+			total: 1,
+			submissionTotal: 2
+		});
+
+		await expect.element(page.getByText('$25k–$100k (annual)').first()).toBeInTheDocument();
+		await expect.element(page.getByText('$50k–$100k', { exact: true }).first()).toBeInTheDocument();
 	});
 
 	it('names the fields the submissions disagree about', async () => {

@@ -82,13 +82,41 @@ below. Non-commercial visitors skip step 3 and fork straight to a step-4 branch.
 ## Step 3 — commercial context (live)
 
 Shown only to **commercial/operational** use cases (DAR-62): four optional questions — **current
-approach**, **economic impact**, **realistic budget** (single-selects) and **adoption requirement** (a
+approach**, **economic impact**, **evaluation budget** (single-selects) and **adoption requirement** (a
 multi-select capped at `WAITLIST_EVIDENCE_MAX`) — plus the same Continue / Skip pair. Each carries the
 survey question as `help` text (GlassSelect / GlassCheckboxGroup wire it as `aria-describedby`, so the
 question is a description, not part of the control's accessible name). `WaitlistStep3.svelte` owns the
 form, `submitWaitlistStep3` (`waitlist-steps.remote.ts`) the write; slugs in
 `waitlist-qualification.ts`, labels in `waitlist-labels.ts`. The impact/budget answers are internal-only — never displayed back or emailed to the respondent, and never
 described as pipeline.
+
+### The budget question is scoped to an evaluation (DAR-126)
+
+It asked for **annual** budget until DAR-126. Annual contract value is a number most respondents
+can't answer credibly before a scoping conversation, so the answer was a guess or a skip — and the
+bands (`under-5k` … `over-500k`) were annual-shaped, which put a realistic evaluation at the bottom of
+the ladder where the facet stopped discriminating. It now asks what could go behind an **initial
+evaluation or pilot**, over bands sized for that. ACV belongs in the interview.
+
+Re-scoping a question whose answers are already stored is the interesting half:
+
+- **Old rows keep their old slugs.** Submissions are append-only (DAR-88), so nothing is rewritten and
+  no migration runs. `budget_range` simply holds answers to two different questions.
+- **The retired bands are `WAITLIST_ANNUAL_BUDGETS`** and stay in `waitlistBudgetLabel`, whose key is
+  the union of both sets. Dropping them would leave a raw `25k-100k` in the triage view — the "legacy
+  slug renders as a slug" data loss that `role` avoids the same way.
+- **New figure slugs are disjoint from the retired ones**, pinned by `waitlist-qualification.spec.ts`.
+  A reused slug would collapse into one entry of that union with one label, silently mislabelling
+  every row answered under the other scope. `not-involved-in-purchasing` and `not-sure` carry over on
+  purpose: they describe the respondent, not a figure, so they mean the same thing either way and
+  keep one label.
+- **The annual labels say "(annual)".** The operator reads the value, not the question behind it, and
+  $25k–$100k a year is the opposite buying signal from $25k–$50k for a pilot. Unmarked therefore means
+  the field's stated scope; the admin column is named **Evaluation budget** to be that scope.
+- **The step-3 validator refuses the retired bands**, so an old slug can never arrive as a new answer.
+
+Nothing in the rubric moved: DAR-65's classifier structurally cannot see `budget_range`, so this
+changes what an operator reads and not how anyone is scored.
 
 ## Step 4 — intent branches (live)
 
@@ -1022,7 +1050,8 @@ submissions under their lead, classifies each one, and **flags** the fields they
   scale, contact method, phone, research preferences, reached step, last updated) plus the retired v1
   columns for historical rows. Two submissions show two complete sets, never a reconciled one. `role`
   resolves against BOTH label sets (v1 slugs survive as history), falling back to the raw slug so
-  nothing renders blank. The lead's own state (invited / activated / reviewed by) sits below them,
+  nothing renders blank; `budget_range` the same way, except its retired bands are labelled
+  "(annual)" because the question changed scope under them (DAR-126). The lead's own state (invited / activated / reviewed by) sits below them,
   separated because those are our actions rather than anything the person submitted.
 - **Funnel readout** (DAR-66) — distinct anonymous flows per stage, in funnel order, plus the primary
   metric (`waitlist_signup_completed / waitlist_viewed`) resolved server-side so the view can't

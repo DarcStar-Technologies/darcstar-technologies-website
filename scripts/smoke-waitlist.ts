@@ -149,7 +149,7 @@ const STEP2 = {
 const STEP3 = {
 	currentApproach: 'internal-system',
 	economicImpact: 'over-1m',
-	budgetRange: '100k-500k',
+	budgetRange: '50k-100k',
 	adoptionEvidence: ['evaluation-pilot', 'formal-proof-artifacts']
 } as const;
 const STEP4A = {

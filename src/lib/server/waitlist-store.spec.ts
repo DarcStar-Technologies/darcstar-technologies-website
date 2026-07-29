@@ -316,7 +316,7 @@ describe('applyWaitlistStep', () => {
 			step: 3,
 			currentApproach: 'manual-operation',
 			economicImpact: '250k-1m',
-			budgetRange: '25k-100k',
+			budgetRange: '25k-50k',
 			adoptionEvidence: ['evaluation-pilot', 'third-party-review']
 		});
 		// A sparser step-3 resubmit (all null) must erase nothing. This is now a UX rule rather than a

@@ -161,8 +161,8 @@ describe('classifyWaitlistLead — the money guardrail', () => {
 	// input type, so they are structurally unreadable rather than merely unweighted.
 	it('ignores economic impact and budget range entirely', () => {
 		const base = signals({ evaluationTimeline: '3-12-months' });
-		const rich = { ...base, economicImpact: 'over-1m', budgetRange: 'over-500k' };
-		const poor = { ...base, economicImpact: 'under-10k', budgetRange: 'under-5k' };
+		const rich = { ...base, economicImpact: 'over-1m', budgetRange: 'over-100k' };
+		const poor = { ...base, economicImpact: 'under-10k', budgetRange: 'under-10k' };
 
 		expect(classifyWaitlistLead(base)).toBe('priority-b');
 		expect(classifyWaitlistLead(rich)).toBe('priority-b');

@@ -243,7 +243,7 @@ test('"Continue" with no answers selected forks to branch B and finishes', async
 	).toHaveCount(0);
 
 	// Branch B asks nothing about money or pilots.
-	await expect(main.getByText('Realistic budget')).toHaveCount(0);
+	await expect(main.getByText('Evaluation budget')).toHaveCount(0);
 	await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toHaveCount(0);
 
 	// Nothing was classifiable, so the confirmation offers the least-committal CTA — not the evidence
@@ -267,7 +267,7 @@ test('a commercial use case continues from step 2 into the step-3 questions', as
 	await expect(main.getByText('Current approach')).toBeVisible();
 	await expect(main.getByText('How do you currently address this problem?')).toBeVisible();
 	await expect(main.getByText('Economic impact')).toBeVisible();
-	await expect(main.getByText('Realistic budget')).toBeVisible();
+	await expect(main.getByText('Evaluation budget')).toBeVisible();
 	await expect(main.getByText('Adoption requirement')).toBeVisible();
 
 	// The continuation token was carried forward by the step-2 response — that echo is what lets step 3
@@ -729,7 +729,7 @@ test.describe('without JavaScript', () => {
 		await expect(main.locator('input[name="flowId"]')).toHaveValue(flowId);
 
 		// Step 3 answers submit natively too (the checkbox group needs no JS at all).
-		await main.getByLabel(/Realistic budget/).selectOption('25k-100k');
+		await main.getByLabel(/Evaluation budget/).selectOption('25k-50k');
 		await main.getByRole('checkbox', { name: 'Formal proof artifacts' }).check();
 		await main.getByRole('button', { name: 'Continue' }).click();
 
