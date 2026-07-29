@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import en from '../../messages/en.json';
 import es from '../../messages/es.json';
 import * as evidence from './evidence';
+import { findCatalogTotalLeaks } from './evidence-boundary';
+import { THEOREMS_CHECKED } from './evidence';
 
 // The published-surface IP boundary (DAR-43, docs/evidence.md): exact neural-architecture
 // numbers and the theorem-catalog backlog must never appear in published copy. The evidence
@@ -15,8 +17,12 @@ import * as evidence from './evidence';
 // review found an `h=16` in a doc-comment), but a pattern scan over source false-positives
 // immediately ("parameter" is legitimate prose in these very files), so comments stay
 // code-review territory. Don't add a source scanner; do read comments when reviewing.
+//
+// The catalog total is NOT in this list, and that is the point: a literal here would write the
+// secret into a public repo in order to guard it (the old entry did, and named the value in its
+// own label). It lives in evidence-boundary.ts, derived from the figure we publish — see the
+// describe block at the bottom.
 const FORBIDDEN: { name: string; pattern: RegExp; keys?: RegExp }[] = [
-	{ name: 'the theorem-catalog total (338)', pattern: /\b338\b/ },
 	{ name: 'the controller parameter count', pattern: /\b40,?824\b/ },
 	{ name: 'hidden-dimension wording', pattern: /hidden[- ]?(dim|unit)/i },
 	{ name: 'hidden-dim shorthand (h=N)', pattern: /\bh=\d+/ },
@@ -57,5 +63,91 @@ describe('$lib/evidence constants stay inside the IP boundary', () => {
 			.filter(([, value]) => pattern.test(String(value)))
 			.map(([name]) => name);
 		expect(hits).toEqual([]);
+	});
+});
+
+// The catalog total (DAR-152). Its own rules, because it is the one forbidden figure that cannot
+// be written down here — the value guard is derived from THEOREMS_CHECKED rather than from the
+// secret, so this file names no number and a re-measure carries the boundary with it.
+describe('the theorem-catalog total stays off the published surface', () => {
+	describe.each([
+		['en', en as Record<string, unknown>],
+		['es', es as Record<string, unknown>]
+	])('messages/%s.json', (_locale, catalog) => {
+		it('publishes no catalog total, corpus percentage or backlog wording', () => {
+			const hits = Object.entries(catalog).flatMap(([key, value]) =>
+				typeof value === 'string'
+					? findCatalogTotalLeaks(value, THEOREMS_CHECKED).map((hit) => `${key}: ${hit}`)
+					: []
+			);
+			expect(hits).toEqual([]);
+		});
+	});
+
+	it('finds no leak in the $lib/evidence string constants', () => {
+		const hits = Object.entries(evidence).flatMap(([name, value]) =>
+			typeof value === 'string'
+				? findCatalogTotalLeaks(value, THEOREMS_CHECKED).map((hit) => `${name}: ${hit}`)
+				: []
+		);
+		expect(hits).toEqual([]);
+	});
+
+	// A numeric export carries no prose, so the proximity half can never fire on one — and a bare
+	// `export const THEOREM_CATALOG = 346` is exactly how the total would arrive in this module.
+	// Hence the flat ceiling: the count we publish is the largest number this module may hold.
+	it('exports no number larger than the count we publish', () => {
+		const hits = Object.entries(evidence)
+			.filter(([, value]) => typeof value === 'number' && value > THEOREMS_CHECKED)
+			.map(([name, value]) => `${name} = ${value}`);
+		expect(hits).toEqual([]);
+	});
+});
+
+// The detector itself. The scans above are all "nothing matched", so on their own they pass just
+// as happily against a predicate that answers nothing at all — these are what make them mean
+// something. Every negative case below is real copy that a cruder rule reported (measured, not
+// imagined): the band alone flags "Lean 4", the proximity test alone flags "1,000 warmup
+// iterations", and neither survives without the calendar-year exclusion, since both dated lines
+// put a year beside the words "corpus" and "theorems".
+describe('findCatalogTotalLeaks', () => {
+	const leaks = (text: string) => findCatalogTotalLeaks(text, 219);
+
+	it.each([
+		['a bare total beside theorem wording', 'The catalog holds 338 theorems in total.'],
+		['a re-measured total', 'Our framework now catalogues 346 theorems.'],
+		['a total stated as a proportion', '260 theorems, 75.4% of the catalogued corpus.'],
+		['a total with a thousands separator', 'The corpus contains 1,024 theorems.'],
+		['the remainder, as a backlog', 'The remaining theorem backlog is tracked internally.'],
+		['the remainder, spelled out', 'The rest of the corpus is unmechanized.'],
+		['the remainder, as prose', 'Some theorems in the corpus remain unproven for now.']
+	])('catches %s', (_case, text) => {
+		expect(leaks(text)).not.toEqual([]);
+	});
+
+	it.each([
+		['prover versions', 'machine-checked in Lean 4 and Isabelle/HOL with zero local axioms'],
+		['a checksum algorithm', 'Releases ship with a SHA-256 checksum manifest of the corpus.'],
+		['a benchmark iteration count', 'Arithmetic mean over 10,000 calls after 1,000 warmup.'],
+		['a dated line', 'Measured December 2025 · GIDE benchmark corpus'],
+		['a non-numeric percentage', 'Theorem coverage grew by a few percent.'],
+		['the published count itself', '219 theorems are machine-checked; 31 are complete.'],
+		['a large number away from theorem wording', 'Phone: 555 1234 · budget over 500,000.']
+	])('stays silent on %s', (_case, text) => {
+		expect(leaks(text)).toEqual([]);
+	});
+
+	it('reports the number it found, so a failure names the leak', () => {
+		expect(leaks('The catalog holds 338 theorems.')[0]).toContain('338');
+	});
+
+	// The band tracks the published figure rather than a hardcoded vintage — that is the whole
+	// reason this file holds no secret. A re-measure must therefore MOVE it, not just widen it:
+	// once 338 is below the published count it is no longer a total, and the next one is caught.
+	it('moves with the published count instead of pinning a vintage', () => {
+		const text = 'The catalog holds 338 theorems.';
+		expect(findCatalogTotalLeaks(text, 219)).not.toEqual([]);
+		expect(findCatalogTotalLeaks(text, 400)).toEqual([]);
+		expect(findCatalogTotalLeaks('The catalog holds 512 theorems.', 400)).not.toEqual([]);
 	});
 });

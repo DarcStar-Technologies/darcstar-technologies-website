@@ -1,5 +1,23 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { THEOREMS_CHECKED, THEOREMS_COMPLETE } from '$lib/evidence';
+import { findCatalogTotalLeaks } from '$lib/evidence-boundary';
+
+// The catalog total must not reach a RENDERED page (DAR-152). The unit spec scans the message
+// catalogs and the $lib/evidence constants — every source the copy is supposed to come from —
+// so this is the backstop for a figure that arrives some other way: hardcoded into a .svelte,
+// or served from the CMS.
+//
+// Scanned LINE BY LINE, not as one blob. innerText breaks at block boundaries, and the detector
+// tests whether a number sits near theorem wording — which is a claim about prose. Rendered text
+// is a concatenation of unrelated elements, so a whole-page scan reads the homepage's `13,000×`
+// readout as neighbouring the theorems readout beside it and reports a leak that no sentence
+// contains. One line ≈ one block ≈ one claim. The cost is that a leak split across two elements
+// is missed here; the unit spec still sees it at the source.
+const expectNoCatalogTotal = async (page: Page) => {
+	const lines = (await page.locator('body').innerText()).split('\n');
+	const leaks = lines.flatMap((line) => findCatalogTotalLeaks(line, THEOREMS_CHECKED));
+	expect(leaks, `${page.url()} must not publish the catalog total`).toEqual([]);
+};
 
 // /evidence (DAR-43) — static content page (no Sanity, no DB), so unlike the content-feed
 // specs this needs no degradation guard: the full surface must render in every environment.
@@ -21,7 +39,7 @@ test('evidence page renders the hero, the claim cards, and the IP boundary', asy
 	// its absence so it can't quietly come back.
 	await expect(page.getByText(String(THEOREMS_CHECKED), { exact: true })).toBeVisible();
 	await expect(page.getByText(`${THEOREMS_CHECKED} theorems in the GIDE framework`)).toBeVisible();
-	await expect(page.getByText('338')).toHaveCount(0);
+	await expectNoCatalogTotal(page);
 	await expect(page.getByText('parameter')).toHaveCount(0);
 	await expect(
 		page.getByRole('heading', { name: 'What we deliberately do not publish' })
@@ -46,6 +64,7 @@ test('benchmarks detail page carries the hardware runs', async ({ page }) => {
 	// "the figure to cite"); its absence must fail, not just the kernel figures'.
 	await expect(page.getByText('52 µs p50')).toBeVisible();
 	await expect(page.getByText('parameter')).toHaveCount(0);
+	await expectNoCatalogTotal(page);
 });
 
 // The card → detail-page hops, actually clicked: link-name presence can't catch a
@@ -69,7 +88,7 @@ test('proofs detail page defines machine-checked without the backlog', async ({ 
 	await expect(page.getByRole('heading', { level: 1 })).toContainText('What machine-checked');
 	await expect(page.getByText('Isabelle2025-2')).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'What counts as proven' })).toBeVisible();
-	await expect(page.getByText('338')).toHaveCount(0);
+	await expectNoCatalogTotal(page);
 
 	// DAR-117's second half: the page separates a theorem's declared hypotheses from the local
 	// axioms that keep it out of the complete count. The three item headings ARE the distinction,
@@ -125,6 +144,7 @@ test('homepage stats row leads with the complete count and links to the evidence
 		page.getByText(`theorems complete of ${THEOREMS_CHECKED} machine-checked`)
 	).toBeVisible();
 	await expect(page.getByText(String(THEOREMS_CHECKED), { exact: true })).toHaveCount(0);
+	await expectNoCatalogTotal(page);
 	await page.getByRole('link', { name: 'How we verify these numbers' }).click();
 
 	await expect(page).toHaveURL(/\/evidence$/);
