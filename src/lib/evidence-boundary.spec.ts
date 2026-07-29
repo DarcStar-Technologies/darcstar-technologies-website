@@ -141,6 +141,16 @@ describe('findCatalogTotalLeaks', () => {
 		expect(leaks('The catalog holds 338 theorems.')[0]).toContain('338');
 	});
 
+	// A leak in the first CONTEXT_WINDOW characters of a long string. String.slice reads a
+	// negative start as an offset from the END, so an unguarded `at - CONTEXT_WINDOW` tests the
+	// TAIL of the text instead of the neighbourhood of the hit — and a leak that opens a long
+	// paragraph is missed. Every other case here is shorter than the window, where a negative
+	// start clamps to 0 and the fault is invisible: reinstating it passed all 31 tests.
+	it('catches a leak at the start of a long line', () => {
+		const filler = ' Runs are published nightly with full environment detail for each host.';
+		expect(leaks(`The catalog holds 338 theorems.${filler}`)).not.toEqual([]);
+	});
+
 	// The band tracks the published figure rather than a hardcoded vintage — that is the whole
 	// reason this file holds no secret. A re-measure must therefore MOVE it, not just widen it:
 	// once 338 is below the published count it is no longer a total, and the next one is caught.
