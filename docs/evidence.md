@@ -57,14 +57,18 @@ audit — this repo holds only the public prose, never the artifacts):
   `evidence_proofs_axioms_*`: **hypotheses** the theorems are stated under (Lipschitz, compact
   sets, bounded disturbance, hardware isolation — declared inputs that hold for the complete
   theorems too, since complete means "introduces no axiom of its own", not "needs no
-  assumptions"); **local axioms**, named stand-ins for a result the proof does not derive — mostly
-  general mathematics the prover libraries do not yet formalize — which are the debt, and are
-  exactly what keeps a theorem out of the complete count; and **carried physical premises**, where
+  assumptions"); **local axioms**, named stand-ins for a result the proof does not derive —
+  general mathematics the prover libraries do not yet formalize, or a result established elsewhere
+  in the corpus that this proof does not yet build on — which are the debt, and are exactly what
+  keeps a theorem out of the complete count; and **carried physical premises**, where
   the implication is machine-checked but the theorem is not counted as proven at all. They are
   **not a split of one number**: the axioms separate the two published counts, the assumptions sit
   under all of them. Deliberately **no counts** in that section — how many carry what is the
   backlog. The named assumptions are pinned against `evidence_theorems_not_covered` so the card
-  and the detail page can't list different premises.
+  and the detail page can't list different premises. Careful with quantifiers here: how the local
+  axioms divide between those two kinds is not something this repo can source, so the copy says
+  both exist and ranks neither — an unmeasured "mostly" is the same defect as an unmeasured
+  figure, on the page that exists to not have them.
 - **Never claim a proven latency bound.** GIDE's proof corpus proves no microsecond/latency
   bound anywhere; latency is measured, the 13,000× is derived. The internal whitepaper is
   explicit that "proven microsecond safety" phrasing would be falsified on review.

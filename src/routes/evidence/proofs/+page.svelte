@@ -54,9 +54,11 @@
 			<!-- DAR-117. The definition above uses "declared local axioms" and the trust boundary
 			     below uses "declared assumptions", and a reviewer meeting both in one page will read
 			     them as one thing — they are materially different, and only one is proof debt. The
-			     three items are the whole distinction: a hypothesis every theorem is stated under, a
-			     stand-in for mathematics not derived in that proof, and a carried physical premise
-			     that disqualifies the row from the count entirely. Deliberately no counts here: how
+			     three items are the whole distinction: a hypothesis a theorem is stated under, at any
+			     proof status (a complete proof introduces no axiom of its own — it does not run
+			     without assumptions); a named stand-in for a result that proof does not derive; and a
+			     carried physical premise that disqualifies the row from the count entirely. The first
+			     two are not a split of one number. Deliberately no counts here: how
 			     many carry what is the backlog, and the backlog is not published (docs/evidence.md).
 			     The named assumptions must stay the ones evidence_theorems_not_covered names — two
 			     pages listing different premises is the drift evidence-disclosure.spec.ts guards. -->
