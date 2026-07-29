@@ -114,6 +114,11 @@ Re-scoping a question whose answers are already stored is the interesting half:
   $25k–$100k a year is the opposite buying signal from $25k–$50k for a pilot. Unmarked therefore means
   the field's stated scope; the admin column is named **Evaluation budget** to be that scope.
 - **The step-3 validator refuses the retired bands**, so an old slug can never arrive as a new answer.
+  Nothing pre-fills a select from the stored row either, so a resumed flow can't re-offer one.
+- **A lead with one submission from each era shows a flagged budget conflict.** That is correct, not a
+  false positive: the values genuinely differ, and DAR-88's rule is flag-never-resolve. Suppressing it
+  would mean teaching the collator about eras, and hiding a cross-era difference is worse than showing
+  one — it is exactly the comparison an operator should make by hand.
 
 Nothing in the rubric moved: DAR-65's classifier structurally cannot see `budget_range`, so this
 changes what an operator reads and not how anyone is scored.

@@ -111,6 +111,11 @@ export type WaitlistBudget = (typeof WAITLIST_BUDGETS)[number];
  * $25k–$100k are wildly different buying signals wearing the same string. `waitlistBudgetLabel`
  * therefore labels these too, marked as annual, and `waitlist-qualification.spec.ts` pins the
  * disjointness so a future re-banding can't quietly collide with either set.
+ *
+ * APPEND ONLY. Every entry is a slug some stored row still holds, so removing one doesn't tidy this
+ * list — it drops that row back to rendering its raw slug in triage. The next re-band adds its own
+ * retired figures here; it never edits these. Deleting one fails the spec, which holds this list
+ * against the `waitlist_budget_annual_*` messages that exist for exactly these slugs.
  */
 export const WAITLIST_ANNUAL_BUDGETS = [
 	'under-5k',

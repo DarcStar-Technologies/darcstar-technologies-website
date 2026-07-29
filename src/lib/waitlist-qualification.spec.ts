@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { WAITLIST_ANNUAL_BUDGETS, WAITLIST_BUDGETS } from './waitlist-qualification';
 import { overwriteGetLocale, baseLocale } from '$lib/paraglide/runtime';
+import { waitlistBudgetLabel } from './waitlist-labels';
+import { m } from '$lib/paraglide/messages.js';
+import en from '../../messages/en.json';
 
-// Paraglide resolves the locale from the request and `getLocale()` throws rather than guessing;
-// there is no request here. Same escape hatch, and the same caveat, as `seo-head.spec.ts`: this
-// mutates runtime module state and is never restored, which is safe only while vitest isolates per
-// file. The label accessors take no locale argument by design (they are `$state`-backed and read the
-// ambient one), so this has to be set before they are imported.
+// Paraglide resolves the locale from the request and `getLocale()` throws rather than guessing; there
+// is no request here. Same escape hatch, and the same caveat, as `seo-head.spec.ts`: this mutates
+// runtime module state and is never restored, which is safe only while vitest isolates per file.
+//
+// Unlike that spec it needs no dynamic import (measured — plain imports pass): the label map holds
+// message ACCESSORS and resolves nothing at module scope, which is the same property `waitlist-labels`
+// asks callers to preserve by wrapping the call, not the map, in `$derived`.
 overwriteGetLocale(() => baseLocale);
-
-const { waitlistBudgetLabel } = await import('./waitlist-labels');
-const { m } = await import('$lib/paraglide/messages.js');
 
 // DAR-126 re-scoped step 3's budget question from annual contract value to the budget behind an
 // initial evaluation, and re-banded the options to match. `budget_range` therefore holds answers to
@@ -39,6 +41,21 @@ describe('waitlist budget bands (DAR-126)', () => {
 		expect(reused).toEqual([]);
 	});
 
+	// The rot direction, which disjointness alone does NOT cover: the retired list only ever grows, so
+	// the next re-band must APPEND rather than edit in place. Deleting an entry makes this file blinder
+	// (a stored row falls back to its raw slug in triage) and every other assertion here passes — the
+	// polarity DAR-102 warns about. A restated copy of the list would be a tautology, so the pin is
+	// against a different artifact: the message catalog, whose `waitlist_budget_annual_*` keys exist
+	// for exactly these slugs and nothing else. One-line deletions therefore report themselves; a
+	// deliberate two-file removal still doesn't, but it can't be an accident.
+	it('keeps one annual message per retired band, and no others', () => {
+		const keyed = WAITLIST_ANNUAL_BUDGETS.map(
+			(slug) => `waitlist_budget_annual_${slug.replaceAll('-', '_')}`
+		);
+		const inCatalog = Object.keys(en).filter((key) => key.startsWith('waitlist_budget_annual_'));
+		expect(inCatalog.toSorted()).toEqual(keyed.toSorted());
+	});
+
 	// The operator triaging a lead sees the VALUE, not the question it answered. An unmarked band is
 	// therefore read as the field's stated scope (an evaluation), so every annual one has to say so —
 	// $25k–$100k a year and $25k–$50k for a pilot are opposite buying signals.
@@ -55,8 +72,19 @@ describe('waitlist budget bands (DAR-126)', () => {
 	// was filed for. Asserted against the impact question too, which stays genuinely annual: without
 	// that half, "no waitlist question says annual" would pass just as well, and it would be wrong.
 	it('asks for an evaluation budget while impact stays annual', () => {
-		expect(m.waitlist_field_budget_help()).toMatch(/evaluation or pilot/i);
+		expect(m.waitlist_field_budget_help()).toMatch(/evaluation/i);
 		expect(m.waitlist_field_budget_help()).not.toMatch(/annual/i);
 		expect(m.waitlist_field_impact_help()).toMatch(/annual/i);
+	});
+
+	// The other half of the marker rule, and the half that is easy to lose: "(annual)" only means
+	// something because the UNMARKED bands are read as the field's own scope, which holds only while
+	// the field SAYS that scope. Rename the admin column back to a bare "Budget range" and every other
+	// assertion here still passes while the triage view goes ambiguous again — the two surfaces that
+	// render a band with no question beside it are the form's label and that column, so both are
+	// pinned to the word the help text uses.
+	it('names the scope wherever a band is shown without the question', () => {
+		expect(m.waitlist_field_budget_label()).toMatch(/evaluation/i);
+		expect(m.admin_waitlist_field_budget()).toMatch(/evaluation/i);
 	});
 });

@@ -436,11 +436,16 @@ describe('/admin/waitlist collated submissions', () => {
 							createdAt: new Date('2026-06-01T12:00:00Z')
 						}
 					],
+					// What the collator really returns for this lead: two different values in one column is
+					// a conflict, and a cross-era pair is no exception — the marker sits on the label, so
+					// the values below still read as themselves.
+					conflicts: ['budgetRange'],
 					latestAt: new Date('2026-07-01T12:00:00Z')
 				}
 			],
 			total: 1,
-			submissionTotal: 2
+			submissionTotal: 2,
+			reviewTotal: 1
 		});
 
 		await expect.element(page.getByText('$25k–$100k (annual)').first()).toBeInTheDocument();
