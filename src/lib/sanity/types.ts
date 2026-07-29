@@ -747,13 +747,17 @@ export type PaperBySlugQueryResult = {
 
 // Source: src/lib/sanity/queries.ts
 // Variable: sitemapEntriesQuery
-// Query: {	"posts": *[_type == "post" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt },	"papers": *[_type == "paper" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt }}
+// Query: {	"posts": *[_type == "post" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt },	"papers": *[_type == "paper" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt },	"people": *[_type == "person" && kind != "external" && defined(slug.current)]{ "slug": slug.current, _updatedAt }}
 export type SitemapEntriesQueryResult = {
 	posts: Array<{
 		slug: string;
 		_updatedAt: string;
 	}>;
 	papers: Array<{
+		slug: string;
+		_updatedAt: string;
+	}>;
+	people: Array<{
 		slug: string;
 		_updatedAt: string;
 	}>;
@@ -776,7 +780,7 @@ export type SiteSettingsQueryResult =
 
 // Source: src/lib/sanity/queries.ts
 // Variable: peopleQuery
-// Query: *[_type == "person" && kind != "external"] | order(coalesce(nameSortKey, lower(name)) asc) {		_id,		name,		"slug": slug.current,		role,		image,		bio,		socialLinks[]{ label, url }	}
+// Query: *[_type == "person" && kind != "external"] | order(coalesce(nameSortKey, lower(name)) asc) {		_id,		name,		"slug": slug.current,		role,		image,		bio,		socialLinks[]{ _key, label, url }	}
 export type PeopleQueryResult = Array<{
 	_id: string;
 	name: string;
@@ -792,10 +796,54 @@ export type PeopleQueryResult = Array<{
 	} | null;
 	bio: string | null;
 	socialLinks: Array<{
+		_key: string;
 		label: string;
 		url: string;
 	}> | null;
 }>;
+
+// Source: src/lib/sanity/queries.ts
+// Variable: personBySlugQuery
+// Query: *[_type == "person" && kind != "external" && slug.current == $slug][0] {		_id,		_updatedAt,		name,		"slug": slug.current,		role,		image,		bio,		fullBio,		focusAreas,		responsibilities,		experience[]{ _key, title, organization, startYear, endYear, summary, url },		education[]{ _key, qualification, institution, year },		socialLinks[]{ _key, label, url }	}
+export type PersonBySlugQueryResult = {
+	_id: string;
+	_updatedAt: string;
+	name: string;
+	slug: string;
+	role: string | null;
+	image: {
+		asset?: SanityImageAssetReference;
+		media?: unknown;
+		hotspot?: SanityImageHotspot;
+		crop?: SanityImageCrop;
+		alt?: string;
+		_type: 'image';
+	} | null;
+	bio: string | null;
+	fullBio: BlockContent | null;
+	focusAreas: Array<string> | null;
+	responsibilities: Array<string> | null;
+	experience: Array<{
+		_key: string;
+		title: string;
+		organization: string;
+		startYear: number | null;
+		endYear: number | null;
+		summary: string | null;
+		url: string | null;
+	}> | null;
+	education: Array<{
+		_key: string;
+		qualification: string;
+		institution: string;
+		year: number | null;
+	}> | null;
+	socialLinks: Array<{
+		_key: string;
+		label: string;
+		url: string;
+	}> | null;
+} | null;
 
 // Query TypeMap
 import '@sanity/client';
@@ -808,8 +856,9 @@ declare module '@sanity/client' {
 		'{\n\t\t"posts": *[_type == "post" && defined(slug.current)] | order(publishedAt desc) [$offset...$end] {\n\t\t\t_id,\n\t\t\ttitle,\n\t\t\t"slug": slug.current,\n\t\t\texcerpt,\n\t\t\tpublishedAt,\n\t\t\tcoverImage,\n\t\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role })\n\t\t},\n\t\t"total": count(*[_type == "post" && defined(slug.current)])\n\t}': PostsPageQueryResult;
 		'\n\t*[_type == "post" && slug.current == $slug][0] {\n\t\t_id,\n\t\t_updatedAt,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\texcerpt,\n\t\tpublishedAt,\n\t\tcoverImage,\n\t\tbody,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role, image }),\n\t\t"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),\n\t\t"relatedPapers": array::compact(relatedPapers[]->{ _id, title, "slug": slug.current, venue, darcstarAuthored, "hasCommentary": coalesce(count(commentary) > 0, false) }),\n\t\tseo\n\t}\n': PostBySlugQueryResult;
 		'\n\t*[_type == "paper" && slug.current == $slug][0] {\n\t\t_id,\n\t\t_updatedAt,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\tstatus,\n\t\tdarcstarAuthored,\n\t\tabstract,\n\t\tcommentary,\n\t\tvenue,\n\t\tpublishedDate,\n\t\turl,\n\t\tdoi,\n\t\tarxivId,\n\t\tcodeUrl,\n\t\t"pdfUrl": pdf.asset->url,\n\t\t"authors": array::compact(authors[]->{ _id, name, "slug": slug.current, role }),\n\t\t"topics": array::compact(topics[]->{ _id, title, "slug": slug.current, description }),\n\t\t"categories": array::compact(categories[]->{ _id, title, "slug": slug.current }),\n\t\tseo\n\t}\n': PaperBySlugQueryResult;
-		'{\n\t"posts": *[_type == "post" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt },\n\t"papers": *[_type == "paper" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt }\n}': SitemapEntriesQueryResult;
+		'{\n\t"posts": *[_type == "post" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt },\n\t"papers": *[_type == "paper" && defined(slug.current) && seo.noIndex != true]{ "slug": slug.current, _updatedAt },\n\t"people": *[_type == "person" && kind != "external" && defined(slug.current)]{ "slug": slug.current, _updatedAt }\n}': SitemapEntriesQueryResult;
 		'\n\t*[_id == "siteSettings"][0] {\n\t\tsocialLinks[]{ label, url }\n\t}\n': SiteSettingsQueryResult;
-		'\n\t*[_type == "person" && kind != "external"] | order(coalesce(nameSortKey, lower(name)) asc) {\n\t\t_id,\n\t\tname,\n\t\t"slug": slug.current,\n\t\trole,\n\t\timage,\n\t\tbio,\n\t\tsocialLinks[]{ label, url }\n\t}\n': PeopleQueryResult;
+		'\n\t*[_type == "person" && kind != "external"] | order(coalesce(nameSortKey, lower(name)) asc) {\n\t\t_id,\n\t\tname,\n\t\t"slug": slug.current,\n\t\trole,\n\t\timage,\n\t\tbio,\n\t\tsocialLinks[]{ _key, label, url }\n\t}\n': PeopleQueryResult;
+		'\n\t*[_type == "person" && kind != "external" && slug.current == $slug][0] {\n\t\t_id,\n\t\t_updatedAt,\n\t\tname,\n\t\t"slug": slug.current,\n\t\trole,\n\t\timage,\n\t\tbio,\n\t\tfullBio,\n\t\tfocusAreas,\n\t\tresponsibilities,\n\t\texperience[]{ _key, title, organization, startYear, endYear, summary, url },\n\t\teducation[]{ _key, qualification, institution, year },\n\t\tsocialLinks[]{ _key, label, url }\n\t}\n': PersonBySlugQueryResult;
 	}
 }

@@ -18,10 +18,18 @@ describe('sanity image URLs', () => {
 		expect(url).toContain('auto=format');
 	});
 
-	it('ogImageUrl returns a 1200×630 social-card URL for a populated field', () => {
+	// `w`/`h` alone do NOT give you a 1200×630 image, and asserting them was how that went unnoticed
+	// for the life of this helper: the builder's default fit is `clip`, which fits INSIDE the box and
+	// preserves the source aspect ratio. Measured against the real CDN, asking for 1200×630 of the
+	// founder's portrait returned **504×630** — a portrait social card, from a URL this test called
+	// correct. `fit=crop` is the parameter that makes the delivered image match the request, and it
+	// honors the hotspot the editor set. (It had never mattered before DAR-122: no post carries a
+	// coverImage and no document sets `seo.ogImage`, so every page fell through to the brand card.)
+	it('ogImageUrl really is 1200×630, not merely asking for it', () => {
 		const url = ogImageUrl(imageField);
 		expect(url).toContain('w=1200');
 		expect(url).toContain('h=630');
+		expect(url).toContain('fit=crop');
 	});
 
 	it('ogImageUrl returns undefined for an empty/absent image field', () => {
@@ -37,6 +45,14 @@ describe('sanity image URLs', () => {
 		expect(widthOnly).not.toContain('h=');
 		expect(widthOnly).not.toContain('auto=format');
 		expect(imageUrl(imageField, 1200, 630)).toContain('h=630');
+	});
+
+	// The crop is scoped to callers that name BOTH dimensions — those are asking for a shape. A
+	// width-only caller (the JSON-LD portrait) wants the image scaled, and cropping it to some
+	// implied height would silently change what the picture is of.
+	it('crops only when a height is asked for', () => {
+		expect(imageUrl(imageField, 600)).not.toContain('fit=crop');
+		expect(imageUrl(imageField, 1200, 630)).toContain('fit=crop');
 	});
 
 	it('imageUrl degrades to undefined on empty fields AND malformed refs (never throws)', () => {

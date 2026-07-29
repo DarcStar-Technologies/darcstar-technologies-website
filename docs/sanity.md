@@ -48,8 +48,11 @@ perspective: 'published', token })`, where `token = readEnv('SANITY_VIEWER_TOKEN
 - **The synced `schema.json` can be ahead of what the site consumes.** It's a whole-file copy, so a
   sync pulls in every Studio change since the last one — DAR-70's re-sync also brought
   `person.{fullBio, focusAreas, responsibilities, experience, education}` (DAR-47's schema half).
-  Those land as types only; `peopleQuery` doesn't select them, so nothing renders until that ticket
-  wires them. Expect unrelated additions in a `types.ts` diff and check they're additive.
+  Those landed as types only and **stayed unconsumed until DAR-122** built `/people/[slug]` — the
+  ticket that closed them (DAR-47) was marked Done on a Studio-only PR, so the fields were authored
+  and populated with nothing reading them. A synced field renders nothing until a query selects it
+  AND a page draws it.
+  Expect unrelated additions in a `types.ts` diff and check they're additive.
   **Diff the two files type-by-type before copying**, so what rides along is known rather than
   discovered: DAR-106's sync turned out to be exactly `+mathBlock`, `+mathInline` and the two
   `blockContent` union members, with no drift at all.
@@ -201,9 +204,38 @@ the shared `PageHero` + one `<Seo>`; chrome copy via Paraglide `m.*`, CMS data a
 - `/research` (list, **paginated + filtered in GROQ**) · `/research/[slug]` (abstract, status,
   research-topic tags, external links incl. PDF, DarcStar commentary) ·
   `/research/authors.json` (author type-ahead for the filter bar — see DAR-94 below)
-- `/people` (team grid — `person` where `kind != "external"`; unset `kind` counts as team)
+- `/people` (team grid) · `/people/[slug]` (authored `fullBio` as Portable Text, focus areas,
+  responsibilities, positions, credentials — DAR-122)
 - **Resilience:** LIST loads `try/catch` a Sanity outage → empty list + `console.warn` (never a 500);
   DETAIL loads `error(404)` on a missing slug (infra errors propagate as 500).
+
+### One team predicate, three surfaces (DAR-122)
+
+`_type == "person" && kind != "external"` is a single interpolated const (`TEAM_PERSON` in
+`queries.ts`) shared by `peopleQuery`, `personBySlugQuery` and `sitemapEntriesQuery`'s people arm.
+Unset `kind` counts as team — fail-OPEN, so being hidden needs a positive signal.
+
+They must agree, and the failure isn't cosmetic: a sitemap wider than the route advertises URLs that
+404, one narrower links from a page no crawler is told about. `queries.spec.ts` **counts** rather than
+contains — within those three queries every `_type == "person"` filter must be the team one, which is
+what catches a second arm added with its own rule (measured: `toContain` alone passes that mutation).
+
+Two deliberate asymmetries:
+
+- The **author** queries (`authorSuggestionsQuery`, the `/research` author facet) scope to
+  `_type == "person" && defined(slug.current)` — every person, not the team. They search the
+  publication record, where external co-authors are most of the vocabulary (123 people for 18 papers).
+  Narrowing them would break author filtering; widening the three above would hand every citation-only
+  name an indexable page.
+- `peopleQuery` alone has **no `defined(slug.current)` filter**. A teammate without a routable slug
+  belongs on the team page; they just render without a link. The sitemap needs the filter (an entry
+  becomes a URL) and the detail query matches on the slug, so the advertised set stays a subset of
+  what the route can serve.
+
+`personBySlugQuery` is separate from `peopleQuery` rather than a widening of it — the grid would
+otherwise ship every teammate's positions and summaries on every visit. It deliberately does **not**
+project `person.email`: a mailbox on an indexable page is a spam surface with no way back, and
+`/contact` exists and is throttled.
 
 ### /research origin split (DAR-52)
 
