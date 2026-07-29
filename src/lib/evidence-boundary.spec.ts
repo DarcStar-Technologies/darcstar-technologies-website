@@ -116,7 +116,12 @@ describe('findCatalogTotalLeaks', () => {
 	it.each([
 		['a bare total beside theorem wording', 'The catalog holds 338 theorems in total.'],
 		['a re-measured total', 'Our framework now catalogues 346 theorems.'],
+		// Two percentage cases, because the realistic one does not test what it looks like it does:
+		// the hub brief's phrasing carries a count ABOVE the band, so route 1 catches it and route 2
+		// could be deleted with every test still green (measured). The second keeps the count at the
+		// published figure, leaving the percentage as the only signal.
 		['a total stated as a proportion', '260 theorems, 75.4% of the catalogued corpus.'],
+		['a proportion beside a permitted count', '219 theorems machine-checked, 63.3% of the corpus.'],
 		['a total with a thousands separator', 'The corpus contains 1,024 theorems.'],
 		['the remainder, as a backlog', 'The remaining theorem backlog is tracked internally.'],
 		['the remainder, spelled out', 'The rest of the corpus is unmechanized.'],
