@@ -11,8 +11,9 @@ import { expect, test } from '@playwright/test';
 //
 // What is left is worth having and is exactly what these assert: the generic-failure panel that every
 // broken link falls into, the noindex that keeps a token-bearing URL out of the index, and the two
-// negative properties that matter most — a GET offers a form and mutates nothing, and a POST with no
-// usable token neither 500s nor claims success.
+// negative properties that matter most — a fetched link offers nothing to press and claims nothing,
+// and a POST with no usable token neither 500s nor claims success. ("Nothing mutates on a GET" is
+// enforced a layer down, by `runUpdatesAction`'s method guard, and unit-tested there.)
 //
 // Matched on APOSTROPHE-FREE fragments throughout. The copy is full of them ("This link didn't work",
 // "You're confirmed"), Svelte escapes them in attributes but not in text, and a regex that guesses
@@ -27,17 +28,19 @@ const PAGES = [
 		// From updates_confirm_done_body — the one sentence on the success panel with no apostrophe in
 		// it, and the one whose appearance here would be the worst possible false positive: consent
 		// reported as recorded when the token was never valid.
-		success: /works without signing in/i
+		success: /works without signing in/i,
+		submit: 'Confirm updates'
 	},
 	{
 		path: '/updates/unsubscribe',
 		name: 'unsubscribe',
 		// From updates_unsubscribe_done_body.
-		success: /place on the early-access waitlist is unaffected/i
+		success: /place on the early-access waitlist is unaffected/i,
+		submit: 'Unsubscribe'
 	}
 ] as const;
 
-for (const { path, name, success } of PAGES) {
+for (const { path, name, success, submit } of PAGES) {
 	test(`${name}: a link with no token renders the generic failure panel`, async ({ page }) => {
 		const response = await page.goto(path);
 		expect(response?.status()).toBe(200);
@@ -60,27 +63,41 @@ for (const { path, name, success } of PAGES) {
 		await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
 	});
 
-	// THE PROPERTY THE WHOLE DESIGN RESTS ON. Mail scanners and link previewers fetch every URL in an
-	// inbound message, so a state change that happened on GET would be made by a machine on delivery —
-	// double opt-in that verifies nothing. Nothing here is reachable without a POST, and the failure
-	// panel does not even render a form.
-	test(`${name}: fetching the page changes nothing — the only mutation is behind a form`, async ({
-		page
-	}) => {
+	// THE PROPERTY THE WHOLE DESIGN RESTS ON, as far as a hermetic run can see it. Mail scanners and
+	// link previewers fetch every URL in an inbound message, so a state change that happened on GET
+	// would be made by a machine on delivery — double opt-in that verifies nothing.
+	//
+	// What is assertable here is that GETting the URL produces nothing to press and never reports a
+	// success. The stronger claim — that a GET carrying a VALID token still changes no row — needs a
+	// token that verifies and a database to check, so it lives in `pnpm smoke:waitlist` (step P), where
+	// the confirmation only ever happens through a POST.
+	//
+	// NOT asserted by counting `form[method="post"]`: the root layout mounts the global contact dialog,
+	// whose remote form is on every page in the site. The first cut did exactly that and failed with
+	// "expected 0, received 1" — an assertion that would have gone green again the day somebody moved
+	// the dialog, while saying nothing about this page.
+	test(`${name}: a fetched link offers nothing to press and claims nothing`, async ({ page }) => {
 		await page.goto(path);
 		await expect(page.getByText(INVALID)).toBeVisible();
-		expect(await page.locator('form[method="post"]').count()).toBe(0);
+		expect(await page.getByRole('button', { name: submit, exact: true }).count()).toBe(0);
 		expect(await page.getByText(success).count()).toBe(0);
 	});
 
 	test(`${name}: a POST with no usable token fails visibly rather than silently succeeding`, async ({
-		request
+		request,
+		baseURL
 	}) => {
-		// Straight at the action, the way a script would. `accept: text/html` matters — without it
-		// SvelteKit answers a form action with its ActionResult envelope (HTTP 200 carrying the real
-		// status in the body), so `status()` would read 200 for a refusal and a success alike.
+		// Straight at the action, the way a script would. Two headers are load-bearing: `origin`, or
+		// SvelteKit's CSRF check answers 403 before the action runs (measured — the first cut omitted it
+		// and asserted a 403 it had caused itself), and `accept: text/html`, without which SvelteKit
+		// answers a form action with its ActionResult envelope — HTTP 200 carrying the real status in the
+		// body — so `status()` would read 200 for a refusal and a success alike.
 		const response = await request.post(path, {
-			headers: { accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' },
+			headers: {
+				accept: 'text/html',
+				'content-type': 'application/x-www-form-urlencoded',
+				origin: new URL(baseURL!).origin
+			},
 			data: 'token=nonsense'
 		});
 		expect(response.status()).toBe(200);

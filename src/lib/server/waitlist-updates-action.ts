@@ -25,6 +25,21 @@ export type UpdatesActionResult = ReturnType<typeof waitlistUpdatesState> | 'inv
 export interface UpdatesActionEnv {
 	db: Db;
 	secret: WaitlistSigningSecret | undefined;
+	/**
+	 * The HTTP method of the request asking for this. Anything but `POST` is refused, and that guard is
+	 * the whole double-opt-in property expressed as code rather than as a convention about where the
+	 * call sits.
+	 *
+	 * Mail scanners and link previewers fetch every URL in an inbound message, so a confirmation
+	 * reachable from a GET is confirmed by a machine on delivery — a gate that verifies nothing while
+	 * looking like one. The obvious way to enforce that is "only call this from an action", which no
+	 * type can check and which a future `load` would break silently. Passing the method makes the
+	 * accidental case impossible: a load runs with the visitor's GET and gets `invalid` back.
+	 *
+	 * A caller could of course hardcode `'POST'`. That is true of any guard, and it is not the failure
+	 * mode this exists for — it turns a silent mistake into a deliberate one.
+	 */
+	method: string;
 }
 
 /**
@@ -46,6 +61,10 @@ export async function runUpdatesAction(
 	verify: (secret: WaitlistSigningSecret, token: unknown) => Promise<string | null>,
 	write: (db: Db, leadId: string) => Promise<WaitlistUpdatesSignals | null>
 ): Promise<UpdatesActionResult> {
+	// Nothing mutates on a GET — see `method`. Checked before anything else, so a misplaced call costs
+	// no verification and no query.
+	if (env.method !== 'POST') return 'invalid';
+
 	// No secret means no deploy-wide way to verify anything, so nothing here can be trusted — the same
 	// "this feature is off" posture the rest of the flow takes, and `invalid` is the honest thing to
 	// show for a link we cannot read.

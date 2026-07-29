@@ -39,7 +39,9 @@ export const actions: Actions = {
 		const token = String(data.get('token') ?? '');
 
 		const result = await runUpdatesAction(
-			{ db, secret },
+			// `request.method` rather than a literal 'POST': the guard exists to refuse a call that has
+			// drifted into a `load`, and a hardcoded value would refuse nothing.
+			{ db, secret, method: request.method },
 			token,
 			verifyUpdatesUnsubscribeToken,
 			unsubscribeUpdates
