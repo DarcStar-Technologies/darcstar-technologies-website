@@ -43,6 +43,17 @@
 	// numbers stay on screen; only which one is the headline changed. "complete" is a term of art,
 	// so section_proven_body defines it further down the page — DAR-46's rule, and the reason
 	// evidence-disclosure.spec.ts pins the label and that definition together.
+	//
+	// The long label wraps this row to two lines at desktop widths, and that is accepted rather
+	// than unnoticed: measured in a real browser, the row fits four across at 1440px only while
+	// the widest label stays around 24 characters — the old "theorems machine-checked" sat exactly
+	// at that edge. Every shorter phrasing costs a word that is doing work. Dropping "theorems"
+	// leaves the unit unnamed; dropping "machine-checked" leaves a bare "of 219" that reads as the
+	// size of the whole corpus, which is the catalog total — a figure this site deliberately never
+	// publishes (docs/evidence.md), so the cheap-looking trim would quietly imply the one number
+	// the IP boundary exists to withhold. Capping the label width instead makes it worse (11rem →
+	// three rows, measured). `flex-wrap` + `gap-y-4` on the container is a designed state, and it
+	// already wraps at tablet widths; the honest label wins the tie.
 	const readouts = $derived([
 		{ v: CFC_KERNEL_LATENCY, l: m.readout_cfc_label() },
 		{ v: REALTIME_MULTIPLE, l: m.readout_realtime_label() },
