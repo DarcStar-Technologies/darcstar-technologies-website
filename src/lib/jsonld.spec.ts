@@ -152,6 +152,32 @@ describe('peopleJsonLd', () => {
 		expect(anonymous.url).toBeUndefined();
 	});
 
+	// DAR-148. `new URL` RESOLVES `../`, so a `../admin` slug used to publish this person's identity
+	// as https://darcstar.tech/admin — an `@id` pointing at the login wall, in a document that also
+	// says "this is who wrote our research". "Has a profile" is `contentPath`'s question, not
+	// truthiness, and the grid's link asks the same one so the two claims cannot disagree.
+	it.each(['../admin', '../../login', 'a/b', '..'])(
+		'refuses to identify a person by %s, which is not their profile',
+		(slug) => {
+			const [person] = peopleJsonLd([{ name: 'Ada', slug }], ORIGIN);
+			expect(person['@id']).toBeUndefined();
+			expect(person.url).toBeUndefined();
+		}
+	);
+
+	// The full profile node derives its identity from the same helper, so the detail page cannot claim
+	// an id the grid refused — they are one entity or neither is.
+	it('refuses the same identifier on the full profile node', () => {
+		const person = personJsonLd(
+			{ name: 'Ada', slug: '../admin' },
+			{ url: `${ORIGIN}/people/ada-lovelace` }
+		);
+		expect(person['@id']).toBeUndefined();
+		// `mainEntityOfPage` describes the PAGE and is passed in, so it is unaffected — that split is
+		// DAR-122's, and this proves the guard didn't collapse it.
+		expect(person.mainEntityOfPage).toBe(`${ORIGIN}/people/ada-lovelace`);
+	});
+
 	// The identifier has to be the SAME STRING the grid's href and the sitemap's <loc> resolve to, and
 	// both of those go through `new URL`. A slug needing encoding is unlikely — the Studio slugifies —
 	// but an `@id` that disagrees with the page it identifies defeats the entire point of having one,

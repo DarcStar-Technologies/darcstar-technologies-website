@@ -1,7 +1,7 @@
 import { readdirSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { locales } from '../lib/paraglide/runtime';
-import { TRANSLATED_LOCALES } from '../lib/seo';
+import { GATED_PATHS, TRANSLATED_LOCALES } from '../lib/seo';
 
 // /sitemap.xml + JSON-LD structured data (DAR-48), asserted through the real Cloudflare worker
 // build. Content-driven specifics (posts/papers in the sitemap, Article/Person nodes) depend on
@@ -26,17 +26,10 @@ const STATIC_PATHS = [
 	'/terms'
 ];
 
-// Gated/noindex page routes deliberately absent from the sitemap (mirrors the endpoint's
-// documented exclusions). '/admin' is a prefix — it covers the whole staff area.
-const GATED_PATHS = [
-	'/admin',
-	'/account',
-	'/login',
-	'/signup',
-	'/forgot-password',
-	'/reset-password'
-];
-
+// Gated/noindex page routes deliberately absent from the sitemap: imported, not restated, because
+// sitemap.xml/server.spec.ts asserts the same list against the handler and a second hand-kept copy
+// would drift (DAR-148).
+//
 // Untranslated locale trees are excluded from the sitemap — DERIVED from the same
 // TRANSLATED_LOCALES flag the endpoint reads, so the day a locale becomes real, its tree joins
 // the sitemap and this expectation flips with it (no hardcoded '/es' time bomb).

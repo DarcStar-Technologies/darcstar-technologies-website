@@ -13,3 +13,20 @@ import { baseLocale, type Locale } from './paraglide/runtime';
 // partly-filled catalog renders a Spanish/English mix, and this flag says "coherent enough to
 // index". Everything flips together once it's set.
 export const TRANSLATED_LOCALES: Locale[] = [baseLocale];
+
+// Gated/noindex page routes that must never appear in /sitemap.xml. Two consumers assert it — the
+// e2e reads the served document, `sitemap.xml/server.spec.ts` drives the handler against a mocked
+// client — and they cannot share a file: the e2e imports `@playwright/test`, and the unit spec runs
+// under node. A hand-copied second list is the rot DAR-99 measured, so the list lives HERE, beside
+// the other flag the sitemap and the e2e already read from this module.
+//
+// Each entry is a PREFIX: '/admin' covers the whole staff area, and seo.e2e.ts's route enumeration
+// filters the tree with the same semantics.
+export const GATED_PATHS = [
+	'/admin',
+	'/account',
+	'/login',
+	'/signup',
+	'/forgot-password',
+	'/reset-password'
+];

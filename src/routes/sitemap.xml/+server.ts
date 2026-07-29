@@ -1,6 +1,7 @@
 import { getSanityClient } from '$lib/server/sanity';
 import { sitemapEntriesQuery } from '$lib/sanity/queries';
 import { localizeHref } from '$lib/paraglide/runtime';
+import { contentPath } from '$lib/content-path';
 import { TRANSLATED_LOCALES } from '$lib/seo';
 import type { RequestHandler } from './$types';
 
@@ -42,6 +43,22 @@ const STATIC_PATHS = [
 	'/terms'
 ];
 
+/**
+ * One collection's documents as sitemap entries — written ONCE for every content type rather than
+ * per-collection, so a fourth type inherits `contentPath`'s guard instead of having to opt in.
+ *
+ * A slug the `[slug]` route could not serve is DROPPED (DAR-148): `<loc>` goes through `new URL`,
+ * which resolves `../`, so a `../admin` slug used to emit a gated path this document promises never
+ * to list. Silent by design — the alternative is a 500 on the whole sitemap because one document has
+ * a bad slug, and every entry this refuses addresses a page that would 404 anyway.
+ */
+function contentEntries(section: string, docs: { slug: string; _updatedAt: string }[]) {
+	return docs.flatMap((doc) => {
+		const path = contentPath(section, doc.slug);
+		return path ? [{ path, lastmod: doc._updatedAt }] : [];
+	});
+}
+
 function escapeXml(value: string): string {
 	return value
 		.replaceAll('&', '&amp;')
@@ -66,9 +83,9 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	const entries: { path: string; lastmod?: string }[] = [
 		...STATIC_PATHS.map((path) => ({ path })),
-		...posts.map((post) => ({ path: `/news/${post.slug}`, lastmod: post._updatedAt })),
-		...papers.map((paper) => ({ path: `/research/${paper.slug}`, lastmod: paper._updatedAt })),
-		...people.map((person) => ({ path: `/people/${person.slug}`, lastmod: person._updatedAt }))
+		...contentEntries('/news', posts),
+		...contentEntries('/research', papers),
+		...contentEntries('/people', people)
 	];
 
 	// One <url> per translated locale (just `en` today — the same single flag that drives

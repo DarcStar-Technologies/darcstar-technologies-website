@@ -1,4 +1,5 @@
 import { CONTACT_EMAIL, GITHUB_URL, SITE_NAME } from '$lib/site';
+import { contentPath } from '$lib/content-path';
 // Fingerprint-imported like Seo.svelte's OG card: a regenerated mark gets a new hashed URL.
 // The SVG is the actual brand mark; swap for a raster square if Google ever balks at vector.
 import logoAsset from '$lib/assets/favicon.svg';
@@ -91,6 +92,11 @@ interface PersonInput {
  * page's node are one entity in a consumer's graph rather than two people who happen to share a name.
  * A person with no routable slug has no page, so they stay an anonymous (id-less) node on the grid.
  *
+ * "Routable" is `contentPath`'s question, not a truthiness test (DAR-148). It has to be: `new URL`
+ * below RESOLVES `../`, so a `../admin` slug published this person's identity as
+ * `https://darcstar.tech/admin` — an identifier pointing at the login wall. The grid's link and this
+ * `@id` are the same claim about the same person, so they ask the same predicate.
+ *
  * Not localized: `@id` is an identifier, and the same person must not become two entities because a
  * crawler arrived through a translated tree.
  *
@@ -100,7 +106,8 @@ interface PersonInput {
  * precisely what an `@id` cannot afford to be.
  */
 function personId(slug: string | null | undefined, origin: string): string | undefined {
-	return slug ? new URL(`/people/${slug}`, origin).href : undefined;
+	const path = contentPath('/people', slug);
+	return path ? new URL(path, origin).href : undefined;
 }
 
 /**

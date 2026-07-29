@@ -10,6 +10,7 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import { formatDate } from '$lib/sanity/date';
+	import { contentPath } from '$lib/content-path';
 	import { page } from '$app/state';
 	import type { PageServerData } from './$types';
 
@@ -34,10 +35,21 @@
 		{:else}
 			<ul class="space-y-6">
 				{#each data.posts as post (post._id)}
+					{@const path = contentPath('/news', post.slug)}
 					<li>
-						<a
-							href={localizeHref(`/news/${post.slug}`)}
-							class="glass-card group flex flex-col overflow-hidden transition-colors hover-focus:border-primary-500/40 sm:flex-row"
+						<!-- The whole card is the link — when the slug names a page `[slug]` cannot serve
+						     (DAR-148: `../admin` resolves out of the section), it degrades to a plain <div>
+						     and gives up BOTH affordances that promise a destination: the hover treatment
+						     and the "Read article" call to action below. A card that still says "Read
+						     article" and goes nowhere is a worse lie than the link was. The post keeps its
+						     card rather than vanishing from the feed, so a broken slug is debuggable. -->
+						<svelte:element
+							this={path ? 'a' : 'div'}
+							href={path ? localizeHref(path) : undefined}
+							class={[
+								'glass-card flex flex-col overflow-hidden sm:flex-row',
+								path && 'group transition-colors hover-focus:border-primary-500/40'
+							]}
 						>
 							{#if post.coverImage?.asset}
 								<div class="shrink-0 overflow-hidden sm:w-56">
@@ -68,11 +80,13 @@
 								{#if post.excerpt}
 									<p class="mt-2 line-clamp-3 text-sm leading-relaxed text-body">{post.excerpt}</p>
 								{/if}
-								<span class="mt-4 text-sm font-medium text-primary-500"
-									>{m.news_read_article()}</span
-								>
+								{#if path}
+									<span class="mt-4 text-sm font-medium text-primary-500"
+										>{m.news_read_article()}</span
+									>
+								{/if}
 							</div>
-						</a>
+						</svelte:element>
 					</li>
 				{/each}
 			</ul>
