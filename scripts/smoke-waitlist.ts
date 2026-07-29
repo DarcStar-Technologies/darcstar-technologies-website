@@ -55,7 +55,7 @@
 //      `Priority A waitlist lead: <the smoke address>`. The step-4A answers below classify Priority A
 //      on purpose, that being the point of step I.
 //   2. DAR-139's updates confirmation, once, to the smoke address itself — because step 1 ticks the
-//      opt-in box, which is what step P exists to walk.
+//      opt-in box, which is what step N exists to walk.
 //
 // Neither can be separated from the claim it belongs to, and for the same reason: both
 // `captureWaitlistPriorityLead` and `captureUpdatesConsent` check the Resend key BEFORE they claim, so
@@ -775,7 +775,7 @@ const [afterWalkBack] = await submissionsForLead();
 // only for exactly this sequence of steps, and the next ticket to insert one would get a budget
 // failure pointing at the budget.
 assertEqual('walk-back', afterWalkBack.stepWriteCount, (afterStep4a.stepWriteCount ?? 0) + 1);
-// Read here and AGAIN at the end of the run (step N). The late read is the load-bearing one: the claim
+// Read here and AGAIN at the end of the run (step O). The late read is the load-bearing one: the claim
 // runs inside `ctx.waitUntil`, so this one can only catch a re-claim fast enough to have already
 // landed. A second claim would move the timestamp permanently, so a later look needs no sleep — by
 // then the run has spent seventeen more round trips.
@@ -839,7 +839,7 @@ ok(
 const secondSignup = await submit(step1Action, {
 	name: 'Mallory Smoke', // a different name, which under append-only is a second claim, not an edit
 	email: smokeEmail,
-	// Ticked here as well as at step 1, which is neutral for THIS step and is what gives step P
+	// Ticked here as well as at step 1, which is neutral for THIS step and is what gives step N
 	// something to observe: DAR-139's per-lead window has to refuse the second ask.
 	'b:consentUpdates': 'on',
 	website: '',
@@ -952,7 +952,23 @@ const askedLead = await eventually(
 const askedAt = askedLead!.updatesConfirmSentAt!.getTime();
 assertEqual('updates ask', waitlistUpdatesState(askedLead!), 'asked');
 assertEqual('updates ask', mayReceiveUpdates(askedLead!), false);
-ok('a ticked box asked this address to confirm — and asking is not yet permission to send');
+
+// AND THE ASK IS STEP 1'S, not step L's — which is what makes step O's "nobody re-asked" mean anything.
+// This poll runs after the second signup (which also ticks the box), so on its own `askedAt` would
+// happily be a RE-stamp, and comparing it to itself at the end of the run would pass against a claim
+// that had lost its 24h predicate entirely. That is the vacuous-negative shape this script's header
+// warns about, one ticket later and in a new place.
+//
+// Ordering closes it without moving anything: the second submission's own row is written on the
+// response path, so if its claim had re-stamped, `updates_confirm_sent_at` would be at or after that
+// row's creation. Pinning the ask BEFORE it, plus step O's "still exactly this value" at the end,
+// together say the second signup never re-asked — whenever its fire-and-forget claim actually ran.
+if (askedAt >= appended.createdAt.getTime()) {
+	die(
+		`updates ask: the ask is stamped at or after the second signup's submission (${new Date(askedAt).toISOString()} vs ${appended.createdAt.toISOString()}) — the second ticked box re-asked, so the per-lead window is not holding`
+	);
+}
+ok('a ticked box asked this address to confirm — once, before the repeat signup ticked it again');
 
 // N2. The confirmation itself. The token is minted with the same function the email uses and the same
 //     secret the worker loaded, so a POST it accepts is the two ends agreeing across a real request.
@@ -1026,9 +1042,10 @@ assertEqual('forged flow', (await forgedRows()).length, 0);
 // they are read here, where everything the run did afterwards is the wait, rather than immediately
 // after the submits that could have made them.
 //
-// One timestamp covers both: `updates_confirm_sent_at` is still the value step P1 saw, which means
-// neither the second signup (asked inside the 24h window) nor the fourth (asked after a withdrawal)
-// re-stamped it. A refused ask leaves the column alone, so hammering cannot walk the window forward.
+// One timestamp covers both, and only because step N1 pinned it to step 1's ask rather than to whatever
+// the column happened to hold: `updates_confirm_sent_at` is still that value, so neither the second
+// signup (asked inside the 24h window) nor the fourth (asked after a withdrawal) re-stamped it. A
+// refused ask leaves the column alone, so hammering cannot walk the window forward.
 assertEqual('updates ask window', finalLead?.updatesConfirmSentAt?.getTime(), askedAt);
 assertEqual('updates withdrawal', waitlistUpdatesState(finalLead!), 'unsubscribed');
 ok('nothing drifted afterwards: one claim, no forged rows, one ask, still withdrawn');
