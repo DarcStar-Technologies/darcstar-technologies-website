@@ -653,12 +653,17 @@ keeping:
    comparing — `\s` matches U+00A0, so it states "there IS separation" rather than pinning the
    mechanism; a plain space would still go red the moment the block is re-wrapped.
 6. **One change here is not whitespace, and it is worth naming rather than slipping in**: the `·` is
-   now `aria-hidden`, which neither `/research` page had, though the site's three other separators
-   (Footer, `/news`, `/people/[slug]`) all do. The dot is decoration, so a screen reader should hear
-   "Zenodo February 4, 2026" and should not get a different answer depending on the surface. Note
-   that a **rendered-text** diff cannot see this: the verification that local and production are
-   byte-identical once whitespace is stripped was run on tag-stripped text, so it says nothing about
-   an added element — "whitespace is the only change" was true of the text and false of the markup.
+   now `aria-hidden`, which neither `/research` page had. The dot is decoration, so a screen reader
+   should hear "Zenodo February 4, 2026" rather than a punctuation name. **Six of the site's seven
+   other separators** (Footer ×2, `/news`, `/news/[slug]`'s byline, `/people/[slug]` ×2) already
+   agree; the seventh is `/news/[slug]`'s related-papers row, where the dot sits **inside the link's
+   accessible name**, so hiding it changes what the link is _called_ rather than what surrounds it —
+   a different question, left open. Two things this cost getting right: a **rendered-text** diff
+   cannot see an added element at all (the "byte-identical once whitespace is stripped" check runs on
+   tag-stripped text, so "whitespace is the only change" was true of the text and false of the
+   markup), and the first write-up of this rule said "the three other separators all do", which was
+   wrong in both the count and the "all" — the consistency argument is the whole justification for
+   the attribute, so it is the one claim here that had to be counted rather than recalled.
 
 ### Topic descriptions are rendered, not tooltipped (DAR-56)
 
