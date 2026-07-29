@@ -116,6 +116,28 @@ audit — this repo holds only the public prose, never the artifacts):
   render) **plus the `$lib/evidence` constants** that supply the card values, and the
   evidence e2e asserts the rendered absences. A hit means reword the copy — never loosen the
   pattern.
+- **The catalog total is guarded by DERIVATION, never by a literal (DAR-152).** The rule was
+  `/\b338\b/`, labelled "the theorem-catalog total (338)" — which wrote the secret into a
+  **public repo in order to guard it**, and pinned it to a vintage, so the corpus outgrew the
+  figure and today's total would have passed. Both faults have one cause: the guard was written
+  in terms of the number it hides. `src/lib/evidence-boundary.ts` derives it from the number we
+  **publish** instead — every publishable theorem count is at most `THEOREMS_CHECKED` and the
+  catalog size is by construction above it, so the band names nothing and a re-measure carries
+  it along. Three routes, all in that one module so the unit spec (catalogs + constants) and the
+  e2e (rendered text) close together: a **bare integer above the published count near
+  theorem wording** — both halves load-bearing and both measured, since the band alone flags
+  "Lean 4" in eight keys and the proximity test alone flags "1,000 warmup iterations"; a
+  **numeric corpus percentage**, because a count beside "75.4% of the corpus" (the hub brief's
+  own phrasing) recovers the total to within a row; and **backlog wording**, which is the
+  complement — the remainder sits BELOW the band, so no value rule can reach it and computing
+  one would mean importing the secret. That third half is honestly partial: it catches the plain
+  spellings, not a paraphrase. Two exclusions are load-bearing and were found by measurement,
+  not by reasoning — **calendar years** (both dated lines put one beside "corpus"/"theorems")
+  and **numbers glued to a word, hyphen or dot** (`SHA-256`, `0.767`, `p50`, `Isabelle2025-2`).
+  "not yet mechanized" was a candidate and is **rejected**: `evidence_proofs_axioms_local_body`
+  legitimately says the prover libraries "do not yet formalize" a result — a fact about Mathlib,
+  not about our backlog. The e2e scans **line by line**, because rendered text is a concatenation
+  and a whole-page scan reads the homepage's `13,000×` readout as neighbouring the theorems one.
 - The rule covers **source comments too** — this repo is public, and the DAR-43 review found
   an `h=16` in a doc-comment — but **no automated guard reads comments**: a pattern scan over
   source false-positives immediately ("parameter" is legitimate prose in these files), so
