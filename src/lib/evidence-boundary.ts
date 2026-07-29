@@ -38,7 +38,8 @@ const BARE_INTEGER = /(?<![-.\w])\d+(?![-.\w])/g;
  * a latency figure, which is legitimate and has no digits — the leak is the numeric form. */
 const NUMERIC_PERCENTAGE = /\d\s*(?:%|percent\b)/gi;
 
-/** Phrasings that describe the un-mechanized remainder. Necessarily partial (see findLeaks). */
+/** Phrasings that describe the un-mechanized remainder. Necessarily partial — see route 3 in
+ * findCatalogTotalLeaks for why no value rule can reach it. */
 const BACKLOG_WORDING: { name: string; pattern: RegExp }[] = [
 	{ name: 'backlog wording', pattern: /\bbacklog\b/i },
 	{ name: '"unmechanized" wording', pattern: /\bun-?mechaniz/i },
