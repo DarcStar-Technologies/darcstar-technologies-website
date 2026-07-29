@@ -29,6 +29,7 @@ export type PaperRow = PapersPageByDateQueryResult['papers'][number];
 // strand a visitor on page 7 of a filter that now has two results.
 export const FILTER_PARAM = {
 	topic: 'topic',
+	contribution: 'contribution',
 	author: 'author',
 	origin: 'origin',
 	sort: 'sort'
@@ -37,8 +38,30 @@ export const FILTER_PARAM = {
 export type ResearchOrigin = 'darcstar' | 'external';
 export type ResearchSort = 'date' | 'date-asc' | 'title';
 
+/**
+ * The `paper.contribution` vocabulary (DAR-162) — what KIND of contribution an entry makes, which is
+ * a different axis from `status` (the publication stage). One declaration serves three jobs: the
+ * URL vocabulary, the parse validation below, and the SELECT'S DISPLAY ORDER.
+ *
+ * The order is the Studio's own field order, and it is meaningful rather than incidental — it reads
+ * as a maturity ladder from "we are proposing this" to "we built it and here is the report".
+ * Alphabetising (conceptual, empirical, engineering, formal) would scramble that for nothing, which
+ * is why `contributionOptions` sorts by this list and not by the facet query's output.
+ *
+ * Kept in step with `schemaTypes/documents/paper.ts` in the Studio BY HAND, like every other shape
+ * this repo mirrors: `schema.json` is a whole-file copy, so TypeGen would catch a value that
+ * disappeared (the `Paper['contribution']` union narrows and `contributionKind` stops compiling) but
+ * NOT one that was added — a fifth kind would simply never appear in the control. That is the same
+ * class of gap as a new `blockContent` field, and the same answer: it fails quiet, so look here when
+ * the Studio's list grows.
+ */
+export const CONTRIBUTION_KINDS = ['conceptual', 'formal', 'empirical', 'engineering'] as const;
+
+export type ContributionKind = (typeof CONTRIBUTION_KINDS)[number];
+
 export interface ResearchFilters {
 	topic: string | null;
+	contribution: ContributionKind | null;
 	author: string | null;
 	origin: ResearchOrigin | null;
 	sort: ResearchSort;
@@ -66,13 +89,27 @@ export interface TopicEntry {
 	description: string | null;
 }
 
+/** Narrows an arbitrary URL string to a known contribution kind. */
+function contributionKind(value: string | null): ContributionKind | null {
+	return CONTRIBUTION_KINDS.includes(value as ContributionKind)
+		? (value as ContributionKind)
+		: null;
+}
+
 // Tolerant by design: a no-JS GET submit sends empty strings for untouched selects (→ null),
-// and hand-edited URLs may carry junk (unknown origin/sort values fall back safely).
+// and hand-edited URLs may carry junk (unknown origin/sort/contribution values fall back safely).
+//
+// `contribution` is validated where `topic` is not, and the asymmetry is not an oversight: a topic
+// slug is authored content this file cannot enumerate, so an unknown one has to reach GROQ and
+// answer nothing (the select renders it as a synthetic option so it doesn't masquerade as "All").
+// A contribution kind is a closed enum we DO enumerate, so junk is discarded here and the control
+// shows "All kinds" — nothing is gained by round-tripping `?contribution=banana` to Sanity.
 export function parseResearchFilters(params: URLSearchParams): ResearchFilters {
 	const origin = params.get(FILTER_PARAM.origin);
 	const sort = params.get(FILTER_PARAM.sort);
 	return {
 		topic: params.get(FILTER_PARAM.topic) || null,
+		contribution: contributionKind(params.get(FILTER_PARAM.contribution)),
 		author: params.get(FILTER_PARAM.author) || null,
 		origin: origin === 'darcstar' || origin === 'external' ? origin : null,
 		sort: sort === 'title' || sort === 'date-asc' ? sort : 'date'
@@ -80,7 +117,13 @@ export function parseResearchFilters(params: URLSearchParams): ResearchFilters {
 }
 
 export function hasActiveFilters(f: ResearchFilters): boolean {
-	return f.topic !== null || f.author !== null || f.origin !== null || f.sort !== 'date';
+	return (
+		f.topic !== null ||
+		f.contribution !== null ||
+		f.author !== null ||
+		f.origin !== null ||
+		f.sort !== 'date'
+	);
 }
 
 // Builds the canonical query string from the filter form's values (the JS enhancement path).
@@ -126,6 +169,34 @@ export function partitionByOrigin(papers: PaperRow[]): {
 /** Projects the topic facet down to the Topic select's option shape. */
 export function topicOptions(topics: TopicEntry[]): FacetOption[] {
 	return topics.map((t) => ({ value: t.slug, label: t.title }));
+}
+
+/**
+ * The Contribution select's options (DAR-162): the kinds at least one paper actually declares, in
+ * `CONTRIBUTION_KINDS` order, labelled by the caller.
+ *
+ * It IGNORES the order `inUse` arrives in and reads only its membership, which is the whole reason
+ * this isn't `inUse.map(...)`. The facet is `array::unique` over a projection, so its order is
+ * whatever the Content Lake returned rows in — stable enough in practice to hide the bug and not a
+ * contract, and it would put the maturity ladder in publication order.
+ *
+ * Filtering to in-use values keeps the "only offer values that match at least one paper" guarantee
+ * the topic and author facets already give, and it is doing real work here rather than being
+ * defensive: three of the four kinds are declared by no paper today, so offering all four would ship
+ * a control where 3 of 4 picks lead to "no matches". It grows as papers are classified, with nothing
+ * to remember.
+ *
+ * `label` is injected rather than looked up so this file stays free of Paraglide — the values are
+ * enum literals, so unlike a topic's authored title their display text is translatable chrome.
+ */
+export function contributionOptions(
+	inUse: readonly string[],
+	label: (kind: ContributionKind) => string
+): FacetOption[] {
+	return CONTRIBUTION_KINDS.filter((kind) => inUse.includes(kind)).map((kind) => ({
+		value: kind,
+		label: label(kind)
+	}));
 }
 
 /**

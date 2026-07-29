@@ -1563,6 +1563,31 @@
         },
         "optional": true
       },
+      "contribution": {
+        "type": "objectAttribute",
+        "value": {
+          "type": "union",
+          "of": [
+            {
+              "type": "string",
+              "value": "conceptual"
+            },
+            {
+              "type": "string",
+              "value": "formal"
+            },
+            {
+              "type": "string",
+              "value": "empirical"
+            },
+            {
+              "type": "string",
+              "value": "engineering"
+            }
+          ]
+        },
+        "optional": true
+      },
       "abstract": {
         "type": "objectAttribute",
         "value": {
@@ -1707,6 +1732,36 @@
   },
   {
     "type": "type",
+    "name": "series.reference",
+    "value": {
+      "type": "object",
+      "attributes": {
+        "_ref": {
+          "type": "objectAttribute",
+          "value": {
+            "type": "string"
+          }
+        },
+        "_type": {
+          "type": "objectAttribute",
+          "value": {
+            "type": "string",
+            "value": "reference"
+          }
+        },
+        "_weak": {
+          "type": "objectAttribute",
+          "value": {
+            "type": "boolean"
+          },
+          "optional": true
+        }
+      },
+      "dereferencesTo": "series"
+    }
+  },
+  {
+    "type": "type",
     "name": "paper.reference",
     "value": {
       "type": "object",
@@ -1843,6 +1898,21 @@
         },
         "optional": true
       },
+      "series": {
+        "type": "objectAttribute",
+        "value": {
+          "type": "inline",
+          "name": "series.reference"
+        },
+        "optional": true
+      },
+      "seriesPart": {
+        "type": "objectAttribute",
+        "value": {
+          "type": "number"
+        },
+        "optional": true
+      },
       "relatedPapers": {
         "type": "objectAttribute",
         "value": {
@@ -1946,6 +2016,57 @@
         "value": {
           "type": "inline",
           "name": "seo"
+        },
+        "optional": true
+      }
+    }
+  },
+  {
+    "name": "series",
+    "type": "document",
+    "attributes": {
+      "_id": {
+        "type": "objectAttribute",
+        "value": {
+          "type": "string"
+        }
+      },
+      "_type": {
+        "type": "objectAttribute",
+        "value": {
+          "type": "string",
+          "value": "series"
+        }
+      },
+      "_createdAt": {
+        "type": "objectAttribute",
+        "value": {
+          "type": "string"
+        }
+      },
+      "_updatedAt": {
+        "type": "objectAttribute",
+        "value": {
+          "type": "string"
+        }
+      },
+      "_rev": {
+        "type": "objectAttribute",
+        "value": {
+          "type": "string"
+        }
+      },
+      "title": {
+        "type": "objectAttribute",
+        "value": {
+          "type": "string"
+        },
+        "optional": false
+      },
+      "description": {
+        "type": "objectAttribute",
+        "value": {
+          "type": "string"
         },
         "optional": true
       }

@@ -55,7 +55,11 @@ perspective: 'published', token })`, where `token = readEnv('SANITY_VIEWER_TOKEN
   Expect unrelated additions in a `types.ts` diff and check they're additive.
   **Diff the two files type-by-type before copying**, so what rides along is known rather than
   discovered: DAR-106's sync turned out to be exactly `+mathBlock`, `+mathInline` and the two
-  `blockContent` union members, with no drift at all.
+  `blockContent` union members, with no drift at all. DAR-162's was `paper.contribution` (what it
+  wanted) plus DAR-123's **`series`** — the `Series` type, `SeriesReference`, and
+  `post.{series, seriesPart}` — which are **types only**: no query selects them, nothing renders
+  Part N of M, and `/news` still shows a multi-part arc in reverse date order. That is the DAR-47 →
+  DAR-122 shape again, recorded here rather than left for a `types.ts` reader to wonder about.
 - **The Studio's `seo` object reaches `<Seo>` only through
   [`content-seo.ts`](../src/lib/sanity/content-seo.ts)** (DAR-71). Add new `seo` fields there, not at
   the detail-page call sites — the previous per-page mapping is how `noIndex` came to be fetched and
@@ -299,8 +303,9 @@ read as ours, so the rendering rail is:
 
 ### /research filtering & sorting
 
-`?topic=&author=&origin=&sort=&page=` filter (topic **slug**, author slug **or name**, origin
-`darcstar|external`), sort (`date` default · `date-asc` · `title`) and page the index. URL params
+`?topic=&contribution=&author=&origin=&sort=&page=` filter (topic **slug**, contribution
+`conceptual|formal|empirical|engineering`, author slug **or name**, origin `darcstar|external`), sort
+(`date` default · `date-asc` · `title`) and page the index. URL params
 are the single source of state: the bar is a **native GET form** (works no-JS; Apply submits),
 enhanced on change to a **debounced** `goto` with clean URLs (a collapsed select fires `change` per
 arrow keypress in some browsers); the selects carry `value=` as well as option `selected` because
@@ -314,6 +319,18 @@ the URL semantics — parse/build, the param-name contract (`FILTER_PARAM` / `re
 DAR-52's `isDarcstarAuthored` polarity and the per-page `partitionByOrigin`. Empty/unknown params
 still degrade safely; the load reads the URL and re-queries, so a filter change now costs a Sanity
 round trip (~235 ms measured) where it used to be free.
+
+**`?contribution=` is validated where `?topic=` is not** (DAR-162), and the asymmetry is the point: a
+topic slug is authored content this repo cannot enumerate, so an unknown one has to reach GROQ and
+answer nothing (the select renders it as a synthetic option rather than letting it masquerade as
+"All"). A contribution kind is a closed enum, listed once as `CONTRIBUTION_KINDS` — which is also the
+select's **display order**, the Studio's own field order, a maturity ladder that alphabetising would
+scramble. Junk is dropped at the parser. The facet offers only kinds **some paper declares**, matching
+the topic/author facets: three of the four are unused today, so all four would be three dead picks.
+Keeping `CONTRIBUTION_KINDS` in step with the Studio is manual and fails **quiet** — TypeGen catches a
+value that disappeared, never one that was added — so a fifth kind simply won't appear in the control.
+`PaperContribution`'s `Record<ContributionKind, …>` label map is the one place that turns it into a
+compile error.
 
 ### Pagination + server-side filtering (DAR-94)
 
@@ -601,8 +618,18 @@ The chips/pills around a paper color-code the brand triad ([styling — color-ch
 | **G**  | **DarcStar commentary** chip (list only) | `PaperOrigin` — `border-secondary-500/40`                   |
 | **B**  | **actionable / published**               | `PaperLinks` (filled = link) · `PaperStatus` published tone |
 
-Neutral (`border-hairline`) = non-semantic chrome (statuses, "Third-party", categories). All pill
-geometry comes from `PaperStatus`'s exported `pillClass`. The B charge carries two meanings, so
+Neutral (`border-hairline`) = non-semantic chrome (statuses, **contribution kinds**, "Third-party",
+categories). All pill geometry comes from `PaperStatus`'s exported `pillClass`.
+
+`PaperContribution` (DAR-162) is neutral on purpose and it is the case that most tempts a charge:
+`paper.contribution` is the field that exists so a conceptual framework stops presenting like a
+proven result, so a colour to make it _louder_ is the obvious move. It is still wrong — the pill is a
+**descriptor**, not a verdict, and the four kinds are peers (an engineering report is not a lesser
+thing than a formal result). Colouring one of them would rank them. Where emphasis genuinely belongs
+is the `conceptual` **caveat card** above the abstract on `/research/[slug]`, which is prose and a
+link rather than a chip. It also exports `contributionLabel` for `/research`'s Contribution select,
+the `pillClass` convention again: the select needs those four strings, and a second copy of the
+mapping there would be free to drift from the pill's. The B charge carries two meanings, so
 the **rest fill** disambiguates: `PaperLinks` pills are filled (`bg-primary-500/10`) = clickable;
 the published status pill is outline-only = badge. Topic `description` still renders as a `title`
 tooltip on **`/research/[slug]`**, where there is no topic guide — but that is progressive

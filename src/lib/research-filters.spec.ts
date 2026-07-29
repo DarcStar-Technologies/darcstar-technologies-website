@@ -4,6 +4,7 @@ import {
 	authorOptionLabel,
 	authorSearchTerm,
 	buildFilterQuery,
+	contributionOptions,
 	FILTER_PARAM,
 	hasActiveFilters,
 	partitionByOrigin,
@@ -59,6 +60,7 @@ describe('parseResearchFilters', () => {
 	it('defaults everything with no params', () => {
 		expect(parseResearchFilters(new URLSearchParams())).toEqual({
 			topic: null,
+			contribution: null,
 			author: null,
 			origin: null,
 			sort: 'date'
@@ -66,8 +68,16 @@ describe('parseResearchFilters', () => {
 	});
 
 	it('treats empty-string params (no-JS GET submit) as unset', () => {
-		const f = parseResearchFilters(new URLSearchParams('topic=&author=&origin=&sort='));
-		expect(f).toEqual({ topic: null, author: null, origin: null, sort: 'date' });
+		const f = parseResearchFilters(
+			new URLSearchParams('topic=&contribution=&author=&origin=&sort=')
+		);
+		expect(f).toEqual({
+			topic: null,
+			contribution: null,
+			author: null,
+			origin: null,
+			sort: 'date'
+		});
 		expect(hasActiveFilters(f)).toBe(false);
 	});
 
@@ -77,6 +87,26 @@ describe('parseResearchFilters', () => {
 		expect(f.sort).toBe('date');
 	});
 
+	// `contribution` is a closed enum (DAR-162), so junk is discarded here rather than round-tripped
+	// to GROQ — unlike `topic`, whose vocabulary is authored content this file cannot enumerate.
+	it.each(['banana', 'CONCEPTUAL', 'conceptual-framework', 'conceptual '])(
+		'rejects "%s" as a contribution kind',
+		(value) => {
+			const params = new URLSearchParams();
+			params.set('contribution', value);
+			expect(parseResearchFilters(params).contribution).toBeNull();
+		}
+	);
+
+	it.each(['conceptual', 'formal', 'empirical', 'engineering'] as const)(
+		'accepts %s and reports it active',
+		(kind) => {
+			const f = parseResearchFilters(new URLSearchParams(`contribution=${kind}`));
+			expect(f.contribution).toBe(kind);
+			expect(hasActiveFilters(f)).toBe(true);
+		}
+	);
+
 	it('accepts the date-asc sort and reports it active', () => {
 		const f = parseResearchFilters(new URLSearchParams('sort=date-asc'));
 		expect(f.sort).toBe('date-asc');
@@ -85,10 +115,13 @@ describe('parseResearchFilters', () => {
 
 	it('accepts the full valid set and reports it active', () => {
 		const f = parseResearchFilters(
-			new URLSearchParams('topic=transformers&author=a-vaswani&origin=external&sort=title')
+			new URLSearchParams(
+				'topic=transformers&contribution=formal&author=a-vaswani&origin=external&sort=title'
+			)
 		);
 		expect(f).toEqual({
 			topic: 'transformers',
+			contribution: 'formal',
 			author: 'a-vaswani',
 			origin: 'external',
 			sort: 'title'
@@ -107,7 +140,13 @@ describe('parseResearchFilters', () => {
 	// and paging to page 2 must not make the page claim filters are in force.
 	it('ignores the page param entirely', () => {
 		const f = parseResearchFilters(new URLSearchParams('page=3'));
-		expect(f).toEqual({ topic: null, author: null, origin: null, sort: 'date' });
+		expect(f).toEqual({
+			topic: null,
+			contribution: null,
+			author: null,
+			origin: null,
+			sort: 'date'
+		});
 		expect(hasActiveFilters(f)).toBe(false);
 	});
 });
@@ -127,8 +166,18 @@ describe('buildFilterQuery', () => {
 
 	it('carries only set values and drops empties', () => {
 		expect(
-			buildFilterQuery(values({ topic: 'transformers', author: '', origin: '', sort: '' }))
+			buildFilterQuery(
+				values({ topic: 'transformers', contribution: '', author: '', origin: '', sort: '' })
+			)
 		).toBe('topic=transformers');
+	});
+
+	// The builder iterates FILTER_PARAM, so a new facet is carried by adding the param and nothing
+	// else. Pinned because that is invisible in the source — nothing here mentions `contribution`.
+	it('carries the contribution filter', () => {
+		expect(buildFilterQuery(values({ contribution: 'conceptual' }))).toBe(
+			'contribution=conceptual'
+		);
 	});
 
 	it('returns an empty string when nothing is set', () => {
@@ -168,6 +217,50 @@ describe('topicOptions', () => {
 
 	it('handles an empty vocabulary', () => {
 		expect(topicOptions([])).toEqual([]);
+	});
+});
+
+describe('contributionOptions', () => {
+	const label = (kind: string) => `label:${kind}`;
+
+	// The reason this isn't `inUse.map(...)`. The facet is `array::unique` over a projection, so its
+	// order is whatever the Content Lake returned rows in — not a contract, and stable enough in
+	// practice to hide the bug. CONTRIBUTION_KINDS is the Studio's own field order and reads as a
+	// maturity ladder, so it wins over whatever arrives.
+	it('orders by the canonical vocabulary, not by the facet', () => {
+		expect(
+			contributionOptions(['engineering', 'conceptual', 'empirical', 'formal'], label)
+		).toEqual([
+			{ value: 'conceptual', label: 'label:conceptual' },
+			{ value: 'formal', label: 'label:formal' },
+			{ value: 'empirical', label: 'label:empirical' },
+			{ value: 'engineering', label: 'label:engineering' }
+		]);
+	});
+
+	// The "only offer values that match at least one paper" guarantee the topic and author facets
+	// already give. Real work, not defensiveness: three of the four kinds are declared by no paper
+	// today, so offering all four would ship a control where 3 of 4 picks return nothing.
+	it('offers only the kinds in use', () => {
+		expect(contributionOptions(['conceptual'], label)).toEqual([
+			{ value: 'conceptual', label: 'label:conceptual' }
+		]);
+	});
+
+	it('offers nothing when no paper declares a kind', () => {
+		expect(contributionOptions([], label)).toEqual([]);
+	});
+
+	// A kind the Studio grew but this repo has not — the facet would carry it, and an option with no
+	// label is worse than no option. Membership is read from CONTRIBUTION_KINDS, so it drops out.
+	it('ignores a value outside the vocabulary', () => {
+		expect(contributionOptions(['speculative', 'formal'], label)).toEqual([
+			{ value: 'formal', label: 'label:formal' }
+		]);
+	});
+
+	it('never duplicates a kind the facet repeats', () => {
+		expect(contributionOptions(['formal', 'formal'], label)).toHaveLength(1);
 	});
 });
 

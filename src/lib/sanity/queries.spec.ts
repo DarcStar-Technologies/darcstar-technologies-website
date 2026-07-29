@@ -64,7 +64,36 @@ describe('sanity GROQ queries', () => {
 		);
 	});
 
+	// DAR-162. `contribution` has to be selected by BOTH paper projections or the pill renders on one
+	// surface only — the failure this pins is silent, since each page compiles and looks finished
+	// alone. Counted across all three sort variants for the reason `occurrences` exists: they share
+	// `PAPER_CARD`, so a projection edited in one of them and not the others is exactly the drift a
+	// `toContain` on a single query cannot see.
+	it('every paper page query projects the contribution kind and can filter on it', () => {
+		for (const query of [papersPageByDateQuery, papersPageByDateAscQuery, papersPageByTitleQuery]) {
+			expect(query).toContain('contribution');
+			expect(query).toContain('($contribution == null || contribution == $contribution)');
+		}
+		// The filter lives in PAPER_MATCH, which the page slice AND `"total"` both interpolate — a
+		// count taken over an unfiltered match would page a filtered list by the wrong length.
+		expect(
+			occurrences(
+				papersPageByDateQuery,
+				/\(\$contribution == null \|\| contribution == \$contribution\)/g
+			)
+		).toBe(2);
+	});
+
+	// The facet the Contribution select is built from. Bounded to values in use, like the topic facet
+	// above it — a control offering all four kinds when one is declared is three dead picks.
+	it('the paper page queries offer only the contribution kinds in use', () => {
+		expect(papersPageByDateQuery).toContain(
+			'"contributions": array::unique(*[_type == "paper" && defined(slug.current) && defined(contribution)].contribution)'
+		);
+	});
+
 	it('paperBySlugQuery is slug-parameterised and pulls the PDF URL + commentary', () => {
+		expect(paperBySlugQuery).toContain('contribution');
 		expect(paperBySlugQuery).toContain('slug.current == $slug');
 		expect(paperBySlugQuery).toContain('"pdfUrl": pdf.asset->url');
 		expect(paperBySlugQuery).toContain('darcstarAuthored');

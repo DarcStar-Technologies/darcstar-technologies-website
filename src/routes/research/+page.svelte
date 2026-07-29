@@ -24,6 +24,7 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import PageHero from '$lib/components/PageHero.svelte';
 	import PaperStatus from '$lib/components/PaperStatus.svelte';
+	import PaperContribution, { contributionLabel } from '$lib/components/PaperContribution.svelte';
 	import PaperOrigin from '$lib/components/PaperOrigin.svelte';
 	import PaperVenueDate from '$lib/components/PaperVenueDate.svelte';
 	import PaperExternalDisclaimer from '$lib/components/PaperExternalDisclaimer.svelte';
@@ -38,6 +39,7 @@
 	import {
 		authorSearchTerm,
 		buildFilterQuery,
+		contributionOptions,
 		FILTER_PARAM,
 		hasActiveFilters,
 		partitionByOrigin,
@@ -63,6 +65,24 @@
 	// once the fetch is a single page (DAR-56's guide would otherwise explain 20 papers' worth).
 	const filters = $derived(parseResearchFilters(page.url.searchParams));
 	const topicSelectOptions = $derived(topicOptions(data.topics));
+	// Same "describe the whole index, not this page" rule as the topics above: `data.contributions`
+	// is the set of kinds any published paper declares, so the control offers exactly the picks that
+	// can return something. Labels are chrome (the values are enum literals, not authored titles),
+	// which is why the labeller is passed in rather than read off the row.
+	//
+	// The ACTIVE kind is folded in even when no paper declares it, which is the one case where "only
+	// offer what matches something" gives the wrong answer. `?contribution=formal` on today's corpus
+	// matches nothing, and without this the snippet falls through to its synthetic-option branch and
+	// renders the raw token — `formal`, selected, in a list of prose labels. That branch exists for a
+	// renamed TOPIC slug, where the raw value is genuinely all we know; here the vocabulary is closed
+	// and the label is one call away. Costs nothing: `contributionOptions` reads membership only, so a
+	// value already in the facet can't be duplicated and an unknown one is still dropped.
+	const contributionSelectOptions = $derived(
+		contributionOptions(
+			filters.contribution ? [...data.contributions, filters.contribution] : data.contributions,
+			contributionLabel
+		)
+	);
 	// A title sort merges the origin sections into ONE alphabetical list — two separately-sorted
 	// sections would read as broken. Safe: every card carries its own origin chip + disclaimer
 	// (DAR-52), so the section framing is redundant for correctness. For the date sorts the query
@@ -166,6 +186,7 @@
 		</h3>
 		<div class="mt-3 flex flex-wrap items-center gap-3">
 			<PaperStatus status={paper.status} />
+			<PaperContribution contribution={paper.contribution ?? null} />
 			<PaperOrigin darcstarAuthored={paper.darcstarAuthored} hasCommentary={paper.hasCommentary} />
 			<PaperVenueDate venue={paper.venue} publishedDate={paper.publishedDate} />
 		</div>
@@ -205,15 +226,20 @@
      per-option `selected` attrs can't do once the user has touched the control (browsers
      ignore attribute changes on a dirtied select, so Clear/Back/tag-link navigations would
      desync the display). An unknown URL value (renamed slug, hand-edited URL) renders as a
-     raw synthetic option rather than masquerading as "All". -->
+     raw synthetic option rather than masquerading as "All".
+
+     `klass` is for grid placement only (the odd control out on the 2-column mobile grid spans both).
+     Nothing about the control itself is passed in — five call sites styling their own selects is how
+     a facet bar stops looking like one control repeated. -->
 {#snippet filterSelect(
 	name: string,
 	label: string,
 	emptyLabel: string,
 	options: FacetOption[],
-	current: string | null
+	current: string | null,
+	klass?: string
 )}
-	<label class="block">
+	<label class={['block', klass]}>
 		<span class="mb-1.5 block text-xs font-medium tracking-wide text-body">{label}</span>
 		<select {name} value={current ?? ''} class={fieldClass}>
 			<option value="">{emptyLabel}</option>
@@ -241,10 +267,22 @@
 		     matches nothing would otherwise take the filter bar away with it, stranding the visitor
 		     on a "no matches" message with no control left to undo it. -->
 		{#if data.totalAll > 0}
+			<!-- Five controls plus Apply, laid out 3-across as two rows (Topic · Contribution · Author /
+			     Origin · Sort · Apply). It used to be `sm:grid-cols-[1fr_1fr_1fr_1fr_auto]` — one row —
+			     and adding a fifth 1fr column to that leaves each select ~125 px inside `max-w-3xl`,
+			     narrow enough to truncate "Conceptual framework" (measured at 768 px). Two roomy rows
+			     read better than one cramped one, and the grouping falls out of it.
+
+			     The two long-vocabulary selects span BOTH mobile columns, because a half of 390 px is
+			     100 px of text and a native select hard-clips with no ellipsis. Measured at 390 px:
+			     "Conceptual framework" needs 163 px, and Topic — which is NOT new, and is reachable by
+			     tapping any topic chip — needs 211 px for "Low-Precision & Quantization" and rendered as
+			     "Low-Precision &". Origin and Author stay paired: their vocabularies are short ("All
+			     origins", "Any author"), so pairing them costs nothing and saves a row. -->
 			<form
 				method="GET"
 				aria-label={m.research_filter_label()}
-				class="glass-card grid grid-cols-2 items-end gap-3 p-4 sm:grid-cols-[1fr_1fr_1fr_1fr_auto] sm:p-5"
+				class="glass-card grid grid-cols-2 items-end gap-3 p-4 sm:grid-cols-3 sm:p-5"
 				onchange={(e) => applyFilters(e.currentTarget)}
 				onsubmit={(e) => {
 					e.preventDefault();
@@ -256,7 +294,20 @@
 					m.research_filter_topic_label(),
 					m.research_filter_all_topics(),
 					topicSelectOptions,
-					filters.topic
+					filters.topic,
+					'col-span-2 sm:col-span-1'
+				)}
+				<!-- Next to Topic on purpose: these two are the facets about the WORK (what it is about,
+				     what kind of thing it is), where Author and Origin are about who produced it.
+				     Renders no options at all until some paper declares a kind, which is honest — the
+				     select then offers only "All kinds" rather than four picks that match nothing. -->
+				{@render filterSelect(
+					FILTER_PARAM.contribution,
+					m.research_filter_contribution_label(),
+					m.research_filter_all_contributions(),
+					contributionSelectOptions,
+					filters.contribution,
+					'col-span-2 sm:col-span-1'
 				)}
 				<!-- The one facet that isn't a select. It carries a name OR a slug: the server resolves
 				     either (`?author=dao` and `?author=tri-dao` both work), so tag-style deep links
@@ -291,12 +342,15 @@
 					originOptions,
 					filters.origin
 				)}
+				<!-- With Topic and Contribution each taking a full mobile row, Author and Origin pair up and
+				     Sort is the one left over — spans both columns rather than sitting beside a hole. -->
 				{@render filterSelect(
 					FILTER_PARAM.sort,
 					m.research_filter_sort_label(),
 					m.research_sort_newest(),
 					sortOptions,
-					filters.sort === 'date' ? null : filters.sort
+					filters.sort === 'date' ? null : filters.sort,
+					'col-span-2 sm:col-span-1'
 				)}
 				<div class="col-span-2 flex items-center gap-3 sm:col-span-1">
 					<button
