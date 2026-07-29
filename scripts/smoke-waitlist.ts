@@ -144,6 +144,11 @@ if (host !== 'localhost' && host !== '127.0.0.1' && host !== '::1') {
 
 const db = drizzle(createClient({ url: databaseUrl, authToken: databaseAuthToken }), { schema });
 
+// The app's own store functions take its `Db` type; this script builds its client directly, so the two
+// are structurally identical and nominally different. Cast ONCE, here, rather than at each call site —
+// waitlist-store.spec.ts makes the same cast for the same reason.
+const appDb = db as unknown as Db;
+
 const lowerLeadEmail = sql`lower(${schema.waitlistLead.email})`;
 
 // A FIXED id for the lead this script seeds, for the two reasons smoke-invite.ts gives: a mistyped
@@ -912,7 +917,7 @@ assertEqual('funnel', JSON.stringify(recorded), JSON.stringify([...EXPECTED_EVEN
 ok(`the whole walk recorded ${EXPECTED_EVENTS.length} events, one row each, under one flow`);
 
 // ---------------------------------------------------------------------------------------------
-// P. The updates sending gate (DAR-139), end to end against a real database.
+// N. The updates sending gate (DAR-139), end to end against a real database.
 //
 //    THE COMPOSITION NEITHER SUITE REACHES, for the same reasons as everything else in this file. The
 //    unit specs round-trip mint → verify inside one module with the secret handed in; the hermetic e2e
@@ -935,7 +940,7 @@ if (!signingSecret) {
 	);
 }
 
-// P1. Step 1's ticked box asked for a confirmation. Fire-and-forget (the claim AND the send run inside
+// N1. Step 1's ticked box asked for a confirmation. Fire-and-forget (the claim AND the send run inside
 //     ctx.waitUntil), so this polls rather than reading once.
 const askedLead = await eventually(
 	'updates ask',
@@ -949,7 +954,7 @@ assertEqual('updates ask', waitlistUpdatesState(askedLead!), 'asked');
 assertEqual('updates ask', mayReceiveUpdates(askedLead!), false);
 ok('a ticked box asked this address to confirm — and asking is not yet permission to send');
 
-// P2. The confirmation itself. The token is minted with the same function the email uses and the same
+// N2. The confirmation itself. The token is minted with the same function the email uses and the same
 //     secret the worker loaded, so a POST it accepts is the two ends agreeing across a real request.
 const confirmed = await updatesPost(
 	UPDATES_CONFIRM_PATH,
@@ -964,13 +969,13 @@ assertEqual('updates confirm', mayReceiveUpdates(confirmedLead), true);
 // …and the address is now IN the audience, which is the query a future sender would read. Two
 // encodings of one rule (waitlist-store.spec.ts pins them against each other); this is the only place
 // the SQL half runs against a row that arrived through the real flow.
-const audience = await readUpdatesAudience(db as unknown as Db);
+const audience = await readUpdatesAudience(appDb);
 if (!audience.some((row) => row.id === SMOKE_LEAD_ID)) {
 	die('updates confirm: the confirmed address is not in readUpdatesAudience');
 }
 ok('the emailed link confirmed the address, and it is in the audience a sender may read');
 
-// P3. The login-free withdrawal /privacy promises. No session, no account — the token is the whole
+// N3. The login-free withdrawal /privacy promises. No session, no account — the token is the whole
 //     authorization.
 const unsubscribed = await updatesPost(
 	UPDATES_UNSUBSCRIBE_PATH,
@@ -987,14 +992,14 @@ assertEqual('updates unsubscribe', mayReceiveUpdates(withdrawnLead), false);
 if (withdrawnLead.updatesConfirmedAt == null) {
 	die('updates unsubscribe: the confirmation timestamp was cleared — that is the audit trail');
 }
-if ((await readUpdatesAudience(db as unknown as Db)).some((row) => row.id === SMOKE_LEAD_ID)) {
+if ((await readUpdatesAudience(appDb)).some((row) => row.id === SMOKE_LEAD_ID)) {
 	die('updates unsubscribe: a withdrawn address is still in the audience');
 }
 ok('the login-free link withdrew the address, keeping the confirmation as the audit trail');
 
-// P4. And the form cannot bring them back. The tick box is the one surface a stranger controls, so a
+// N4. And the form cannot bring them back. The tick box is the one surface a stranger controls, so a
 //     re-tick after a withdrawal must not restart the asks — otherwise unsubscribing stops one message
-//     instead of the relationship. Whether the claim was refused is checked in step N: it is a
+//     instead of the relationship. Whether the claim was refused is checked in step O: it is a
 //     fire-and-forget write, so "it did not happen" needs a happens-after, and the rest of the run is
 //     the wait.
 await submit(step1Action, {
@@ -1007,7 +1012,7 @@ await submit(step1Action, {
 ok('a fresh signup ticked the box again after the withdrawal (the refusal is asserted at the end)');
 
 // ---------------------------------------------------------------------------------------------
-// N. The two "this did NOT happen" claims, re-read now that the run has moved well past them.
+// O. The two "this did NOT happen" claims, re-read now that the run has moved well past them.
 //
 //    The forged-flow probe already has a happens-after anchor of its own (step F). This is the second
 //    look, and it is what covers the Priority-A claim, whose only earlier read was immediate and
@@ -1029,7 +1034,7 @@ assertEqual('updates withdrawal', waitlistUpdatesState(finalLead!), 'unsubscribe
 ok('nothing drifted afterwards: one claim, no forged rows, one ask, still withdrawn');
 
 // ---------------------------------------------------------------------------------------------
-// O. Tear down. Only what this run created.
+// P. Tear down. Only what this run created.
 //
 //    The funnel rows are deleted by the flow id learned in step C. A run that dies BEFORE that point
 //    can leave rows behind that nothing can key on afterwards — they carry no lead, no address and no

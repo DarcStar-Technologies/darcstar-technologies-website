@@ -10,6 +10,7 @@
 	import { enhance, applyAction } from '$app/forms';
 	import Seo from '$lib/components/Seo.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
+	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import { inlineLinkClass, submitButtonClass } from '$lib/styles';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
@@ -80,8 +81,11 @@
 					};
 				}}
 			>
+				<!-- `ErrorBanner`, not a styled <p>: it carries role="alert", and an enhanced submit does
+				     not navigate — so without it a screen-reader user presses the button, hears nothing,
+				     and has no way to know the write failed. Same component every other form here uses. -->
 				{#if form?.result === 'error'}
-					<p class="text-sm text-warning-300">{m.updates_error_body()}</p>
+					<ErrorBanner>{m.updates_error_body()}</ErrorBanner>
 				{/if}
 
 				<input type="hidden" name="token" value={token} />

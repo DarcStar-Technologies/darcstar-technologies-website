@@ -79,6 +79,21 @@ describe('runUpdatesAction', () => {
 		expect(result).toBe('invalid');
 	});
 
+	// The verification is inside the same try as the write, so this function cannot throw at all — which
+	// is what both pages assume when they render its answer unconditionally. Without it, a crypto
+	// failure would replace somebody's unsubscribe with SvelteKit's error page.
+	it('answers error rather than throwing when the verification itself blows up', async () => {
+		const boom = vi.fn().mockRejectedValue(new Error('subtle crypto said no'));
+		const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			await expect(
+				runUpdatesAction(env(), 'c1.lead.999.mac', boom, writes(CONFIRMED))
+			).resolves.toBe('error');
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
 	// The ONE failure that is not folded in, and the reason is asymmetric: telling somebody their
 	// withdrawal went through when the write threw is the worst answer these pages can give.
 	it('answers error — not invalid — when the write throws', async () => {

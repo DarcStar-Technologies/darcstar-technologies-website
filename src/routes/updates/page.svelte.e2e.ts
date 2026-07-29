@@ -3,11 +3,17 @@ import { expect, test } from '@playwright/test';
 // DAR-139's two emailed-link landing pages, driven through the real Cloudflare worker build.
 //
 // WHAT THIS SUITE CAN AND CANNOT SEE, stated up front because the gap is structural rather than an
-// omission. CI is hermetic: there is no `BETTER_AUTH_SECRET` in the preview environment, so
-// `waitlistSigningSecret()` comes back undefined and EVERY token — including a well-formed one —
-// resolves to `invalid`. There is also no reachable database. So the confirmed / opted-out paths are
-// unreachable here by construction, and the composition that exercises them is `pnpm smoke:waitlist`,
-// which runs by hand against a real DB (DAR-103's whole reason for existing).
+// omission — and stated carefully, because the obvious phrasing is wrong. CI is hermetic (no `.env`,
+// so no `BETTER_AUTH_SECRET` and no reachable database), which makes the confirmed / opted-out paths
+// unreachable THERE. But a LOCAL run loads `.env` through wrangler and has both, so "every token
+// resolves to invalid" is not a property of this suite; it is a property of CI only.
+//
+// What actually bounds these tests is that a token is unforgeable, and the suite deliberately keeps it
+// that way: a test could read the secret from a local `.env` and mint one, and it would then assert
+// something different on a developer's machine than in CI — DAR-79/DAR-81's defect, one suite testing
+// two different things. So every token below is deliberately UNSIGNABLE (bad MAC or absent), which
+// fails identically everywhere, and the confirm → withdraw composition lives in `pnpm smoke:waitlist`,
+// which runs by hand against a real DB and says so (DAR-103's whole reason for existing).
 //
 // What is left is worth having and is exactly what these assert: the generic-failure panel that every
 // broken link falls into, the noindex that keeps a token-bearing URL out of the index, and the two

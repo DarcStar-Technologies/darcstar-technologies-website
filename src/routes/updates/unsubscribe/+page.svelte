@@ -10,6 +10,7 @@
 	import { enhance, applyAction } from '$app/forms';
 	import Seo from '$lib/components/Seo.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
+	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import { inlineLinkClass, submitButtonClass } from '$lib/styles';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
@@ -65,9 +66,12 @@
 				}}
 			>
 				<!-- Shown rather than swallowed: telling somebody their withdrawal went through when the
-				     write threw is the single worst answer this page can give. -->
+				     write threw is the single worst answer this page can give.
+				     `ErrorBanner` rather than a styled <p>, and `role="alert"` is the whole reason: an
+				     enhanced submit does not navigate, so without it a screen-reader user presses
+				     Unsubscribe, hears nothing, and leaves believing it worked. -->
 				{#if form?.result === 'error'}
-					<p class="text-sm text-warning-300">{m.updates_error_body()}</p>
+					<ErrorBanner>{m.updates_error_body()}</ErrorBanner>
 				{/if}
 
 				<input type="hidden" name="token" value={token} />

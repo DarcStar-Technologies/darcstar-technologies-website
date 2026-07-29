@@ -6,11 +6,26 @@
 // continuation token's rule (waitlist-token.ts), and it is what keeps a page reached from an email
 // from becoming a "does this address exist?" oracle for anyone who can guess a URL.
 //
-// The one failure that is NOT folded in is a database error, and that distinction is deliberate. The
-// visitor is being told what we have recorded about them; "we couldn't reach the database" and "that
-// link is not valid" are different facts, and telling somebody their unsubscribe worked when it threw
-// would be the worst answer this page can give. Analytics may fail silently (DAR-66); a withdrawal may
-// not.
+// The one failure that is NOT folded in is a write that THREW, and that distinction is deliberate. The
+// visitor is being told what we have recorded about them; "the write failed" and "that link is not
+// valid" are different facts, and telling somebody their unsubscribe worked when it threw would be the
+// worst answer this page can give. Analytics may fail silently (DAR-66); a withdrawal may not.
+//
+// Precisely which failure, though: a query that throws against a REACHABLE database. A deploy with no
+// `DATABASE_URL` at all makes `getDb()` throw in the action before this is called, and that surfaces as
+// SvelteKit's error page — the same as every other form on the site, and the right answer for it, since
+// "please try again in a moment" would be wrong advice for a deploy that has no database.
+//
+// NO PER-ROW WRITE BUDGET HERE, unlike the step endpoints, and that asymmetry is a decision rather than
+// an oversight. DAR-68 capped step writes because a token holder could drive unbounded UPDATEs that
+// CHANGED THINGS — each one wrote a new answer onto the row. Both writes below are idempotent by
+// construction (`coalesce` keeps the first timestamp; the confirm additionally refuses once withdrawn),
+// so a holder hammering their own link rewrites the same bytes and the row cannot be churned. What is
+// left is request volume against one row — a POST with no valid token costs one HMAC and reaches no
+// query at all — which is exactly the class DAR-68 itself left at the edge, where it can't be
+// sidestepped by rotating tokens. A budget here would buy nothing and would cost the honest answers
+// below: a cap that turned a second press into `invalid` would tell somebody their withdrawal failed
+// when it had already succeeded.
 import type { Db } from './db';
 import type { WaitlistSigningSecret } from './waitlist-secret';
 import { waitlistUpdatesState, type WaitlistUpdatesSignals } from '$lib/waitlist-updates';
@@ -70,10 +85,16 @@ export async function runUpdatesAction(
 	// show for a link we cannot read.
 	if (!env.secret) return 'invalid';
 
-	const leadId = await verify(env.secret, token);
-	if (leadId === null) return 'invalid';
-
+	// The verification is INSIDE the try with the write, so this function's whole contract is "returns a
+	// result, never throws" — which is what both pages already assume when they render its answer
+	// unconditionally. A `crypto.subtle` failure is unlikely rather than impossible, and the cost of it
+	// escaping here is SvelteKit's error page on somebody's unsubscribe.
 	try {
+		const leadId = await verify(env.secret, token);
+		// Not the same as an exception: a token that fails to verify is `null`, and that is `invalid`
+		// along with every other unreadable link.
+		if (leadId === null) return 'invalid';
+
 		const after = await write(env.db, leadId);
 		// A verified token whose lead is gone. Folded into `invalid` on purpose: it is the one branch
 		// that would otherwise let a holder tell "this address was deleted" from "this link is stale".
