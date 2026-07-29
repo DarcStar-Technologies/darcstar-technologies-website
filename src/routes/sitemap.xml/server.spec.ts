@@ -61,6 +61,15 @@ const NONE = { posts: [], papers: [], people: [] };
 const doc = (slug: string) => ({ slug, _updatedAt: '2026-07-29T00:00:00Z' });
 /** A slug crafted to climb out of its section into `gated`. `..` + `/admin` → `../admin`. */
 const escapeTo = (gated: string) => doc(`..${gated}`);
+/**
+ * The same escape with a backslash — the URL parser folds `\` to `/` in a special-scheme URL, so
+ * `..\admin` resolves to `/admin` just as `../admin` does, while containing no slash at all.
+ *
+ * Both spellings, because `contentPath`'s two checks OVERLAP on the first one and only the second
+ * reaches the round-trip half. Without this the whole round-trip could be deleted and every
+ * assertion in this file would stay green (mutation-measured).
+ */
+const escapeToViaBackslash = (gated: string) => doc(`..\\${gated.slice(1)}`);
 
 beforeEach(() => {
 	fetchSpy.mockReset();
@@ -146,7 +155,12 @@ describe('GET /sitemap.xml', () => {
 	it('emits no gated path, however a document spells its slug', async () => {
 		expect(GATED_PATHS.length).toBeGreaterThan(0);
 		fetchSpy.mockResolvedValue(
-			Object.fromEntries(ROUTES.map(({ collection }) => [collection, GATED_PATHS.map(escapeTo)]))
+			Object.fromEntries(
+				ROUTES.map(({ collection }) => [
+					collection,
+					GATED_PATHS.flatMap((gated) => [escapeTo(gated), escapeToViaBackslash(gated)])
+				])
+			)
 		);
 
 		const body = await (await call()).text();
@@ -165,7 +179,7 @@ describe('GET /sitemap.xml', () => {
 	it.each(ROUTES)(
 		'drops a $collection document whose slug $path/[slug] could not serve',
 		async ({ collection, path }) => {
-			for (const slug of ['../admin', 'a/b']) {
+			for (const slug of ['../admin', '..\\admin', 'a/b']) {
 				fetchSpy.mockResolvedValue({ ...NONE, [collection]: [escapeTo('/admin'), doc(slug)] });
 				const body = await (await call()).text();
 				expect(

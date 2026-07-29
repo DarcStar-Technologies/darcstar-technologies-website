@@ -48,7 +48,7 @@ describe('/news', () => {
 	// `../admin` resolves OUT of the section through `new URL` — the card would have linked the feed
 	// at the login wall. `a/b` is the other half of the guard: routable-looking, but /news/[slug]
 	// matches a single segment, so it is a 404 dressed as a link.
-	it.each(['../admin', '../../login', 'a/b', ''])(
+	it.each(['../admin', '..\\admin', '../../login', 'a/b', ''])(
 		'renders a post whose slug is "%s" as an inert card',
 		async (slug) => {
 			mount([{ ...POST, slug }]);

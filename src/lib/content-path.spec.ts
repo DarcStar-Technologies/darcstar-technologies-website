@@ -2,15 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { contentPath } from './content-path';
 import { GATED_PATHS } from './seo';
 
-// DAR-148. The two halves of `contentPath` are tested SEPARATELY because each accepts everything the
-// other rejects: deleting the segment check leaves the EXTRA_SEGMENTS table green under the
-// round-trip, and deleting the round-trip leaves the ESCAPES table green under the segment check.
-// One merged table would pass with either half missing, which is the whole failure this guards.
+// DAR-148. `contentPath` asks two questions and they OVERLAP — the headline case `../admin` contains
+// a slash, so the segment check alone already refuses it. That overlap is why the tables below are
+// split by WHICH HALF IS EXCLUSIVELY RESPONSIBLE rather than by what the slug looks like: a single
+// merged table of "bad slugs" stays green with either half deleted, which is precisely the
+// regression this file exists to catch. Both directions are mutation-measured.
 
 const SECTION = '/news';
 
-// Single-segment strings that `new URL` resolves somewhere ELSE. Every one is one segment, so the
-// segment check waves them through — only the round-trip stops them.
+// What the guard is FOR: strings `new URL` resolves somewhere else entirely. Not split by half — the
+// point of this table is that these are real escapes, whichever check happens to stop them.
 const ESCAPES: { slug: string; resolvesTo: string; why: string }[] = [
 	{ slug: '../admin', resolvesTo: '/admin', why: 'the defect DAR-148 was filed for' },
 	{
@@ -27,16 +28,25 @@ const ESCAPES: { slug: string; resolvesTo: string; why: string }[] = [
 	{ slug: '.', resolvesTo: '/news/', why: 'the section index under another spelling' }
 ];
 
-// Round-trip-clean, so the check above accepts them — and none is a path `[slug]` can serve.
-const EXTRA_SEGMENTS: { slug: string; why: string }[] = [
+// Slash-free, so the segment check waves every one of them through. Deleting the round-trip is
+// exactly the mutation these rows exist to fail — and `..\admin` shows the stake: a full escape into
+// the staff area that "one segment" cannot see, because it contains no slash.
+const ONLY_ROUND_TRIP: { slug: string; why: string }[] = [
+	{ slug: '..\\admin', why: 'the URL parser folds `\\` to `/`, so this IS ../admin' },
+	{ slug: '..', why: 'resolves to the site root' },
+	{ slug: '.', why: 'resolves to the section index' },
+	{ slug: 'foo?x=1', why: 'the query ends the path — what is emitted is not what was asked for' },
+	{ slug: 'foo#frag', why: 'likewise the fragment' }
+];
+
+// The mirror: each of these round-trips CLEANLY (parse it, print it, same string), so only "one
+// segment" refuses them. None names a path `[slug]` can serve.
+const ONLY_SEGMENT: { slug: string; why: string }[] = [
 	{ slug: '', why: 'resolves to /news/ — the section index, listed a second time' },
 	{ slug: 'a/b', why: '[slug] matches ONE segment' },
 	{ slug: '/admin', why: 'reads as an escape and is really /news//admin — either way, a 404' },
 	{ slug: '//evil.com/x', why: 'stays on-origin as /news///evil.com/x, but nothing serves it' }
 ];
-
-// A query or fragment ends the pathname, so what is emitted is not what was asked for.
-const DELIMITED = ['foo?x=1', 'foo#frag'];
 
 // Unusual, and every one of them routable. The guard must refuse the unroutable, never the merely
 // odd — `a&b<c` in particular is the sitemap spec's only case exercising XML escaping.
@@ -61,11 +71,19 @@ describe('contentPath', () => {
 		expect(contentPath(SECTION, slug)).toBeUndefined();
 	});
 
-	it.each(EXTRA_SEGMENTS)('refuses $slug — $why', ({ slug }) => {
+	// Each of these has NO slash, so it survives the segment check and only the round-trip stops it.
+	it.each(ONLY_ROUND_TRIP)('refuses $slug — $why', ({ slug }) => {
+		expect(slug, 'this row belongs in ONLY_SEGMENT if it has a slash').not.toContain('/');
 		expect(contentPath(SECTION, slug)).toBeUndefined();
 	});
 
-	it.each(DELIMITED)('refuses %s, whose query or fragment ends the path', (slug) => {
+	// And each of these round-trips cleanly, so only the segment check stops it. The paired assertion
+	// keeps the table honest: a row that stops being round-trip-clean would quietly move its coverage
+	// to the other half, leaving the segment check untested while the test still passed.
+	it.each(ONLY_SEGMENT)('refuses $slug — $why', ({ slug }) => {
+		const path = `${SECTION}/${slug}`;
+		const resolved = new URL(path, 'https://darcstar.tech');
+		expect(resolved.pathname, 'this row belongs in ONLY_ROUND_TRIP').toBe(encodeURI(path));
 		expect(contentPath(SECTION, slug)).toBeUndefined();
 	});
 

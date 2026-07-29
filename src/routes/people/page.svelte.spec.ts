@@ -53,7 +53,7 @@ describe('/people', () => {
 	// cannot serve. `../admin` resolves OUT of the section, so the truthiness check above would have
 	// linked the team page straight at the login wall — and the JSON-LD `@id`, which asks the same
 	// predicate, would have published it as this person's identity.
-	it.each(['../admin', '../../login', 'a/b'])(
+	it.each(['../admin', '..\\admin', '../../login', 'a/b'])(
 		'keeps a teammate whose slug is %s on the page, without a link',
 		async (slug) => {
 			mount([{ ...ADA, slug }]);

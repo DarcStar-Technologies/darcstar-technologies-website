@@ -17,15 +17,18 @@ const PROBE_ORIGIN = 'https://content-path.invalid';
 /**
  * The path a `[slug]` route can actually serve — `/news/hello-world` — or `undefined`.
  *
- * TWO conditions, and each catches cases the other lets through (measured, not assumed):
+ * TWO conditions. They OVERLAP on the headline case — `../admin` contains a slash, so the segment
+ * check alone already refuses it — but neither is redundant, because each has cases the other lets
+ * through. Both directions were mutation-measured, not reasoned about:
  *
  *   - **One segment.** SvelteKit's `[slug]` matches a SINGLE path segment, so `a/b`, `/admin` and
  *     `//evil.com/x` name documents the route could not serve however they resolve; an empty slug
- *     resolves to `/news/`, a second spelling of the section index. The round-trip below accepts all
- *     four — it only asks whether the string survives parsing, not whether the result is routable.
- *   - **Round-trips.** `../admin` → `/admin`, `..\admin` → `/admin` (the URL parser folds `\` to `/`
- *     in a special-scheme URL), `..` → `/`, `foo?x=1` → a path plus a query. Each is a single
- *     segment, so the check above accepts every one of them.
+ *     resolves to `/news/`, a second spelling of the section index. All four round-trip cleanly —
+ *     that check only asks whether the string survives parsing, not whether the result is routable.
+ *   - **Round-trips.** `..` → `/`, `.` → `/news/`, `..\admin` → `/admin` (the URL parser folds `\`
+ *     to `/` in a special-scheme URL), `foo?x=1` and `foo#frag` → a truncated path plus a query or
+ *     fragment. Not one of those five contains a slash, so the segment check waves every one of them
+ *     through — and `..\admin` is a full escape into the staff area.
  *
  * `encodeURI` rather than `encodeURIComponent` on the right-hand side: the comparison must accept a
  * slug that is merely UNUSUAL, only rejecting one that is unroutable. `encodeURIComponent` escapes

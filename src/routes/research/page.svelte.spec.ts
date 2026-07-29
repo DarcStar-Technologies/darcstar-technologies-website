@@ -60,7 +60,7 @@ describe('/research', () => {
 			.toHaveAttribute('href', '/research/intelligence-ratchet');
 	});
 
-	it.each(['../login', '../../admin', 'a/b', ''])(
+	it.each(['../login', '..\\admin', '../../admin', 'a/b', ''])(
 		'renders the title of a paper slugged "%s" as plain text',
 		async (slug) => {
 			mount([{ ...PAPER, slug }]);
