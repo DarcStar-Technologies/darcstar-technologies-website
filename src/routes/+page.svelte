@@ -51,9 +51,10 @@
 	// leaves the unit unnamed; dropping "machine-checked" leaves a bare "of 219" that reads as the
 	// size of the whole corpus, which is the catalog total — a figure this site deliberately never
 	// publishes (docs/evidence.md), so the cheap-looking trim would quietly imply the one number
-	// the IP boundary exists to withhold. Capping the label width instead makes it worse (11rem →
-	// three rows, measured). `flex-wrap` + `gap-y-4` on the container is a designed state, and it
-	// already wraps at tablet widths; the honest label wins the tie.
+	// the IP boundary exists to withhold. Capping the label width doesn't buy the row back either
+	// — measured, 12rem still wraps (just less tall) and 11rem is worse, three rows, because the
+	// cap wraps the other labels too. `flex-wrap` + `gap-y-4` on the container is a designed
+	// state, and it already wraps at tablet widths; the honest label wins the tie.
 	const readouts = $derived([
 		{ v: CFC_KERNEL_LATENCY, l: m.readout_cfc_label() },
 		{ v: REALTIME_MULTIPLE, l: m.readout_realtime_label() },

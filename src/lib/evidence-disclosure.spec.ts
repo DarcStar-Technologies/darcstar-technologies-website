@@ -24,10 +24,13 @@ overwriteGetLocale(() => baseLocale);
 describe('the published theorem figures stay qualified (DAR-117)', () => {
 	// The homepage readout leads with THEOREMS_COMPLETE — the smaller, stronger figure — so the
 	// label has to carry the total as its denominator, or the biggest number on the page becomes
-	// an unexplained "31". Pinned against the constant rather than the string "219": this is a
-	// cross-artifact check, so a re-measure moves both together and a label that drops the
-	// placeholder fails here (and, because Paraglide compiles the accessor's signature from the
-	// message, at `pnpm check` too).
+	// an unexplained "31". Pinned against the constant rather than the string "219", so a
+	// re-measure moves both together.
+	//
+	// This is the ONLY guard on the placeholder: the obvious assumption is that Paraglide compiles
+	// the accessor's signature from the message, so deleting `{checked}` would make the call site a
+	// type error — measured, and it does not. `pnpm check` passes clean against a label that takes
+	// no parameter while the call site still passes one.
 	it('names the machine-checked total beside the complete count', () => {
 		const label = m.readout_theorems_label({ checked: THEOREMS_CHECKED });
 		expect(label).toContain(String(THEOREMS_CHECKED));
@@ -54,29 +57,41 @@ describe('the published theorem figures stay qualified (DAR-117)', () => {
 	// matters — reword the card's parenthetical away and the derived list empties, so every
 	// `toContain` would pass against a page that names nothing at all.
 	it('names the same framework assumptions on the card and the detail page', () => {
+		// Anchored on the phrase rather than "the first parenthetical", so a second parenthetical
+		// added earlier in that sentence can't silently redirect the check at an unrelated list.
 		const named = m
 			.evidence_theorems_not_covered()
-			.match(/\(([^)]+)\)/)?.[1]
-			.split(',')
+			.match(/Framework assumptions \(([^)]+)\)/)?.[1]
+			?.split(',')
 			.map((assumption) => assumption.trim())
 			.filter(Boolean);
 
-		expect(named?.length ?? 0).toBeGreaterThan(2);
+		// Covers the regex failing outright: no match → undefined → 0, so a reworded card fails
+		// here rather than leaving the loop below with nothing to check.
+		expect(
+			named?.length ?? 0,
+			'evidence_theorems_not_covered no longer names its assumptions'
+		).toBeGreaterThan(2);
 		for (const assumption of named ?? []) {
 			expect(m.evidence_proofs_axioms_assumptions_body(), assumption).toContain(assumption);
 		}
 	});
 
 	// The distinction the page exists to draw, in the one form a test can see: each of the three
-	// cases says the thing that separates it from the other two. Local axioms are the only debt
-	// (discharge), assumptions are the case that survives being complete, and a carried physical
-	// premise is the one that is not counted at all. Collapse any two of them into the same words
-	// — which is exactly what the page was filed to prevent — and the case that lost its
-	// distinguishing clause fails here.
+	// cases states the claim that separates it from the other two — assumptions survive being
+	// complete and are NOT debt, local axioms ARE debt and are discharged, a carried physical
+	// premise is not counted at all. Collapse any two of them into the same words — exactly what
+	// the page was filed to prevent — and the case that lost its distinguishing claim fails here.
+	//
+	// All positive. The obvious extra assertion is that the assumptions body never says
+	// "discharge", and it is the one to leave out: "these are never discharged" is natural
+	// phrasing for precisely the correct copy, so it would fail on a rewrite that made the page
+	// clearer. `not debt` is the same guarantee stated as a claim rather than as an absence.
 	it('keeps the three cases distinguishable from one another', () => {
-		expect(m.evidence_proofs_axioms_local_body()).toMatch(/discharge/i);
 		expect(m.evidence_proofs_axioms_assumptions_body()).toMatch(/\bcomplete\b/i);
-		expect(m.evidence_proofs_axioms_assumptions_body()).not.toMatch(/discharge/i);
+		expect(m.evidence_proofs_axioms_assumptions_body()).toMatch(/not debt/i);
+		expect(m.evidence_proofs_axioms_local_body()).toMatch(/\bdebt\b/i);
+		expect(m.evidence_proofs_axioms_local_body()).toMatch(/discharge/i);
 		expect(m.evidence_proofs_axioms_carried_body()).toMatch(/not counted/i);
 	});
 });
