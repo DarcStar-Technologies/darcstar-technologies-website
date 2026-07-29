@@ -889,6 +889,14 @@ ticked a box". An unticked box on a later submission is that submitter's own "no
 an earlier grant — each row states what one person did, and nothing reaches across rows. Revocation
 remains a future unsubscribe mechanism, not a form default.
 
+**Since DAR-121 the gate is public.** `/privacy` used to claim "waitlist email is only about early
+access" while this box offered product updates; its "How we use it" section now separates operational
+mail from optional updates and states, to the visitor, that the updates aren't being sent and won't be
+until there is a confirmation step and a login-free unsubscribe. So building the send is not only a
+waitlist change: `privacy_use_updates_body` and `PRIVACY_UPDATED` change with it
+([legal](legal.md)), and `email-senders.spec.ts` fails until the new mailer is declared —
+deliberately, so the page can't go stale quietly. The gate is tracked as DAR-139.
+
 ### `contact_permission` is tri-state
 
 `null` = the question wasn't shown (pilot interest not positive), `false` = shown and declined,

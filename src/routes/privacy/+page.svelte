@@ -6,7 +6,8 @@
 	// actually does — including the user-agent + hashed IP stored with contact/waitlist
 	// submissions, the public (≥3-people) waitlist interest suggestions, the message→account
 	// backfill, and the no-language-cookie URL locale — keep this page truthful when those
-	// flows change, and bump PRIVACY_UPDATED (src/lib/legal.ts) when you do.
+	// flows change, and bump PRIVACY_UPDATED (src/lib/legal.ts) when you do. Since DAR-121 that
+	// includes a claim about mail we do NOT send: see the "How we use it" section below.
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import PageHero from '$lib/components/PageHero.svelte';
 	import Seo from '$lib/components/Seo.svelte';
@@ -62,7 +63,20 @@
 				])}
 			</LegalSection>
 
-			<LegalSection heading={m.privacy_use_heading()} body={m.privacy_use_body()} />
+			<!-- Two categories, named explicitly (DAR-121). This section used to be one paragraph
+			     ending "waitlist email is only about early access", which the step-1 opt-in box and
+			     the collection section above both contradicted. The second item is a promise about
+			     what we DON'T send: it stops being true the day a marketing sender ships, which is
+			     what `email-senders.spec.ts` exists to make a declared act rather than a silent one. -->
+			<LegalSection heading={m.privacy_use_heading()} body={m.privacy_use_body()}>
+				{@render items([
+					{
+						title: m.privacy_use_operational_title(),
+						body: m.privacy_use_operational_body()
+					},
+					{ title: m.privacy_use_updates_title(), body: m.privacy_use_updates_body() }
+				])}
+			</LegalSection>
 
 			<LegalSection heading={m.privacy_processors_heading()} body={m.privacy_processors_intro()}>
 				{@render items([

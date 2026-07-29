@@ -46,6 +46,21 @@ footer legal bar (`Footer.svelte`).
   in `src/lib/legal.ts`. The cookie sentence is the easiest one to falsify by accident —
   it enumerates every cookie the site sets, so a new one makes the page untrue the day it
   ships.
+- **"How we use it" names two categories of email, and the second is a promise about what we
+  DON'T send** (DAR-121). It used to be one paragraph ending "waitlist email is only about
+  early access", which the step-1 opt-in box ("Send me occasional DarcStar product and
+  research updates") and the policy's own collection section both contradicted. Now:
+  _operational_ mail — confirmation, invitation, account — sent because the person asked;
+  and _optional product and research updates_, which `privacy_use_updates_body` says we are
+  **not sending yet** and won't until the address is confirmed by email and every message
+  carries an unsubscribe honored without a login. `consent_updates` is an unverified
+  single-opt-in claim from an unauthenticated form ([waitlist](waitlist.md#consent)) — a
+  preference, not permission. Shipping the send means rewriting that message and bumping
+  `PRIVACY_UPDATED` in the same change; `src/lib/server/email-senders.spec.ts` is what makes
+  that a declared act rather than a silent one, by holding every module that imports
+  `postEmail` — in `src` **and in `scripts/`**, since a hand-run blast is how a first send
+  would realistically get written — against an allowlist where each declares what it sends.
+  The gate itself — double opt-in, login-free unsubscribe, revocation — is **DAR-139**.
 - **Settled public facts only** (see the About page): trade name only — no LLC/Inc —
   location "United States", contact via GitHub + email. Because no state is on record,
   the terms deliberately carry **no governing-law state clause**; add one if the entity

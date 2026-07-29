@@ -1,12 +1,12 @@
 // TEST SUPPORT — source sets for the specs that enforce rules TypeScript cannot hold. Nothing in
 // production imports this.
 //
-// Two of those specs read source: DAR-99's one signing secret (`waitlist-secret.spec.ts`) and
-// DAR-83's honeypot gate on the funnel (`waitlist-funnel.spec.ts`). The reading, comment-stripping
-// and import-parsing live here once, because two copies of them is the drift both tickets exist to
-// prevent.
+// Three of those specs read source: DAR-99's one signing secret (`waitlist-secret.spec.ts`), DAR-83's
+// honeypot gate on the funnel (`waitlist-funnel.spec.ts`), and DAR-121's "who may send email"
+// (`email-senders.spec.ts`). The reading, comment-stripping and import-parsing live here once,
+// because copies of them are the drift all three tickets exist to prevent.
 //
-// THE TWO SURFACES ARE NOT THE SAME SET, and that is deliberate rather than an oversight:
+// THE SURFACES ARE NOT THE SAME SET, and that is deliberate rather than an oversight:
 //
 //   - `appSourcePaths()` — everything under `src`. The funnel gate needs this, because the question
 //     it asks ("who imports the ungated capture function?") has no reason to stop at a directory
@@ -15,6 +15,9 @@
 //   - `waitlistSourcePaths()` — the waitlist's own modules. The secret rule needs this NARROWER set,
 //     because `auth.ts` legitimately names the signing key (it is Better Auth's own), so "named in
 //     exactly one file" is only ever true of the waitlist.
+//   - `scriptSourcePaths()` — the hand-run `scripts/`, WIDER than the worker. DAR-121's rule (who may
+//     send email) needs it because a script is how a one-off blast would actually get written here;
+//     the deployed-worker rules above must not have it, for the reason on `appSourcePaths()`.
 //
 // WHY DERIVED AND NOT A PATH LIST. Measured during DAR-99, on the hand-written list this replaced:
 // dropping one entry AND drifting that file in the same breath passed 7/7. A hand-written scan list
@@ -33,7 +36,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';
 
 /**
- * Every non-spec TypeScript file under `src`, RECURSIVELY, as `path → source`.
+ * Every non-spec file under `root` with one of `extensions`, RECURSIVELY, as `path → source`.
  *
  * Recursive is load-bearing, not tidiness: a flat read was measured to pass 56/56 against a
  * token-gated step planted in `src/routes/waitlist/step5/+page.server.ts` — DAR-102's own failure
@@ -42,24 +45,54 @@ import { dirname, join, normalize } from 'node:path';
  * Specs are excluded, and it is the one exclusion: a fixture has no request to resolve a secret from
  * and no endpoint to gate, so writing either longhand is the honest way to state it.
  */
-const SOURCES: Record<string, string> = Object.fromEntries(
-	readdirSync('src', { withFileTypes: true, recursive: true })
-		.filter(
-			(entry) =>
-				entry.isFile() &&
-				entry.name.endsWith('.ts') &&
-				!entry.name.includes('.spec.') &&
-				!entry.name.includes('.test.') &&
-				!entry.name.includes('.e2e.')
-		)
-		.map((entry): [string, string] => {
-			const path = join(entry.parentPath, entry.name);
-			return [path, readFileSync(path, 'utf8')];
-		})
-);
+const read = (root: string, extensions: string[]): Record<string, string> =>
+	Object.fromEntries(
+		readdirSync(root, { withFileTypes: true, recursive: true })
+			.filter(
+				(entry) =>
+					entry.isFile() &&
+					extensions.some((extension) => entry.name.endsWith(extension)) &&
+					!entry.name.includes('.spec.') &&
+					!entry.name.includes('.test.') &&
+					!entry.name.includes('.e2e.')
+			)
+			.map((entry): [string, string] => {
+				const path = join(entry.parentPath, entry.name);
+				return [path, readFileSync(path, 'utf8')];
+			})
+	);
 
-/** Every non-spec source file under `src`, repo-relative. Vitest runs from the project root. */
-export const appSourcePaths = (): string[] => Object.keys(SOURCES);
+// `scripts` is read too, and the extension lists differ on purpose. Under `src` only `.ts` can be a
+// module at all; under `scripts` the tree is mixed — the ones that reach app code are `.ts` run
+// under tsx (tsconfig covers `scripts/**/*.ts`, which is the whole reason they are `.ts`), while the
+// `.mjs` ones can still hand-roll an HTTP call to a third party. A rule about who may reach an
+// outside service has to see both.
+const SOURCES: Record<string, string> = {
+	...read('src', ['.ts']),
+	...read('scripts', ['.ts', '.mjs'])
+};
+
+/**
+ * Every non-spec source file under `src`, repo-relative. Vitest runs from the project root.
+ *
+ * DELIBERATELY STILL `src`-ONLY, though `SOURCES` now holds more: the two rules that ask this for
+ * their surface are about what the deployed worker does, and `waitlistSourcePaths()` filters this by
+ * BASENAME — so widening it here would silently pull `scripts/smoke-waitlist.ts` into DAR-99's
+ * "named in exactly one file" rule. A scan that wants the scripts asks for them (below).
+ */
+export const appSourcePaths = (): string[] =>
+	Object.keys(SOURCES).filter((path) => path.startsWith('src/'));
+
+/**
+ * The hand-run scripts (`scripts/`), which are NOT part of the deployed worker and are exactly why
+ * they need a set of their own: two of them already send real mail as a side effect
+ * (`smoke-invite.ts`, `smoke-waitlist.ts`), so "someone writes a script that mails the list" is this
+ * repo's established shape for outbound mail rather than a hypothetical one. Measured during DAR-121:
+ * `email-senders.spec.ts` passed 7/7 against a marketing blast planted at `scripts/blast.ts` while
+ * its surface was `src`-only — DAR-102's defect, one directory sideways.
+ */
+export const scriptSourcePaths = (): string[] =>
+	Object.keys(SOURCES).filter((path) => path.startsWith('scripts/'));
 
 /**
  * The waitlist's own modules: its route tree, plus the `waitlist`-prefixed files in `$lib` (which
@@ -150,3 +183,22 @@ export const importsNamespace = (path: string, module: string): boolean =>
 			/(?:import\s*\*\s*as\s+\w+|export\s*\*)\s*from\s*(['"])([^'"]+)\1/g
 		)
 	].some(([, , spec]) => refersTo(path, spec, module));
+
+/**
+ * Does `path` reach `module` through a DYNAMIC `import('…')`?
+ *
+ * The fifth walk-past route, after DAR-102's four (alias · namespace · re-export · relative
+ * specifier). It needs its own check because `importedNames` parses the static form only, and a
+ * dynamic import is not exotic in this repo — `scripts/gen-og.mjs` already lazy-loads that way, so
+ * `const { send } = await import('…')` is the idiom someone would reach for without meaning to evade
+ * anything. Measured during DAR-121: `email-senders.spec.ts` passed 7/7 against a marketing blast
+ * that imported the mailer lazily.
+ *
+ * Matches TYPE-position `typeof import('…')` too, and that is the safe direction: no rule here is
+ * about a module anyone has cause to name in a type query (`src/app.d.ts` does it for `auth`, which
+ * no scan asks about), so a hit is worth a human look either way — loud and wrong beats silent.
+ */
+export const importsDynamically = (path: string, module: string): boolean =>
+	[...sourceText(path).matchAll(/\bimport\s*\(\s*(['"])([^'"]+)\1\s*\)/g)].some(([, , spec]) =>
+		refersTo(path, spec, module)
+	);
