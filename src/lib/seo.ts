@@ -28,5 +28,10 @@ export const GATED_PATHS = [
 	'/login',
 	'/signup',
 	'/forgot-password',
-	'/reset-password'
+	'/reset-password',
+	// DAR-139's two emailed-link landing pages (/updates/confirm, /updates/unsubscribe). Not gated by
+	// a sign-in — the unsubscribe deliberately needs no account — but they are noindex for the same
+	// reason /reset-password is: a page whose only useful form of arrival carries a one-off token has
+	// nothing to offer a crawler, and listing it would advertise a URL that is meaningless without one.
+	'/updates'
 ];

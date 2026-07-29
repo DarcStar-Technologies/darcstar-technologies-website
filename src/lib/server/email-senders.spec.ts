@@ -8,11 +8,17 @@ import {
 	sourceText
 } from './source-scan';
 
-// DAR-121. `/privacy` now makes a claim about mail we do NOT send: the optional product-and-research
-// updates the step-1 tick box collects are "not sending those yet", and won't go out until the
-// address is confirmed by email and every message carries a login-free unsubscribe. It is true today
-// and there is nothing in the type system that keeps it true — a marketing sender is an ordinary new
-// module, and the page it falsifies is three directories away in `messages/en.json`.
+// DAR-121. `/privacy` makes a claim about mail we do NOT send: the optional product-and-research
+// updates the step-1 tick box collects are not going out, and won't until the address is confirmed by
+// email and every message carries a login-free unsubscribe. It is true today and there is nothing in
+// the type system that keeps it true — a marketing sender is an ordinary new module, and the page it
+// falsifies is three directories away in `messages/en.json`.
+//
+// DAR-139 BUILT THE GATE, and this file survived it rather than being spent. The confirmation request
+// it added is declared below as `operational` — a question, not a use of the answer — so the
+// `marketing` assertion is still armed for the send that has not been written. What changed is the
+// failure message: it used to instruct a reader to go and build double opt-in, which now exists, and a
+// tripwire that tells you to build what is already there is one somebody learns to click past.
 //
 // So this is the tripwire. The surface is DERIVED (every file that imports the one function that
 // reaches the mail provider) and held against a hand-written ALLOWLIST — DAR-102's shape, and its
@@ -64,6 +70,15 @@ const SENDERS: Record<string, { sends: number; kind: SenderKind; what: string }>
 		sends: 1,
 		kind: 'internal',
 		what: 'the Priority-A alert into info@ (DAR-82) — never to the lead'
+	},
+	'src/lib/server/waitlist-updates-notify.ts': {
+		sends: 1,
+		kind: 'operational',
+		what:
+			'the one confirmation request for product-and-research updates (DAR-139) — sent because ' +
+			'this address was ticked into the opt-in box, asking only whether that was really them, ' +
+			'and carrying no product or research content. It is the instrument that makes consent ' +
+			'real, not a use of it'
 	},
 	'src/lib/server/activation-email.ts': {
 		sends: 1,
@@ -136,12 +151,21 @@ describe('this site sends no marketing email', () => {
 		for (const [path, sender] of Object.entries(SENDERS)) {
 			expect(
 				sender.kind,
-				`${path} is declared a MARKETING sender. /privacy currently promises the opposite ` +
-					`(privacy_use_updates_body: "We are not sending those yet"), so shipping this means ` +
-					`rewriting that message, bumping PRIVACY_UPDATED (src/lib/legal.ts), and building the ` +
-					`gate it describes first: double opt-in, and an unsubscribe honored without a login. ` +
-					`consent_updates on its own is an unverified claim from an unauthenticated form and is ` +
-					`not permission to send (docs/waitlist.md#consent).`
+				`${path} is declared a MARKETING sender, and /privacy still says the opposite ` +
+					`(privacy_use_updates_body: "We are still not sending product and research updates").\n` +
+					`\n` +
+					`The GATE now exists — DAR-139 built double opt-in and a login-free unsubscribe — so ` +
+					`what is left is the send itself, and being declared in this file is not authorization ` +
+					`for it. Three things have to be true first:\n` +
+					`  1. it addresses ONLY readUpdatesAudience() (src/lib/server/waitlist-store.ts), which ` +
+					`     is confirmed-and-not-withdrawn. Never waitlist_submission.consent_updates — that ` +
+					`     is still an unverified claim from an unauthenticated form (docs/waitlist.md#consent);\n` +
+					`  2. every message carries the u1 unsubscribe link (waitlist-updates-token.ts), which ` +
+					`     is the thing the page promises works without signing in;\n` +
+					`  3. privacy_use_updates_body is rewritten and PRIVACY_UPDATED (src/lib/legal.ts) is ` +
+					`     bumped in the SAME change (docs/legal.md).\n` +
+					`\n` +
+					`This spec cannot read intent and does not try to. It makes the decision loud.`
 			).not.toBe('marketing');
 		}
 	});

@@ -164,6 +164,48 @@ export const waitlistLead = sqliteTable(
 		// something WE did about a person. The submissions stay an immutable record of what people told
 		// us, and our own outreach is not something they said.
 		priorityANotifiedAt: integer('priority_a_notified_at', { mode: 'timestamp_ms' }),
+		// --- Product-and-research updates: the sending gate (DAR-139) ---
+		// `waitlist_submission.consent_updates` is an UNVERIFIED single-opt-in claim — the form is
+		// unauthenticated, so a third party can type any address in and tick the box. These three
+		// columns are what turns that claim into something we may act on, and /privacy states the rule
+		// publicly (DAR-121), so they are a promise as much as a schema.
+		//
+		// ON THE LEAD, and unlike `invited_at` this one is FORCED rather than merely consistent with
+		// DAR-88. A withdrawal is a decision about a PERSON: recording it per submission would need a
+		// write reaching across N immutable rows, which is exactly what append-only forbids. The
+		// submission keeps saying what one submitter claimed at one moment; the lead carries where that
+		// address now stands.
+		//
+		// When we last ASKED — i.e. sent the confirmation request. THE CAP, and like
+		// `priority_a_notified_at` it is the cap rather than a record of one: the send is triggered by an
+		// unauthenticated visitor's submit, so it needs a bound, and the bound is a conditional UPDATE
+		// (`claimUpdatesConfirmSend`, waitlist-store.ts) that only matches when this is null or older
+		// than the window. One row back means this call and no other may send.
+		//
+		// A WINDOW, not `IS NULL` — the opposite polarity to DAR-82, and the difference is who receives
+		// the mail. That one claims once ever because a lost notification lands in our own inbox with an
+		// operator standing over it; this one goes to a member of the public who may simply lose it, so
+		// re-ticking the box tomorrow has to be able to ask again. What it bounds is the new exposure
+		// append-only leaves open: a stranger submitting a known address can cause at most one
+		// confirmation request per day to it, and the "don't ask again" link inside that very email ends
+		// it permanently in one click.
+		updatesConfirmSentAt: integer('updates_confirm_sent_at', { mode: 'timestamp_ms' }),
+		// When the MAILBOX clicked confirm. THE ONLY THING THAT AUTHORIZES A SEND — a ticked box never
+		// does, however many submissions carry one. Stamped by a POST from /updates/confirm, never by a
+		// GET: mail scanners follow links, and a GET-confirm is a scanner-manufactured opt-in, which is
+		// double opt-in that verifies nothing.
+		updatesConfirmedAt: integer('updates_confirmed_at', { mode: 'timestamp_ms' }),
+		// When they withdrew. DURABLE: it suppresses every future confirmation request and every send,
+		// and the unauthenticated form can never undo it — a re-tick is refused by the claim above, and
+		// an old confirm link clicked afterwards reports the opt-out rather than reversing it. The form
+		// is the one surface a stranger controls, so if a re-tick could restart the asks, unsubscribing
+		// would stop one message instead of the relationship. Re-entry needs a channel the form cannot
+		// reach (email us — /privacy says so).
+		//
+		// `updates_confirmed_at` is deliberately LEFT STANDING when this is set: it is the audit trail of
+		// what actually happened, `mayReceiveUpdates` already excludes a withdrawn lead, and clearing it
+		// would destroy evidence to buy nothing.
+		updatesUnsubscribedAt: integer('updates_unsubscribed_at', { mode: 'timestamp_ms' }),
 		// --- Human review (DAR-88) ---
 		// "A human has looked at this lead's submissions and reconciled them." Deliberately a STAMP and
 		// not a merge: the reconciliation lands in whatever the operator does next (an outreach, a CRM
@@ -260,8 +302,12 @@ export const waitlistSubmission = sqliteTable(
 		// not a form default.
 		//
 		// IMPORTANT, unchanged: this is an UNVERIFIED claim — the form is unauthenticated single-opt-in,
-		// so a third party can submit any address with the box ticked. It must NOT drive a real send
-		// without double-opt-in + unsubscribe.
+		// so a third party can submit any address with the box ticked. It must NOT drive a real send.
+		//
+		// Since DAR-139 it is the TRIGGER TO ASK and nothing more: a true here makes the server try to
+		// claim one confirmation request for the lead, and permission arrives only if that mailbox clicks
+		// (`waitlist_lead.updates_confirmed_at`). So this column's meaning is unchanged and its
+		// consequence is now bounded — it can cause a question, never a send.
 		consentUpdates: integer('consent_updates', { mode: 'boolean' }).default(false).notNull(),
 		// When consent was granted on this submission (provenance for a compliance review). Null = the
 		// box wasn't ticked here; separate from updated_at, which later step writes clobber.

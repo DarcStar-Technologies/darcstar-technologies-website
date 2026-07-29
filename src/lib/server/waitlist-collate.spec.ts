@@ -42,6 +42,9 @@ const lead = (over: Partial<WaitlistLeadRow> = {}): WaitlistLeadRow => ({
 	activatedAt: null,
 	reviewedAt: null,
 	reviewedBy: null,
+	updatesConfirmSentAt: null,
+	updatesConfirmedAt: null,
+	updatesUnsubscribedAt: null,
 	createdAt: new Date(1_000),
 	...over
 });

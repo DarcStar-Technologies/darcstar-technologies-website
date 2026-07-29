@@ -7,11 +7,17 @@ import { waitlistLead, waitlistSubmission } from './db/schema';
 import {
 	applyWaitlistStep,
 	claimPriorityLeadNotification,
+	claimUpdatesConfirmSend,
+	confirmUpdates,
 	insertWaitlistSubmission,
+	readUpdatesAudience,
 	readWaitlistTriageWindow,
+	unsubscribeUpdates,
 	WAITLIST_STEP_WRITE_MAX,
-	WAITLIST_STEP_WRITE_WINDOW_MS
+	WAITLIST_STEP_WRITE_WINDOW_MS,
+	WAITLIST_UPDATES_CONFIRM_WINDOW_MS
 } from './waitlist-store';
+import { mayReceiveUpdates, waitlistUpdatesState } from '$lib/waitlist-updates';
 import type { CleanedWaitlist } from './waitlist';
 
 // Real DB integration test — the append-only insert + the `isNew` gate are the security-critical
@@ -49,6 +55,7 @@ beforeAll(async () => {
 			email text NOT NULL,
 			invited_at integer, invited_by text, activated_at integer,
 			priority_a_notified_at integer,
+			updates_confirm_sent_at integer, updates_confirmed_at integer, updates_unsubscribed_at integer,
 			reviewed_at integer, reviewed_by text,
 			created_at integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 		)`
@@ -760,5 +767,222 @@ describe('readWaitlistTriageWindow', () => {
 		const { leads, submissions } = await readWaitlistTriageWindow(db, 10);
 		expect(leads).toEqual([]);
 		expect(submissions).toEqual([]);
+	});
+});
+
+// DAR-139 — the sending gate. /privacy promises publicly that a ticked box does not authorize a send,
+// so these are the tests that back a public claim: what may be asked, what counts as an answer, and
+// what a withdrawal costs someone who wants to bring the address back through the form.
+describe('the updates sending gate', () => {
+	/** Sign up once and hand back the lead the submission landed under. */
+	const signup = async (over: Partial<CleanedWaitlist> = {}) =>
+		(await insertWaitlistSubmission(db, { ...base, ...over }, 'h', null)).leadId;
+
+	const lead = async () => (await leads())[0];
+
+	/** Backdate the last ask, so the window can be tested without waiting a day. */
+	const askedAgo = (leadId: string, ms: number) =>
+		client.execute({
+			sql: `UPDATE waitlist_lead
+			      SET updates_confirm_sent_at = (cast(unixepoch('subsecond') * 1000 as integer)) - ?
+			      WHERE id = ?`,
+			args: [ms, leadId]
+		});
+
+	describe('claimUpdatesConfirmSend', () => {
+		it('claims the first ask and stamps when we asked', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			expect(await claimUpdatesConfirmSend(db, leadId)).toBe(true);
+			expect((await lead()).updatesConfirmSentAt).toBeInstanceOf(Date);
+		});
+
+		// THE RATE CAP. A stranger can pile submissions onto a known address (append-only accepts that),
+		// so without this every one of them would put another email in that person's inbox.
+		it('refuses a second ask inside the window, however many submissions arrive', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			expect(await claimUpdatesConfirmSend(db, leadId)).toBe(true);
+			const asked = (await lead()).updatesConfirmSentAt;
+
+			await signup({ consentUpdates: true });
+			await signup({ consentUpdates: true });
+			expect(await rows()).toHaveLength(3);
+			expect(await claimUpdatesConfirmSend(db, leadId)).toBe(false);
+			// …and a refused ask leaves the stamp alone, so hammering cannot walk the window forward.
+			expect((await lead()).updatesConfirmSentAt).toEqual(asked);
+		});
+
+		it('asks again once the window has passed', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			expect(await claimUpdatesConfirmSend(db, leadId)).toBe(true);
+			await askedAgo(leadId, WAITLIST_UPDATES_CONFIRM_WINDOW_MS + 1_000);
+			// A person who never received the first one must be able to re-tick and be asked again —
+			// which is why this is a window and not DAR-82's once-ever claim.
+			expect(await claimUpdatesConfirmSend(db, leadId)).toBe(true);
+		});
+
+		it('never asks an address that has already confirmed', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			await confirmUpdates(db, leadId);
+			await askedAgo(leadId, WAITLIST_UPDATES_CONFIRM_WINDOW_MS + 1_000);
+			expect(await claimUpdatesConfirmSend(db, leadId)).toBe(false);
+		});
+
+		// THE DURABLE HALF, and the one a mutation to the WHERE clause silently removes: without it the
+		// form — the single surface a stranger controls — could restart the asks for someone who
+		// explicitly opted out, and unsubscribing would stop one message instead of the relationship.
+		it('never asks an address that has withdrawn, however long ago and however often they re-tick', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			await unsubscribeUpdates(db, leadId);
+
+			await askedAgo(leadId, WAITLIST_UPDATES_CONFIRM_WINDOW_MS * 400);
+			expect(await claimUpdatesConfirmSend(db, leadId)).toBe(false);
+			await signup({ consentUpdates: true });
+			expect(await claimUpdatesConfirmSend(db, leadId)).toBe(false);
+		});
+
+		it('lets exactly one of N concurrent claims win', async () => {
+			// Same reason this is a WHERE predicate rather than a read-then-write as DAR-82's claim: all
+			// five see an unasked lead if they look first.
+			const leadId = await signup({ consentUpdates: true });
+			const results = await Promise.all(
+				Array.from({ length: 5 }, () => claimUpdatesConfirmSend(db, leadId))
+			);
+			expect(results.filter(Boolean)).toHaveLength(1);
+		});
+
+		it('refuses a lead that no longer exists, without creating one', async () => {
+			expect(await claimUpdatesConfirmSend(db, crypto.randomUUID())).toBe(false);
+			expect(await leads()).toHaveLength(0);
+		});
+
+		it('budgets each address separately', async () => {
+			const a = await signup({ consentUpdates: true });
+			const b = await signup({ email: 'grace@example.com', consentUpdates: true });
+			expect(await claimUpdatesConfirmSend(db, a)).toBe(true);
+			expect(await claimUpdatesConfirmSend(db, b)).toBe(true);
+		});
+	});
+
+	describe('confirmUpdates', () => {
+		it('records the answer and reports the state back', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			await claimUpdatesConfirmSend(db, leadId);
+
+			const after = await confirmUpdates(db, leadId);
+			expect(after).not.toBeNull();
+			expect(waitlistUpdatesState(after!)).toBe('confirmed');
+			expect(mayReceiveUpdates(after!)).toBe(true);
+		});
+
+		it('is idempotent — a second click keeps the first confirmation’s timestamp', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			const first = await confirmUpdates(db, leadId);
+			const second = await confirmUpdates(db, leadId);
+			expect(second!.updatesConfirmedAt).toEqual(first!.updatesConfirmedAt);
+		});
+
+		// The user-facing half of the durable withdrawal: an old confirmation link found afterwards
+		// reports the opt-out rather than reversing it, and the caller can say so because the write
+		// hands back the state instead of a boolean it would have to interpret.
+		it('does not re-subscribe an address that has withdrawn', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			await unsubscribeUpdates(db, leadId);
+
+			const after = await confirmUpdates(db, leadId);
+			expect(waitlistUpdatesState(after!)).toBe('unsubscribed');
+			expect(after!.updatesConfirmedAt).toBeNull();
+			expect(mayReceiveUpdates(after!)).toBe(false);
+		});
+
+		it('reports null for a lead that no longer exists, without creating one', async () => {
+			expect(await confirmUpdates(db, crypto.randomUUID())).toBeNull();
+			expect(await leads()).toHaveLength(0);
+		});
+	});
+
+	describe('unsubscribeUpdates', () => {
+		it('withdraws a confirmed address and keeps the confirmation as the audit trail', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			await confirmUpdates(db, leadId);
+
+			const after = await unsubscribeUpdates(db, leadId);
+			expect(waitlistUpdatesState(after!)).toBe('unsubscribed');
+			expect(mayReceiveUpdates(after!)).toBe(false);
+			// Kept on purpose — the record of what actually happened. Clearing it would destroy evidence
+			// to buy nothing, since the state already excludes them.
+			expect(after!.updatesConfirmedAt).toBeInstanceOf(Date);
+		});
+
+		// Unconditional on purpose: the confirmation request itself carries this link, so the person
+		// most likely to click it is someone whose address a stranger typed in and who has confirmed
+		// nothing at all.
+		it('withdraws an address that was never confirmed', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			await claimUpdatesConfirmSend(db, leadId);
+			const after = await unsubscribeUpdates(db, leadId);
+			expect(waitlistUpdatesState(after!)).toBe('unsubscribed');
+		});
+
+		it('is monotonic — re-clicking never rewrites when they opted out', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			const first = await unsubscribeUpdates(db, leadId);
+			const second = await unsubscribeUpdates(db, leadId);
+			expect(second!.updatesUnsubscribedAt).toEqual(first!.updatesUnsubscribedAt);
+		});
+
+		it('reports null for a lead that no longer exists, without creating one', async () => {
+			expect(await unsubscribeUpdates(db, crypto.randomUUID())).toBeNull();
+			expect(await leads()).toHaveLength(0);
+		});
+	});
+
+	describe('readUpdatesAudience', () => {
+		it('is empty until somebody confirms, whatever the tick boxes say', async () => {
+			await signup({ consentUpdates: true });
+			await signup({ email: 'grace@example.com', consentUpdates: true });
+			// Two submissions claiming consent, and nobody has answered an email yet.
+			expect(await readUpdatesAudience(db)).toEqual([]);
+		});
+
+		it('holds exactly the confirmed, un-withdrawn addresses', async () => {
+			const ada = await signup({ consentUpdates: true });
+			const grace = await signup({ email: 'grace@example.com', consentUpdates: true });
+			await signup({ email: 'mallory@example.com', consentUpdates: true });
+
+			await confirmUpdates(db, ada);
+			await confirmUpdates(db, grace);
+			await unsubscribeUpdates(db, grace);
+
+			expect((await readUpdatesAudience(db)).map((r) => r.email)).toEqual(['ada@example.com']);
+		});
+
+		// THE PIN. `mayReceiveUpdates` and this query are two encodings of one rule and cannot be
+		// single-sourced — one of them is SQL, DAR-71's situation for the `noIndex` filter that lives
+		// half in GROQ. So they are held against each other across every state a lead can be in, which
+		// is what turns a drift into a failing test instead of an audience that quietly includes
+		// somebody who opted out.
+		it('agrees with mayReceiveUpdates on every state a lead can be in', async () => {
+			const cases = [
+				{ email: 'none@example.com', ask: false, confirm: false, withdraw: false },
+				{ email: 'asked@example.com', ask: true, confirm: false, withdraw: false },
+				{ email: 'confirmed@example.com', ask: true, confirm: true, withdraw: false },
+				{ email: 'gone@example.com', ask: true, confirm: true, withdraw: true },
+				// Withdrew without ever confirming — the "a stranger used my address" path.
+				{ email: 'never@example.com', ask: true, confirm: false, withdraw: true }
+			];
+			for (const c of cases) {
+				const leadId = await signup({ email: c.email, consentUpdates: true });
+				if (c.ask) await claimUpdatesConfirmSend(db, leadId);
+				if (c.confirm) await confirmUpdates(db, leadId);
+				if (c.withdraw) await unsubscribeUpdates(db, leadId);
+			}
+
+			const predicate = (await leads()).filter(mayReceiveUpdates).map((l) => l.email);
+			const query = (await readUpdatesAudience(db)).map((r) => r.email);
+			expect(query).toEqual(predicate.sort());
+			// Non-vacuous in both directions: some leads are in and some are out.
+			expect(query).toEqual(['confirmed@example.com']);
+			expect(await leads()).toHaveLength(cases.length);
+		});
 	});
 });
