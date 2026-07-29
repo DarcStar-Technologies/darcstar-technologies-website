@@ -152,6 +152,15 @@ describe('peopleJsonLd', () => {
 		expect(anonymous.url).toBeUndefined();
 	});
 
+	// The identifier has to be the SAME STRING the grid's href and the sitemap's <loc> resolve to, and
+	// both of those go through `new URL`. A slug needing encoding is unlikely — the Studio slugifies —
+	// but an `@id` that disagrees with the page it identifies defeats the entire point of having one,
+	// and this is the cheapest possible way to make the three agree by construction.
+	it('spells the identifier the way a URL is spelled', () => {
+		const [person] = peopleJsonLd([{ name: 'Ada', slug: 'ada lovelace' }], ORIGIN);
+		expect(person['@id']).toBe(`${ORIGIN}/people/ada%20lovelace`);
+	});
+
 	// The same gate `organizationJsonLd` applies to the org's identities. It was truthiness-only here,
 	// so the two Person-identity builders disagreed about what a publishable URL is — and a person's
 	// `sameAs` is exactly as load-bearing as the org's, being the claim "this profile is also them".

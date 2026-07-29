@@ -93,9 +93,14 @@ interface PersonInput {
  *
  * Not localized: `@id` is an identifier, and the same person must not become two entities because a
  * crawler arrived through a translated tree.
+ *
+ * URL-JOINED, not string-concatenated — the same reason the org's `logo` is, one screen up. Both the
+ * grid's href and the sitemap's `<loc>` reach the browser through `new URL`, which percent-encodes;
+ * a raw template would make this identifier the one spelling of the three that disagrees, which is
+ * precisely what an `@id` cannot afford to be.
  */
 function personId(slug: string | null | undefined, origin: string): string | undefined {
-	return slug ? `${origin}/people/${slug}` : undefined;
+	return slug ? new URL(`/people/${slug}`, origin).href : undefined;
 }
 
 /**

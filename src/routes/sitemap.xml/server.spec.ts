@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { overwriteGetLocale } from '$lib/paraglide/runtime';
+import { locales, overwriteGetLocale } from '$lib/paraglide/runtime';
 import { TRANSLATED_LOCALES } from '$lib/seo';
 
 // The sitemap endpoint had no test at all until DAR-122, and the gap it left is specific: a content
@@ -81,14 +81,24 @@ describe('GET /sitemap.xml', () => {
 		}
 	});
 
-	it('emits one document per translated locale and nothing for the rest', async () => {
+	it('stays on-origin, out of untranslated locale trees, and lists nothing twice', async () => {
 		const body = await (await call()).text();
-		// Every <loc> is on-origin and inside a real locale tree. Derived from the same flag the
-		// endpoint reads, so the day `es` becomes real this expectation moves with it.
-		expect(TRANSLATED_LOCALES).toContain('en');
-		expect(locs(body).filter((loc) => loc.startsWith(`${ORIGIN}/es`))).toEqual([]);
+		// DERIVED from the same flag the endpoint reads, never a hardcoded '/es' — the day a locale
+		// becomes real its tree joins the sitemap and this expectation moves with it, which is the rule
+		// seo.e2e.ts already follows.
+		const untranslated = locales
+			.filter((locale) => !TRANSLATED_LOCALES.includes(locale))
+			.map((locale) => `${ORIGIN}/${locale}`);
+		for (const prefix of untranslated) {
+			expect(locs(body).filter((loc) => loc === prefix || loc.startsWith(`${prefix}/`))).toEqual(
+				[]
+			);
+		}
 		expect(locs(body).every((loc) => loc.startsWith(`${ORIGIN}/`))).toBe(true);
-		// Floor: `every` on an empty list is vacuously true, so prove the parse found the document.
+		// A duplicate is what a broken locale loop produces, and a crawler reading the same URL twice
+		// is the visible symptom. `every` above is vacuously true on an empty list, so this doubles as
+		// the floor proving the parse found the document at all.
+		expect(new Set(locs(body)).size).toBe(locs(body).length);
 		expect(locs(body).length).toBeGreaterThan(ROUTES.length);
 	});
 

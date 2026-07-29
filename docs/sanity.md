@@ -48,8 +48,10 @@ perspective: 'published', token })`, where `token = readEnv('SANITY_VIEWER_TOKEN
 - **The synced `schema.json` can be ahead of what the site consumes.** It's a whole-file copy, so a
   sync pulls in every Studio change since the last one — DAR-70's re-sync also brought
   `person.{fullBio, focusAreas, responsibilities, experience, education}` (DAR-47's schema half).
-  Those landed as types only and **stayed unconsumed for three months** until DAR-122 built
-  `/people/[slug]`; a synced field renders nothing until a query selects it and a page draws it.
+  Those landed as types only and **stayed unconsumed until DAR-122** built `/people/[slug]` — the
+  ticket that closed them (DAR-47) was marked Done on a Studio-only PR, so the fields were authored
+  and populated with nothing reading them. A synced field renders nothing until a query selects it
+  AND a page draws it.
   Expect unrelated additions in a `types.ts` diff and check they're additive.
   **Diff the two files type-by-type before copying**, so what rides along is known rather than
   discovered: DAR-106's sync turned out to be exactly `+mathBlock`, `+mathInline` and the two
