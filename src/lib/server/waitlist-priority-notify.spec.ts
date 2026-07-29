@@ -117,12 +117,12 @@ describe('buildWaitlistPriorityLeadEmail', () => {
 		const withMoney = {
 			...priorityA,
 			economicImpact: 'over-1m',
-			budgetRange: 'over-500k'
+			budgetRange: 'over-100k'
 		} as WaitlistStepOutcome;
 		const email = buildWaitlistPriorityLeadEmail(withMoney, ORIGIN);
 		for (const rendered of [email.text, email.html]) {
 			expect(rendered).not.toContain('over-1m');
-			expect(rendered).not.toContain('over-500k');
+			expect(rendered).not.toContain('over-100k');
 			expect(rendered).not.toMatch(/budget/i);
 			expect(rendered).not.toMatch(/economic/i);
 			expect(rendered).not.toMatch(/\$/);

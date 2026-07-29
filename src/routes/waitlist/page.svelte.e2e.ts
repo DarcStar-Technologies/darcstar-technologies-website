@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test';
+import { WAITLIST_BUDGETS } from '$lib/waitlist-qualification';
 
 // /waitlist (DAR-60 step 1 · DAR-61 step 2 · DAR-62 step 3 · DAR-63 step 4 · DAR-64 the
 // confirmation and its server-chosen CTA) through the Cloudflare
@@ -243,7 +244,7 @@ test('"Continue" with no answers selected forks to branch B and finishes', async
 	).toHaveCount(0);
 
 	// Branch B asks nothing about money or pilots.
-	await expect(main.getByText('Realistic budget')).toHaveCount(0);
+	await expect(main.getByText('Evaluation budget')).toHaveCount(0);
 	await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toHaveCount(0);
 
 	// Nothing was classifiable, so the confirmation offers the least-committal CTA — not the evidence
@@ -267,7 +268,7 @@ test('a commercial use case continues from step 2 into the step-3 questions', as
 	await expect(main.getByText('Current approach')).toBeVisible();
 	await expect(main.getByText('How do you currently address this problem?')).toBeVisible();
 	await expect(main.getByText('Economic impact')).toBeVisible();
-	await expect(main.getByText('Realistic budget')).toBeVisible();
+	await expect(main.getByText('Evaluation budget')).toBeVisible();
 	await expect(main.getByText('Adoption requirement')).toBeVisible();
 
 	// The continuation token was carried forward by the step-2 response — that echo is what lets step 3
@@ -728,8 +729,20 @@ test.describe('without JavaScript', () => {
 		await expect(main.locator('input[name="flowClaim"]')).toHaveValue(/^f1\./);
 		await expect(main.locator('input[name="flowId"]')).toHaveValue(flowId);
 
+		// The budget bands the form actually OFFERS (DAR-126). `waitlistBudgetLabel` is keyed on the
+		// union of the live and retired sets so the admin view can label a stored annual answer, and
+		// the only thing keeping a retired band out of the form is that the select builds its options
+		// from `WAITLIST_BUDGETS` alone — a structural argument nothing tested. Compared against the
+		// imported constant rather than a restated literal, so it fails on an offered retired band AND
+		// on a live one that stopped rendering. This is the one place the SSR'd <select> exists: after
+		// hydration GlassSelect swaps to the Zag menu and these <option>s are gone.
+		const offeredBudgets = await main
+			.locator('#waitlist-budget option')
+			.evaluateAll((options) => options.map((o) => (o as HTMLOptionElement).value).filter(Boolean));
+		expect(offeredBudgets).toEqual([...WAITLIST_BUDGETS]);
+
 		// Step 3 answers submit natively too (the checkbox group needs no JS at all).
-		await main.getByLabel(/Realistic budget/).selectOption('25k-100k');
+		await main.getByLabel(/Evaluation budget/).selectOption('25k-50k');
 		await main.getByRole('checkbox', { name: 'Formal proof artifacts' }).check();
 		await main.getByRole('button', { name: 'Continue' }).click();
 

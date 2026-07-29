@@ -79,17 +79,52 @@ export const WAITLIST_IMPACTS = [
 ] as const;
 export type WaitlistImpact = (typeof WAITLIST_IMPACTS)[number];
 
-/** Step 3 — realistic annual budget. */
+/**
+ * Step 3 — budget for an INITIAL EVALUATION OR PILOT, not annual contract value (DAR-126).
+ *
+ * The scope change forced the bands: annual figures put an early-product evaluation at the bottom of
+ * the ladder, so almost every answer landed in the lowest one or two bands and the facet stopped
+ * discriminating. These are sized for what an evaluation actually costs.
+ *
+ * `not-involved-in-purchasing` and `not-sure` carry over deliberately — they say something about the
+ * respondent rather than about a figure, so they mean the same thing under either scope and keep ONE
+ * label. Every band that IS a figure is new; see WAITLIST_ANNUAL_BUDGETS below for why that matters.
+ */
 export const WAITLIST_BUDGETS = [
-	'under-5k',
-	'5k-25k',
-	'25k-100k',
-	'100k-500k',
-	'over-500k',
+	'under-10k',
+	'10k-25k',
+	'25k-50k',
+	'50k-100k',
+	'over-100k',
 	'not-involved-in-purchasing',
 	'not-sure'
 ] as const;
 export type WaitlistBudget = (typeof WAITLIST_BUDGETS)[number];
+
+/**
+ * The retired ANNUAL bands (DAR-126) — stored history only, never offered by the form again.
+ *
+ * Submissions are append-only since DAR-88, so these slugs stay in rows that were answered under the
+ * old question and nothing rewrites them. That is only safe because they are DISJOINT from the live
+ * set: `budget_range` now holds answers to two differently-scoped questions, so a slug reused across
+ * the change would be a value an operator cannot interpret — an annual $25k–$100k and an evaluation
+ * $25k–$100k are wildly different buying signals wearing the same string. `waitlistBudgetLabel`
+ * therefore labels these too, marked as annual, and `waitlist-qualification.spec.ts` pins the
+ * disjointness so a future re-banding can't quietly collide with either set.
+ *
+ * APPEND ONLY. Every entry is a slug some stored row still holds, so removing one doesn't tidy this
+ * list — it drops that row back to rendering its raw slug in triage. The next re-band adds its own
+ * retired figures here; it never edits these. Deleting one fails the spec, which holds this list
+ * against the `waitlist_budget_annual_*` messages that exist for exactly these slugs.
+ */
+export const WAITLIST_ANNUAL_BUDGETS = [
+	'under-5k',
+	'5k-25k',
+	'25k-100k',
+	'100k-500k',
+	'over-500k'
+] as const;
+export type WaitlistAnnualBudget = (typeof WAITLIST_ANNUAL_BUDGETS)[number];
 
 /** Step 3 — adoption evidence (multi-select, capped at WAITLIST_EVIDENCE_MAX). */
 export const WAITLIST_EVIDENCE = [
