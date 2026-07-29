@@ -30,7 +30,13 @@ import {
 	type WaitlistFunnelEvent
 } from '$lib/waitlist-funnel';
 import type { WaitlistSigningSecret } from './waitlist-secret';
-import { appSourcePaths, importedNames, importsNamespace, sourceText } from './source-scan';
+import {
+	appSourcePaths,
+	importedNames,
+	importsDynamically,
+	importsNamespace,
+	sourceText
+} from './source-scan';
 
 // The funnel write path (DAR-66), against a real in-memory libsql — because the two properties worth
 // testing are both properties of the DATABASE, not of the TypeScript: the composite primary key is
@@ -569,11 +575,17 @@ describe('the step endpoints reach the funnel only through the gate', () => {
 	// A namespace import binds every export without naming one, so it would walk straight past the
 	// assertion above. Banned surface-wide, including for the allowlisted three: they already import
 	// what they need by name, so nothing legitimate wants this.
-	it('reaches the funnel module by name everywhere, never through a namespace', () => {
+	//
+	// A DYNAMIC import walks past it the same way and for a plainer reason — the scan parses the
+	// static form only. Added by DAR-121, which hit it on its own sibling rule and then measured this
+	// one: a step endpoint planted at `src/routes/waitlist/step5/` that reached the ungated capture
+	// through `await import(…)` and skipped the honeypot gate passed here **52/52**. Same ban, same
+	// argument: the three that may capture ungated already import by name.
+	it('reaches the funnel module by name everywhere, never sideways', () => {
 		for (const path of appSourcePaths()) {
 			expect(
-				importsNamespace(path, FUNNEL_MODULE),
-				`${path} reaches the funnel module through a namespace import`
+				importsNamespace(path, FUNNEL_MODULE) || importsDynamically(path, FUNNEL_MODULE),
+				`${path} reaches the funnel module through a namespace or dynamic import`
 			).toBe(false);
 		}
 	});

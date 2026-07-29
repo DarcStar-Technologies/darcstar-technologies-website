@@ -11,6 +11,14 @@ test('footer links to the privacy policy and the page renders its sections', asy
 	await expect(page.getByRole('heading', { level: 1 })).toContainText('Privacy');
 	await expect(page.getByRole('heading', { name: 'What we collect' })).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Where it lives' })).toBeVisible();
+
+	// DAR-121's deliverable: "How we use it" names the two categories of mail separately, because
+	// one paragraph is what let the policy say waitlist email is "only about early access" while the
+	// signup form offered product updates. Both headings, so losing either fails.
+	await expect(page.getByRole('heading', { name: 'Operational email' })).toBeVisible();
+	await expect(
+		page.getByRole('heading', { name: 'Optional product and research updates' })
+	).toBeVisible();
 	await expect(
 		page.getByRole('main').getByRole('link', { name: 'info@darcstar.tech' })
 	).toBeVisible();
