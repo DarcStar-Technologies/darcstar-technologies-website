@@ -146,6 +146,28 @@ describe('findCatalogTotalLeaks', () => {
 		expect(leaks(text)).toEqual([]);
 	});
 
+	// CONTEXT_WINDOW brackets. Nothing above pins it — 20, 200 and 400 all passed every other test
+	// (measured), so the constant that DEFINES "near" had no test in either direction, and both
+	// directions bite: too small silently stops catching, too large starts matching a benchmark
+	// figure against theorem wording elsewhere in the same paragraph. These two hold it inside
+	// (44, 117): the leak below sits 44 characters from "corpus", the benchmark counts 117 from
+	// "theorem". 60 is a choice within that range, not a derived value — this pins the range only.
+	it('reaches a leak separated from its context word by a clause', () => {
+		expect(
+			leaks('The proof corpus grew again this quarter, and now stands at 346 results.')
+		).not.toEqual([]);
+	});
+
+	it('does not reach across a whole sentence to manufacture context', () => {
+		expect(
+			leaks(
+				'Arithmetic mean over 10,000 sequential inference calls after 1,000 warmup iterations on ' +
+					'isolated hardware, with every run republished nightly; the same CI harness also re-checks ' +
+					'each theorem.'
+			)
+		).toEqual([]);
+	});
+
 	it('reports the number it found, so a failure names the leak', () => {
 		expect(leaks('The catalog holds 338 theorems.')[0]).toContain('338');
 	});
