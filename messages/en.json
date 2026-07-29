@@ -38,7 +38,7 @@
 	"section_domains_sub": "Zig · C++ · Rust · Python · custom CUDA kernels",
 	"section_domains_scope": "Running end-to-end means the domain builds against the same verified core and exercises it with its own harness and test suite — not a demo, and not a customer deployment. Maturity varies per domain and is stated on the evidence page.",
 	"section_proven_heading": "Verified against stated assumptions.",
-	"section_proven_body": "Safety properties are stated as Control Barrier Function theorems and machine-checked in Lean 4 and Isabelle, over the mathematical model. Complete means mechanized end-to-end in both provers with zero local axioms; the rest are machine-checked modulo named local axioms, each documented and tracked for discharge. The assumptions they rest on, and what they do not cover, are published rather than implied.",
+	"section_proven_body": "Safety properties are stated as Control Barrier Function theorems and machine-checked in Lean 4 and Isabelle, over the mathematical model. Complete means mechanized end-to-end in both provers with zero local axioms; the remaining machine-checked theorems carry named local axioms, each documented and tracked for discharge. The assumptions they rest on, and what they do not cover, are published rather than implied.",
 	"section_proven_evidence_link": "Read the evidence →",
 	"section_cta_heading": "Let's build something you can verify.",
 	"section_cta_body": "Safety-critical control, autonomous systems, formal methods — we'd like to hear from you.",
