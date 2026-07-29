@@ -126,10 +126,17 @@ describe('wrangler.jsonc agrees with the Worker names TypeScript uses', () => {
 	});
 
 	test('trustedOrigins is exactly the four hosts, written out', () => {
-		// Spelled literally on purpose. Every other assertion here builds its expectation from the same
-		// template the source uses, so a typo in the derivation — a dropped `-` in `*-`, a wrong
-		// suffix — would be mirrored on both sides and pass. This is the one check that can see it, and
-		// it is also what proves DAR-131's refactor from a hand-written list changed nothing.
+		// Spelled literally, and the case it uniquely catches is narrower than it first looks — worth
+		// stating exactly, since two wider claims about it were wrong when measured. A malformed
+		// pattern is already caught above (those assertions write `*-` out themselves), and a rename
+		// in ONE file is caught by the wrangler.jsonc pins. What reaches this test alone is a
+		// COORDINATED rename — both files edited together, which type-checks and satisfies every
+		// other assertion here (measured: 1 failed, 6 passed).
+		//
+		// That is worth a test because these are the names of Cloudflare Workers that actually exist.
+		// Renaming them in the repo without re-provisioning produces a config describing a Worker
+		// that isn't there — which is precisely the state DAR-131 was filed about. Doubles as the
+		// proof that DAR-131's refactor away from a hand-written list changed nothing.
 		expect(trustedOrigins).toEqual([
 			'https://darcstar-technologies-website.darcstar.workers.dev',
 			'*-darcstar-technologies-website.darcstar.workers.dev',
