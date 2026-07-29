@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import en from '../../messages/en.json';
 import es from '../../messages/es.json';
 import * as evidence from './evidence';
-import { findCatalogTotalLeaks, findCatalogTotalLeaksInRenderedText } from './evidence-boundary';
 import { THEOREMS_CHECKED } from './evidence';
+import { findCatalogTotalLeaks, findCatalogTotalLeaksInRenderedText } from './evidence-boundary';
 
 // The published-surface IP boundary (DAR-43, docs/evidence.md): exact neural-architecture
 // numbers and the theorem-catalog backlog must never appear in published copy. The evidence
@@ -179,10 +179,10 @@ describe('findCatalogTotalLeaksInRenderedText', () => {
 		expect(rendered(['346', 'Theorems in the catalog'])).not.toEqual([]);
 	});
 
-	// The homepage readout row, real values in rendered order with the LABEL lines removed — which
-	// puts `13,000×` two lines nearer the theorems readout than the page does, so passing here is
-	// strictly harder than passing on the page. This is the collision that rules out a whole-page
-	// scan, and widening the window past a pair walks back into it.
+	// The homepage readout row, real values in rendered order with the LABEL lines removed — one of
+	// which sits between them, so this puts `13,000×` a line NEARER the theorems readout than the
+	// page does (gap 2 here, 3 rendered) and passing is strictly harder than passing on the page.
+	// This is the collision that rules out a whole-page scan; widening past a pair walks back in.
 	it('stays silent on the homepage readout row', () => {
 		expect(
 			rendered(['0.767 µs', '13,000×', '31', 'THEOREMS COMPLETE OF 219 MACHINE-CHECKED', '5'])
@@ -206,5 +206,12 @@ describe('findCatalogTotalLeaksInRenderedText', () => {
 		expect(
 			rendered(['Prover versions', 'The catalog holds 338 theorems.', '0.767 µs'])
 		).not.toEqual([]);
+	});
+
+	// Isolates the loop bound. Every other line is also covered by its PREDECESSOR's pair, so a
+	// one-short loop (`slice(0, -1)`) still passes all of the above — a lone line is the only input
+	// where the final chunk is the only chunk.
+	it('scans a page whose only line is the leak', () => {
+		expect(rendered(['The catalog holds 338 theorems.'])).not.toEqual([]);
 	});
 });

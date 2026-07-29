@@ -21,7 +21,12 @@
  * make that scan look like coverage while providing none — "El catalogo contiene 346 teoremas"
  * clears the band and matches no English stem. Free today (DAR-53 keeps a non-base catalog to
  * translated keys only, and `es` currently holds one), which is exactly why it is cheaper to add
- * now than to remember when the translation lands. `corpus`/`axioma` already overlap. */
+ * now than to remember when the translation lands. `corpus`/`axioma` already overlap.
+ *
+ * Scope, so the stems are not read as more than they are: this covers Spanish WORDING, not
+ * Spanish number FORMATTING. Spanish groups thousands with a dot, and withoutThousandsSeparators
+ * strips only commas, so "1.024 teoremas" yields no bare integer at all and route 1 never sees
+ * it. Harmless while `es` is untranslated; revisit with the translation, not before. */
 const THEOREM_CONTEXT =
 	/theorem|catalog|corpus|axiom|proven|mechaniz|teorema|cat[áa]logo|demostrad|mecaniz/i;
 
