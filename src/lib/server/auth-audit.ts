@@ -72,8 +72,11 @@ export function mapSignInOutcome(returned: unknown): {
 /** Resolve the raw client IP from the hook context, defensively (getIp can throw on odd input). */
 function resolveIp(ctx: { headers?: Headers; context: { options: unknown } }): string | null {
 	try {
-		// getIp walks the configured ip headers (default x-forwarded-for, which the /login action
-		// sets to cf-connecting-ip) and falls back to localhost in test/dev.
+		// getIp walks the CONFIGURED ip headers and falls back to localhost in test/dev. Since DAR-124
+		// that is `cf-connecting-ip` alone (auth-options.ts `advanced`) — which the audit trail needs
+		// at least as much as the limiter does: on the direct /api/auth/sign-in/email surface the old
+		// default let a caller write an address of their choosing into `login_audit.ip_address`, so
+		// the record of who attempted a sign-in was as forgeable as the bucket they spent.
 		return getIp(ctx.headers ?? new Headers(), ctx.context.options as never) ?? null;
 	} catch {
 		return null;

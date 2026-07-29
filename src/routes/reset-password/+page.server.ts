@@ -1,5 +1,6 @@
 import { fail, type Actions } from '@sveltejs/kit';
 import { getAuth } from '$lib/server/auth';
+import { authSubrequest } from '$lib/server/auth-subrequest';
 import { ACTIVATION_QUERY_FLAG } from '$lib/server/activation';
 import type { PageServerLoad } from './$types';
 
@@ -43,21 +44,16 @@ export const actions: Actions = {
 		if (password.length < 8) return fail(400, { error: 'password_short' as const, token });
 		if (!token) return fail(400, { error: 'invalid_token' as const });
 
-		const headers = new Headers({ 'content-type': 'application/json' });
-		try {
-			const ip = getClientAddress();
-			if (ip) headers.set('x-forwarded-for', ip);
-		} catch {
-			// adapter couldn't resolve an address
-		}
+		// Client address forwarded on the header the limiter reads (DAR-124), via the one builder that
+		// names it — see auth-subrequest.ts.
+		const { request: authRequest } = authSubrequest({
+			path: '/api/auth/reset-password',
+			origin: url.origin,
+			body: { newPassword: password, token },
+			getClientAddress
+		});
 
-		const res = await auth.handler(
-			new Request(new URL('/api/auth/reset-password', url.origin), {
-				method: 'POST',
-				headers,
-				body: JSON.stringify({ newPassword: password, token })
-			})
-		);
+		const res = await auth.handler(authRequest);
 
 		// Success: the password is changed and the user's other sessions are revoked. They are NOT
 		// signed in here (this is an anonymous, token-based flow), so send them to sign in anew.

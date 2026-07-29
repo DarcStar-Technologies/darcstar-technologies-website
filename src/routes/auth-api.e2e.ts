@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { expect, test, type APIRequestContext } from '@playwright/test';
-import { rateLimit } from '../lib/server/auth-options';
+import { CLIENT_IP_HEADER, rateLimit } from '../lib/server/auth-options';
 
 // Better Auth's own endpoints, asserted against the deployed worker (DAR-81).
 //
@@ -38,6 +38,15 @@ import { rateLimit } from '../lib/server/auth-options';
 const SIGN_UP_RULE = rateLimit.customRules['/sign-up/email'];
 
 /**
+ * The rule behind `/forgot-password`, used by the form-action test at the bottom of this file.
+ *
+ * That test needs an endpoint a FORM ACTION reaches whose cap is small and stated in our own config
+ * — `/request-password-reset` is both (3/hour). `/sign-in/email` would have meant asserting
+ * better-auth's built-in `/sign-in*` numbers, which is the mistake the sign-up rule above documents.
+ */
+const RESET_REQUEST_RULE = rateLimit.customRules['/request-password-reset'];
+
+/**
  * The window of better-auth's OWN built-in rule for `/sign-up*` (api/rate-limiter, 10s/3), which is
  * what applies if ours is ever removed.
  *
@@ -52,12 +61,11 @@ const BUILT_IN_SIGN_UP_WINDOW_SECONDS = 10;
  * A client IP no other test, and no retry of this one, will use.
  *
  * DAR-92. The limiter keys each bucket `<ip>|<path>` and resolves the ip from a client-address
- * header (`x-forwarded-for` today — see `signUpProbe` for why the probe sends two), the same one
- * the app's own form actions set from `getClientAddress()` (login/+page.server.ts). Nothing
- * rewrites it between Playwright and a local wrangler, so the header we choose IS the bucket. That
- * is what makes a 429 assertable without shipping a rule that exists for the tests: this file's
- * probes spend private buckets, so exhausting one costs no other test its allowance and ordering
- * between them is not load-bearing.
+ * header — `cf-connecting-ip` since DAR-124 — the same one the app's own form actions set from
+ * `getClientAddress()` (auth-subrequest.ts). Nothing rewrites it between Playwright and a local
+ * wrangler, so the header we choose IS the bucket. That is what makes a 429 assertable without
+ * shipping a rule that exists for the tests: this file's probes spend private buckets, so exhausting
+ * one costs no other test its allowance and ordering between them is not load-bearing.
  *
  * The randomness goes in the third and fourth groups DELIBERATELY: better-auth normalizes an IPv6
  * address to its /64 before keying (`normalizeIP`, default `ipv6Subnet: 64`), so two addresses
@@ -73,16 +81,23 @@ function freshProbeIp(): string {
 /**
  * One POST at the public sign-up endpoint, attributed to `ip`.
  *
- * Both headers carry the same address because the limiter reads whichever
- * `advanced.ipAddress.ipAddressHeaders` names — `x-forwarded-for` is better-auth's default and what
- * this repo runs today, and DAR-124 proposes moving to `cf-connecting-ip`. Measured: a local
- * wrangler passes a caller-supplied value through for BOTH (and sets `cf-connecting-ip: 127.0.0.1`
- * itself when the caller sends none), so supplying both means this test keeps isolating buckets
- * across that change instead of silently sharing one.
+ * The probe address goes on `CLIENT_IP_HEADER` — imported, not spelled — because that is the header
+ * the limiter is configured to read (DAR-124), so changing the config changes this test rather than
+ * silently stranding it on a header nothing consults. `spoof` puts a SECOND, caller-controlled
+ * address on `x-forwarded-for`, which is what the regression test below needs.
+ *
+ * THIS ONLY WORKS AGAINST A LOCAL PREVIEW, and the reason is worth knowing before anyone reaches for
+ * it in a smoke script: measured, wrangler passes a caller-supplied `cf-connecting-ip` straight
+ * through (and sets `127.0.0.1` itself when none is sent), whereas Cloudflare's edge REFUSES a
+ * request carrying that header outright — 403, error code 1000, before the Worker runs. So a probe
+ * shaped like this one gets a decisive answer locally and an error page from a deployed worker.
  */
-function signUpProbe(request: APIRequestContext, ip: string) {
+function signUpProbe(request: APIRequestContext, ip: string, spoof?: string) {
 	return request.post('/api/auth/sign-up/email', {
-		headers: { 'x-forwarded-for': ip, 'cf-connecting-ip': ip },
+		headers: {
+			[CLIENT_IP_HEADER]: ip,
+			...(spoof === undefined ? {} : { 'x-forwarded-for': spoof })
+		},
 		data: { name: 'Probe', email: 'probe@example.com', password: 'a-long-enough-password' },
 		failOnStatusCode: false
 	});
@@ -193,4 +208,118 @@ test('the rate limiter refuses past the cap, before the endpoint', async ({ requ
 	// rest of the test would go on passing on a fresh preview and quietly break the two tests above.
 	const unrelated = await signUpProbe(request, freshProbeIp());
 	expect(unrelated.status(), 'a different IP must not inherit the exhausted bucket').toBe(400);
+});
+
+// DAR-124. The mirror of the test above, and the one that says the cap BINDS: there, distinct
+// addresses had to get distinct buckets; here, a caller must not be able to manufacture one.
+//
+// Better Auth resolves the client address from `advanced.ipAddress.ipAddressHeaders`, and its
+// default is `x-forwarded-for` — a header Cloudflare's proxy re-adds only AFTER all rule phases,
+// while a Worker runs before that. So on the direct /api/auth/* surface the value was simply
+// whatever the caller sent. Measured against the deployed production Worker before the fix: four
+// POST /sign-up/email with a rotating x-forwarded-for all answered 400, and four on one fixed value
+// tripped the cap at the fourth with `x-retry-after: 3600` — the limiter was live, our rule was the
+// one enforcing, and the bucket was the caller's to choose. Rotating one header defeated the
+// sign-in, /request-password-reset and /send-verification-email caps the same way.
+test('a spoofed x-forwarded-for cannot mint a fresh rate-limit bucket', async ({ request }) => {
+	// ONE client address for the whole test — the thing a real caller cannot vary, standing in for
+	// what the Cloudflare edge attributes — while `x-forwarded-for` changes on every single request.
+	const probe = freshProbeIp();
+
+	for (let attempt = 1; attempt <= SIGN_UP_RULE.max; attempt++) {
+		const allowed = await signUpProbe(request, probe, freshProbeIp());
+		expect(allowed.status(), `request ${attempt} of ${SIGN_UP_RULE.max} is inside the cap`).toBe(
+			400
+		);
+	}
+
+	// The assertion. Before DAR-124 this was a 400: each rotation had bought a counter of its own, so
+	// the cap never bound and no number of requests reached it.
+	const refused = await signUpProbe(request, probe, freshProbeIp());
+	expect(
+		refused.status(),
+		'400 = the limiter is keying on a header the caller controls, so the cap does not bind'
+	).toBe(429);
+});
+
+// DAR-124, and the gap the rest of this file cannot reach. Every test above drives the DIRECT
+// /api/auth/* surface, where the client-address header arrives INBOUND. The form actions are the
+// other half of the fix and they work the opposite way round: they CONSTRUCT a header on a
+// sub-request that `auth.handler()` reads in-process (`auth-subrequest.ts`).
+//
+// `auth-subrequest.spec.ts` proves that construction under vitest — which is Node, with undici's
+// Headers. The deployed runtime is workerd, and `cf-*` is exactly the header family a runtime might
+// treat specially: Cloudflare's own edge refuses an INBOUND request that carries `cf-connecting-ip`
+// (403, error 1000 — measured). If workerd were to drop or ignore the header on a request built
+// inside the isolate, every form submission would fall into better-auth's shared `no-trusted-ip`
+// bucket, turning a per-IP cap into a global one — with nothing failing anywhere. That is the
+// regression DAR-124 names as the real risk of its own fix, and until this test nothing could see it.
+//
+// It works because a local wrangler passes a caller-supplied `cf-connecting-ip` through, so
+// Playwright controls what `getClientAddress()` returns (adapter-cloudflare reads that same header)
+// — the request goes in as a normal form POST and comes back out having crossed the whole path:
+// getClientAddress → authSubrequest → workerd Headers → auth.handler → getIp → the bucket key.
+function forgotPasswordPost(request: APIRequestContext, origin: string, ip: string) {
+	return request.post('/forgot-password', {
+		headers: {
+			[CLIENT_IP_HEADER]: ip,
+			// `origin` satisfies SvelteKit's CSRF check, which rejects a cross-origin form-encoded POST.
+			origin,
+			// `accept: text/html` is LOAD-BEARING, and the first cut of this test failed for want of it.
+			// Without the header SvelteKit answers a form-action POST with its `ActionResult` JSON
+			// envelope — `HTTP 200` carrying `{"type":"failure","status":429,…}` in the BODY — so
+			// `response.status()` reads 200 for a refusal, a success and a validation failure alike,
+			// and any assertion on it is satisfied by every outcome. With the header this takes the
+			// genuine no-JS browser path, where the fail status IS the HTTP status (measured here:
+			// 200/200/200/429). The hand-run smokes already do this for the same reason — see
+			// `formPost` in scripts/smoke-http.mjs and the step POSTs in scripts/smoke-waitlist.ts —
+			// so this is the repo's existing convention for driving a form action, not a new trick.
+			accept: 'text/html'
+		},
+		// An address that must never resolve to a real account, and the reason is a side effect rather
+		// than an assertion: `/request-password-reset` MAILS a reset link when the address exists (it
+		// is anti-enumerating, so the response is identical either way and this test cannot tell). CI
+		// is hermetic and its placeholder DATABASE_URL makes the lookup fail before that — but a local
+		// `pnpm test:e2e` runs against the real dev DB with a real Resend key, so a probe address that
+		// someone had seeded would mail a live password-reset link on every run. `example.com` is
+		// IANA-reserved and this local-part is nobody's; the limiter runs BEFORE the endpoint, so what
+		// this test measures is unaffected by the address either way.
+		form: { email: 'rate-limit-probe@example.com' },
+		failOnStatusCode: false
+	});
+}
+
+test('a form action forwards the client address, so its cap is per-IP in workerd too', async ({
+	request,
+	baseURL
+}) => {
+	const origin = baseURL ?? '';
+	expect(origin, 'the preview origin is needed for the CSRF header').not.toBe('');
+
+	const probe = freshProbeIp();
+
+	// Inside the cap. Asserted as "not 429" rather than a specific status: this suite is DB-free, so
+	// better-auth's own lookup fails behind the limiter and /forgot-password answers with its generic
+	// anti-enumerating confirmation. WHICH non-429 it is belongs to the reset flow's own tests; what
+	// this one claims is only where the limiter draws its line.
+	for (let attempt = 1; attempt <= RESET_REQUEST_RULE.max; attempt++) {
+		const allowed = await forgotPasswordPost(request, origin, probe);
+		expect(
+			allowed.status(),
+			`request ${attempt} of ${RESET_REQUEST_RULE.max} is inside the cap`
+		).not.toBe(429);
+	}
+
+	// The cap binds — so the address really did reach the limiter through the sub-request.
+	const refused = await forgotPasswordPost(request, origin, probe);
+	expect(
+		refused.status(),
+		'the form action did not forward a client address the limiter could read'
+	).toBe(429);
+
+	// …and it is that address, not one bucket for everybody. Without this line the test would pass
+	// against an action that forwarded nothing at all: the shared `no-trusted-ip` bucket also fills
+	// up and also answers 429, which looks identical from here.
+	const unrelated = await forgotPasswordPost(request, origin, freshProbeIp());
+	expect(unrelated.status(), 'a second address inherited the exhausted bucket').not.toBe(429);
 });

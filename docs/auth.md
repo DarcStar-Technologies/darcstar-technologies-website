@@ -43,6 +43,13 @@ operator is still made by the provisioning script. This doc maps what's wired an
     var — memory storage is per-isolate, which on Cloudflare is no rate limiting at all, and that must
     take a deliberate act rather than a mistake. Not schema-affecting (the `rate_limit` table stays), so
     the CLI config is untouched.
+  - **`CLIENT_IP_HEADER` + `advanced`** (DAR-124) — `advanced.ipAddress.ipAddressHeaders:
+['cf-connecting-ip']`, the header Better Auth resolves a client address from for **both** the
+    rate-limit bucket key and `login_audit.ip_address`. Better-auth's default `x-forwarded-for` is
+    caller-controlled at a Worker (measured — see "The bucket key is the edge's" below). Exported as
+    one constant because `auth-subrequest.ts` must set the same header the limiter reads, and a
+    mismatch produces no error at all — just every form submission sharing one bucket. Behavioral, so
+    it stays OUT of the CLI config.
   - `emailVerification` (env-bound → in `auth.ts`, not `auth-options.ts`) — `sendOnSignUp`,
     `autoSignInAfterVerification`, `expiresIn: 3600`, a `sendVerificationEmail` that Resends the link
     (`verification-email.ts`), and an `afterEmailVerification` that runs the ownership backfill
@@ -522,13 +529,14 @@ assertion about it was **config-level** — `auth.spec.ts` reads the options obj
 itself. `auth-api.e2e.ts` now watches the deployed worker actually refuse: `max` requests inside the
 cap answered by the endpoint, the next one answered by the limiter.
 
-**Bucket isolation is the whole reason this was blocked, and `x-forwarded-for` is the answer.** The
-limiter keys each bucket `<ip>|<path>` (`createRateLimitKey`) and resolves the ip from
-`x-forwarded-for` — the same header the `/login`, `/forgot-password` and `/reset-password` actions
-already set from `getClientAddress()`. Nothing rewrites it between Playwright and a local wrangler,
-so **a header the test chooses IS the bucket**. (The probe sends the address as `cf-connecting-ip`
-too, so it keeps isolating buckets if DAR-124 below moves the limiter onto that header.) Each probe
-therefore spends a private allowance:
+**Bucket isolation is the whole reason this was blocked, and the client-address header is the
+answer.** The limiter keys each bucket `<ip>|<path>` (`createRateLimitKey`) and resolves the ip from
+the header `advanced.ipAddress.ipAddressHeaders` names — `x-forwarded-for` when DAR-92 was written,
+`cf-connecting-ip` since DAR-124 below — the same header the `/login`, `/forgot-password` and
+`/reset-password` actions set from `getClientAddress()`. Nothing rewrites it between Playwright and a
+local wrangler, so **a header the test chooses IS the bucket**. The probe imports `CLIENT_IP_HEADER`
+rather than spelling it, so changing the config changes the test instead of stranding it on a header
+nothing consults. Each probe therefore spends a private allowance:
 
 - no rule ships that exists only for the tests, and no production limit changes (the ticket's
   options 1 and 2, both rejected);
@@ -558,63 +566,167 @@ Three measured facts worth keeping:
   default rather than a rule this repo ships.
 - **The origin check runs after the limiter.** A request with no `Origin` is refused
   `403 MISSING_OR_NULL_ORIGIN`, and it has already spent its allowance by then.
-- **A multi-token `x-forwarded-for` resolves to no ip at all.** With no `trustedProxies` configured,
-  `getIPFromHeader` trusts a single-value header only, so a chain falls back to better-auth's shared
-  `no-trusted-ip` bucket — one counter for every such caller. Preview logs say so out loud
-  (`Rate limiting could not determine a client IP…`), which is what any `/api/auth/*` request without
-  the header triggers. That is why the probe sends exactly one address.
+- **A multi-token client-address header resolves to no ip at all.** With no `trustedProxies`
+  configured, `getIPFromHeader` trusts a single-value header only, so a chain falls back to
+  better-auth's shared `no-trusted-ip` bucket — one counter for every such caller. Preview logs say
+  so out loud (`Rate limiting could not determine a client IP…`), which is what any `/api/auth/*`
+  request without the header triggers. That is why the probe sends exactly one address.
 
 What this still cannot cover: the **database** storage. A preview runs the limiter in memory
 (`AUTH_RATE_LIMIT_STORAGE=memory`, DAR-81), so the counters these tests exhaust are per-isolate ones.
 That the shipped `storage: 'database'` persists correctly stays a config-level claim.
 
-### Known weakness this surfaced: the bucket key is client-controlled on the direct API
+## The bucket key is the edge's, not the caller's (DAR-124)
 
-Writing the test above meant reading how the bucket is keyed, and the answer has a consequence for
-production that DAR-92 did not set out to find and deliberately does **not** change — the fix alters
-how every auth request is attributed and cannot be measured from a local preview, so it belongs in
-its own ticket with its own review.
+DAR-92's test proved the limiter refuses past its cap. Reading how it keys a bucket to write that
+test surfaced the fact that the cap did not bind at all on the direct API, which is this ticket.
 
-The limiter resolves the client ip from `x-forwarded-for` (better-auth's default
-`advanced.ipAddress.ipAddressHeaders`). On a request that arrives at the Worker, **that header is
-whatever the caller sent**: Cloudflare's proxy re-adds `X-Forwarded-For` with the visitor's address
-_after_ all rule phases, and Workers run before that
-([Request Header Modification](https://developers.cloudflare.com/rules/transform/request-header-modification/)),
-so a Worker sees the client's own value or none at all. So on the **direct** `/api/auth/*` surface —
-the one `hooks.server.ts` mounts and `POST /api/auth/sign-in/email` reaches — a caller picks its own
-rate-limit bucket. Rotate the header and every request is a fresh counter; send none and every such
-caller shares the single `no-trusted-ip` one.
+Better Auth resolves the client address from `advanced.ipAddress.ipAddressHeaders`, and its default
+is **`x-forwarded-for`**. On a request that reaches a Worker that header is **whatever the caller
+sent**: Cloudflare's proxy re-adds `X-Forwarded-For` with the visitor's address only _after_ all rule
+phases, and Workers run before that
+([Request Header Modification](https://developers.cloudflare.com/rules/transform/request-header-modification/)).
+So on the direct `/api/auth/*` surface a caller picked its own rate-limit bucket, and
+`login_audit.ip_address` recorded whatever address it claimed.
 
-**One link there is documented, not measured, and it is the load-bearing one.** Cloudflare's page
-establishes that the edge has _not_ added its own value by the time a Worker runs; the step from
-there to "a caller's value survives ingress unmodified" is inference. It is settleable without an
-echo endpoint, because the limiter itself is the instrument: four requests at a deployed preview's
-`/sign-up/email` with a rotating header either all answer 400 (the header reaches the limiter — the
-bucket is caller-chosen) or the fourth answers 429 (it does not). DAR-124 does that _before_ changing
-anything, since the fix is worthless if the premise is wrong.
+### Measured first, because the fix was worthless if the premise was wrong
 
-Two things bound it, and neither makes it fine:
+Cloudflare's page establishes only that the edge has not added its own value by the time a Worker
+runs; the step from there to "a caller's value survives ingress unmodified" is inference, and DAR-92
+shipped two false claims about exactly this area that only measurement caught. **The limiter is its
+own instrument**, so no echo endpoint was needed for the first half — against the deployed production
+Worker:
 
-- **The app's own form actions are unaffected.** `/login`, `/forgot-password` and `/reset-password`
-  build a **fresh sub-request** and set `x-forwarded-for` themselves from `getClientAddress()` — which
-  on this adapter reads **`cf-connecting-ip`** (`adapter-cloudflare/files/worker.js`), the header
-  Cloudflare sets and a caller cannot forge. A browser going through the UI is keyed correctly.
-- The endpoints most worth hammering are the ones that need the DB, so the cap is not the only thing
-  standing there — but it is the thing that is _supposed_ to stand there.
+| probe                                                 | result                                              |
+| ----------------------------------------------------- | --------------------------------------------------- |
+| 4 × `POST /sign-up/email`, rotating `x-forwarded-for` | **all 400** — every rotation bought a fresh counter |
+| 4 × the same, one fixed value (control)               | **4th = 429**, `x-retry-after: 3600`                |
 
-The fix is `advanced.ipAddress.ipAddressHeaders: ['cf-connecting-ip']` — but it is **not** one line,
-and measuring is what showed why. A local wrangler sets `cf-connecting-ip` itself (`127.0.0.1`) and
-passes a caller-supplied one through, so the header resolves everywhere and no `x-forwarded-for`
-fallback is needed. What does need changing with it are the **three form actions**: they build a
-fresh sub-request carrying only `x-forwarded-for`, so a `cf-connecting-ip`-only limiter would read
-nothing from them and drop the one path that is correctly keyed today into the shared bucket. The e2e
-probe already sends both headers for exactly this reason, so it survives the change.
+The control is what makes it unambiguous: without it, "all four 400" reads the same whether the
+caller chooses the bucket or the limiter is simply not running. The `3600` also identifies **our**
+rule as the one enforcing, not better-auth's built-in 10-second one. And had Cloudflare stripped or
+replaced the header, the first block's fourth request would have been the 429 instead.
 
-**And nothing would catch that if it were missed.** No test asserts that a form action forwards the
-client address at all — `auth-audit.spec.ts` sets `x-forwarded-for` on a synthetic hook context,
-which asserts how the _audit_ resolves an ip, not that `/login` puts one on its sub-request. So the
-regression would be silent in both suites and visible only as buckets quietly merging in production.
-Filed as **DAR-124**.
+The second half — is `cf-connecting-ip` actually unforgeable? — the limiter **cannot** answer, since
+it does not read that header yet. A throwaway echo Worker deployed to the same account, hit, and
+deleted answered it, and the result is stronger than "Cloudflare overwrites it":
+
+| caller sends       | what the Worker sees                                             |
+| ------------------ | ---------------------------------------------------------------- |
+| `cf-connecting-ip` | **nothing — the request is refused at the edge, 403 error 1000** |
+| `x-forwarded-for`  | the caller's value, **verbatim**                                 |
+| `true-client-ip`   | the caller's value, **verbatim**                                 |
+| `x-real-ip`        | **overwritten** with the real client address                     |
+
+With no client-address headers sent at all, the Worker sees `cf-connecting-ip` = the real address and
+`x-forwarded-for` = **absent**, exactly as the Cloudflare page describes.
+
+The echo Worker served on **`workers.dev`**, which is not where the site serves, and the whole fix
+rests on that first row — so it was re-confirmed against the **production custom domain**:
+`GET https://darcstar.tech/` answers **403 error 1000** when the caller sends `cf-connecting-ip` and
+**200** without it. The rejection is Cloudflare-wide, not a workers.dev quirk.
+
+Two things fall out of that table. `true-client-ip` would have been **no fix at all** — it is an
+Enterprise-only feature this plan does not have, so Cloudflare never sets it and a caller's value
+sails through. And a request carrying `cf-connecting-ip` never reaching the Worker means **an e2e
+probe shaped like ours only works against a local preview**: wrangler passes the header through,
+Cloudflare's edge returns an error page. Worth knowing before anyone reaches for `signUpProbe` in a
+smoke script.
+
+### The fix, and the part that is not one line
+
+`advanced.ipAddress.ipAddressHeaders: ['cf-connecting-ip']` (`auth-options.ts`), which fixes the
+limiter and `login_audit.ip_address` together — both go through the same `getIp`.
+
+**No fallback entry.** `getIp` walks the list **in order** and takes the first that resolves, so
+appending `x-forwarded-for` behind it would re-open the forgeable path in precisely the case that
+matters: an environment where the trustworthy header went missing. One header means an unresolvable
+address yields _no_ bucket key rather than a caller-chosen one. Measured: a local wrangler sets
+`cf-connecting-ip: 127.0.0.1` itself when the caller sends none, so nothing needs the fallback.
+
+**The form actions had to change with it, and that is where the real risk was.** `/login` (×2),
+`/forgot-password` and `/reset-password` each built a sub-request carrying only `x-forwarded-for`, so
+a `cf-connecting-ip`-only limiter would have read nothing from them and dropped **the one path that
+was keyed correctly before this ticket** into the shared `no-trusted-ip` bucket — turning a per-IP cap
+into a global one. A mismatch between "the header the config reads" and "the header the actions set"
+produces no error of any kind; it just silently merges everybody's counters.
+
+So the header is named **once** (`CLIENT_IP_HEADER`, beside the `ipAddressHeaders` that reads it) and
+the sub-request is built **once** (`auth-subrequest.ts`), which also carries `getClientAddress()`'s
+result back out — `/login`'s 429 branch writes its own audit row and needs the same address the
+limiter just keyed on. An empty-string address now normalises to `null`: it used to reach
+`login_audit.ip_address` as `''`, a row that reads like an address was captured when none was.
+
+### What holds it, given nothing did before
+
+The ticket's own note was that **no test asserted a form action forwards the client address at all**.
+`auth-subrequest.spec.ts` is three layers, and the mutations that killed each are listed because a
+guard nobody has attacked is a guess:
+
+1. **The builder sets the header the config names** — read through the constant, never restated, so
+   the two cannot drift while the test agrees with a stale copy. _(Builder set to `x-forwarded-for`
+   → 2 red.)_
+2. **Better Auth's own `getIp`, given the shipped options, ignores `x-forwarded-for`** — the
+   behavioural claim, made against the real resolver rather than a re-implementation. Phrased as
+   "never the caller's value" rather than "null", because `getIp` falls back to `127.0.0.1` under
+   `isTest()`; asserting null would have been asserting the test environment. A separate assertion
+   pins the list to exactly one entry, since the first can only see headers it thinks to send.
+   _(Config reverted → 6 red across two specs; a fallback entry appended → 2 red.)_
+3. **Two source rules, and they are an INVERSION.** Three cuts tried to IDENTIFY the callers of
+   Better Auth's router by text and each was walked past by a spelling nobody had thought of:
+   `auth.handler(` missed `auth.handler.bind(auth)`; widening to `auth.handler` missed
+   `getAuth().handler(...)`, which is the most natural spelling of all since it needs no variable
+   named `auth`. Both mutations passed **12/12 green** while hand-rolling `x-forwarded-for`.
+   Deriving from `getAuth` importers is worse, not better — eleven files import it and most reach
+   `auth.api.*`, which builds no sub-request and must not be forced through the builder. So the
+   question "who calls the router?" is abandoned, because the fix does not actually need it:
+   **only one file may NAME a client-address header** (an allowlist whose single entry is
+   `auth-options.ts`, which defines the constant), and **no file may hand-build a request at an
+   `/api/auth` path**. Neither cares what the auth instance is called, so no spelling escapes them.
+   The allowlist is asserted with `toEqual`, so it fails in both directions — a new file naming a
+   header, and an allowlisted file that STOPS naming one, which is how an allowlist decays into
+   decoration (DAR-102's polarity). `auth-subrequest.ts` needs no exception: it takes the path as a
+   parameter, so the `/api/auth` literal lives at the call sites and the `new Request(` lives in the
+   builder, never both in one file. _(Mutations, all four caught on their intended rule:
+   `getAuth().handler` + a header → 2 red; `auth.handler.bind` + a header → 2 red; a caller that
+   forwards NOTHING, so there is no header literal to find → 1 red on the hand-built-request rule
+   alone, which is what makes the pair non-redundant; the allowlisted file no longer naming a header
+   → 1 red.)_ A third, positive assertion pins that the three actions which exist today import the
+   builder — the two rules above are negative, and a negative rule over an empty set passes just as
+   happily when the files it governs have been renamed away.
+
+The e2e adds the end-to-end mirror of DAR-92's isolation test: one fixed client address, a **rotating
+`x-forwarded-for` on every request**, and the cap must still bind at `max + 1`. Reverting the config
+turns it red on exactly that line. Before this ticket it was a 400, because each rotation bought a
+counter of its own and no number of requests ever reached the cap.
+
+A **fourth** guard covers the half none of the others can reach. Every test above drives the direct
+API, where the header arrives INBOUND; the form actions **construct** it on an in-process
+sub-request, and layer 1 proves that under vitest — Node, with undici's `Headers`. The runtime is
+workerd, and `cf-*` is exactly the family a runtime might treat specially, since Cloudflare's own
+edge refuses an inbound request carrying `cf-connecting-ip`. So a form-action test drives
+`/forgot-password` (its `/request-password-reset` cap is 3/hour, stated in our own config) through
+the whole path — `getClientAddress` → `authSubrequest` → workerd `Headers` → `auth.handler` →
+`getIp` → the bucket key — and requires that a **second address does not inherit** the exhausted
+bucket. _(`authSubrequest` forwarding nothing → red on that line.)_ Two notes on it:
+
+- **`accept: text/html` is load-bearing.** Without it SvelteKit answers a form-action POST with its
+  `ActionResult` envelope — HTTP **200** carrying `{"type":"failure","status":429,…}` in the body —
+  so `response.status()` reads 200 for a refusal, a success and a validation failure alike, and any
+  assertion on it is satisfied by every outcome. With the header the request takes the genuine no-JS
+  browser path, where the fail status IS the HTTP status. This is the repo's existing convention —
+  `formPost` in `scripts/smoke-http.mjs` and the step POSTs in `scripts/smoke-waitlist.ts` both do
+  it and say why.
+- **The probe address must not resolve to a real account.** `/request-password-reset` MAILS a reset
+  link when it does, and it is anti-enumerating, so the test cannot tell. CI is hermetic (the
+  placeholder `DATABASE_URL` kills the lookup first), but a local `pnpm test:e2e` runs against the
+  real dev DB with a real Resend key.
+
+**Not covered:** the production edge behaviour of the deployed fix. The e2e runs against a local
+wrangler, which has no Cloudflare ingress — so "the deployed Worker now keys on an address the caller
+cannot choose" rests on the measured edge facts above plus the local behavioural test, and is
+confirmed by re-running the Step 0 probe against prod after the deploy (the rotating-header block
+must then trip the cap at its fourth request).
 
 ## Still deferred
 

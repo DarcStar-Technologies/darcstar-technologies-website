@@ -5,6 +5,7 @@ import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { getRequestEvent } from '$app/server';
 import { getDb } from '$lib/server/db';
 import {
+	advanced,
 	emailAndPassword,
 	rateLimit,
 	session,
@@ -126,6 +127,12 @@ function createAuth() {
 			storage: readEnv('AUTH_RATE_LIMIT_STORAGE') === 'memory' ? 'memory' : 'database'
 		},
 		session, // cookie-cache the session so signed-in page views skip the DB — see auth-options.ts
+		// DAR-124: resolve the client address from `cf-connecting-ip` rather than better-auth's default
+		// `x-forwarded-for`, which a caller controls outright on the direct /api/auth/* surface (four
+		// rotating values bought four fresh rate-limit buckets on prod — measured). Env-free, so it
+		// lives in auth-options.ts beside the header constant the form actions set on their
+		// sub-requests; the two MUST be the same string, which is why there is only one.
+		advanced,
 		// #96 (PR 2): verify the email before an account is usable (requireEmailVerification lives in
 		// auth-options.ts). `autoSignInAfterVerification` drops the visitor into /account the moment they
 		// click the link; `afterEmailVerification` is the SAFE point to claim their historical contact

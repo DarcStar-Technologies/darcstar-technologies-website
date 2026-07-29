@@ -8,6 +8,7 @@ import {
 	normalizeEmail,
 	type LoginAuditRecord
 } from './auth-audit';
+import { advanced, CLIENT_IP_HEADER } from './auth-options';
 
 // The login audit records every sign-in ATTEMPT. Two layers of coverage:
 //   1. `mapSignInOutcome` — pure: the success/failure + reason mapping, in isolation.
@@ -61,6 +62,13 @@ function buildAuth() {
 		// Sign-up enabled here only so the tests can seed a user to sign in AS; the real app keeps it
 		// disabled (auth-options.ts / auth.spec.ts). The hook ignores the /sign-up/email path anyway.
 		emailAndPassword: { enabled: true, disableSignUp: false },
+		// DAR-124: the SHIPPED ip config, not better-auth's default. The audit resolves its address
+		// through the same `getIp` as the rate limiter, so this spec was previously proving that the
+		// hook reads a header the app no longer configures — true, and about nothing. The recorded
+		// `ipAddress` is what an operator reads off /admin/audit to decide a source is hostile, and
+		// under the old default a direct POST to /api/auth/sign-in/email could write any address it
+		// liked into it.
+		advanced,
 		hooks: { after: createLoginAuditHook((r) => records.push(r)) }
 	});
 	return { auth, records };
@@ -79,7 +87,7 @@ describe('createLoginAuditHook (wired as hooks.after)', () => {
 		await expect(
 			auth.api.signInEmail({
 				body: { email: 'op@example.com', password: 'wrong-password' },
-				headers: new Headers({ 'x-forwarded-for': '203.0.113.7', 'user-agent': 'probe/1.0' })
+				headers: new Headers({ [CLIENT_IP_HEADER]: '203.0.113.7', 'user-agent': 'probe/1.0' })
 			})
 		).rejects.toThrow();
 		warn.mockRestore();
@@ -106,7 +114,7 @@ describe('createLoginAuditHook (wired as hooks.after)', () => {
 		const info = vi.spyOn(console, 'info').mockImplementation(() => {});
 		await auth.api.signInEmail({
 			body: { email: 'op2@example.com', password: 'a-long-enough-password' },
-			headers: new Headers({ 'x-forwarded-for': '198.51.100.9' })
+			headers: new Headers({ [CLIENT_IP_HEADER]: '198.51.100.9' })
 		});
 		info.mockRestore();
 
@@ -118,5 +126,30 @@ describe('createLoginAuditHook (wired as hooks.after)', () => {
 			ipAddress: '198.51.100.9',
 			userId: signUp.user.id
 		});
+	});
+
+	test('a caller-supplied x-forwarded-for never becomes the recorded address (DAR-124)', async () => {
+		const { auth, records } = buildAuth();
+		await auth.api.signUpEmail({
+			body: { name: 'Op', email: 'op3@example.com', password: 'a-long-enough-password' }
+		});
+		records.length = 0;
+
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		await expect(
+			auth.api.signInEmail({
+				body: { email: 'op3@example.com', password: 'wrong-password' },
+				headers: new Headers({ 'x-forwarded-for': '198.51.100.66' })
+			})
+		).rejects.toThrow();
+		warn.mockRestore();
+
+		// The audit trail is evidence an operator acts on — /admin/audit is where a hostile source gets
+		// identified — so an address a caller picked is worse than no address: it is a forged record
+		// that frames whoever owns that block. Under better-auth's default header a direct POST to
+		// /api/auth/sign-in/email wrote exactly that, alongside spending that address's rate-limit
+		// bucket instead of its own.
+		expect(records).toHaveLength(1);
+		expect(records[0]?.ipAddress).not.toBe('198.51.100.66');
 	});
 });

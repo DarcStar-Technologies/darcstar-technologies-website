@@ -1,5 +1,6 @@
 import { fail, redirect, type Actions, type Cookies } from '@sveltejs/kit';
 import { getAuth } from '$lib/server/auth';
+import { authSubrequest } from '$lib/server/auth-subrequest';
 import { logLoginAttempt } from '$lib/server/auth-audit';
 import { persistLoginAudit } from '$lib/server/login-audit-store';
 import { ACCOUNT_WELCOME_CALLBACK } from '$lib/account-welcome';
@@ -65,31 +66,18 @@ export const actions: Actions = {
 		// used to enumerate accounts.
 		if (!email || !password) return fail(400, { email, error: 'invalid' as const });
 
-		// A clean sub-request: no cookie/origin headers (Better Auth's origin check only validates
-		// when a cookie is present, so this passes in every environment; calling handler() directly
-		// rather than via svelteKitHandler also sidesteps the isAuthPath origin gate). But DO forward
-		// the client IP — Better Auth's rate limiter keys by it (default header: x-forwarded-for), and
-		// without it every sign-in would share one NO_TRUSTED_IP bucket (a global lockout vector).
-		// getClientAddress() resolves Cloudflare's cf-connecting-ip, which the client can't spoof.
-		const headers = new Headers({ 'content-type': 'application/json' });
-		// On Cloudflare, getClientAddress() returns cf-connecting-ip (always present in prod); it can
-		// return null (or throw on other adapters) when unresolvable — then we omit the header and
-		// Better Auth falls back to a localhost rate-limit key in dev.
-		let clientIp: string | null = null;
-		try {
-			clientIp = getClientAddress();
-		} catch {
-			// adapter couldn't resolve an address
-		}
-		if (clientIp) headers.set('x-forwarded-for', clientIp);
+		// A clean sub-request: no cookie/origin headers, and the client address forwarded on the one
+		// header Better Auth's limiter reads — without it every sign-in would share one NO_TRUSTED_IP
+		// bucket (a global lockout vector). Built by `authSubrequest` rather than by hand (DAR-124):
+		// the header it sets and the header the limiter reads are one constant, so they cannot drift.
+		const { request: authRequest, clientIp } = authSubrequest({
+			path: '/api/auth/sign-in/email',
+			origin: url.origin,
+			body: { email, password },
+			getClientAddress
+		});
 
-		const res = await auth.handler(
-			new Request(new URL('/api/auth/sign-in/email', url.origin), {
-				method: 'POST',
-				headers,
-				body: JSON.stringify({ email, password })
-			})
-		);
+		const res = await auth.handler(authRequest);
 
 		if (res.status === 429) {
 			// Rate-limit hits are the one sign-in outcome the Better Auth after-hook can't see: the
@@ -152,23 +140,16 @@ export const actions: Actions = {
 		if (!email) return { resent: 'sent' as const };
 
 		// Forward the client IP so the rate limiter keys per-IP (same rationale as the sign-in path).
-		const headers = new Headers({ 'content-type': 'application/json' });
-		try {
-			const ip = getClientAddress();
-			if (ip) headers.set('x-forwarded-for', ip);
-		} catch {
-			// adapter couldn't resolve an address
-		}
+		const { request: authRequest } = authSubrequest({
+			path: '/api/auth/send-verification-email',
+			origin: url.origin,
+			// callbackURL lands the freshly-verified (auto-signed-in) user on their portal, with the
+			// one-time "email verified" welcome banner (#106, account-welcome.ts).
+			body: { email, callbackURL: ACCOUNT_WELCOME_CALLBACK },
+			getClientAddress
+		});
 
-		const res = await auth.handler(
-			new Request(new URL('/api/auth/send-verification-email', url.origin), {
-				method: 'POST',
-				headers,
-				// callbackURL lands the freshly-verified (auto-signed-in) user on their portal, with
-				// the one-time "email verified" welcome banner (#106, account-welcome.ts).
-				body: JSON.stringify({ email, callbackURL: ACCOUNT_WELCOME_CALLBACK })
-			})
-		);
+		const res = await auth.handler(authRequest);
 
 		if (res.status === 429) return fail(429, { resent: 'ratelimited' as const });
 		// Every other outcome → the same neutral confirmation (status never leaks existence).
