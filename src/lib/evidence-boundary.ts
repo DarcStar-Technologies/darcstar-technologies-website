@@ -12,6 +12,12 @@
 // it hides. This one is written in terms of the value we PUBLISH — every publishable theorem
 // count is at most the checked total, and the catalog size is by construction above it. So the
 // boundary names no secret, and re-measuring the corpus moves it automatically.
+//
+// WHAT IT DOES NOT CLAIM. This catches ACCIDENTAL publication — a figure copy-pasted from the
+// hub's status brief, a well-meant edit that adds "of N" — which is the failure that actually
+// happens here, and the only one a lint can address. A number spelled out in words, or a
+// paraphrase of the remainder, passes; nobody determined to publish the total is stopped by a
+// test in the repo they are editing. Read it as the boundary's smoke detector, not its lock.
 
 /** Wording that marks a number as a claim about the proof corpus rather than a benchmark
  * figure, a version, or a page count. Deliberately broad: it only ever NARROWS a hit that
