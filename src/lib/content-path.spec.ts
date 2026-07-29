@@ -103,20 +103,30 @@ describe('contentPath', () => {
 		expect(contentPath('/people', 'michael-harris')).toBe('/people/michael-harris');
 	});
 
-	// The invariant in the language seo.e2e.ts states it in, from the same list it reads: no slug of
-	// any spelling turns a content section into a gated path. Derived, so a gated route added later is
-	// covered here the day it joins that list.
-	it('cannot be talked into any gated path', () => {
+	// The invariant in the language seo.e2e.ts states it in, from the same list it reads. Derived, so
+	// a gated route added later is covered here the day it joins that list.
+	//
+	// BOTH spellings of the climb, because they are stopped by different halves: `../admin` has a
+	// slash so the segment check refuses it, `..\admin` has none and only the round-trip does. Saying
+	// "no slug of any spelling" while trying exactly one would be the overlap trap this file is
+	// otherwise built to avoid.
+	it('cannot be talked into any gated path, by either spelling of the climb', () => {
 		expect(GATED_PATHS.length).toBeGreaterThan(0);
 		for (const gated of GATED_PATHS) {
 			for (const section of ['/news', '/research', '/people']) {
 				const depth = section.split('/').length - 1;
-				// `../` repeated enough to climb out of the section, then the gated path.
-				const slug = `${'../'.repeat(depth)}${gated.slice(1)}`;
-				expect(
-					contentPath(section, slug),
-					`${section}/${slug} must not become a path`
-				).toBeUndefined();
+				for (const sep of ['/', '\\']) {
+					// `..` repeated enough to climb out of the section, then the gated path.
+					const slug = `${`..${sep}`.repeat(depth)}${gated.slice(1)}`;
+					expect(
+						new URL(`${section}/${slug}`, 'https://darcstar.tech').pathname,
+						`${section}/${slug} should reach ${gated} unguarded — otherwise this proves nothing`
+					).toBe(gated);
+					expect(
+						contentPath(section, slug),
+						`${section}/${slug} must not become a path`
+					).toBeUndefined();
+				}
 			}
 		}
 	});

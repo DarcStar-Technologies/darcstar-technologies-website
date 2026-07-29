@@ -225,7 +225,7 @@ Design decisions to preserve:
   `.` · `..\admin` · `foo?x=1` · `foo#frag`, none of which contains a slash. The
   backslash spelling is the one that makes that split matter — the URL parser
   folds `\` to `/`, so `..\admin` is a full escape the segment check can't see.
-  Same guard on the other four surfaces a slug reaches ([sanity](sanity.md)).
+  Same guard on the other five surfaces a slug reaches ([sanity](sanity.md)).
 - **Content DETAIL routes stay out of `AUDITED_PAGES`** — `/news/[slug]`,
   `/research/[slug]`, `/people/[slug]`. Same token reason: they all 404 in CI,
   so the audit would be proving the CSP of an error page. `seo.e2e.ts`'s

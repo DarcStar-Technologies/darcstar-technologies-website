@@ -12,6 +12,7 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import { formatDate } from '$lib/sanity/date';
+	import { contentPath } from '$lib/content-path';
 	import { contentSeo } from '$lib/sanity/content-seo';
 	import { articleJsonLd, breadcrumbJsonLd } from '$lib/jsonld';
 	import { page } from '$app/state';
@@ -96,10 +97,17 @@
 				<h2 class="text-lg font-medium tracking-tight text-white">{m.news_related_heading()}</h2>
 				<ul class="mt-4 space-y-2">
 					{#each post.relatedPapers as paper (paper._id)}
-						{#if paper.slug}
+						{@const path = contentPath('/research', paper.slug)}
+						<!-- The row is nothing BUT a cross-reference, so an unroutable slug drops it rather
+						     than leaving a dead entry — the opposite call from the /news · /research ·
+						     /people cards, where the card is the content's own listing and dropping it
+						     would hide the document from the site. The paper still has its card on
+						     /research. `contentPath`, not a truthiness test: `../admin` is present and
+						     resolves out of the section (DAR-148). -->
+						{#if path}
 							<li class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
 								<a
-									href={localizeHref(`/research/${paper.slug}`)}
+									href={localizeHref(path)}
 									class="text-sm text-primary-500 transition-colors hover-focus:text-primary-400 hover-focus:underline"
 								>
 									{paper.title}{#if paper.venue}<span class="text-muted">
