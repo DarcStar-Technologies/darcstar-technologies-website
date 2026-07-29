@@ -64,6 +64,18 @@ describe('/news/[slug] related papers', () => {
 		await expect.element(relatedLink()).toHaveAttribute('href', '/research/intelligence-ratchet');
 	});
 
+	// The title and venue are separated by a space + `·` that exists ONLY as leading whitespace inside
+	// the venue `<span>`, and Svelte trims whitespace at block and element boundaries — the trap that
+	// produced `Ledger Rocket· 2025–Present` in DAR-122. No live post has related papers, so nothing
+	// on the site renders this today and there is no production page to compare against; asserting the
+	// collapsed text is the only thing standing between a reformat and `The Intelligence Ratchet·
+	// arXiv` shipping unnoticed.
+	it('keeps the space around the venue separator', async () => {
+		const { container } = mount([PAPER]);
+		const text = container.querySelector('li a')?.textContent?.replace(/\s+/g, ' ').trim();
+		expect(text).toBe('The Intelligence Ratchet · arXiv');
+	});
+
 	// Both halves of the guard: `../admin` and `a/b` are refused by the segment check, `..\admin` only
 	// by the URL round-trip (the parser folds `\` to `/`, so it escapes just as far without ever
 	// containing a slash).
@@ -84,5 +96,26 @@ describe('/news/[slug] related papers', () => {
 	it('renders the section heading whenever a routable paper is present', async () => {
 		mount([PAPER]);
 		await expect.element(page.getByText('Related papers')).toBeVisible();
+	});
+
+	// ...and the section GATES on what will actually render, not on the raw array. Gating on the raw
+	// array leaves the heading standing over an empty <ul> — DAR-56's empty-wrapper trap, and here a
+	// heading promising links there are none of. The floor above is what makes this non-vacuous: one
+	// asserts the heading appears for a good paper, the other that it doesn't for only-bad ones.
+	it('renders no section at all when every related paper is unroutable', async () => {
+		mount([
+			{ ...PAPER, slug: '../admin' },
+			{ ...PAPER, _id: 'paper.other', title: 'Another Paper', slug: 'a/b' }
+		]);
+		expect(page.getByText('Related papers').elements()).toHaveLength(0);
+		expect(document.querySelectorAll('ul:empty')).toHaveLength(0);
+	});
+
+	// The mixed case: one good, one bad. The section survives with only the routable row — dropping
+	// the whole section on a single bad slug would hide a good cross-reference.
+	it('keeps the section, minus the unroutable rows', async () => {
+		mount([PAPER, { ...PAPER, _id: 'paper.bad', title: 'Broken Link Paper', slug: '../login' }]);
+		await expect.element(relatedLink()).toHaveAttribute('href', '/research/intelligence-ratchet');
+		expect(page.getByText('Broken Link Paper').elements()).toHaveLength(0);
 	});
 });
