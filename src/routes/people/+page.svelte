@@ -77,7 +77,7 @@
 						{/if}
 						{#if person.socialLinks && person.socialLinks.length > 0}
 							<div class="mt-4 flex flex-wrap justify-center gap-3">
-								{#each person.socialLinks as link (link.url)}
+								{#each person.socialLinks as link (link._key)}
 									<a
 										href={link.url}
 										target="_blank"

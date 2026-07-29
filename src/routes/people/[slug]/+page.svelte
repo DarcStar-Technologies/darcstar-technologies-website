@@ -95,7 +95,7 @@
 					{/if}
 					{#if person.socialLinks && person.socialLinks.length > 0}
 						<div class="flex flex-wrap gap-3">
-							{#each person.socialLinks as link (link.url)}
+							{#each person.socialLinks as link (link._key)}
 								<a
 									href={link.url}
 									target="_blank"
@@ -119,8 +119,14 @@
 		{#if person.focusAreas && person.focusAreas.length > 0}
 			<section class="glass-card p-8 sm:p-10">
 				<h2 class="text-lg font-medium tracking-tight text-white">{m.person_focus_heading()}</h2>
+				<!-- KEYED BY INDEX, deliberately. These are Sanity PRIMITIVE arrays, which carry no
+				     `_key`, and keying by the value itself makes a duplicate entry — an editor pasting the
+				     same focus area twice — throw `each_key_duplicate` and take the whole profile down
+				     (measured). Nothing here reorders or holds state, so an index key costs nothing and
+				     keeps `svelte/require-each-key` satisfied; every other CMS input on this site
+				     degrades rather than crashes, and this one now does too. -->
 				<ul class="mt-4 flex flex-wrap gap-2">
-					{#each person.focusAreas as area (area)}
+					{#each person.focusAreas as area, i (i)}
 						<li class="rounded-full border border-hairline px-3 py-1 text-xs text-body">{area}</li>
 					{/each}
 				</ul>
@@ -132,8 +138,9 @@
 				<h2 class="text-lg font-medium tracking-tight text-white">
 					{m.person_responsibilities_heading()}
 				</h2>
+				<!-- Index-keyed for the same reason as the focus areas above. -->
 				<ul class="mt-4 list-disc space-y-2 pl-5 text-sm leading-relaxed text-body">
-					{#each person.responsibilities as item (item)}
+					{#each person.responsibilities as item, i (i)}
 						<li>{item}</li>
 					{/each}
 				</ul>

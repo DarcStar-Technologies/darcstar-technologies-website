@@ -85,7 +85,7 @@ const PERSON: Person = {
 			year: 2005
 		}
 	],
-	socialLinks: [{ label: 'GitHub', url: 'https://github.com/ada' }]
+	socialLinks: [{ _key: 'sl1', label: 'GitHub', url: 'https://github.com/ada' }]
 };
 
 const mount = (over: Partial<Person> = {}) =>
@@ -182,6 +182,19 @@ describe('/people/[slug]', () => {
 				`${heading} should not render with nothing under it`
 			).toHaveLength(0);
 		}
+	});
+
+	// Sanity primitive arrays carry no `_key`, so keying these `{#each}` blocks by the value itself
+	// made a duplicated entry throw `each_key_duplicate` and take the whole profile down — measured,
+	// not theorised. An editor pasting the same focus area twice is an ordinary mistake, and every
+	// other CMS input on this site degrades instead of crashing.
+	it('survives a duplicated focus area or responsibility', async () => {
+		mount({
+			focusAreas: ['Applied AI', 'Applied AI'],
+			responsibilities: ['Sets the verification agenda', 'Sets the verification agenda']
+		});
+		await expect.element(page.getByText('Focus areas')).toBeVisible();
+		expect(page.getByText('Applied AI', { exact: true }).elements()).toHaveLength(2);
 	});
 
 	it('offers a way back to the team', async () => {

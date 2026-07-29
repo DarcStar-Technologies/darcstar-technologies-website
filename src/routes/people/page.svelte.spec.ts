@@ -27,7 +27,7 @@ const ADA: Person = {
 	role: 'Chief Scientist',
 	image: null,
 	bio: 'Builds analytical engines.',
-	socialLinks: [{ label: 'GitHub', url: 'https://github.com/ada' }]
+	socialLinks: [{ _key: 'sl1', label: 'GitHub', url: 'https://github.com/ada' }]
 };
 
 const mount = (people: Person[]) => render(PeoplePage, { data: { people } as PageData });

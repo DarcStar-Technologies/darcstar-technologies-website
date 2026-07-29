@@ -375,7 +375,7 @@ export const peopleQuery = defineQuery(`
 		role,
 		image,
 		bio,
-		socialLinks[]{ label, url }
+		socialLinks[]{ _key, label, url }
 	}
 `);
 
@@ -408,6 +408,6 @@ export const personBySlugQuery = defineQuery(`
 		responsibilities,
 		experience[]{ _key, title, organization, startYear, endYear, summary, url },
 		education[]{ _key, qualification, institution, year },
-		socialLinks[]{ label, url }
+		socialLinks[]{ _key, label, url }
 	}
 `);
