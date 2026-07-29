@@ -19,9 +19,11 @@ const { m } = await import('$lib/paraglide/messages.js');
 // a slug reused across the change would simply dedupe inside the label map's union key, and a copy
 // edit that dropped the "annual" marker would type-check perfectly.
 describe('waitlist budget bands (DAR-126)', () => {
-	// A floor first, so nothing below can pass by having nothing to check: an emptied retired list
-	// satisfies every "for each retired band" assertion here, and satisfies the disjointness one best
-	// of all.
+	// A floor first, so nothing below can pass by having nothing to check — an emptied list satisfies
+	// every "for each band" assertion here, and satisfies the disjointness one best of all. Partly
+	// belt-and-braces: `expect.requireAssertions` (vite.config.ts) already turns a zero-iteration loop
+	// into a failure, measured. But it can't catch an emptied LIVE list, whose loop shares a test with
+	// the retired one that would still assert — and it names the cause, where "no assertions" doesn't.
 	it('has both a live set and a retired one', () => {
 		expect(WAITLIST_BUDGETS.length).toBeGreaterThan(0);
 		expect(WAITLIST_ANNUAL_BUDGETS.length).toBeGreaterThan(0);
