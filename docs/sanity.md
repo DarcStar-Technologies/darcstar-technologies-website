@@ -271,7 +271,7 @@ keeping:
 Residual, and the first draft of this PR is the evidence for how weak it is: nothing fails closed
 for a **seventh** call site. The six are pinned by their own specs and the sitemap's mapping is
 written once for all collections, so a fourth content type inherits it there — but a new surface that
-interpolates a slug itself is caught by review, not by a test. That is not hypothetical: the
+interpolates a slug itself is caught by review, not by a test (**DAR-154**). That is not hypothetical: the
 related-papers row was an EXISTING sixth site, missed by the first sweep of this very change (a `grep`
 truncated by `head`), and found only by re-sweeping during review. A DAR-102-style source scan is what
 would make it structural.
