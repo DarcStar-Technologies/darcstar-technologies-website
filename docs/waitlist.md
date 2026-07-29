@@ -114,7 +114,12 @@ Re-scoping a question whose answers are already stored is the interesting half:
   $25k–$100k a year is the opposite buying signal from $25k–$50k for a pilot. Unmarked therefore means
   the field's stated scope; the admin column is named **Evaluation budget** to be that scope.
 - **The step-3 validator refuses the retired bands**, so an old slug can never arrive as a new answer.
-  Nothing pre-fills a select from the stored row either, so a resumed flow can't re-offer one.
+  Nothing pre-fills a select from the stored row either, so a resumed flow can't re-offer one, and the no-JS
+  e2e pins the SSR'd `<select>`'s option values against `WAITLIST_BUDGETS` — the one test of the otherwise
+  structural claim that a wider label map can't leak a retired band back into the form.
+- **`WAITLIST_ANNUAL_BUDGETS` is append only.** Deleting an entry makes the rule blinder while disjointness
+  still passes, so the spec holds each retired slug against the `waitlist_budget_annual_*` message that exists
+  for it and nothing else — a restated copy of the list would only agree with itself.
 - **A lead with one submission from each era shows a flagged budget conflict.** That is correct, not a
   false positive: the values genuinely differ, and DAR-88's rule is flag-never-resolve. Suppressing it
   would mean teaching the collator about eras, and hiding a cross-era difference is worse than showing
