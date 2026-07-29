@@ -122,6 +122,11 @@ describe('wrangler.jsonc agrees with the Worker names TypeScript uses', () => {
 	test('the preview env redeclares `assets`, which wrangler does not inherit', () => {
 		// `vars` and `assets` are the two non-inheritable keys: a named env that omits `assets` deploys
 		// a Worker with no static files rather than failing, so the omission shows up as a broken site.
+		//
+		// The equality alone would be satisfied by BOTH sides being absent (`toEqual(undefined)` passes
+		// against `undefined`), which is the vacuous pass this file rules out everywhere else — so the
+		// top-level value is required to exist before it is used as the expectation.
+		expect(wrangler.assets).toBeDefined();
 		expect(wrangler.env?.preview?.assets).toEqual(wrangler.assets);
 	});
 
