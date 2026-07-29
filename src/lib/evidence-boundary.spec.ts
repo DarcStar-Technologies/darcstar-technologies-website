@@ -120,7 +120,11 @@ describe('findCatalogTotalLeaks', () => {
 		['a total with a thousands separator', 'The corpus contains 1,024 theorems.'],
 		['the remainder, as a backlog', 'The remaining theorem backlog is tracked internally.'],
 		['the remainder, spelled out', 'The rest of the corpus is unmechanized.'],
-		['the remainder, as prose', 'Some theorems in the corpus remain unproven for now.']
+		['the remainder, as prose', 'Some theorems in the corpus remain unproven for now.'],
+		// The Spanish half of THEOREM_CONTEXT, whose only context word here is `teoremas` — without
+		// it the stems are a guard with no call site, which is the defect this whole module fixes
+		// (measured: stripping them passed all 36 tests before this case existed).
+		['a total in a translated catalog', 'Publicamos 346 teoremas en total.']
 	])('catches %s', (_case, text) => {
 		expect(leaks(text)).not.toEqual([]);
 	});
