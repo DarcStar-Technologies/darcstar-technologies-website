@@ -28,7 +28,12 @@ export function imageUrl(
 	if (!image?.asset?._ref) return undefined;
 	try {
 		let sized = builder.image(image as unknown as SanityImageSource).width(width);
-		if (height !== undefined) sized = sized.height(height);
+		// A caller that names BOTH dimensions wants exactly those, so crop to them. The builder's
+		// default fit is `clip`, which FITS INSIDE the box and preserves the aspect ratio — measured,
+		// asking for 1200×630 of the founder's portrait returned **504×630**, a portrait social card.
+		// `crop` honors the image's hotspot, which is what an editor sets it for. Width-only callers are
+		// untouched: they are asking for a scaled image, not a shaped one.
+		if (height !== undefined) sized = sized.height(height).fit('crop');
 		return sized.url();
 	} catch {
 		return undefined;
@@ -38,6 +43,11 @@ export function imageUrl(
 // A 1200×630 absolute CDN URL for a Sanity image field, sized for the OG/Twitter social card, or
 // `undefined` when the field is empty. Detail pages pass the result straight to <Seo image=…>, which
 // (thanks to its absolute-URL branch) uses it verbatim instead of resolving it against the origin.
+//
+// It really is 1200×630 — see the `fit('crop')` note above. Until DAR-122 this helper had never
+// resolved an image in production (no post carries a coverImage and no document sets `seo.ogImage`,
+// so every page fell through to the brand card), which is why the clip behaviour went unnoticed: a
+// person's portrait is the first image it has ever had to shape.
 export function ogImageUrl(
 	image: { asset?: { _ref?: string } } | null | undefined
 ): string | undefined {

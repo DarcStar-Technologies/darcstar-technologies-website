@@ -180,8 +180,8 @@ Design decisions to preserve:
   `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/logout`) and any
   untranslated locale tree — the sitemap loops `TRANSLATED_LOCALES`
   ([`src/lib/seo.ts`](../src/lib/seo.ts)), the same flag that noindexes `/es`.
-  **Plus any post/paper the
-  editor hid** — `sitemapEntriesQuery` filters `seo.noIndex != true` (DAR-71), so
+  **Plus any post/paper the editor hid** —
+  `sitemapEntriesQuery` filters `seo.noIndex != true` (DAR-71), so
   a hidden page isn't advertised to crawlers, not just noindexed once they arrive.
   `!= true` (never `== false`): GROQ's `!=` includes null, and no document sets
   `seo` at all today, so the inverse would empty the sitemap of every post and

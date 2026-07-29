@@ -16,7 +16,7 @@
 	import PortableBody from '$lib/components/portable/PortableBody.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { localizeHref } from '$lib/paraglide/runtime';
-	import { ogImageUrl, imageUrl } from '$lib/sanity/image';
+	import { imageUrl } from '$lib/sanity/image';
 	import { breadcrumbJsonLd, isHttpUrl, personJsonLd } from '$lib/jsonld';
 	import { page } from '$app/state';
 	import type { PageServerData } from './$types';
@@ -34,8 +34,6 @@
 	);
 
 	const pageUrl = $derived(page.url.origin + page.url.pathname);
-	// The social card is the person's own portrait, cropped to 1200×630 around the hotspot the editor
-	// set. No image → <Seo> serves the brand card, exactly as a post without a cover does.
 	const jsonLd = $derived([
 		personJsonLd(person, { url: pageUrl, image: imageUrl(person.image, 600) }),
 		breadcrumbJsonLd([
@@ -58,14 +56,12 @@
 	}
 </script>
 
-<Seo
-	title={m.content_doc_title({ title: person.name })}
-	{description}
-	image={ogImageUrl(person.image)}
-	imageAlt={person.image?.alt ?? person.name}
-	type="profile"
-	{jsonLd}
-/>
+<!-- NO `image` prop: the social card stays the brand OG card. A portrait cannot fill a 1.91:1
+     card — measured, cropping this one to 1200×630 slices a band across the face, cutting the
+     forehead and chin, and letterboxing it instead hands the platforms a 504×630 portrait. The
+     designed brand card is the better preview, and it is what every other page serves today. The
+     portrait still reaches crawlers, correctly shaped, as the Person node's `image` below. -->
+<Seo title={m.content_doc_title({ title: person.name })} {description} type="profile" {jsonLd} />
 
 <CosmicBackdrop />
 
