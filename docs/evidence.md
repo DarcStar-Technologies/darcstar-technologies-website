@@ -125,8 +125,10 @@ audit — this repo holds only the public prose, never the artifacts):
   catalog size is by construction above it, so the band names nothing and a re-measure carries
   it along. Three routes, all in that one module so the unit spec (catalogs + constants) and the
   e2e (rendered text) close together: a **bare integer above the published count near
-  theorem wording** — both halves load-bearing and both measured, since the band alone flags
-  "Lean 4" in eight keys and the proximity test alone flags "1,000 warmup iterations"; a
+  theorem wording** — both halves load-bearing and both measured, since dropping the **band**
+  leaves "Lean 4" reporting itself in 7 keys, while dropping the **proximity** test leaves the
+  benchmark iteration counts reporting themselves (8 hits over 5 keys, led by
+  `evidence_cfc_method`'s "1,000 warmup iterations"); a
   **numeric corpus percentage**, because a count beside "75.4% of the corpus" (the hub brief's
   own phrasing) recovers the total to within a row; and **backlog wording**, which is the
   complement — the remainder sits BELOW the band, so no value rule can reach it and computing
@@ -136,8 +138,12 @@ audit — this repo holds only the public prose, never the artifacts):
   and **numbers glued to a word, hyphen or dot** (`SHA-256`, `0.767`, `p50`, `Isabelle2025-2`).
   "not yet mechanized" was a candidate and is **rejected**: `evidence_proofs_axioms_local_body`
   legitimately says the prover libraries "do not yet formalize" a result — a fact about Mathlib,
-  not about our backlog. The e2e scans **line by line**, because rendered text is a concatenation
-  and a whole-page scan reads the homepage's `13,000×` readout as neighbouring the theorems one.
+  not about our backlog. Over a rendered page the unit is **a line and its successor**, both
+  bounds measured: a whole-page scan reads the homepage's `13,000×` readout as neighbouring the
+  theorems one, while one line at a time misses the shape the cards actually use — a bare value
+  above its label, which is how a total would be published (`346` over "Theorems in the catalog"
+  passed the whole evidence suite). A pair reunites value with label; four lines would re-create
+  the readout collision, since `13,000×` renders three lines from the theorems readout.
 - The rule covers **source comments too** — this repo is public, and the DAR-43 review found
   an `h=16` in a doc-comment — but **no automated guard reads comments**: a pattern scan over
   source false-positives immediately ("parameter" is legitimate prose in these files), so

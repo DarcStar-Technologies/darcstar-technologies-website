@@ -15,8 +15,15 @@
 
 /** Wording that marks a number as a claim about the proof corpus rather than a benchmark
  * figure, a version, or a page count. Deliberately broad: it only ever NARROWS a hit that
- * already cleared the published-count band, so a false member costs nothing. */
-const THEOREM_CONTEXT = /theorem|catalog|corpus|axiom|proven|mechaniz/i;
+ * already cleared the published-count band, so a false member costs nothing.
+ *
+ * Spanish stems are here because the spec scans `es.json` too, and an English-only test would
+ * make that scan look like coverage while providing none — "El catalogo contiene 346 teoremas"
+ * clears the band and matches no English stem. Free today (DAR-53 keeps a non-base catalog to
+ * translated keys only, and `es` currently holds one), which is exactly why it is cheaper to add
+ * now than to remember when the translation lands. `corpus`/`axioma` already overlap. */
+const THEOREM_CONTEXT =
+	/theorem|catalog|corpus|axiom|proven|mechaniz|teorema|cat[áa]logo|demostrad|mecaniz/i;
 
 /** Characters either side of a number that count as "next to" the wording above. */
 const CONTEXT_WINDOW = 60;
@@ -69,11 +76,11 @@ export function findCatalogTotalLeaks(text: string, publishedMax: number): strin
 	const scanned = withoutThousandsSeparators(text);
 
 	// 1. A theorem count larger than the one we publish. BOTH conditions are load-bearing, and
-	// each was measured against the live catalogs: without the band, "Lean 4" reports itself in
-	// eight keys (a bare 4 beside the word "theorems"); without the proximity test, the "1,000
-	// warmup iterations" in evidence_cfc_method reports itself (a bare 1000 above the published
-	// count). Neither alone is usable; together they are silent on today's copy and catch a
-	// catalog total written into any of it.
+	// each was measured against the live catalogs rather than reasoned about: drop the band and
+	// "Lean 4" reports itself in 7 keys (a bare 4 beside the word "theorems"); drop the proximity
+	// test and the benchmark iteration counts report themselves, 8 hits across 5 keys, led by
+	// evidence_cfc_method's "1,000 warmup iterations". Neither alone is usable; together they are
+	// silent on today's copy and catch a catalog total written into any of it.
 	for (const match of scanned.matchAll(BARE_INTEGER)) {
 		const value = Number(match[0]);
 		if (value <= publishedMax || isCalendarYear(match[0], value)) continue;
@@ -108,4 +115,34 @@ export function findCatalogTotalLeaks(text: string, publishedMax: number): strin
 	}
 
 	return hits;
+}
+
+/**
+ * The same rules over a RENDERED page, where the proximity test needs help: page text is a
+ * concatenation of unrelated elements rather than prose, so neither extreme works. Scanning the
+ * whole blob reads the homepage's `13,000×` readout as neighbouring the theorems readout beside
+ * it and reports a leak no sentence contains; scanning one line at a time misses the shape the
+ * claim cards actually use — a bare value in large type with its label in the NEXT element,
+ * which is precisely how a catalog total would be published (measured: `346` over "Theorems in
+ * the catalog" passed the whole evidence suite).
+ *
+ * So the unit is a line and its successor. Both bounds are measured against the real pages: a
+ * pair reunites every value with its label, and stopping there keeps the margin that matters —
+ * on the homepage `13,000×` is three lines from the theorems readout, so a four-line window
+ * would put them in one chunk and report the collision this split exists to avoid.
+ */
+export function findCatalogTotalLeaksInRenderedText(text: string, publishedMax: number): string[] {
+	const lines = text
+		.split('\n')
+		.map((line) => line.trim())
+		.filter(Boolean);
+	// A Set collapses exact repeats. It does NOT guarantee one entry per leak: a hit inside a line
+	// is reached twice — as the head of its own pair and the tail of the previous one — and the
+	// two excerpts differ by the neighbouring text, so both survive. That is noise in a failure
+	// message rather than a miss, and the alternative discards the context that makes it useful.
+	const hits = new Set<string>();
+	for (const [index, line] of lines.entries())
+		for (const hit of findCatalogTotalLeaks(`${line} ${lines[index + 1] ?? ''}`, publishedMax))
+			hits.add(hit);
+	return [...hits];
 }

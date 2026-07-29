@@ -1,21 +1,18 @@
 import { expect, test, type Page } from '@playwright/test';
 import { THEOREMS_CHECKED, THEOREMS_COMPLETE } from '$lib/evidence';
-import { findCatalogTotalLeaks } from '$lib/evidence-boundary';
+import { findCatalogTotalLeaksInRenderedText } from '$lib/evidence-boundary';
 
 // The catalog total must not reach a RENDERED page (DAR-152). The unit spec scans the message
 // catalogs and the $lib/evidence constants — every source the copy is supposed to come from —
 // so this is the backstop for a figure that arrives some other way: hardcoded into a .svelte,
-// or served from the CMS.
+// or served from the CMS. Proven non-vacuous by mutation: a total hardcoded into a .svelte
+// passes every unit test and fails here.
 //
-// Scanned LINE BY LINE, not as one blob. innerText breaks at block boundaries, and the detector
-// tests whether a number sits near theorem wording — which is a claim about prose. Rendered text
-// is a concatenation of unrelated elements, so a whole-page scan reads the homepage's `13,000×`
-// readout as neighbouring the theorems readout beside it and reports a leak that no sentence
-// contains. One line ≈ one block ≈ one claim. The cost is that a leak split across two elements
-// is missed here; the unit spec still sees it at the source.
+// The line-chunking that makes the rules work over page text (rather than prose) lives in the
+// shared module with the rules themselves, so it is unit-testable and cannot drift from them.
 const expectNoCatalogTotal = async (page: Page) => {
-	const lines = (await page.locator('body').innerText()).split('\n');
-	const leaks = lines.flatMap((line) => findCatalogTotalLeaks(line, THEOREMS_CHECKED));
+	const rendered = await page.locator('body').innerText();
+	const leaks = findCatalogTotalLeaksInRenderedText(rendered, THEOREMS_CHECKED);
 	expect(leaks, `${page.url()} must not publish the catalog total`).toEqual([]);
 };
 

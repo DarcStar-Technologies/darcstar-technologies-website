@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import en from '../../messages/en.json';
 import es from '../../messages/es.json';
 import * as evidence from './evidence';
-import { findCatalogTotalLeaks } from './evidence-boundary';
+import { findCatalogTotalLeaks, findCatalogTotalLeaksInRenderedText } from './evidence-boundary';
 import { THEOREMS_CHECKED } from './evidence';
 
 // The published-surface IP boundary (DAR-43, docs/evidence.md): exact neural-architecture
@@ -107,9 +107,9 @@ describe('the theorem-catalog total stays off the published surface', () => {
 // The detector itself. The scans above are all "nothing matched", so on their own they pass just
 // as happily against a predicate that answers nothing at all — these are what make them mean
 // something. Every negative case below is real copy that a cruder rule reported (measured, not
-// imagined): the band alone flags "Lean 4", the proximity test alone flags "1,000 warmup
-// iterations", and neither survives without the calendar-year exclusion, since both dated lines
-// put a year beside the words "corpus" and "theorems".
+// imagined): drop the band and "Lean 4" reports itself, drop the proximity test and the benchmark
+// iteration counts report themselves, and neither half survives without the calendar-year
+// exclusion, since both dated lines put a year beside the words "corpus" and "theorems".
 describe('findCatalogTotalLeaks', () => {
 	const leaks = (text: string) => findCatalogTotalLeaks(text, 219);
 
@@ -159,5 +159,48 @@ describe('findCatalogTotalLeaks', () => {
 		expect(findCatalogTotalLeaks(text, 219)).not.toEqual([]);
 		expect(findCatalogTotalLeaks(text, 400)).toEqual([]);
 		expect(findCatalogTotalLeaks('The catalog holds 512 theorems.', 400)).not.toEqual([]);
+	});
+});
+
+// Rendered pages, where a "line" is an element rather than a sentence. Both fixtures below are
+// the REAL rendered text of the pages they name, captured from the running preview — reasoning
+// about what innerText would produce is exactly what put the card-shaped hole in the first cut.
+describe('findCatalogTotalLeaksInRenderedText', () => {
+	const rendered = (lines: string[]) => findCatalogTotalLeaksInRenderedText(lines.join('\n'), 219);
+
+	// The shape the claim cards use: a bare value in large type, its label in the next element.
+	// The line-at-a-time scan this replaced could not see it — measured, `346` above "Theorems in
+	// the catalog" passed all six evidence e2e tests, and that is how a total would be published.
+	it('catches a total split across a value and its label', () => {
+		expect(rendered(['346', 'Theorems in the catalog'])).not.toEqual([]);
+	});
+
+	// The homepage readout row, real values in rendered order with the LABEL lines removed — which
+	// puts `13,000×` two lines nearer the theorems readout than the page does, so passing here is
+	// strictly harder than passing on the page. This is the collision that rules out a whole-page
+	// scan, and widening the window past a pair walks back into it.
+	it('stays silent on the homepage readout row', () => {
+		expect(
+			rendered(['0.767 µs', '13,000×', '31', 'THEOREMS COMPLETE OF 219 MACHINE-CHECKED', '5'])
+		).toEqual([]);
+	});
+
+	// The /evidence theorems card, whose value IS a theorem count sitting right above its label —
+	// the same shape as the leak above, one figure below the boundary.
+	it('stays silent on the evidence theorems card', () => {
+		expect(
+			rendered([
+				'219',
+				'Theorems machine-checked',
+				'As of GIDE release v2026.07.1 · July 2026',
+				'219 theorems in the GIDE framework are machine-checked. 31 of those are complete.'
+			])
+		).toEqual([]);
+	});
+
+	it('still catches a leak contained in a single line', () => {
+		expect(
+			rendered(['Prover versions', 'The catalog holds 338 theorems.', '0.767 µs'])
+		).not.toEqual([]);
 	});
 });
