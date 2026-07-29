@@ -18,6 +18,15 @@
 // happens here, and the only one a lint can address. A number spelled out in words, or a
 // paraphrase of the remainder, passes; nobody determined to publish the total is stopped by a
 // test in the repo they are editing. Read it as the boundary's smoke detector, not its lock.
+//
+// ON A HIT, unlike the exact-value patterns in the spec beside this. Those match one number, so
+// a hit is always a leak and the rule is "reword, never loosen". This is a heuristic and a hit
+// can be a number that is not a theorem count at all — "500 trials against the theorem
+// conformance registry" and "384 CI runners" both fire (measured). So: check the figure against
+// the hub's source of record FIRST. If it is the catalog total, or derives it, reword the copy.
+// If it demonstrably is not, the copy is fine and the fix belongs in the rule — narrow a context
+// term or make the sentence unambiguous. Never widen the band and never delete a route: those
+// are the two edits that turn this back into the guard it replaced.
 
 /** Wording that marks a number as a claim about the proof corpus rather than a benchmark
  * figure, a version, or a page count. Deliberately broad: it only ever NARROWS a hit that

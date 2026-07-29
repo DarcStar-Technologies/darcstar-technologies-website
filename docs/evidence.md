@@ -144,6 +144,15 @@ audit — this repo holds only the public prose, never the artifacts):
   above its label, which is how a total would be published (`346` over "Theorems in the catalog"
   passed the whole evidence suite). A pair reunites value with label; four lines would re-create
   the readout collision, since `13,000×` renders three lines from the theorems readout.
+  **On a hit, this rule takes different action from the ones above it**, and the difference is
+  that those match an exact value so a hit is always a leak ("reword, never loosen"), while this
+  one is a heuristic — "500 trials against the theorem conformance registry" and "384 CI runners"
+  both fire, and neither is a total (measured). Check the figure against the hub's source of
+  record first: if it is the catalog total or derives it, reword; if it demonstrably is not, the
+  copy is fine and the fix belongs in the rule — narrow a context term, don't widen the band or
+  drop a route, which are the two edits that restore the defect this replaced. `CONTEXT_WINDOW`
+  is likewise a **choice inside a tested range**, bracketed to (44, 117) by two spec cases
+  because 20, 200 and 400 all passed every other assertion.
 - The rule covers **source comments too** — this repo is public, and the DAR-43 review found
   an `h=16` in a doc-comment — but **no automated guard reads comments**: a pattern scan over
   source false-positives immediately ("parameter" is legitimate prose in these files), so
