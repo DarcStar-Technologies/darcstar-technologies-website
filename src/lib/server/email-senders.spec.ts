@@ -185,11 +185,19 @@ describe('this site sends no marketing email', () => {
 	// AND THE CHOKEPOINT ITSELF. `postEmail` is only worth guarding if it is the single route out;
 	// a second `fetch` at the provider would make every assertion above true and beside the point.
 	//
+	// ANY `resend.com` HOST, not the one endpoint. It read `includes('api.resend.com')` first, and
+	// CodeQL flagged it (`js/incomplete-url-substring-sanitization`, high). The security framing is a
+	// false positive — nothing here validates a URL, the haystack is a source file — but the reading
+	// underneath it was right: pinning ONE host means a second route through any other one is a pass,
+	// and the provider serves more than a single hostname. So it is a regex over the domain, with the
+	// dot escaped. Keep it that way rather than "simplifying" back to a substring test.
+	//
 	// HONEST RESIDUAL: this pins "no second route to THIS provider". A different provider is a new
 	// dependency that also has to be named in the policy's processors list — so it surfaces in review,
 	// not here.
 	it('reaches the mail provider from exactly one file', () => {
-		const callers = surface().filter((path) => sourceText(path).includes('api.resend.com'));
+		const providerHost = /\bresend\.com\b/;
+		const callers = surface().filter((path) => providerHost.test(sourceText(path)));
 		expect(callers).toEqual(['src/lib/server/email.ts']);
 	});
 });
