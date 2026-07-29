@@ -161,8 +161,9 @@ node scripts/gen-og.mjs
 
 [`src/routes/sitemap.xml/+server.ts`](../src/routes/sitemap.xml/+server.ts)
 serves the crawlable surface in one document: the `STATIC_PATHS` marketing pages
-plus every routable Sanity post (`/news/[slug]`) and paper (`/research/[slug]`),
-fetched in one round trip by `sitemapEntriesQuery` (slug + `_updatedAt`, which
+plus every routable Sanity post (`/news/[slug]`), paper (`/research/[slug]`) and
+team member (`/people/[slug]`, DAR-122), fetched in one round trip by
+`sitemapEntriesQuery` (slug + `_updatedAt`, which
 becomes `<lastmod>`). `static/robots.txt` points crawlers at it — with the
 **production URL hardcoded**, because robots.txt is a static asset that can't
 know its serving origin (previews serving that line are harmless; they're not
@@ -179,7 +180,7 @@ Design decisions to preserve:
   `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/logout`) and any
   untranslated locale tree — the sitemap loops `TRANSLATED_LOCALES`
   ([`src/lib/seo.ts`](../src/lib/seo.ts)), the same flag that noindexes `/es`.
-  No per-person URLs: `/people` has no detail routes. **Plus any post/paper the
+  **Plus any post/paper the
   editor hid** — `sitemapEntriesQuery` filters `seo.noIndex != true` (DAR-71), so
   a hidden page isn't advertised to crawlers, not just noindexed once they arrive.
   `!= true` (never `== false`): GROQ's `!=` includes null, and no document sets
@@ -189,12 +190,27 @@ Design decisions to preserve:
   and one is TypeScript.
 - **A Sanity outage degrades** to a static-pages-only sitemap plus a log line
   (same posture as the /news · /research · /people list loads) — never a 500.
-- **Adding an indexable page?** Add it to `STATIC_PATHS` _and_ to
+- **Adding an indexable STATIC page?** Add it to `STATIC_PATHS` _and_ to
   `AUDITED_PAGES` in `security-headers.e2e.ts`. Forgetting the sitemap is
   caught automatically: `seo.e2e.ts` **enumerates** `src/routes/**/+page.svelte`
   (minus dynamic segments and the gated set) and fails if a public page is
   missing from the served sitemap — the pinned list alone couldn't detect an
   omission.
+- **Adding a CMS-driven CONTENT type?** Different rules, because none of the
+  above sees it. It is **two halves** — an arm in `sitemapEntriesQuery` and a
+  mapping in the handler — and the second is silent when forgotten: the query
+  keeps type-checking, the endpoint keeps returning 200, and the sitemap simply
+  comes back a third short. CI can't catch it either: e2e runs without
+  `SANITY_VIEWER_TOKEN` (DAR-96), so **every** CMS-driven `<loc>` is absent
+  there and `seo.e2e.ts` would pass unchanged against a handler that dropped
+  posts, papers and people on the floor. So the halves meet in
+  `sitemap.xml/server.spec.ts`, which drives the real handler against a mocked
+  client — table-driven, one row per type (mutation-verified: deleting the
+  people mapping fails 2 tests).
+- **Content DETAIL routes stay out of `AUDITED_PAGES`** — `/news/[slug]`,
+  `/research/[slug]`, `/people/[slug]`. Same token reason: they all 404 in CI,
+  so the audit would be proving the CSP of an error page. `seo.e2e.ts`'s
+  enumeration already skips `[…]` segments, so nothing regresses.
 
 ## JSON-LD structured data (DAR-48)
 
@@ -217,13 +233,25 @@ blocks:
   the **organization's identity**, not merely a dead link. See
   [sanity.md](sanity.md#what-sitesettings-actually-drives-dar-73).
 - **Per-page nodes** go through the `<Seo jsonLd={...}>` prop (an array becomes
-  one `@graph` script; empty arrays render nothing): `Person` on `/people`
-  (the index is the profile surface), `Article` + `BreadcrumbList` on
-  `/news/[slug]`, `ScholarlyArticle` + `BreadcrumbList` on `/research/[slug]`
+  one `@graph` script; empty arrays render nothing): `Person` on `/people` and
+  the fuller `Person` (+ `BreadcrumbList`) on `/people/[slug]`, `Article` +
+  `BreadcrumbList` on `/news/[slug]`, `ScholarlyArticle` + `BreadcrumbList` on
+  `/research/[slug]`
   (DOI/arXiv/publisher links ride along as `sameAs`). ScholarlyArticle claims
   the org as `publisher` **only when `darcstarAuthored`** — third-party papers
   (DAR-52, fail-safe polarity: unset → external) must not be machine-readably
   misattributed.
+- **A person is identified by their profile URL** (DAR-122). Both surfaces that
+  describe someone emit `@id` = `{origin}/people/{slug}`, so the grid's node and
+  the detail page's are ONE entity rather than two people who share a name. It is
+  derived from the slug, never from the serving URL, or a localized tree would
+  mint a second entity per locale — `mainEntityOfPage` is the served URL, because
+  that one describes the page. Slugless docs have no page and stay anonymous
+  (no `@id`) rather than claiming one that 404s. `alumniOf` / `knowsAbout` are
+  just what the Studio's `education` / `focusAreas` already are. Both Person
+  builders run social links through the same `isHttpUrl` gate the org uses — it
+  was truthiness-only on the grid, so the two disagreed about what a publishable
+  identity is.
 - **`$lib/jsonld.ts` must stay dependency-pure** (constants + one static asset):
   the root layout imports it, so anything it pulls in ships in **every** page's
   initial client bundle — an earlier draft imported the Sanity URL builder here

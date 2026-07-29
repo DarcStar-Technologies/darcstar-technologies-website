@@ -119,11 +119,29 @@ describe('/people/[slug]', () => {
 	});
 
 	// An open-ended position is the common case for a current role, and rendering "2025–" (or worse,
-	// "2025–null") is the shape a naive interpolation produces.
-	it('closes an ongoing position with Present and a finished one with its end year', async () => {
+	// "2025–null") is the shape a naive interpolation produces. A same-year position collapses: three
+	// of the nine positions on the live document start and end in one year, and "2015–2015" reads as a
+	// rendering bug rather than as a role held for part of a year.
+	it('closes an ongoing position with Present and collapses a same-year one', async () => {
 		mount();
 		await expect.element(page.getByText('2025–Present')).toBeVisible();
-		await expect.element(page.getByText('2015–2015')).toBeVisible();
+		expect(page.getByText('2015–2015').elements()).toHaveLength(0);
+		await expect.element(page.getByText('2015', { exact: false })).toBeVisible();
+	});
+
+	it('renders a genuine multi-year span as a range', async () => {
+		mount({ experience: [{ ...PERSON.experience![0], startYear: 2012, endYear: 2015 }] });
+		await expect.element(page.getByText('2012–2015')).toBeVisible();
+	});
+
+	// Svelte trims the LEADING whitespace of an {#if} block, so the obvious markup renders
+	// "Ledger Rocket· 2025–Present" — found by looking at the page, not by any assertion, which is
+	// why it now has one. PageHero documents the same trap for its emphasis word.
+	it('keeps a space either side of the meta separator', async () => {
+		mount();
+		for (const line of ['Ledger Rocket · 2025–Present', 'Northern Illinois University · 2005']) {
+			await expect.element(page.getByText(line)).toBeVisible();
+		}
 	});
 
 	it('links an organization only when the CMS supplied a usable URL', async () => {

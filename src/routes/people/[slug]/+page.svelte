@@ -45,11 +45,16 @@
 		])
 	]);
 
-	/** "2015–2019", "2025–Present", or the single year we have. Undefined when the position has neither
-	 * — both years are optional in the Studio, and a dangling en dash reads as a typo. */
+	/** "2015–2019", "2025–Present", or a single year. Undefined when the position has neither — both
+	 * years are optional in the Studio, and a dangling en dash reads as a typo.
+	 *
+	 * A range whose ends are equal collapses to one year: three of the nine positions on the live
+	 * document start and end in the same year, and "2025–2025" reads as a rendering bug rather than
+	 * as a role held for part of a year. */
 	function yearRange(start: number | null, end: number | null): string | undefined {
 		if (start === null) return end === null ? undefined : String(end);
-		return `${start}–${end ?? m.person_present()}`;
+		if (end === null) return `${start}–${m.person_present()}`;
+		return end === start ? String(start) : `${start}–${end}`;
 	}
 </script>
 
@@ -158,8 +163,12 @@
 										class="text-primary-500 transition-colors hover-focus:text-primary-400"
 										>{position.organization}</a
 									>
-								{:else}{position.organization}{/if}{#if years}
-									<span aria-hidden="true">·</span> {years}{/if}
+									<!-- `&nbsp;` forces the space before the separator: a plain one would be the
+								     LEADING whitespace of the {#if} block, which the compiler trims — the same
+								     trap PageHero documents, and it rendered "Ledger Rocket· 2025–Present". -->
+								{:else}{position.organization}{/if}{#if years}&nbsp;<span aria-hidden="true">·</span
+									>
+									{years}{/if}
 							</p>
 							{#if position.summary}
 								<p class="mt-2 text-sm leading-relaxed text-body">{position.summary}</p>
@@ -180,8 +189,9 @@
 						<li>
 							<p class="text-sm font-medium text-white">{credential.qualification}</p>
 							<p class="mt-0.5 text-xs text-muted">
-								{credential.institution}{#if credential.year}
-									<span aria-hidden="true">·</span> {credential.year}{/if}
+								<!-- `&nbsp;` for the same reason as the position separator above. -->
+								{credential.institution}{#if credential.year}&nbsp;<span aria-hidden="true">·</span>
+									{credential.year}{/if}
 							</p>
 						</li>
 					{/each}
