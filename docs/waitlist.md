@@ -1005,9 +1005,14 @@ people — so a greeting would let a stranger choose how we address someone else
 here the better answer is none). The field is absent from `UpdatesConfirmEmailInput`, so putting it
 back is a compile error at the call site.
 
-Coverage is split the way DAR-103 describes: CI has no `BETTER_AUTH_SECRET`, so the e2e can only reach
-the generic-failure panel (which it asserts, along with noindex and "a GET mutates nothing"), and the
-confirm → audience → withdraw composition is `pnpm smoke:waitlist` step P against a real database.
+Coverage is split the way DAR-103 describes, and the split is **not** "CI has no secret". A local e2e
+run loads `.env` through wrangler and has both a secret and a database; only CI lacks them. What
+actually bounds the e2e is that a token is **unforgeable** — a test that minted one from a local `.env`
+would assert different things on a developer's machine than in CI, DAR-79/DAR-81's defect — so every
+token it sends is deliberately unsignable, which fails identically everywhere. It therefore asserts the
+generic-failure panel, the noindex, and that a fetched link offers nothing to press; **"a GET mutates
+nothing" is enforced a layer down** by `runUpdatesAction`'s method guard and unit-tested there. The
+confirm → audience → withdraw composition is `pnpm smoke:waitlist` step N against a real database.
 That script **mints** the two links with the same exported functions the mailer uses — the narrower
 version of its no-parsing rule: it may call what the server calls, and may not reimplement or
 decompose the format.

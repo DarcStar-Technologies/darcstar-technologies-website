@@ -28,13 +28,17 @@
 // when it had already succeeded.
 import type { Db } from './db';
 import type { WaitlistSigningSecret } from './waitlist-secret';
-import { waitlistUpdatesState, type WaitlistUpdatesSignals } from '$lib/waitlist-updates';
+import {
+	waitlistUpdatesState,
+	type WaitlistUpdatesSignals,
+	type WaitlistUpdatesState
+} from '$lib/waitlist-updates';
 
 /**
  * What a landing page renders. The four lead states plus the two failures — so a page branches on one
  * value and there is no state a caller can invent that the store did not report.
  */
-export type UpdatesActionResult = ReturnType<typeof waitlistUpdatesState> | 'invalid' | 'error';
+export type UpdatesActionResult = WaitlistUpdatesState | 'invalid' | 'error';
 
 /** Request-scoped handles, resolved by the caller BEFORE its first await (workerd's `platform.env`). */
 export interface UpdatesActionEnv {
