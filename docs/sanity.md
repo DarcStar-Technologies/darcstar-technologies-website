@@ -654,11 +654,15 @@ keeping:
    mechanism; a plain space would still go red the moment the block is re-wrapped.
 6. **One change here is not whitespace, and it is worth naming rather than slipping in**: the `·` is
    now `aria-hidden`, which neither `/research` page had. The dot is decoration, so a screen reader
-   should hear "Zenodo February 4, 2026" rather than a punctuation name. **Six of the site's seven
-   other separators** (Footer ×2, `/news`, `/news/[slug]`'s byline, `/people/[slug]` ×2) already
-   agree; the seventh is `/news/[slug]`'s related-papers row, where the dot sits **inside the link's
-   accessible name**, so hiding it changes what the link is _called_ rather than what surrounds it —
-   a different question, left open. Two things this cost getting right: a **rendered-text** diff
+   should hear "Zenodo February 4, 2026" rather than a punctuation name. The site's **seven** other
+   separators (Footer ×2, `/news`, `/news/[slug]`'s byline and its related-papers row,
+   `/people/[slug]` ×2) now all agree — the related-papers row was the last holdout and came along in
+   the same change. It is the only separator **inside a link**, so it is the only one where the
+   attribute changes an accessible **name** (`"The Intelligence Ratchet arXiv"`) rather than text
+   beside it; its venue stays in the name, because a venue is content and only the glyph is
+   decoration. That one therefore needs a **name** assertion rather than an attribute one — removing
+   the attribute must fail a `getByRole({ name })` lookup, mutation-verified, since role-name matching
+   normalises whitespace and could plausibly have swallowed the dot on its own. Two things this cost getting right: a **rendered-text** diff
    cannot see an added element at all (the "byte-identical once whitespace is stripped" check runs on
    tag-stripped text, so "whitespace is the only change" was true of the text and false of the
    markup), and the first write-up of this rule said "the three other separators all do", which was

@@ -15,11 +15,11 @@
 	//
 	// The `aria-hidden` on the dot is NEW — neither /research page had it. It is the one change here
 	// that is not whitespace: the dot is decoration, so a screen reader should hear "Zenodo
-	// February 4, 2026" rather than a punctuation name. Six of the site's seven other separators
-	// (Footer ×2, /news, /news/[slug]'s byline, /people/[slug] ×2) already agree. The seventh is
-	// /news/[slug]'s related-papers row, where the dot sits INSIDE the link's accessible name, so
-	// hiding it there changes what the link is called rather than what surrounds it — a different
-	// question, deliberately not answered here.
+	// February 4, 2026" rather than a punctuation name. The site's seven other separators (Footer ×2,
+	// /news, /news/[slug]'s byline and its related-papers row, /people/[slug] ×2) now all agree —
+	// the related-papers one was the last holdout and was brought in by the same change. It is the
+	// only separator inside a LINK, so it is the only one where the attribute changes an accessible
+	// NAME rather than text beside it; its venue stays in the name, because a venue is content.
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { formatDate } from '$lib/sanity/date';
 
