@@ -20,7 +20,17 @@ Two Cloudflare Workers, **one per environment**, each with its own secrets → i
 
 Because each Worker holds its own `DATABASE_URL` / `DATABASE_AUTH_TOKEN` secret, `getDb()` (and the app) needs **no** environment branching — isolation is entirely at the secret layer. A Cloudflare preview URL is a _version_ of a Worker and inherits that Worker's secrets; that's exactly why previews deploy to the separate `[env.preview]` Worker instead of as versions of production (which would hand them prod's secrets). The preview Worker's `workers.dev` hosts are trusted in `auth.ts` `trustedOrigins` — derived from the Worker names in `auth-options.ts`, and pinned against `wrangler.jsonc` by `preview-worker.spec.ts`.
 
-Only the **bare** `…-preview.…workers.dev` host mounts `/api/auth/*`, because `ORIGIN` is a single value and better-auth matches the request origin against it. Per-branch preview URLs (`dar-131-…-preview.…workers.dev`) serve the site fine but answer `404` under `/api/auth/` — so point auth/limiter probing at the bare host. It is also the only deployed non-production surface that mounts the auth API at all, which is why DAR-124 had to run its verification against production.
+Only the **bare** `…-preview.…workers.dev` host mounts `/api/auth/*`, because `ORIGIN` is a single value and better-auth matches the request origin against it. Measured across all three host shapes the Worker answers on:
+
+| Host                               | `/`   | `/api/auth/ok` |
+| ---------------------------------- | ----- | -------------- |
+| bare `…-preview.…workers.dev`      | `200` | `200`          |
+| branch alias `dar-131-…-preview.…` | `200` | `404`          |
+| version `88b33599-…-preview.…`     | `200` | `404`          |
+
+So branch and version URLs are for **looking at the site**; point auth/limiter probing at the bare host. It is also the only deployed non-production surface that mounts the auth API at all, which is why DAR-124 had to run its verification against production.
+
+One trap when provisioning: a version uploaded **before** its secrets existed keeps answering with no bindings forever, so an old version URL returns `500` from `/api/auth/*` (the DB-backed limiter runs ahead of every auth route and has no database). That is a frozen artifact, not a live failure — check the bare host, which always serves the newest version.
 
 **Reachability differs between the two Workers, and it is not configured in this repo.** A Cloudflare Access application covers `*-darcstar-technologies-website.darcstar.workers.dev`, so production's per-version URLs sit behind an Access login. The preview Worker's hosts end `-website-preview.…` and therefore do **not** match that pattern — they are publicly reachable. That is deliberate here (a probe target you have to authenticate against is not one), and tolerable because the Worker holds no production credential and no `RESEND_API_KEY`; it does hold a live dev DB, so treat it as public.
 
