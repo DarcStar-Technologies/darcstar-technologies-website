@@ -12,6 +12,11 @@
 	// leading-only fix leaves `Zenodo ·February 4, 2026` — half the bug, and the half that looks
 	// deliberate. Entities are not ASCII whitespace, so re-wrapping this block over three lines
 	// cannot bring the defect back (mutation-checked, since that is exactly how it arrived).
+	//
+	// The `aria-hidden` on the dot is NEW — neither /research page had it, though the site's three
+	// other separators (Footer, /news, /people/[slug]) all do. It is the one change here that is not
+	// whitespace: the dot is decoration, so a screen reader should hear "Zenodo February 4, 2026"
+	// rather than a punctuation name, and it should not depend on which surface you are reading.
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { formatDate } from '$lib/sanity/date';
 

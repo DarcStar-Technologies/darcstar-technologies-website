@@ -63,6 +63,9 @@ describe('/research/[slug]', () => {
 		expect(shown(container)).toContain('February 4, 2026');
 	});
 
+	// The `·` sweep is safe only because this mounts the PAGE, not the layout: the footer carries two
+	// separators of its own and would make it fail for a reason that has nothing to do with the rail.
+	// Stated because it is an assumption about what is absent, which no reader can see from the code.
 	it('renders a paper with no venue as just its date', () => {
 		const { container } = mount({ ...PAPER, venue: null });
 		expect(shown(container)).toContain('February 4, 2026');
