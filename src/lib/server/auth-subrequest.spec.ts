@@ -25,8 +25,8 @@ import { appSourcePaths, importedNames, importsNamespace, sourceText } from './s
 //   2. Better Auth's own `getIp`, given the shipped options, reads that header and IGNORES
 //      x-forwarded-for — the behavioural claim, made against the real resolver rather than a
 //      re-implementation of it;
-//   3. a source scan: every `auth.handler(` caller goes through the builder, so a fifth action
-//      cannot hand-roll its own headers and quietly merge everybody's buckets.
+//   3. a source scan: every file that touches `auth.handler` goes through the builder, so a fifth
+//      action cannot hand-roll its own headers and quietly merge everybody's buckets.
 
 describe('authSubrequest', () => {
 	const ORIGIN = 'https://example.test';
@@ -125,11 +125,18 @@ describe('the shipped ip config, through Better Auth’s own resolver', () => {
 describe('every auth.handler() caller goes through authSubrequest', () => {
 	const MODULE = '$lib/server/auth-subrequest';
 
-	// The derived surface: files that hand a request to Better Auth's router. Derived rather than
-	// listed, for DAR-99's reason — a hand-written path list has no failure mode that points at
-	// itself, so deleting an entry makes the scan blind and stays green.
+	// The derived surface: files that reach Better Auth's router. Derived rather than listed, for
+	// DAR-99's reason — a hand-written path list has no failure mode that points at itself, so
+	// deleting an entry makes the scan blind and stays green.
+	//
+	// It matches the BINDING, `auth.handler`, not a call `auth.handler(`. The difference is not
+	// pedantry: the first cut required the call and a file doing `auth.handler.bind(auth)` — or
+	// `const forward = auth.handler` — escaped the surface entirely and passed 12/12 (mutation-proven,
+	// which is the only reason this reads the way it does now). That is DAR-102's lesson about call
+	// text being the walk-past-able half, reproduced here in one regex. Comments are stripped by
+	// `sourceText`, so the prose in `auth-audit.ts` that discusses `auth.handler()` is not a caller.
 	const callers = () =>
-		appSourcePaths().filter((path) => /\bauth\.handler\s*\(/.test(sourceText(path)));
+		appSourcePaths().filter((path) => /\bauth\.handler\b/.test(sourceText(path)));
 
 	test('the scan finds the form actions it exists to cover', () => {
 		// A floor, so a derivation that stops matching fails loudly instead of vacuously passing over

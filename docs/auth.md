@@ -672,12 +672,15 @@ guard nobody has attacked is a guess:
    `isTest()`; asserting null would have been asserting the test environment. A separate assertion
    pins the list to exactly one entry, since the first can only see headers it thinks to send.
    _(Config reverted → 6 red across two specs; a fallback entry appended → 2 red.)_
-3. **A source scan: every `auth.handler(` caller goes through the builder.** The surface is derived
+3. **A source scan: every file that touches `auth.handler` goes through the builder.** The surface is derived
    from the tree, not listed — DAR-99's lesson, a hand-written path list goes blind when an entry is
    deleted. A second assertion catches what the import check cannot: a file that imports the builder
    _and also_ names a client-address header on some other request. _(A fifth action planted at
    `src/routes/api/relay/+server.ts` → 2 red, naming the file; a hand-rolled second call added inside
-   `/login`, which still imports the builder → 1 red, on the second assertion alone.)_
+   `/login`, which still imports the builder → 1 red, on the second assertion alone; a caller using
+   `auth.handler.bind(auth)` → 2 red, which the FIRST cut of this scan missed entirely at 12/12 green,
+   because it matched the call `auth.handler(` rather than the binding — DAR-102's walk-past-able
+   call-text half, reproduced and then removed.)_
 
 The e2e adds the end-to-end mirror of DAR-92's isolation test: one fixed client address, a **rotating
 `x-forwarded-for` on every request**, and the cap must still bind at `max + 1`. Reverting the config
