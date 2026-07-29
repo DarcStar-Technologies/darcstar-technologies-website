@@ -125,6 +125,19 @@ describe('wrangler.jsonc agrees with the Worker names TypeScript uses', () => {
 		expect(wrangler.env?.preview?.assets).toEqual(wrangler.assets);
 	});
 
+	test('trustedOrigins is exactly the four hosts, written out', () => {
+		// Spelled literally on purpose. Every other assertion here builds its expectation from the same
+		// template the source uses, so a typo in the derivation — a dropped `-` in `*-`, a wrong
+		// suffix — would be mirrored on both sides and pass. This is the one check that can see it, and
+		// it is also what proves DAR-131's refactor from a hand-written list changed nothing.
+		expect(trustedOrigins).toEqual([
+			'https://darcstar-technologies-website.darcstar.workers.dev',
+			'*-darcstar-technologies-website.darcstar.workers.dev',
+			'https://darcstar-technologies-website-preview.darcstar.workers.dev',
+			'*-darcstar-technologies-website-preview.darcstar.workers.dev'
+		]);
+	});
+
 	test("the production wildcard does NOT cover the preview Worker's version URLs", () => {
 		// The reason `trustedOrigins` carries four entries and not two. A preview version host ends
 		// `-website-preview.…`, so it fails a suffix match against the production `*-website.…`
