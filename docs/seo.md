@@ -176,10 +176,14 @@ Design decisions to preserve:
   [security-headers](security-headers.md) for why pages must stay SSR).
 - **Origin-relative**, like `<Seo>`'s canonical: production emits
   `https://darcstar.tech/...`, previews self-reference.
-- **Exclusions are deliberate**: gated/noindex surfaces (`/admin`, `/account`,
-  `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/logout`) and any
-  untranslated locale tree — the sitemap loops `TRANSLATED_LOCALES`
-  ([`src/lib/seo.ts`](../src/lib/seo.ts)), the same flag that noindexes `/es`.
+- **Exclusions are deliberate**: gated/noindex surfaces (`GATED_PATHS` in
+  [`src/lib/seo.ts`](../src/lib/seo.ts) — `/admin`, `/account`, `/login`,
+  `/signup`, `/forgot-password`, `/reset-password`; `/logout` has no page) and
+  any untranslated locale tree — the sitemap loops `TRANSLATED_LOCALES` from the
+  same module, the flag that noindexes `/es`. Both lists live there rather than
+  in a test, because `seo.e2e.ts` and `sitemap.xml/server.spec.ts` each assert
+  the gated set and cannot share a file (one imports `@playwright/test`, the
+  other runs under node).
   **Plus any post/paper the editor hid** —
   `sitemapEntriesQuery` filters `seo.noIndex != true` (DAR-71), so
   a hidden page isn't advertised to crawlers, not just noindexed once they arrive.
@@ -207,6 +211,21 @@ Design decisions to preserve:
   `sitemap.xml/server.spec.ts`, which drives the real handler against a mocked
   client — table-driven, one row per type (mutation-verified: deleting the
   people mapping fails 2 tests).
+- **A slug that `[slug]` can't serve never becomes a URL** (DAR-148).
+  `<loc>` is built through `localizeHref` → `new URL`, which **resolves** `../`,
+  so a `../admin` slug emitted `<loc>https://darcstar.tech/admin</loc>` — a path
+  this document promises never to list, in the one place CI cannot look. Every
+  collection now goes through `contentEntries` → `contentPath`
+  ([`src/lib/content-path.ts`](../src/lib/content-path.ts)), so a fourth type
+  inherits the guard rather than opting in, and the entry is dropped **silently**
+  (a bad slug must not cost the whole sitemap; it addresses a 404 either way).
+  The guard asks two questions and they overlap on the headline case, so each
+  needs its own coverage: **one segment** catches `''` · `a/b` · `/admin` ·
+  `//evil.com/x`, which parse cleanly, and the **URL round-trip** catches `..` ·
+  `.` · `..\admin` · `foo?x=1` · `foo#frag`, none of which contains a slash. The
+  backslash spelling is the one that makes that split matter — the URL parser
+  folds `\` to `/`, so `..\admin` is a full escape the segment check can't see.
+  Same guard on the other four surfaces a slug reaches ([sanity](sanity.md)).
 - **Content DETAIL routes stay out of `AUDITED_PAGES`** — `/news/[slug]`,
   `/research/[slug]`, `/people/[slug]`. Same token reason: they all 404 in CI,
   so the audit would be proving the CSP of an error page. `seo.e2e.ts`'s
