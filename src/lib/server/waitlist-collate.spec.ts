@@ -263,4 +263,23 @@ describe('collateWaitlistLeads', () => {
 		);
 		expect(collated.inviteState).toBe('activated');
 	});
+
+	// The same, for DAR-139's updates state — and it is worth its own test for the reason the invite one
+	// is: dropping the derivation is a compile error, but deriving it from the WRONG thing is not, and
+	// /admin/waitlist's own spec cannot catch that (its fixture sets `updatesState` directly rather than
+	// collating for it). A withdrawn lead is the case that matters, because it keeps its confirmation
+	// timestamp and so reads as 'confirmed' under any rule that checks that column first.
+	it('carries the lead’s own updates state through, withdrawal winning', () => {
+		const [collated] = collateWaitlistLeads(
+			[
+				lead({
+					updatesConfirmSentAt: new Date(1_000),
+					updatesConfirmedAt: new Date(2_000),
+					updatesUnsubscribedAt: new Date(3_000)
+				})
+			],
+			[submission('s1', 1_000)]
+		);
+		expect(collated.updatesState).toBe('unsubscribed');
+	});
 });
