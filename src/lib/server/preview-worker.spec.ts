@@ -84,7 +84,13 @@ function stripJsonComments(text: string): string {
 	return out;
 }
 
-type WranglerEnv = { name?: string; vars?: Record<string, string>; assets?: unknown };
+type WranglerQueues = { producers?: { queue: string; binding: string }[] };
+type WranglerEnv = {
+	name?: string;
+	vars?: Record<string, string>;
+	assets?: unknown;
+	queues?: WranglerQueues;
+};
 type WranglerConfig = WranglerEnv & { env?: Record<string, WranglerEnv> };
 
 const wrangler: WranglerConfig = JSON.parse(
@@ -128,6 +134,32 @@ describe('wrangler.jsonc agrees with the Worker names TypeScript uses', () => {
 		// top-level value is required to exist before it is used as the expectation.
 		expect(wrangler.assets).toBeDefined();
 		expect(wrangler.env?.preview?.assets).toEqual(wrangler.assets);
+	});
+
+	// DAR-136's acceptance criterion was "preview and prod produce to different queues, proven rather
+	// than assumed" — and the honest version of it is narrower, because there IS no second queue. The
+	// CRM has no preview environment (deliberately: a preview CRM needs its own Worker, hostname,
+	// Access application, database, queues and Workflow), so there is no `crm-ingest-preview` to aim a
+	// preview producer at, and aiming it at `crm-ingest` would put test submissions in the real
+	// contact graph and thence in Twenty — the exact failure the split would exist to prevent.
+	//
+	// So the property to prove is PROD PRODUCES AND PREVIEW DOES NOT, and it rests on bindings being
+	// non-inheritable, the same wrangler rule the `assets` test above is about. That is worth pinning
+	// for the reason DAR-131 exists: nothing breaks loudly if it drifts. Adding `queues` to the
+	// preview env silently starts filing every preview submission as a real lead, and `pnpm check`
+	// stays green — it would merely re-type the binding as required (measured).
+	test('production produces to crm-ingest', () => {
+		expect(wrangler.queues?.producers).toEqual([{ queue: 'crm-ingest', binding: 'CRM_INGEST' }]);
+	});
+
+	test('the preview Worker declares NO queue producer, so it cannot reach the contact graph', () => {
+		// `toBeUndefined` on `queues` alone would pass against a preview env that declared an empty
+		// `producers: []` and then grew an entry, so assert the binding is unreachable by NAME too —
+		// which is the thing `crm-egress.spec.ts` cannot see, since wrangler.jsonc is not source.
+		expect(wrangler.env?.preview?.queues).toBeUndefined();
+		expect(
+			wrangler.env?.preview?.queues?.producers?.some((p) => p.binding === 'CRM_INGEST') ?? false
+		).toBe(false);
 	});
 
 	test('trustedOrigins is exactly the four hosts, written out', () => {
