@@ -19,11 +19,13 @@ const { default: AdminWaitlistPage } = await import('./+page.svelte');
 
 type Lead = PageData['leads'][number];
 type Submission = Lead['submissions'][number];
-// `PageData` also carries the /admin layout's half (a Better Auth `user` + `isAdmin`), which this
-// page reads none of. Pick only this route's own load return, so the fixture still breaks if a
-// column's type changes but doesn't have to fake a session.
+// `PageData` also carries the /admin layout's half — a Better Auth `user`, which this page reads
+// nothing of, and `isAdmin`, which since DAR-191 gates the lift control. So the pick takes this
+// route's own load return plus that one flag: the fixture still breaks if a column's type changes,
+// and still doesn't have to fake a session.
 type PageFixture = Pick<
 	PageData,
+	| 'isAdmin'
 	| 'leads'
 	| 'counts'
 	| 'filter'
@@ -78,6 +80,8 @@ const ROW: Lead = {
 	updatesConfirmedAt: null,
 	updatesUnsubscribedAt: null,
 	updatesUnsubscribedBy: null,
+	doNotContactAt: null,
+	doNotContactBy: null,
 	createdAt: new Date('2026-07-01T12:00:00Z'),
 	submissions: [SUBMISSION],
 	leadClass: 'priority-a',
@@ -136,6 +140,9 @@ const FUNNEL: PageFixture['funnel'] = {
 };
 
 const data = (over: Partial<PageFixture> = {}): PageFixture => ({
+	// Default OPERATOR, not admin — the lower privilege, so a control that should be admin-only shows
+	// up in the default fixture if its gate is ever dropped.
+	isAdmin: false,
 	leads: [ROW, RESEARCHER],
 	counts: { 'priority-a': 1, 'priority-b': 0, 'priority-c': 0, research: 1, investor: 0 },
 	filter: null,
@@ -279,6 +286,116 @@ describe('/admin/waitlist', () => {
 			.toBeInTheDocument();
 	});
 
+	// --- "Don't contact me" (DAR-191) ---------------------------------------------------------------
+
+	// THE BADGE REPLACES THE CLAIM RATHER THAN JOINING IT. `contact_permission` in this column is an
+	// answer somebody typed into an unauthenticated form; the flag is where the person themselves now
+	// stands. The fixture is deliberately the one whose claim says "Authorized", so a cell that rendered
+	// both — or that let the claim win — is caught rather than merely looking tidy.
+	it('shows do-not-contact in place of the submitted contact permission', async () => {
+		mount({ leads: [{ ...ROW, doNotContactAt: new Date('2026-07-30T12:00:00Z') }] });
+
+		await expect.element(page.getByText('Do not contact', { exact: true })).toBeVisible();
+		expect(page.getByText('Authorized', { exact: true }).elements()).toHaveLength(0);
+	});
+
+	// The invitation is the one live outreach surface, so the control goes rather than being left to be
+	// refused on click — a button that errors reads as a bug, not as a decision. Asserting the FORM is
+	// gone, not just the label: the label is what a careless fix would hide.
+	it('withdraws the invite control for a flagged lead and says why', async () => {
+		const { container } = mount({
+			leads: [{ ...ROW, doNotContactAt: new Date('2026-07-30T12:00:00Z') }]
+		});
+
+		expect(actionsOf(container, 'invite')).toEqual([]);
+		await expect
+			.element(page.getByText('Invitations are off for this lead.', { exact: true }))
+			.toBeVisible();
+	});
+
+	// …and the record control goes too, replaced by nothing for an operator. Same reasoning as the
+	// opt-out's: a control that can only be a no-op is noise in a column scanned under pressure.
+	it('withdraws the record control once one is on file', async () => {
+		const { container } = mount({
+			leads: [{ ...ROW, doNotContactAt: new Date('2026-07-30T12:00:00Z') }]
+		});
+
+		expect(actionsOf(container, 'recordDoNotContact')).toEqual([]);
+	});
+
+	// THE ASYMMETRY, rendered. An operator may record a request and may not lift one, so for them a
+	// flagged row has no control at all; an admin gets the lift. Both halves asserted, because the
+	// refusal alone passes against a page that never renders the control for anybody.
+	it('offers the lift only to an admin', async () => {
+		const flagged = [{ ...ROW, doNotContactAt: new Date('2026-07-30T12:00:00Z') }];
+
+		const operator = mount({ leads: flagged });
+		expect(actionsOf(operator.container, 'liftDoNotContact')).toEqual([]);
+		expect(operator.container.textContent).not.toContain('Lift do-not-contact');
+
+		const admin = mount({ leads: flagged, isAdmin: true, filter: 'priority-a' });
+		expect(actionsOf(admin.container, 'liftDoNotContact')).toEqual([
+			// …carrying the active filter, like every other action on the page.
+			'?/liftDoNotContact&class=priority-a'
+		]);
+		expect(admin.container.textContent).toContain('Lift do-not-contact');
+	});
+
+	// An admin looking at an UNFLAGGED lead must not see a lift either — the two controls are mutually
+	// exclusive, and without this the `isAdmin` branch could render both.
+	it('offers an admin the record control, not the lift, for an unflagged lead', async () => {
+		const { container } = mount({ leads: [ROW], isAdmin: true });
+
+		expect(actionsOf(container, 'recordDoNotContact')).toEqual(['?/recordDoNotContact']);
+		expect(actionsOf(container, 'liftDoNotContact')).toEqual([]);
+	});
+
+	// The trail somebody asking about their own record needs: when, and by whom. `operator-9` rather
+	// than `staff-1` for the sibling block's reason — that value is the RESEARCHER fixture's
+	// `invited_by`, so it would resolve to two elements and could pass against a panel that never
+	// rendered this column.
+	it('renders when a request was recorded and who recorded it', async () => {
+		mount({
+			leads: [
+				{
+					...ROW,
+					doNotContactAt: new Date('2026-07-30T12:00:00Z'),
+					doNotContactBy: 'operator-9'
+				}
+			]
+		});
+
+		await expect
+			.element(page.getByText('Do-not-contact recorded', { exact: true }))
+			.toBeInTheDocument();
+		await expect.element(page.getByText('operator-9', { exact: true })).toBeInTheDocument();
+	});
+
+	// Its own namespace, for the sibling banner's reason — and one extra: record and lift SHARE it, so
+	// the success line has to distinguish them itself rather than relying on which form was posted.
+	it('tells a recorded request apart from a lifted one in the banner', () => {
+		const recorded = mount(undefined, {
+			doNotContact: { ok: true, email: 'lead@example.com' }
+		});
+		expect(recorded.container.textContent).toContain(
+			'Do-not-contact recorded for lead@example.com'
+		);
+		expect(recorded.container.textContent).not.toContain('lifted');
+
+		const lifted = mount(undefined, {
+			doNotContact: { ok: true, email: 'lead@example.com', lifted: true }
+		});
+		expect(lifted.container.textContent).toContain('Do-not-contact lifted for lead@example.com');
+	});
+
+	// The standing note is the only place the two-axis rule is stated, and it exists BECAUSE the code
+	// deliberately does not enforce it: recording one does not record the other, so an operator
+	// honoring "stop everything" has to press both. Copy is the whole mechanism, so it is asserted.
+	it('tells the operator the two consent axes are separate requests', async () => {
+		const { container } = mount();
+		expect(container.textContent).toContain('if they asked for both, record both');
+	});
+
 	// The banner's namespace. `recordOptOut`'s failure is NESTED under `optOut`, and that nesting is the
 	// only thing keeping it out of the page's generic `'error' in form` banner — flatten it to
 	// `{ error }` and an operator whose opt-out failed is told a SUBMISSION couldn't be deleted, a
@@ -354,6 +471,12 @@ describe('/admin/waitlist', () => {
 		expect(actionsOf(container, 'recordOptOut')).toEqual([
 			'?/recordOptOut&class=priority-a',
 			'?/recordOptOut&class=priority-a'
+		]);
+		// Neither is flagged, so both rows offer it (DAR-191). Its lift twin is asserted in that block
+		// instead: it needs a flagged lead AND an admin, so it cannot ride the default fixture.
+		expect(actionsOf(container, 'recordDoNotContact')).toEqual([
+			'?/recordDoNotContact&class=priority-a',
+			'?/recordDoNotContact&class=priority-a'
 		]);
 	});
 

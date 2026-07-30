@@ -416,7 +416,17 @@ export async function claimPriorityLeadNotification(db: Db, leadId: string): Pro
 	const claimed = await db
 		.update(waitlistLead)
 		.set({ priorityANotifiedAt: DB_NOW })
-		.where(and(eq(waitlistLead.id, leadId), isNull(waitlistLead.priorityANotifiedAt)))
+		.where(
+			and(
+				eq(waitlistLead.id, leadId),
+				isNull(waitlistLead.priorityANotifiedAt),
+				// "Don't contact me" (DAR-191). This notification exists to say "invite them", and the
+				// invite now refuses — so firing it would be us prompting ourselves toward an action the
+				// code will not perform. One more predicate on the UPDATE that was already happening: no
+				// extra query, no code path that could answer "is this address flagged?" to a caller.
+				isNull(waitlistLead.doNotContactAt)
+			)
+		)
 		.returning({ id: waitlistLead.id });
 	return claimed.length > 0;
 }
@@ -478,6 +488,10 @@ const UPDATES_SIGNALS = {
  *     re-tick could restart the asks then unsubscribing would stop one message instead of the
  *     relationship. Re-entry deliberately needs a channel the form cannot reach.
  *   - ASKED INSIDE THE WINDOW → the rate cap above.
+ *   - DO NOT CONTACT (DAR-191) → the effect of that flag has to be uniform across every surface it can
+ *     reach (DAR-83's lesson). This ask is the one piece of mail a stranger can cause us to send to an
+ *     address that has confirmed nothing, so leaving it open would let somebody re-type the address of
+ *     the very person who asked us to stop and put us back in their inbox.
  *
  * A missing lead simply matches nothing, so a deleted row and a refused claim are the same `false` —
  * the caller sends nothing either way and has no reason to tell them apart.
@@ -491,6 +505,7 @@ export async function claimUpdatesConfirmSend(db: Db, leadId: string): Promise<b
 				eq(waitlistLead.id, leadId),
 				isNull(waitlistLead.updatesConfirmedAt),
 				isNull(waitlistLead.updatesUnsubscribedAt),
+				isNull(waitlistLead.doNotContactAt),
 				UPDATES_ASK_ALLOWED
 			)
 		)
@@ -600,6 +615,80 @@ export async function readUpdatesAudience(db: Db): Promise<{ id: string; email: 
 		.orderBy(waitlistLead.email);
 }
 
+// ---------------------------------------------------------------------------------------------
+// "Don't contact me" (DAR-191) — the second consent axis.
+//
+// Both writes here are staff-only, from /admin/waitlist. There is no self-service link on this axis
+// (the requests it exists for arrive as a reply or a phone call), which is the one structural
+// difference from DAR-139's gate above; the column shapes are otherwise deliberately identical, so an
+// operator reading a row does not have to learn two vocabularies.
+//
+// NOTE what is NOT here: an audience query. `mayContactLead` is consulted at three points — the
+// invite's own lookup and the two claims above — and each of those already had a statement to hang a
+// predicate on. There is no set of people to enumerate, only writes to refuse.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Record that this person has asked us not to contact them. Returns the post-state plus `email`, or
+ * null when no such lead exists (deleted between render and click).
+ *
+ * MONOTONIC, and the actor is stamped under the TIMESTAMP's first-writer-wins `case` rather than
+ * `coalesce`d on its own value — the same shape as `unsubscribeUpdates`, and for the reason that was
+ * mutation-proven there: null is a meaningful value on a `*_by` column (reserved here for a mailbox
+ * acting for itself), so `coalesce(do_not_contact_by, <staff id>)` would overwrite it and the row
+ * would then claim an operator did what the person had already done. SQLite evaluates SET against the
+ * PRE-update row, which is what lets both expressions read the values they are replacing.
+ *
+ * `recordedBy` is required-and-nullable for `unsubscribeUpdates`'s reason: today's single caller always
+ * passes a staff id, and typing it `string` would make a future self-service link a signature change
+ * rather than a call site saying `null` out loud.
+ *
+ * Unconditional. There is no state from which "please stop contacting me" should be refused.
+ */
+export async function recordDoNotContact(
+	db: Db,
+	leadId: string,
+	recordedBy: string | null
+): Promise<{ doNotContactAt: Date | null; email: string } | null> {
+	const rows = await db
+		.update(waitlistLead)
+		.set({
+			doNotContactAt: sql`coalesce(do_not_contact_at, ${DB_NOW})`,
+			doNotContactBy: sql`case when do_not_contact_at is null
+				then ${recordedBy}
+				else do_not_contact_by end`
+		})
+		.where(eq(waitlistLead.id, leadId))
+		.returning({ doNotContactAt: waitlistLead.doNotContactAt, email: waitlistLead.email });
+	return rows[0] ?? null;
+}
+
+/**
+ * Lift a recorded do-not-contact. Returns `email`, or null when no such lead exists.
+ *
+ * ADMIN-ONLY at the call site, and that gate is the design rather than a permission detail: recording
+ * somebody's request is ordinary staff work, un-recording it is not. Without the asymmetry the control
+ * would sit one click from the Invite button it suppresses, which turns a durable request into a speed
+ * bump. With it, a mis-press on the wrong row and a prospect who later says "actually, let's talk" both
+ * stay recoverable without deleting their submissions.
+ *
+ * CLEARS BOTH COLUMNS rather than stamping a third "lifted" pair. The durable history is the
+ * `[outreach] donotcontact.lifted` Workers Logs line — the same posture `invited_at` has, where a
+ * resend overwrites the stamp and the per-invite log line keeps the trail. A lifted-at column would
+ * turn `mayContactLead` into a comparison of two timestamps for a state nobody queries historically.
+ *
+ * Unconditional, so lifting a lead that was never flagged is a harmless no-op rather than an error to
+ * explain; the control only renders for a flagged lead in the first place.
+ */
+export async function liftDoNotContact(db: Db, leadId: string): Promise<{ email: string } | null> {
+	const rows = await db
+		.update(waitlistLead)
+		.set({ doNotContactAt: null, doNotContactBy: null })
+		.where(eq(waitlistLead.id, leadId))
+		.returning({ email: waitlistLead.email });
+	return rows[0] ?? null;
+}
+
 /**
  * The /admin/waitlist triage window: the `limit` most recently ACTIVE leads, plus every submission
  * belonging to them. Collation (grouping, classification, conflict detection) happens on the result
@@ -649,6 +738,11 @@ export async function readWaitlistTriageWindow(
 			// who recorded a withdrawal is PROVENANCE rather than state (DAR-140). Widening the signals
 			// would offer the state function an input it must never branch on.
 			updatesUnsubscribedBy: waitlistLead.updatesUnsubscribedBy,
+			// The outreach axis (DAR-191). Listed as plain columns for the same reason: there is no
+			// signals map to fold them into, `mayContactLead` reads the timestamp alone, and who recorded
+			// it is provenance the rule must never branch on.
+			doNotContactAt: waitlistLead.doNotContactAt,
+			doNotContactBy: waitlistLead.doNotContactBy,
 			createdAt: waitlistLead.createdAt
 		})
 		.from(waitlistLead)

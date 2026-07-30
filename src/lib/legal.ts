@@ -12,5 +12,11 @@
 // withdrawal for somebody who asks by reply or phone instead of using the emailed link — so
 // `privacy_use_updates_body` names both. Same date as DAR-136 above rather than a bump, because both
 // landed on the 30th; the constant not moving here is correct, not an oversight.
+// 2026-07-30: DAR-191 rewrote `privacy_use_operational_body`'s middle. The page already promised that
+// early-access mail "isn't a marketing list, and you can ask us to take you off it at any time" — a
+// promise honored until now by an operator remembering — so what changed is that the request is
+// recorded and enforced, and the copy now says the thing a reader could not previously tell: that
+// being left alone does not require having your record deleted. Third change to land on the 30th, so
+// the constant again does not move; check the clock at MERGE time, not at edit time.
 export const PRIVACY_UPDATED = '2026-07-30';
 export const TERMS_UPDATED = '2026-07-23';

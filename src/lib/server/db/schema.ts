@@ -221,6 +221,37 @@ export const waitlistLead = sqliteTable(
 		// first-writer-wins guard as the timestamp beside it (`unsubscribeUpdates`), so a later staff press
 		// cannot overwrite the record of somebody having unsubscribed themselves.
 		updatesUnsubscribedBy: text('updates_unsubscribed_by'),
+		// --- Outreach: "don't contact me" (DAR-191) ---
+		// The SECOND consent axis, and it stands to `waitlist_submission.contact_permission` exactly as the
+		// three columns above stand to `consent_updates`: that one is an ANSWER on an immutable submission,
+		// given by whoever filled in the form; this is where the person themselves now stands. DAR-140 was
+		// asked to honor "don't contact me" by clearing `contact_permission` and refused, which is what
+		// produced this column — clearing an answer stops nothing (nothing sends from it), leaves a state
+		// indistinguishable from never having been asked, and edits an append-only row.
+		//
+		// WHAT IT MEANS: we do not initiate contact with this person. It suppresses the invitation
+		// (DAR-67), the Priority-A notification that exists to prompt one (DAR-82), and the updates
+		// confirmation request (DAR-139) — that last one because it is mail WE send at a stranger's
+		// prompting to an address that has confirmed nothing, i.e. precisely what they asked us to stop.
+		//
+		// WHAT IT DELIBERATELY DOES NOT MEAN: unsubscribed. `mayReceiveUpdates` never reads this. A
+		// confirmed subscription is a verified grant from that mailbox and every message carries a
+		// one-click unsubscribe, so "don't contact me about a pilot" is not "cancel my newsletter" —
+		// conflating them would silently destroy the strongest consent signal we hold. Someone who asked
+		// for both gets both recorded; /admin/waitlist says so in as many words.
+		//
+		// On the lead for the same FORCED reason as the updates columns: a decision about a person cannot
+		// be recorded across N immutable submissions.
+		doNotContactAt: integer('do_not_contact_at', { mode: 'timestamp_ms' }),
+		// WHO recorded it. Unlike `updates_unsubscribed_by` there is no self-service link on this axis
+		// yet, so today this is always the staff id — the value it carries is WHICH operator, exactly as
+		// `invited_by` and `reviewed_by` do. Null is reserved for the mailbox itself, so a future link
+		// inherits DAR-140's vocabulary rather than inventing a second one.
+		//
+		// Cleared together with the timestamp by the admin-only lift, so the durable who-did-what history
+		// is the `[outreach]` Workers Logs line, not this column — the same posture `invited_at` has, where
+		// a resend overwrites the stamp and the per-invite log line keeps the trail.
+		doNotContactBy: text('do_not_contact_by'),
 		// --- Human review (DAR-88) ---
 		// "A human has looked at this lead's submissions and reconciled them." Deliberately a STAMP and
 		// not a merge: the reconciliation lands in whatever the operator does next (an outreach, a CRM

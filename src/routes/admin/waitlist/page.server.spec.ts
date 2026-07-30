@@ -24,7 +24,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // mutation to the gate fails here rather than being absorbed by a stub that agrees with it.
 
 const unsubscribeUpdates = vi.fn();
+const recordDoNotContact = vi.fn();
+const liftDoNotContact = vi.fn();
 const markWaitlistReviewed = vi.fn();
+const findAccountByEmail = vi.fn();
+const findWaitlistInviteTarget = vi.fn();
 const deleteWhere = vi.fn();
 
 vi.mock('$lib/server/db', () => ({
@@ -34,23 +38,35 @@ vi.mock('$lib/server/db', () => ({
 vi.mock('$lib/server/env', () => ({ readEnv: () => undefined }));
 vi.mock('$lib/server/waitlist-store', () => ({
 	unsubscribeUpdates,
+	recordDoNotContact,
+	liftDoNotContact,
 	readWaitlistTriageWindow: vi.fn()
 }));
 // Only `review`'s write is needed, but the module is mocked whole, so the other three are stubbed to
 // keep the import graph honest rather than left undefined.
 vi.mock('$lib/server/waitlist-invite', () => ({
 	markWaitlistReviewed,
-	findAccountByEmail: vi.fn(),
-	findWaitlistInviteTarget: vi.fn(),
+	findAccountByEmail,
+	findWaitlistInviteTarget,
 	markWaitlistInvited: vi.fn()
 }));
+// `invite` resolves the auth instance before its first await, so reaching its body needs this stubbed
+// even for a path that never calls it. Nothing beyond the do-not-contact refusal below is exercised
+// here — that check runs before anything touches better-auth, which is the property under test.
+vi.mock('$lib/server/auth', () => ({ getAuth: () => ({ api: { createUser: vi.fn() } }) }));
 
 /**
  * Every write an action can reach past its gate. A gate test asserts on ALL of them rather than on the
  * one that action happens to use, because "didn't delete" is vacuously true of an action that updates —
  * which is exactly the shape a per-action assertion drifts into.
  */
-const WRITES = [unsubscribeUpdates, markWaitlistReviewed, deleteWhere];
+const WRITES = [
+	unsubscribeUpdates,
+	recordDoNotContact,
+	liftDoNotContact,
+	markWaitlistReviewed,
+	deleteWhere
+];
 
 const { actions } = await import('./+page.server');
 
@@ -68,6 +84,7 @@ const call = (name: keyof typeof actions, user: Actor, fields: Record<string, st
 };
 
 const OPERATOR: Actor = { id: 'staff-1', role: 'operator' };
+const ADMIN: Actor = { id: 'boss-1', role: 'admin' };
 const SIGNED_IN_USER: Actor = { id: 'someone', role: 'user' };
 
 // The action's audit line. Silenced once for the file rather than re-spied per test, which would
@@ -133,6 +150,144 @@ describe('recordOptOut (DAR-140)', () => {
 		const result = await call('recordOptOut', OPERATOR, { id: 'lead-1' });
 
 		expect(result).toMatchObject({ status: 404 });
+	});
+});
+
+describe('recordDoNotContact (DAR-191)', () => {
+	it('records the request and names the address back', async () => {
+		recordDoNotContact.mockResolvedValue({ email: 'ada@example.com', doNotContactAt: new Date() });
+
+		const result = await call('recordDoNotContact', OPERATOR, { id: 'lead-1' });
+
+		expect(result).toEqual({ doNotContact: { ok: true, email: 'ada@example.com' } });
+	});
+
+	// `do_not_contact_by` is cleared outright by a lift, so this actor is not merely an audit nicety —
+	// it and the log line are the only record of who acted. Asserted as the operator's id specifically,
+	// since the required `string | null` parameter can stop it being forgotten but not being wrong.
+	it('passes the signed-in operator down as the recorder', async () => {
+		recordDoNotContact.mockResolvedValue({ email: 'ada@example.com' });
+
+		await call('recordDoNotContact', OPERATOR, { id: 'lead-1' });
+
+		expect(recordDoNotContact).toHaveBeenCalledWith(expect.anything(), 'lead-1', 'staff-1');
+	});
+
+	it.each([
+		['a signed-in end-user', SIGNED_IN_USER],
+		['an anonymous caller', null]
+	])('refuses %s without touching the database', async (_label, user) => {
+		const result = await call('recordDoNotContact', user, { id: 'lead-1' });
+
+		expect(result).toMatchObject({ status: 403 });
+		for (const write of WRITES) expect(write).not.toHaveBeenCalled();
+	});
+
+	it('refuses a submit with no lead id', async () => {
+		const result = await call('recordDoNotContact', OPERATOR);
+
+		expect(result).toMatchObject({ status: 400 });
+		expect(recordDoNotContact).not.toHaveBeenCalled();
+	});
+
+	it('reports a lead that vanished between render and click', async () => {
+		recordDoNotContact.mockResolvedValue(null);
+
+		const result = await call('recordDoNotContact', OPERATOR, { id: 'lead-1' });
+
+		expect(result).toMatchObject({ status: 404 });
+	});
+});
+
+describe('liftDoNotContact (DAR-191)', () => {
+	// THE ASSERTION THIS FILE EXISTS FOR, and the only one that can tell `isRosterAdmin` from `isStaff`:
+	// every other gate test here uses an end-user or an anonymous caller, both of whom fail either
+	// predicate, so swapping the gate would leave them all green. An operator passes `isStaff` and fails
+	// `isRosterAdmin`, which is precisely the asymmetry the design turns on — recording somebody's
+	// request is ordinary staff work, un-recording it is not, and a control an operator could press
+	// would sit one click from the Invite button it suppresses.
+	//
+	// The pair matters as much as the refusal: the same actor must be ALLOWED to record. Asserting only
+	// the refusal would pass against a build that had locked an operator out of both.
+	it('refuses an operator who may record one, and admits an admin', async () => {
+		recordDoNotContact.mockResolvedValue({ email: 'ada@example.com' });
+		liftDoNotContact.mockResolvedValue({ email: 'ada@example.com' });
+
+		expect(await call('recordDoNotContact', OPERATOR, { id: 'lead-1' })).toMatchObject({
+			doNotContact: { ok: true }
+		});
+		expect(await call('liftDoNotContact', OPERATOR, { id: 'lead-1' })).toMatchObject({
+			status: 403
+		});
+		expect(liftDoNotContact).not.toHaveBeenCalled();
+
+		expect(await call('liftDoNotContact', ADMIN, { id: 'lead-1' })).toMatchObject({
+			doNotContact: { ok: true, lifted: true }
+		});
+	});
+
+	it.each([
+		['a signed-in end-user', SIGNED_IN_USER],
+		['an anonymous caller', null]
+	])('refuses %s without touching the database', async (_label, user) => {
+		const result = await call('liftDoNotContact', user, { id: 'lead-1' });
+
+		expect(result).toMatchObject({ status: 403 });
+		for (const write of WRITES) expect(write).not.toHaveBeenCalled();
+	});
+
+	it('refuses a submit with no lead id', async () => {
+		const result = await call('liftDoNotContact', ADMIN);
+
+		expect(result).toMatchObject({ status: 400 });
+		expect(liftDoNotContact).not.toHaveBeenCalled();
+	});
+
+	it('reports a lead that vanished between render and click', async () => {
+		liftDoNotContact.mockResolvedValue(null);
+
+		const result = await call('liftDoNotContact', ADMIN, { id: 'lead-1' });
+
+		expect(result).toMatchObject({ status: 404 });
+	});
+});
+
+// The invite's own refusal (DAR-191). Reachable here — unlike the rest of `invite`, which needs
+// better-auth, the activation minter and Resend — precisely BECAUSE of the property being asserted:
+// the check runs before any of them.
+describe('invite against a do-not-contact lead', () => {
+	it('refuses before it looks up, creates or mints anything', async () => {
+		findWaitlistInviteTarget.mockResolvedValue({
+			email: 'ada@example.com',
+			name: 'Ada',
+			doNotContactAt: new Date('2026-07-30T12:00:00Z')
+		});
+
+		const result = await call('invite', OPERATOR, { id: 'lead-1' });
+
+		expect(result).toMatchObject({ status: 400, data: { invite: { error: 'do_not_contact' } } });
+		// THE POSITION, not just the refusal. Everything destructive in this action happens after the
+		// account lookup, so "the lookup was never reached" is the cheapest proof that a refused invite
+		// leaves no account, no activation token and no mail — and it is what goes red if the check is
+		// moved down a few lines, which is exactly the edit a later refactor would make.
+		expect(findAccountByEmail).not.toHaveBeenCalled();
+	});
+
+	// Non-vacuous: without this, a build that refused EVERY invite would pass the test above. The
+	// account is a STAFF one so the action stops at the very next refusal — which keeps the assertion
+	// positive (a specific, different error code) and keeps the test out of better-auth, rather than
+	// asserting "not do_not_contact" while the run walks on into an activation mint that cannot work.
+	it('proceeds past that check for an un-flagged lead', async () => {
+		findWaitlistInviteTarget.mockResolvedValue({
+			email: 'ada@example.com',
+			name: 'Ada',
+			doNotContactAt: null
+		});
+		findAccountByEmail.mockResolvedValue({ id: 'u1', role: 'admin', isStaff: true, banned: false });
+
+		const result = await call('invite', OPERATOR, { id: 'lead-1' });
+
+		expect(result).toMatchObject({ status: 400, data: { invite: { error: 'staff_account' } } });
 	});
 });
 

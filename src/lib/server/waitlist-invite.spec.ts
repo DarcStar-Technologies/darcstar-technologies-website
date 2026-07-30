@@ -35,6 +35,8 @@ beforeAll(async () => {
 			invited_at integer,
 			invited_by text,
 			activated_at integer,
+			do_not_contact_at integer,
+			do_not_contact_by text,
 			reviewed_at integer,
 			reviewed_by text,
 			created_at integer DEFAULT ${NOW_DEFAULT} NOT NULL
@@ -197,7 +199,11 @@ describe('findWaitlistInviteTarget', () => {
 
 		expect(await findWaitlistInviteTarget(db, 'l1')).toEqual({
 			email: 'ada@example.com',
-			name: 'Ada Lovelace'
+			name: 'Ada Lovelace',
+			// DAR-191 rides along on this lookup so the invite can refuse without a second query.
+			// Kept an EXACT-shape assertion rather than loosened to `toMatchObject`: what this function
+			// hands the invite mailer is worth being able to read here in full.
+			doNotContactAt: null
 		});
 	});
 
@@ -216,7 +222,8 @@ describe('findWaitlistInviteTarget', () => {
 		await seedSubmission('s1', 'l1', 'ada@example.com', null, 1_000);
 		expect(await findWaitlistInviteTarget(db, 'l1')).toEqual({
 			email: 'ada@example.com',
-			name: null
+			name: null,
+			doNotContactAt: null
 		});
 	});
 

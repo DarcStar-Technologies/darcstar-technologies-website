@@ -19,6 +19,7 @@ import {
 	type WaitlistUpdatesSignals,
 	type WaitlistUpdatesState
 } from '$lib/waitlist-updates';
+import type { WaitlistOutreachSignals } from '$lib/waitlist-outreach';
 import type { WaitlistLeadClass } from '$lib/waitlist-qualification';
 
 /**
@@ -122,7 +123,7 @@ export function conflictingFields(
 }
 
 /** The lead columns collation needs. Answers live on the submissions, never here. */
-export interface WaitlistLeadRow extends WaitlistUpdatesSignals {
+export interface WaitlistLeadRow extends WaitlistUpdatesSignals, WaitlistOutreachSignals {
 	id: string;
 	email: string;
 	invitedAt: Date | null;
@@ -135,6 +136,12 @@ export interface WaitlistLeadRow extends WaitlistUpdatesSignals {
 	 * this: provenance is not state.
 	 */
 	updatesUnsubscribedBy: string | null;
+	/**
+	 * "Don't contact me" (DAR-191) — the outreach axis, and a LEAD-level fact for the same reason the
+	 * updates columns are. Extended from `WaitlistOutreachSignals` rather than restated, so the badge
+	 * and `mayContactLead` cannot end up reading different shapes.
+	 */
+	doNotContactBy: string | null;
 	reviewedAt: Date | null;
 	reviewedBy: string | null;
 	createdAt: Date;
