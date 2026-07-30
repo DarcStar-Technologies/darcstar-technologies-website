@@ -408,6 +408,7 @@
 							<th class="px-3 py-2 font-medium">{m.admin_col_company()}</th>
 							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_role()}</th>
 							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_outreach()}</th>
+							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_updates()}</th>
 							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_access()}</th>
 							<th class="px-3 py-2 text-right font-medium">
 								<span class="sr-only">{m.admin_col_actions()}</span>
@@ -475,6 +476,28 @@
 										<span class="text-xs text-body">{m.admin_waitlist_outreach_declined()}</span>
 									{:else}
 										<span class="text-xs text-faint">{m.admin_waitlist_outreach_unasked()}</span>
+									{/if}
+								</td>
+								<td class="px-3 py-3 whitespace-nowrap">
+									<!-- Where this address stands on product-and-research updates (DAR-139), derived
+									     from the LEAD — deliberately BESIDE the per-submission "Marketing consent"
+									     row in the detail panel rather than replacing it. Those say what each
+									     submitter typed into an unauthenticated form; this says whether the mailbox
+									     itself ever answered, which is the only thing that authorizes a send.
+									     "Opted out" is styled as the loudest of the four for the same reason the
+									     conflict chip is: it is the one an operator must not act against. -->
+									{#if lead.updatesState === 'unsubscribed'}
+										<span class="{tagBase} bg-warning-500/15 text-warning-300"
+											>{m.admin_waitlist_updates_unsubscribed()}</span
+										>
+									{:else if lead.updatesState === 'confirmed'}
+										<span class="{tagBase} bg-success-500/15 text-success-300"
+											>{m.admin_waitlist_updates_confirmed()}</span
+										>
+									{:else if lead.updatesState === 'asked'}
+										<span class="text-xs text-body">{m.admin_waitlist_updates_asked()}</span>
+									{:else}
+										<span class="text-xs text-faint">{m.admin_waitlist_updates_none()}</span>
 									{/if}
 								</td>
 								<td class="px-3 py-3 whitespace-nowrap">
@@ -555,7 +578,8 @@
 								</td>
 							</tr>
 							<tr>
-								<td colspan="9" class="px-3 pb-3">
+								<!-- Spans the whole header row — 10 columns since DAR-139 added Updates. -->
+								<td colspan="10" class="px-3 pb-3">
 									<details>
 										<summary
 											aria-label={m.admin_waitlist_detail_sr({ email: lead.email })}

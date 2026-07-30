@@ -16,6 +16,8 @@ import { clearWaitlistResume, setWaitlistResume } from '$lib/server/waitlist-res
 import { waitlistSigningSecret } from '$lib/server/waitlist-secret';
 import { hashIp } from '$lib/server/contact'; // shared truncated-SHA-256 IP hash (same throttle model)
 import { sendWaitlistEmails } from '$lib/server/waitlist-notify';
+import { captureUpdatesConsent } from '$lib/server/waitlist-updates-notify';
+import { readEnv } from '$lib/server/env';
 import { captureWaitlistFunnel, resolveWaitlistFlowId } from '$lib/server/waitlist-funnel';
 import { echoFlowId } from '$lib/waitlist-funnel';
 import { m } from '$lib/paraglide/messages.js';
@@ -76,6 +78,10 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		// pre-await point). Reused from Better Auth (domain-separated inside waitlist-token.ts) so no
 		// new secret needs provisioning.
 		const tokenSecret = waitlistSigningSecret();
+		// The configured origin, for the links in DAR-139's confirmation email. Read HERE with every
+		// other request-scoped value: `readEnv` reaches for the request's `platform.env`, which comes
+		// back empty once the first await has left the async context.
+		const originUrl = readEnv('ORIGIN');
 
 		// Honeypot: humans never fill the hidden `website` field; bots do. Silently accept (don't
 		// persist, don't reveal the trap) — including a DECOY token so the response BODY matches a real
@@ -136,7 +142,7 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 
 		// Always inserts a submission; upserts the LEAD behind it. `isNew` is the lead insert winning,
 		// i.e. a GENUINE first signup for this address — see waitlist-store.ts.
-		const { isNew, id } = await insertWaitlistSubmission(db, cleaned, ipHash, userAgent);
+		const { isNew, id, leadId } = await insertWaitlistSubmission(db, cleaned, ipHash, userAgent);
 
 		// Fire-and-forget notifications (lead + signer ack), same pattern as the contact form: the row
 		// is already persisted, so a send failure must NOT fail the signup — log and move on.
@@ -155,6 +161,25 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 				console.error('waitlist notifications failed', err)
 			);
 			if (platform?.ctx) platform.ctx.waitUntil(send);
+		}
+
+		// The updates opt-in (DAR-139). A ticked box is a REQUEST TO BE ASKED, never permission: the form
+		// is unauthenticated, so a third party can type anyone's address in. This asks — once, and only
+		// when the lead's own claim allows it (`claimUpdatesConfirmSend`).
+		//
+		// Deliberately NOT under the `isNew` gate above, and the difference is what each guard is for.
+		// `isNew` caps a once-ever welcome at once ever. This is a question that must stay askable, or
+		// every address already on the list could tick the box forever and never be reached — so its cap
+		// is a per-lead rate instead, and the "don't ask again" link inside the email is what ends it for
+		// good. Fire-and-forget including the claim; see captureUpdatesConsent.
+		if (cleaned.consentUpdates) {
+			captureUpdatesConsent(
+				db,
+				platform,
+				{ resendKey, origin: originUrl, secret: tokenSecret },
+				{ leadId, email: cleaned.email },
+				locale
+			);
 		}
 
 		// Funnel: the signup step completed (DAR-66). Fire-and-forget, and deliberately NOT gated on

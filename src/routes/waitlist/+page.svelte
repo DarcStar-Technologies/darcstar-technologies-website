@@ -29,7 +29,7 @@
 	import WaitlistStep4A from '$lib/components/WaitlistStep4A.svelte';
 	import WaitlistStep4B from '$lib/components/WaitlistStep4B.svelte';
 	import WaitlistConfirmation from '$lib/components/WaitlistConfirmation.svelte';
-	import { fieldClass, mutedLinkClass } from '$lib/styles';
+	import { fieldClass, fieldHelpClass, mutedLinkClass } from '$lib/styles';
 	import { joinWaitlist, restartWaitlist } from '$lib/waitlist.remote';
 	import {
 		submitWaitlistStep2,
@@ -249,7 +249,12 @@
 				/>
 
 				<!-- Optional, UNCHECKED marketing opt-in → consent_updates (DAR-59). A checkbox submits
-				     nothing when unchecked, so absence is stored as false server-side, never consent. -->
+				     nothing when unchecked, so absence is stored as false server-side, never consent.
+				     The label is unchanged by DAR-139 and the help line is the whole change: what was
+				     untrue here was never the wording of the request, it was that ticking it had an
+				     undisclosed consequence. It now sends one confirmation email, so the form has to say
+				     so before it happens — and the sentence is also the honest description of the gate,
+				     since nothing is sent unless that email is answered. -->
 				<label class="flex cursor-pointer items-start gap-3 text-sm text-body">
 					<input
 						{...joinWaitlist.fields.consentUpdates.as('checkbox')}
@@ -257,6 +262,12 @@
 					/>
 					<span>{m.waitlist_consent_label()}</span>
 				</label>
+				<!-- `-mt-2 ps-7` rather than the bare help class: this one sits BELOW its control instead of
+				     above a field, and the padding lines it up with the label text rather than with the
+				     checkbox, so it reads as part of the tick box and not as more form-level fine print
+				     next to the privacy notice underneath. (7 = the checkbox's `size-4` plus the label's
+				     `gap-3`.) -->
+				<p class="{fieldHelpClass} -mt-2 ps-7">{m.waitlist_consent_help()}</p>
 
 				<!-- Data-handling notice (DAR-44) — the shared FormPrivacyNotice, same as the
 				     contact form's (ContactFields). -->

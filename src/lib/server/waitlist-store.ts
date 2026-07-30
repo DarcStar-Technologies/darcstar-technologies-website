@@ -24,10 +24,16 @@
 //   claimPriorityLeadNotification — spends a lead's one-and-only Priority-A notification (DAR-82),
 //   as a conditional UPDATE rather than a check. Same family as the two gates above: the database
 //   decides, in the statement that does the work.
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+//
+//   claimUpdatesConfirmSend / confirmUpdates / unsubscribeUpdates / readUpdatesAudience — DAR-139's
+//   sending gate for product-and-research updates. Same family again: each write settles its own
+//   outcome inside one statement and reports the post-state, so no caller has to read, decide and
+//   write. See the block above them.
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { SQLiteUpdateSetSource } from 'drizzle-orm/sqlite-core';
 import type { Db } from './db';
 import { waitlistLead, waitlistSubmission } from './db/schema';
+import type { WaitlistUpdatesSignals } from '$lib/waitlist-updates';
 import type { WaitlistLeadRow, WaitlistSubmissionRow } from './waitlist-collate';
 import type { WaitlistLeadSignals } from './waitlist-classify';
 import type {
@@ -148,6 +154,10 @@ const IN_WINDOW = sql`(step_write_window_at > ${STEP_WINDOW_START})`;
  *              wrong under a race, and which is why the gate rides the lead insert rather than a
  *              separate lookup.
  *
+ *   `leadId` — the collated person. Returned because DAR-139's confirmation-request claim addresses a
+ *              LEAD (a standing decision about an address, not about one form fill), and the caller
+ *              would otherwise have to re-read by email the row this function just resolved.
+ *
  * Email is lowercased HERE, not just in the validator: the lead's conflict check matches
  * case-insensitively (functional index), so the fallback SELECT must key the same way or a
  * mixed-case value could conflict yet find no row.
@@ -157,7 +167,7 @@ export async function insertWaitlistSubmission(
 	sub: CleanedWaitlist,
 	ipHash: string,
 	userAgent: string | null
-): Promise<{ isNew: boolean; id: string }> {
+): Promise<{ isNew: boolean; id: string; leadId: string }> {
 	const email = sub.email.toLowerCase();
 
 	// Resolve the lead first. Bounded to two passes, and the shape mirrors the old upsert's: pass 1
@@ -233,7 +243,7 @@ export async function insertWaitlistSubmission(
 		})
 		.returning({ id: waitlistSubmission.id });
 
-	return { isNew, id: inserted[0].id };
+	return { isNew, id: inserted[0].id, leadId };
 }
 
 /** One optional step's validated payload, tagged so the SET clause is a closed per-step map. */
@@ -411,6 +421,162 @@ export async function claimPriorityLeadNotification(db: Db, leadId: string): Pro
 	return claimed.length > 0;
 }
 
+// ---------------------------------------------------------------------------------------------
+// The sending gate for product-and-research updates (DAR-139).
+//
+// `waitlist_submission.consent_updates` is an unverified single-opt-in claim from an unauthenticated
+// form, and /privacy states publicly that it will not drive a send until the address is confirmed by
+// email and every message carries a login-free unsubscribe (DAR-121). These four functions are that
+// promise: the first asks, the next two record the mailbox's answer, and the last is the only
+// definition of who may be written to.
+//
+// All three writes are the shape the rest of this module already uses — the DATABASE settles the
+// outcome inside the statement that does the work, so nothing reads-then-decides-then-writes and there
+// is no race to lose. The two mutations additionally RETURN the post-state, so the page a visitor
+// lands on renders what is true rather than what it assumed would be.
+
+/**
+ * How often one address may be asked to confirm.
+ *
+ * A WINDOW, not a once-ever claim, and the difference from DAR-82's `priority_a_notified_at` is who
+ * receives the mail. That notification lands in our own inbox with an operator standing over it, so
+ * at-most-once is the property worth buying. This one goes to a member of the public who may simply
+ * lose it, and a legitimate re-tick tomorrow has to be able to ask again — a quota would silently make
+ * the box permanently unanswerable for anyone whose first confirmation went astray.
+ *
+ * What it bounds is the exposure append-only leaves open: anyone can submit a known address, so a
+ * stranger can now cause mail to a third party where `isNew` used to make that impossible. One per day
+ * is the ceiling, on top of step 1's per-IP throttle — and the "don't ask again" link inside that very
+ * email ends it permanently in one click, which is the real bound and the reason the link ships in the
+ * confirmation request rather than only in updates that do not exist yet.
+ */
+export const WAITLIST_UPDATES_CONFIRM_WINDOW_MS = 24 * 60 * 60 * 1000; // 1 day
+
+/** Asked at least a window ago (or never). On the DB clock, like every other comparison here. */
+const UPDATES_ASK_ALLOWED = sql`(updates_confirm_sent_at is null
+	or updates_confirm_sent_at <= (${DB_NOW} - ${WAITLIST_UPDATES_CONFIRM_WINDOW_MS}))`;
+
+/**
+ * The three columns `waitlistUpdatesState` reads, as one column map — used by both mutations' RETURNING
+ * and by the triage read below, so "what the state is derived from" is written once. Typed by
+ * `WaitlistUpdatesSignals` at every call site, so dropping one is a compile error rather than a badge
+ * that silently stops escalating.
+ */
+const UPDATES_SIGNALS = {
+	updatesConfirmSentAt: waitlistLead.updatesConfirmSentAt,
+	updatesConfirmedAt: waitlistLead.updatesConfirmedAt,
+	updatesUnsubscribedAt: waitlistLead.updatesUnsubscribedAt
+} as const;
+
+/**
+ * Claim the right to send this lead one confirmation request. True when THIS call claimed it.
+ *
+ * Three refusals, and each is a rule rather than an optimization:
+ *
+ *   - ALREADY CONFIRMED → we have the answer; asking again is noise.
+ *   - ALREADY WITHDRAWN → the durable one. The form is the single surface a stranger controls, so if a
+ *     re-tick could restart the asks then unsubscribing would stop one message instead of the
+ *     relationship. Re-entry deliberately needs a channel the form cannot reach.
+ *   - ASKED INSIDE THE WINDOW → the rate cap above.
+ *
+ * A missing lead simply matches nothing, so a deleted row and a refused claim are the same `false` —
+ * the caller sends nothing either way and has no reason to tell them apart.
+ */
+export async function claimUpdatesConfirmSend(db: Db, leadId: string): Promise<boolean> {
+	const claimed = await db
+		.update(waitlistLead)
+		.set({ updatesConfirmSentAt: DB_NOW })
+		.where(
+			and(
+				eq(waitlistLead.id, leadId),
+				isNull(waitlistLead.updatesConfirmedAt),
+				isNull(waitlistLead.updatesUnsubscribedAt),
+				UPDATES_ASK_ALLOWED
+			)
+		)
+		.returning({ id: waitlistLead.id });
+	return claimed.length > 0;
+}
+
+/**
+ * Record that this address's MAILBOX said yes. Returns the lead's state after the write, or null when
+ * no such lead exists (deleted between the mail going out and the click).
+ *
+ * IDEMPOTENT AND NON-REVERSING, both inside the one SET expression. `coalesce` keeps the first
+ * confirmation's timestamp, so a double-click or a re-visit changes nothing; the `case` refuses to
+ * stamp at all once the address has withdrawn, so an old confirmation link found after unsubscribing
+ * reports the opt-out instead of undoing it. SQLite evaluates SET against the PRE-update row, which is
+ * what lets both conditions read the values they are replacing.
+ *
+ * Returning the post-state rather than a boolean is what keeps the page honest: "confirmed",
+ * "already confirmed" and "you have opted out" are three different things to say, and the alternative
+ * is a second read that could disagree with the write.
+ */
+export async function confirmUpdates(
+	db: Db,
+	leadId: string
+): Promise<WaitlistUpdatesSignals | null> {
+	const rows = await db
+		.update(waitlistLead)
+		.set({
+			updatesConfirmedAt: sql`case when updates_unsubscribed_at is null
+				then coalesce(updates_confirmed_at, ${DB_NOW})
+				else updates_confirmed_at end`
+		})
+		.where(eq(waitlistLead.id, leadId))
+		.returning(UPDATES_SIGNALS);
+	return rows[0] ?? null;
+}
+
+/**
+ * Record a withdrawal. Returns the lead's state after the write, or null when no such lead exists.
+ *
+ * MONOTONIC — `coalesce` keeps the FIRST withdrawal's timestamp, so re-clicking an old link never
+ * rewrites when the person actually opted out. `updates_confirmed_at` is deliberately left standing
+ * beside it: it is the record of what happened, `mayReceiveUpdates` already excludes a withdrawn lead,
+ * and clearing it would destroy evidence to buy nothing.
+ *
+ * Unconditional, unlike its twin: there is no state from which a withdrawal should be refused. A lead
+ * that was never asked can still say "don't", which is exactly what someone whose address a stranger
+ * typed in would want to do.
+ */
+export async function unsubscribeUpdates(
+	db: Db,
+	leadId: string
+): Promise<WaitlistUpdatesSignals | null> {
+	const rows = await db
+		.update(waitlistLead)
+		.set({ updatesUnsubscribedAt: sql`coalesce(updates_unsubscribed_at, ${DB_NOW})` })
+		.where(eq(waitlistLead.id, leadId))
+		.returning(UPDATES_SIGNALS);
+	return rows[0] ?? null;
+}
+
+/**
+ * Everyone who may be sent a product-or-research update. THE AUDIENCE, and the only query that
+ * defines it.
+ *
+ * This is `mayReceiveUpdates` ($lib/waitlist-updates.ts) written as a `WHERE`, and the two cannot be
+ * single-sourced because one of them is SQL — the same split DAR-71 has for the `noIndex` rule, which
+ * lives half in GROQ. So they are pinned against each other instead: waitlist-store.spec.ts runs a
+ * table of leads through both and requires them to agree, which is what makes a drift a failing test
+ * rather than an audience that quietly includes someone who opted out.
+ *
+ * NO SENDER CALLS THIS YET, deliberately — DAR-139 builds the gate, not a campaign. Shipping the
+ * definition with it is the point: the rule has one home before the first send is written, rather than
+ * being re-derived by whoever writes it. What this cannot do is force that author to use it; removing
+ * the SILENT path is `email-senders.spec.ts`'s job, and its failure message names this function.
+ */
+export async function readUpdatesAudience(db: Db): Promise<{ id: string; email: string }[]> {
+	return db
+		.select({ id: waitlistLead.id, email: waitlistLead.email })
+		.from(waitlistLead)
+		.where(
+			and(isNotNull(waitlistLead.updatesConfirmedAt), isNull(waitlistLead.updatesUnsubscribedAt))
+		)
+		.orderBy(waitlistLead.email);
+}
+
 /**
  * The /admin/waitlist triage window: the `limit` most recently ACTIVE leads, plus every submission
  * belonging to them. Collation (grouping, classification, conflict detection) happens on the result
@@ -452,6 +618,9 @@ export async function readWaitlistTriageWindow(
 			activatedAt: waitlistLead.activatedAt,
 			reviewedAt: waitlistLead.reviewedAt,
 			reviewedBy: waitlistLead.reviewedBy,
+			// Where this address stands on updates (DAR-139) — a lead-level fact, so it belongs on the
+			// lead read rather than being inferred from the per-submission `consent_updates` claims below.
+			...UPDATES_SIGNALS,
 			createdAt: waitlistLead.createdAt
 		})
 		.from(waitlistLead)

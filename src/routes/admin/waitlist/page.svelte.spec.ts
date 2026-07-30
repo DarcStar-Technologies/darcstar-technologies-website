@@ -74,10 +74,14 @@ const ROW: Lead = {
 	activatedAt: null,
 	reviewedAt: null,
 	reviewedBy: null,
+	updatesConfirmSentAt: null,
+	updatesConfirmedAt: null,
+	updatesUnsubscribedAt: null,
 	createdAt: new Date('2026-07-01T12:00:00Z'),
 	submissions: [SUBMISSION],
 	leadClass: 'priority-a',
 	inviteState: 'not-invited',
+	updatesState: 'none',
 	conflicts: [],
 	latestAt: new Date('2026-07-01T12:00:00Z'),
 	needsReview: true
@@ -109,7 +113,12 @@ const RESEARCHER: Lead = {
 	invitedAt: new Date('2026-07-03T09:00:00Z'),
 	invitedBy: 'staff-1',
 	activatedAt: null,
-	inviteState: 'invited'
+	inviteState: 'invited',
+	// …and has answered the updates confirmation (DAR-139), so the default fixture carries two
+	// different updates states rather than two copies of the empty one.
+	updatesConfirmSentAt: new Date('2026-07-01T13:00:00Z'),
+	updatesConfirmedAt: new Date('2026-07-01T13:05:00Z'),
+	updatesState: 'confirmed'
 };
 
 // The funnel readout's fixture (DAR-66). Deliberately a shrinking series with 200 views and 50
@@ -175,6 +184,33 @@ describe('/admin/waitlist', () => {
 		mount();
 		await expect.element(page.getByText('Authorized', { exact: true })).toBeVisible();
 		await expect.element(page.getByText('Not asked', { exact: true })).toBeVisible();
+	});
+
+	// DAR-139. The per-submission "Marketing consent" row says what a submitter typed into an
+	// unauthenticated form; this column says whether the mailbox itself answered, which is the only
+	// thing that authorizes a send. Both fixtures ticked the box (SUBMISSION carries consentUpdates),
+	// so a column that read the CLAIM instead of the lead state would show them identically — which is
+	// what makes asserting two different labels here non-vacuous.
+	it('separates a confirmed address from one that only ticked the box', async () => {
+		mount();
+		await expect.element(page.getByText('Confirmed', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('No request', { exact: true })).toBeVisible();
+	});
+
+	it('says an opted-out address has opted out', async () => {
+		mount({
+			leads: [
+				{
+					...ROW,
+					updatesConfirmSentAt: new Date('2026-07-01T13:00:00Z'),
+					updatesConfirmedAt: new Date('2026-07-01T13:05:00Z'),
+					updatesUnsubscribedAt: new Date('2026-07-04T08:00:00Z'),
+					updatesState: 'unsubscribed'
+				}
+			]
+		});
+		await expect.element(page.getByText('Opted out', { exact: true })).toBeVisible();
+		expect(page.getByText('Confirmed', { exact: true }).elements()).toHaveLength(0);
 	});
 
 	it('marks exactly one filter chip current and uses the band-specific empty state', async () => {

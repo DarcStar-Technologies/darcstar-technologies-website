@@ -51,16 +51,28 @@ footer legal bar (`Footer.svelte`).
   early access", which the step-1 opt-in box ("Send me occasional DarcStar product and
   research updates") and the policy's own collection section both contradicted. Now:
   _operational_ mail — confirmation, invitation, account — sent because the person asked;
-  and _optional product and research updates_, which `privacy_use_updates_body` says we are
-  **not sending yet** and won't until the address is confirmed by email and every message
-  carries an unsubscribe honored without a login. `consent_updates` is an unverified
-  single-opt-in claim from an unauthenticated form ([waitlist](waitlist.md#consent)) — a
-  preference, not permission. Shipping the send means rewriting that message and bumping
-  `PRIVACY_UPDATED` in the same change; `src/lib/server/email-senders.spec.ts` is what makes
-  that a declared act rather than a silent one, by holding every module that imports
-  `postEmail` — in `src` **and in `scripts/`**, since a hand-run blast is how a first send
-  would realistically get written — against an allowlist where each declares what it sends.
-  The gate itself — double opt-in, login-free unsubscribe, revocation — is **DAR-139**.
+  and _optional product and research updates_, which `consent_updates` alone never authorizes,
+  being an unverified single-opt-in claim from an unauthenticated form
+  ([waitlist](waitlist.md#consent)).
+- **DAR-139 built the gate the policy describes, so the paragraph changed with it.** Ticking
+  the box now causes exactly one email — a confirmation request — and
+  `privacy_use_updates_body` says so, because that is a send the site did not make before. It
+  also states what still hasn't changed: **we are still not sending product and research
+  updates**, nothing goes out unless the confirmation is answered, we ask at most once a day
+  however many times the form is filled in, and every message including that one carries a link
+  that stops us without signing in. `privacy_collect_waitlist_body` lost its "a preference we
+  record but don't act on yet", and `privacy_use_operational_body` points down at the new
+  paragraph rather than describing the confirmation twice — two paragraphs enumerating one email
+  is how they drift. `PRIVACY_UPDATED` moved with all three.
+- **The tripwire survived the ticket and was re-aimed.**
+  `src/lib/server/email-senders.spec.ts` holds every module that imports `postEmail` — in `src`
+  **and in `scripts/`**, since a hand-run blast is how a first send would realistically get
+  written — against an allowlist where each declares what it sends. DAR-139's confirmation
+  request is declared `operational` (a question, not a use of the answer), so the `marketing`
+  assertion is still armed for the send nobody has written. Its failure message used to say "go
+  and build double opt-in"; that now exists, so it says instead that being declared there is not
+  authorization, and names `readUpdatesAudience` as the only definition of who may receive one.
+  A tripwire that tells you to build what is already there is one people learn to click past.
 - **Settled public facts only** (see the About page): trade name only — no LLC/Inc —
   location "United States", contact via GitHub + email. Because no state is on record,
   the terms deliberately carry **no governing-law state clause**; add one if the entity

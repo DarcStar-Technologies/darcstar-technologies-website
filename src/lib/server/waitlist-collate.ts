@@ -14,6 +14,11 @@
 // its `PageData` is inferred from the load's return.
 import { classifyWaitlistLead, classifyWaitlistLeadGroup } from './waitlist-classify';
 import { waitlistInviteState, type WaitlistInviteState } from '$lib/waitlist-invite';
+import {
+	waitlistUpdatesState,
+	type WaitlistUpdatesSignals,
+	type WaitlistUpdatesState
+} from '$lib/waitlist-updates';
 import type { WaitlistLeadClass } from '$lib/waitlist-qualification';
 
 /**
@@ -117,7 +122,7 @@ export function conflictingFields(
 }
 
 /** The lead columns collation needs. Answers live on the submissions, never here. */
-export interface WaitlistLeadRow {
+export interface WaitlistLeadRow extends WaitlistUpdatesSignals {
 	id: string;
 	email: string;
 	invitedAt: Date | null;
@@ -146,6 +151,13 @@ export type CollatedWaitlistLead = WaitlistLeadRow & {
 	/** The strongest band any single submission earned — see classifyWaitlistLeadGroup. */
 	leadClass: WaitlistLeadClass;
 	inviteState: WaitlistInviteState;
+	/**
+	 * Where this address stands on product-and-research updates (DAR-139) — a LEAD-level fact, and
+	 * deliberately shown beside the per-submission `consent_updates` claims rather than instead of them.
+	 * The claims say what each submitter typed; this says whether the mailbox ever answered, which is
+	 * the only thing that authorizes a send.
+	 */
+	updatesState: WaitlistUpdatesState;
 	/** Fields whose answers disagree across submissions. Empty for the overwhelming majority. */
 	conflicts: WaitlistConflictField[];
 	/** When we last heard from this person, i.e. their newest submission (null if somehow none). */
@@ -194,6 +206,7 @@ export function collateWaitlistLeads(
 			})),
 			leadClass: classifyWaitlistLeadGroup(own),
 			inviteState: waitlistInviteState(lead),
+			updatesState: waitlistUpdatesState(lead),
 			conflicts: conflictingFields(own),
 			latestAt,
 			needsReview: latestAt !== null && (lead.reviewedAt === null || latestAt > lead.reviewedAt)

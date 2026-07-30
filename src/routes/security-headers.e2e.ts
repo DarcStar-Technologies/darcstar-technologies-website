@@ -122,7 +122,12 @@ const AUDITED_PAGES = [
 	'/terms',
 	'/forgot-password',
 	'/login',
-	'/signup'
+	'/signup',
+	// DAR-139's landing pages. They are noindex (hence absent from the sitemap's STATIC_PATHS) but
+	// they render in full with no token — the "this link didn't work" panel — so unlike the
+	// CMS-driven detail routes they are genuinely auditable in a hermetic run.
+	'/updates/confirm',
+	'/updates/unsubscribe'
 ];
 
 for (const path of AUDITED_PAGES) {
