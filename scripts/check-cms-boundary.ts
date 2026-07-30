@@ -49,9 +49,9 @@
 // word the failure output also contains.
 //
 // USAGE
-//   pnpm check:cms                     # the dataset the site serves, published documents only
-//   pnpm check:cms -- --dataset=dev    # before promoting: check the Studio's working dataset
-//   pnpm check:cms -- --drafts         # include unpublished drafts
+//   pnpm check:cms                  # the dataset the site serves, published documents only
+//   pnpm check:cms --dataset=dev    # before promoting: check the Studio's working dataset
+//   pnpm check:cms --drafts         # include unpublished drafts
 import { createClient } from '@sanity/client';
 import { THEOREMS_CHECKED } from '../src/lib/evidence';
 import { findCatalogTotalLeaksInRenderedText } from '../src/lib/evidence-boundary';

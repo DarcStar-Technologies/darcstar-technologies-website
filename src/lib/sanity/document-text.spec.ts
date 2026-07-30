@@ -178,12 +178,29 @@ describe('documentFields', () => {
 
 	// The flip side, stated so the trade is deliberate: a leak really split across two fields is not
 	// seen. Accepted — a leak lives in a sentence, and `body` keeps the window intact within itself.
-	it('still finds a leak contained in one field', () => {
-		const doc = { _type: 'post', body: [para('We catalogued 346 theorems this quarter.')] };
+	//
+	// Spans deliberately SPLIT here, so this also proves the paragraph join survives the path the
+	// script actually takes. documentText applies the '' join when it meets a block node; reaching a
+	// block's children by another route would join them with '\n' instead, and the composition test
+	// further down only proves that for documentText called directly. This is the caller's path.
+	it('still finds a leak contained in one field, across split spans', () => {
+		const doc = { _type: 'post', body: [para('We catalogued ', '346', ' theorems this quarter.')] };
 		const hits = documentFields(doc).flatMap(([, text]) =>
 			findCatalogTotalLeaksInRenderedText(text, 260)
 		);
 		expect(hits.join(' ')).toContain('346');
+	});
+
+	// The asymmetry with documentText, pinned so it stays deliberate. `style`/`level` are Portable Text
+	// NODE metadata; at document top level they are ordinary authored fields, so scanning them is the
+	// fail-closed direction. Making this "consistent" with documentText would narrow the scan.
+	it('scans top-level fields whose names collide with presentation metadata', () => {
+		expect(
+			documentFields({ _type: 'guide', level: 'For advanced practitioners', style: 'Terse' })
+		).toEqual([
+			['level', 'For advanced practitioners'],
+			['style', 'Terse']
+		]);
 	});
 });
 

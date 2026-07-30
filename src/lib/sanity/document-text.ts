@@ -100,6 +100,18 @@ export function documentText(value: unknown): string {
  *
  * Empty fields are dropped rather than returned with `''`, so a caller can treat "no entries" as "no
  * prose in this document" without re-checking.
+ *
+ * IT FILTERS SYSTEM KEYS ONLY, deliberately — `PRESENTATION_KEYS` is not applied here, and the
+ * asymmetry with `documentText` is the point rather than an oversight. Those names describe a Portable
+ * Text NODE's metadata; at document top level a field called `style` or `level` is an ordinary content
+ * field somebody authored, so skipping it here would be a miss. Scanning it is the fail-closed
+ * direction, which is why a test pins it — the "inconsistency" is a tidy-up waiting to happen, and
+ * taking it would narrow the scan.
+ *
+ * `documentText` stays exported alongside this because the walk is the half that fails silently, and
+ * DAR-181 is the lesson: `settleSends` was tested only THROUGH its callers and its documented
+ * invariant turned out to be false. The primitive gets direct tests; the composition tests also run
+ * through THIS function, since it is the one the script calls.
  */
 export function documentFields(doc: unknown): [field: string, text: string][] {
 	if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return [];
