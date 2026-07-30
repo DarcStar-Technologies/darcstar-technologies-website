@@ -985,9 +985,10 @@ nothing). Re-entry needs a channel the form can't reach — email us, which `/pr
 
 #### Honoring a request that arrives another way (DAR-140)
 
-The link serves whoever still has the email. `/privacy` promises we act on a request that arrives by
-any route, and until DAR-140 the only vocabulary on `/admin/waitlist` was **delete** — so honoring one
-meant destroying answers nobody asked us to destroy. The `recordOptOut` action makes **exactly the
+The link serves whoever still has the email. `/privacy` promises we act on a request emailed to us
+from the address in question (`privacy_rights_body`, and now the updates paragraph too), and until
+DAR-140 the only vocabulary on `/admin/waitlist` was **delete** — so honoring one meant destroying
+answers nobody asked us to destroy. The `recordOptOut` action makes **exactly the
 write the link makes**, so a request honored by hand and one honored by the recipient leave the same
 lead in the same durable state.
 
