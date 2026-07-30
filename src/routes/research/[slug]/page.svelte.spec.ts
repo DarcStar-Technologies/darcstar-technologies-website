@@ -117,6 +117,19 @@ describe('/research/[slug]', () => {
 		expect(container.querySelector('#commentary')).not.toBeNull();
 	});
 
+	// Only the call-to-action clause is the anchor, not the whole card. The statement was inside the
+	// link at first, which gave a screen reader a two-sentence link name and left the card with no
+	// visible affordance beyond a hover border — invisible on touch. Asserted because the tidier-looking
+	// version is to wrap the lot in one `<a>`, and nothing else here would notice.
+	it('links only the call to action, not the statement', () => {
+		const { container } = mount({ ...PAPER, contribution: 'conceptual', commentary: COMMENTARY });
+		const link = container.querySelector('a[href="#commentary"]');
+		expect(link?.textContent?.trim()).toBe(
+			'Read our assessment of what it does and does not establish'
+		);
+		expect(link?.textContent).not.toContain(CAVEAT);
+	});
+
 	// A caveat with nothing to link to is worse than none: it promises an assessment the page does not
 	// carry. The gate is what makes the copy honest, so it is asserted rather than assumed.
 	it('renders no caveat for a conceptual paper with no commentary', () => {

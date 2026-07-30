@@ -48,12 +48,20 @@ export type ResearchSort = 'date' | 'date-asc' | 'title';
  * Alphabetising (conceptual, empirical, engineering, formal) would scramble that for nothing, which
  * is why `contributionOptions` sorts by this list and not by the facet query's output.
  *
- * Kept in step with `schemaTypes/documents/paper.ts` in the Studio BY HAND, like every other shape
- * this repo mirrors: `schema.json` is a whole-file copy, so TypeGen would catch a value that
- * disappeared (the `Paper['contribution']` union narrows and `contributionKind` stops compiling) but
- * NOT one that was added — a fifth kind would simply never appear in the control. That is the same
- * class of gap as a new `blockContent` field, and the same answer: it fails quiet, so look here when
- * the Studio's list grows.
+ * Kept in step with `schemaTypes/documents/paper.ts` in the Studio BY HAND — but NOT on trust, and
+ * the direction that matters is the surprising one. Both cases measured by editing `schema.json`,
+ * re-running `pnpm sanity:types` and `pnpm check`:
+ *
+ * | Studio change | caught by | how |
+ * | --- | --- | --- |
+ * | a kind ADDED | `pnpm check`, **2 errors** | `Paper['contribution']` widens past `ContributionKind`, so neither `<PaperContribution>` mount point accepts `paper.contribution` any more |
+ * | a kind REMOVED | `pnpm check`, 1 error | only in a SPEC FIXTURE that happens to name the value — no production code narrows |
+ *
+ * So the addition case — the one that would otherwise ship a kind the control never offers — is
+ * structural, and it is the mount points that enforce it rather than this list. The removal case is
+ * incidental: it holds because `[slug]/page.svelte.spec.ts` enumerates all four kinds, and would go
+ * quiet if that spec were ever narrowed to one. Removing a value from a published enum is not a
+ * thing to do casually anyway, since documents already carry it.
  */
 export const CONTRIBUTION_KINDS = ['conceptual', 'formal', 'empirical', 'engineering'] as const;
 

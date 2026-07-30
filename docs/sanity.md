@@ -327,10 +327,21 @@ answer nothing (the select renders it as a synthetic option rather than letting 
 select's **display order**, the Studio's own field order, a maturity ladder that alphabetising would
 scramble. Junk is dropped at the parser. The facet offers only kinds **some paper declares**, matching
 the topic/author facets: three of the four are unused today, so all four would be three dead picks.
-Keeping `CONTRIBUTION_KINDS` in step with the Studio is manual and fails **quiet** — TypeGen catches a
-value that disappeared, never one that was added — so a fifth kind simply won't appear in the control.
-`PaperContribution`'s `Record<ContributionKind, …>` label map is the one place that turns it into a
-compile error.
+Keeping `CONTRIBUTION_KINDS` in step with the Studio is manual, but it does **not** fail quiet — which
+is worth knowing precisely, because the intuition (that a hand-mirrored list drifts silently, like a
+`BLOCK_CONTENT_FIELDS` entry in the Studio) is wrong here. Measured both ways, by editing
+`schema.json`, re-running `pnpm sanity:types` and `pnpm check`:
+
+| Studio change      | result                                                                                                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a kind **added**   | `pnpm check` **fails, 2 errors** — `Paper['contribution']` widens past `ContributionKind`, so neither `<PaperContribution>` mount point accepts `paper.contribution` |
+| a kind **removed** | `pnpm check` fails, 1 error — but only in a **spec fixture** that happens to name the value; no production code narrows                                              |
+
+So the case that matters — a kind added in the Studio that the control would never offer — is caught
+structurally, by the mount points rather than by the list. The removal case is incidental, holding only
+because `[slug]/page.svelte.spec.ts` enumerates all four kinds. `PaperContribution`'s
+`Record<ContributionKind, …>` label map catches the follow-up step: adding the kind to
+`CONTRIBUTION_KINDS` and forgetting its label.
 
 ### Pagination + server-side filtering (DAR-94)
 

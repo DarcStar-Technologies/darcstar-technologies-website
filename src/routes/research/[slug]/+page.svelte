@@ -17,6 +17,7 @@
 	import { researchTopicHref } from '$lib/research-filters';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
 	import PortableBody from '$lib/components/portable/PortableBody.svelte';
+	import { inlineLinkClass } from '$lib/styles';
 	import { m } from '$lib/paraglide/messages.js';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { contentSeo } from '$lib/sanity/content-seo';
@@ -122,18 +123,24 @@
 		     present like a settled result — so this points down at our assessment before the claims
 		     land. Not a reorder: on a paper page the paper's own words should still lead.
 
-		     Gated on the commentary EXISTING, because it is a link to it. And the copy names no
-		     heading from inside that commentary ("Technical status and limitations" is authored in the
-		     Studio, invisible from here) — it points at the commentary card's own heading, which is
-		     this repo's string. A code-side claim about content goes stale with nothing here to
-		     notice; that is the DAR-130 rule pointing the other way. -->
+		     Gated on the commentary EXISTING, because it links to it. And the copy names no heading from
+		     inside that commentary ("Technical status and limitations" is authored in the Studio,
+		     invisible from here) — it points at the commentary card's own heading, which is this repo's
+		     string. A code-side claim about content goes stale with nothing here to notice; that is the
+		     DAR-130 rule pointing the other way.
+
+		     The statement is TEXT and only the last clause is the link, rather than the whole card being
+		     one anchor. Two reasons, and the second is the one that made it wrong: a card-sized anchor
+		     gives a screen reader a two-sentence link name where "Read our assessment…" is the phrase
+		     that says where it goes; and with no underline or accent it did not LOOK clickable, its only
+		     affordance being a hover border — which touch never shows. `inlineLinkClass` is the
+		     site-wide answer to exactly that (the other in-page anchor, the homepage's #gide, is a
+		     glass-btn for the same reason). -->
 		{#if conceptualCaveat}
-			<a
-				href="#commentary"
-				class="glass-card block p-4 text-sm leading-relaxed text-body transition-colors hover-focus:border-primary-500/40 sm:p-5"
-			>
+			<p class="glass-card p-4 text-sm leading-relaxed text-body sm:p-5">
 				{m.research_conceptual_caveat()}
-			</a>
+				<a href="#commentary" class={inlineLinkClass}>{m.research_conceptual_caveat_link()}</a>
+			</p>
 		{/if}
 
 		{#if paper.abstract}

@@ -6,9 +6,14 @@
 	// Contribution select needs these strings too, and a second copy of the mapping there would be
 	// free to drift from the pill's (the ContactFields `fieldClass` convention).
 	//
-	// `Record<ContributionKind, …>` is the point of the shape. A kind added to CONTRIBUTION_KINDS
-	// without a label here is a COMPILE error, which makes this the one place in the repo that can
-	// notice the Studio's enum growing — everywhere else a fifth kind fails quiet.
+	// `Record<ContributionKind, …>` is the point of the shape: a kind added to CONTRIBUTION_KINDS
+	// without a label here is a COMPILE error, so the vocabulary and its labels cannot drift apart.
+	//
+	// That is one link in a chain, not the whole guard, and it is worth being precise about which is
+	// which. A kind added in the STUDIO is caught at the two `<PaperContribution>` mount points, where
+	// the widened `Paper['contribution']` stops being assignable to `ContributionKind` (measured: 2
+	// `pnpm check` errors). This `Record` then catches the follow-up — adding it to CONTRIBUTION_KINDS
+	// and forgetting the label.
 	const LABELS: Record<ContributionKind, () => string> = {
 		conceptual: m.research_contribution_conceptual,
 		formal: m.research_contribution_formal,
