@@ -1013,11 +1013,15 @@ button: clearing `updates_unsubscribed_at` alone would resurrect a **stale confi
 `updates_confirmed_at` is deliberately kept, so `mayReceiveUpdates` would flip true with no fresh
 consent. Clearing both instead destroys the withdrawal record. Neither is a one-line inverse.
 
-The action is where `page.server.spec.ts` came from — SvelteKit does not run a layout guard before a
+The action is where `page.server.spec.ts` came from. SvelteKit does not run a layout guard before a
 form action, only on the re-render, so each action's inline `isStaff` line is the whole authorization
-boundary and nothing proved it was there. Survivable while the vocabulary was "delete", which fails
-loudly; a silent irreversible write is what made it worth closing. `/admin` redirects in CI, so this
-cannot be an e2e.
+boundary — and nothing proved it was there for any of the five. **Measured** rather than reasoned:
+with the gate removed, an anonymous POST at a real lead answered `303 → /login` **and wrote the row**
+(`updates_unsubscribed_by: "ANONYMOUS-PROBE"`). The redirect is emitted by the re-render, so it reads
+exactly like a refusal while the write has already landed; a signed-in end-user gets the same shape
+(`303 → /account`). That is what makes a missing gate invisible from the response, and a test the only
+thing that can see it. Survivable while the vocabulary was "delete", which fails loudly; a silent
+irreversible write is what made it worth closing. `/admin` redirects in CI, so this cannot be an e2e.
 
 **Two signed values, two TTLs** (`waitlist-updates-token.ts`, fifth and sixth on the `mintSignedValue`
 core): `c1` confirm at **7 days**, `u1` unsubscribe at **1 year**. DAR-98's rule applied rather than
