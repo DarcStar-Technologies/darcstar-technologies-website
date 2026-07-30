@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { settleSends } from './email';
 
-// `settleSends` is the fan-out policy both notify modules share, and until now it was tested only
-// THROUGH them — each caller's spec makes fetch reject and checks the sibling still went out. That
-// covers the async path twice and the interesting one not at all: the reason this takes thunks rather
-// than built emails is that a *builder* can throw, and a builder throws SYNCHRONOUSLY.
+// DAR-181. `settleSends` is the fan-out policy both notify modules share, and until now it was tested
+// only THROUGH them — each caller's spec makes fetch reject and checks the sibling still went out.
+// That covers the async path twice and the interesting one not at all: the reason this takes thunks
+// rather than built emails is that a *builder* can throw, and a builder throws SYNCHRONOUSLY.
 //
 // Testing it directly is also what surfaced a real hole. `() => Promise<void>` is satisfied by a
 // plain function returning a promise, so `senders.map(([, send]) => send())` let a synchronous throw

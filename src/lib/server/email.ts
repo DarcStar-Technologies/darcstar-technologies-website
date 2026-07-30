@@ -61,7 +61,8 @@ export async function postEmail(apiKey: string, email: OutboundEmail): Promise<v
 }
 
 /**
- * Run several INDEPENDENT sends and log whichever fail, without letting one failure drop the others.
+ * Run several INDEPENDENT sends and log whichever fail, without letting one failure drop the others
+ * (DAR-181).
  *
  * Both fan-outs (contact-notify.ts, waitlist-notify.ts) send a pair: a lead into info@ and an
  * acknowledgement to a caller-supplied address that could bounce or 4xx. The lead is the message that

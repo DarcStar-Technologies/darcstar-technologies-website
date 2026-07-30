@@ -156,8 +156,8 @@ escalation to reach through it). No JS required; two-step `<details>` confirm, s
    capped at 3/hour/IP (right for a public trigger, wrong for a staff batch), and it _swallows send
    failures_ — `runInBackgroundOrAwait` logs and returns `{ status: true }` regardless.
 3. **Send it, awaited.** `sendActivationEmail` (`activation-email.ts`, Resend). It shares its
-   **layout** with `password-reset-email.ts` + `verification-email.ts` (`link-email.ts` — the three
-   were byte-identical apart from their message prefix), but not its **failure policy**: this is the
+   **layout** with `password-reset-email.ts` + `verification-email.ts` (`link-email.ts`, DAR-181 —
+   the three were byte-identical apart from their message prefix), but not its **failure policy**: this is the
    **one outbound mail in the codebase that is awaited and whose failure surfaces**. Fire-and-forget
    is right when dropping a visitor's own submission would be worse, but here the operator is the
    only person who can retry — so the send stays in this module, which is also what
@@ -301,8 +301,8 @@ change** — the reset token lives in the existing `verification` table (identif
 config is behavioral only, so it stays out of `auth-cli.ts`.
 
 **Config** (`auth.ts`, augmenting the shared `emailAndPassword`): `sendResetPassword` renders + Resends
-the link (`password-reset-email.ts`, sharing `link-email.ts` with the verification + activation mail;
-graceful dev skip logs the link when there's no Resend key), `resetPasswordTokenExpiresIn: 3600`
+the link (`password-reset-email.ts`, DAR-181, sharing `link-email.ts` with the verification +
+activation mail; graceful dev skip logs the link when there's no Resend key), `resetPasswordTokenExpiresIn: 3600`
 (1 hour — the copy says so, and its spec pins that), and
 **`revokeSessionsOnPasswordReset: true`** — a reset signs out all the user's OTHER sessions, so
 recovering a compromised account doesn't leave the attacker signed in.
