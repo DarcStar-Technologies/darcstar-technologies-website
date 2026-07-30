@@ -173,6 +173,27 @@ does turn the `check` job red. The `.mjs` scripts get no such guard (`checkJs` i
 in `include` at all), which is a reason to reach for `.ts` (run under `tsx`, as `admin:create` does)
 in a new one.
 
+### Manual content check (not in CI)
+
+`pnpm check:cms` (`scripts/check-cms-boundary.ts`, DAR-171) is the fourth hand-run script and the
+only one that needs **no preview** — it talks to Sanity directly. It runs both published-copy
+boundaries (the evidence IP rule and the safety-language truth rule) over every CMS document's
+prose, which is the one publishing surface no test can see: CI has no `SANITY_VIEWER_TOKEN`
+(DAR-96), so every CMS-driven page is empty there. Needs that token in `.env`; it **refuses to run
+without one** rather than reporting a clean scan of the single document an anonymous read can see.
+
+```
+pnpm check:cms                  # the dataset the site serves, published documents only
+pnpm check:cms --dataset=dev    # before promoting: the Studio's working dataset
+pnpm check:cms --drafts         # include unpublished drafts
+```
+
+Run it before publishing a post that quotes a figure. A safety-language hit is exact — reword. An
+**IP hit is a heuristic** and the response is to check the figure against the hub's source of record
+first; the failure message says so, because the reflex fix (widen the band) is what turned the
+previous version of that guard into a no-op (DAR-152). See
+[evidence](evidence.md).
+
 ## CI (required checks)
 
 Every PR must pass six required checks before merge to `main` (which triggers the production

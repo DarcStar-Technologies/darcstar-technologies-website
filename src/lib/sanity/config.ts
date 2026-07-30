@@ -15,8 +15,15 @@
 // the next build. The read VIEWER TOKEN is the only Sanity SECRET — it's runtime/server-only
 // (`readEnv('SANITY_VIEWER_TOKEN')` in $lib/server/sanity.ts), because this project gates document
 // reads behind document-level access control (anonymous reads see only `siteSettings`).
-export const projectId = import.meta.env.VITE_SANITY_PROJECT_ID ?? '8v6ikhvv';
-export const dataset = import.meta.env.VITE_SANITY_DATASET ?? 'production';
+// The fallbacks come from `./defaults.ts`, which deliberately contains no `import.meta` — a plain
+// Node script (`pnpm check:cms`) cannot import THIS module, and it has to reach the same project and
+// dataset the site serves. See that file.
+import {
+	DEFAULT_SANITY_API_VERSION,
+	DEFAULT_SANITY_DATASET,
+	DEFAULT_SANITY_PROJECT_ID
+} from './defaults';
 
-// Pinned API date — bump deliberately, never float. See https://www.sanity.io/docs/api-versioning.
-export const apiVersion = import.meta.env.VITE_SANITY_API_VERSION ?? '2026-06-24';
+export const projectId = import.meta.env.VITE_SANITY_PROJECT_ID ?? DEFAULT_SANITY_PROJECT_ID;
+export const dataset = import.meta.env.VITE_SANITY_DATASET ?? DEFAULT_SANITY_DATASET;
+export const apiVersion = import.meta.env.VITE_SANITY_API_VERSION ?? DEFAULT_SANITY_API_VERSION;

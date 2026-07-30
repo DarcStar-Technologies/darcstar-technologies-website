@@ -172,3 +172,40 @@ audit — this repo holds only the public prose, never the artifacts):
   an `h=16` in a doc-comment — but **no automated guard reads comments**: a pattern scan over
   source false-positives immediately ("parameter" is legitimate prose in these files), so
   comments are **code-review territory**. Read them when reviewing; don't trust CI for this.
+- **CMS prose is the third publishing surface, and it is checked by HAND — `pnpm check:cms`
+  (DAR-171).** The two guards above cover the message catalogs (unit) and the rendered pages
+  (e2e); a Sanity-authored post is neither, and **no test can reach it** — CI has no
+  `SANITY_VIEWER_TOKEN` (DAR-96), so every CMS-driven page is empty there and the e2e passes
+  unchanged against a site serving no documents at all. `scripts/check-cms-boundary.ts` runs
+  **both** boundaries (IP + safety language) over every document's prose, and the two reasons it
+  is a script rather than a check are worth keeping. First, a CI version would need a Sanity token
+  in GitHub secrets — making a required merge gate depend on a third party's uptime — or be
+  vacuous. Second and more important, **a hit here needs a human**: the IP rule is a heuristic
+  whose prescribed response is to check the figure against the hub's source of record and then
+  either reword the copy or narrow a context term, which is a judgement about facts in another
+  repository. Measured before choosing the shape — `The 500 trials in our conformance registry
+each replay a proven invariant` reports a leak and is perfectly publishable, the exact false
+  positive the detector documents. An automatic render-time gate would have to pick one of two
+  wrong answers for it, and both compound: withholding the post deletes correct content from a
+  live page on a heuristic, and rendering it anyway makes the guard decorative. So: **run it
+  before publishing a post that quotes a figure** (`--dataset=dev` before promoting, `--drafts`
+  to include unpublished work). The residual is stated rather than papered over — nothing MAKES
+  anyone run it; what it buys is one command instead of a memory of a rule.
+- **The part of that scan which fails SILENTLY is the walk, so that is the part with tests.**
+  `$lib/sanity/document-text.ts` flattens a document to prose, and a detector handed an empty
+  string reports clean — DAR-152's "a scan whose assertions are all 'nothing matched' passes just
+  as happily against a detector that answers nothing". So its spec asserts **positively** that
+  prose came through, and three properties are load-bearing: the walk is **fail-closed** (any
+  object or array type it has never heard of is descended into, so a block type added to the
+  Studio tomorrow arrives inside the scan — an allow-list of known prose fields would go quiet on
+  exactly the additions worth catching); the skip rule is a **deny-list** for that same reason,
+  holding only `_`-prefixed system keys and Portable Text's presentation metadata, with
+  `markDefs` deliberately **kept** because a link `href` is published text and a path ending in
+  the catalog size is a plausible carrier; and a block's `children` are joined with **''** rather
+  than a newline, since spans are the fragments of one paragraph — split them and a claim whose
+  number sits in the first span and whose subject sits in the third falls outside the line-pair
+  window, a miss created purely by the editor's formatting. Measured against the live dataset:
+  108,632 characters of prose reached across 174 documents, **0 hits** — and the clean result was
+  verified non-blind (7 documents carry theorem-context wording and 14 carry a bare integer above
+  40, they simply never coincide inside the window), because "no hits" and "the scan reaches
+  nothing" print identically.

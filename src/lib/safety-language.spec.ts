@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import en from '../../messages/en.json';
 import es from '../../messages/es.json';
+import {
+	SAFETY_LANGUAGE_RULES as FORBIDDEN,
+	findSafetyLanguageViolations
+} from './safety-language';
 
 // The published safety vocabulary (DAR-46, docs/evidence.md). The 2026-07-23 review found the
 // homepage and /about asserting safety as a settled conclusion — "proven safe", "Not tested —
@@ -16,28 +20,9 @@ import es from '../../messages/es.json';
 // overstate). NOT covered here, same as there: source comments — a pattern scan over source
 // false-positives immediately, so comments stay code-review territory.
 //
-// Scoped to conclusions, not vocabulary. "Proven", "provable", "guarantee" and "safe" are all
-// legitimate on their own — the site does prove theorems, and the H1 "Autonomous control you can
-// prove is safe." claims provability, which is true. What is banned is the collapsed form that
-// asserts a system IS safe with no assumptions attached, plus the one phrasing docs/evidence.md
-// forbids outright (a proven latency bound — GIDE's corpus proves none).
-const FORBIDDEN: { name: string; pattern: RegExp; allowKeys?: string[] }[] = [
-	{ name: 'the phrase "proven safe"', pattern: /\bproven[ -]safe\b/i },
-	{ name: 'the phrase "provably safe"', pattern: /\bprovably[ -]safe\b/i },
-	{ name: 'the phrase "guaranteed safe"', pattern: /\bguaranteed[ -]safe\b/i },
-	{
-		// docs/evidence.md: "Never claim a proven latency bound." No microsecond or latency bound
-		// is proven anywhere in the corpus; latency is measured and the 13,000× is derived.
-		name: 'a proven sub-second bound ("proven microsecond safety")',
-		pattern: /\bproven\s+(micro|milli|nano)?second/i,
-		// The safety card's own boundary statement quotes the banned phrase in order to disavow
-		// it ("...any 'proven microsecond safety' phrasing would be false, and we do not use
-		// it."). That sentence is the point of the rule, not a violation of it — it is the ONLY
-		// key allowed to contain the phrase, and it must keep quoting it verbatim to stay legible.
-		allowKeys: ['evidence_safety_not_covered']
-	},
-	{ name: 'a proven latency claim', pattern: /\bproven\s+latency\b/i }
-];
+// The RULES moved to $lib/safety-language.ts in DAR-171, so `pnpm check:cms` can apply these exact
+// patterns to CMS prose — a third published surface no spec can see, because CI has no Sanity read
+// token. They are imported here rather than restated: a second copy is the rot DAR-99 measured.
 
 describe.each([
 	['en', en as Record<string, unknown>],
@@ -49,6 +34,47 @@ describe.each([
 			.filter(([, value]) => pattern.test(value as string))
 			.map(([key]) => key);
 		expect(hits).toEqual([]);
+	});
+});
+
+// The finder `pnpm check:cms` runs over CMS prose. It needs POSITIVE cases of its own: every
+// assertion above is "nothing matched", and that shape passes just as happily against a detector
+// that answers nothing (DAR-152). These are the cases that prove it answers.
+describe('findSafetyLanguageViolations', () => {
+	it.each([
+		['proven safe', 'Our controller is proven safe in every configuration.'],
+		['provably safe', 'A provably safe autonomy stack.'],
+		['guaranteed safe', 'Every trajectory is guaranteed safe.'],
+		['proven microsecond', 'We ship proven microsecond safety envelopes.'],
+		['proven latency', 'A proven latency bound of under a microsecond.']
+	])('flags %s', (_label, text) => {
+		expect(findSafetyLanguageViolations(text)).not.toEqual([]);
+	});
+
+	it.each([
+		[
+			'the qualified formulation',
+			'Formally verified against stated system and environment assumptions.'
+		],
+		['provability as a claim about proofs', 'Autonomous control you can prove is safe.'],
+		['a measured latency figure', 'The kernel evaluates in 0.767 µs, measured over 1,000 runs.'],
+		['safety without a collapsed conclusion', 'The safety cluster is machine-checked in Lean 4.']
+	])('leaves %s alone', (_label, text) => {
+		expect(findSafetyLanguageViolations(text)).toEqual([]);
+	});
+
+	it('quotes the offending sentence back, so a hit is actionable', () => {
+		const [hit] = findSafetyLanguageViolations('The pilot concluded the system is proven safe.');
+		expect(hit).toContain('proven safe');
+		expect(hit).toContain('The pilot concluded');
+	});
+
+	// The allowlist is a CATALOG concept — a CMS document has no message key, so the excused
+	// phrasing is still reported there and a human decides. Asserted so the asymmetry is deliberate
+	// rather than discovered later as a surprise.
+	it('applies every rule regardless of the catalog allowlist', () => {
+		const excused = en as Record<string, string>;
+		expect(findSafetyLanguageViolations(excused.evidence_safety_not_covered)).not.toEqual([]);
 	});
 });
 

@@ -1,0 +1,148 @@
+import { describe, expect, it } from 'vitest';
+import { documentText } from './document-text';
+import { findCatalogTotalLeaksInRenderedText } from '$lib/evidence-boundary';
+
+// DAR-171. This is the half of `pnpm check:cms` that can be tested at all: the script itself needs a
+// Sanity read token, which CI does not have (DAR-96), so nothing downstream of here is exercised in
+// CI. What that leaves is the walk — and the walk is the part whose failure is SILENT, because a
+// detector handed an empty string reports clean. So the assertions below are deliberately POSITIVE
+// ("this prose came through") rather than "nothing matched"; a spec of the latter shape would pass
+// against a function that returns ''.
+
+/** A Portable Text span. */
+const span = (text: string) => ({ _type: 'span', _key: 'k', text, marks: [] });
+
+/** A paragraph, optionally split into several spans the way bold or a link splits one. */
+const para = (...texts: string[]) => ({
+	_type: 'block',
+	_key: 'b',
+	style: 'normal',
+	markDefs: [],
+	children: texts.map(span)
+});
+
+describe('documentText', () => {
+	it('returns a plain string unchanged', () => {
+		expect(documentText('the corpus grew')).toBe('the corpus grew');
+	});
+
+	it('reaches every prose field of a post-shaped document', () => {
+		const text = documentText({
+			_type: 'post',
+			_id: 'post.milestone',
+			title: 'A verification milestone',
+			excerpt: 'What we mechanized in July.',
+			slug: { current: 'a-verification-milestone' },
+			body: [para('The corpus grew again.'), para('Here is what changed.')],
+			seo: { description: 'A milestone announcement.' }
+		});
+		for (const expected of [
+			'A verification milestone',
+			'What we mechanized in July.',
+			'The corpus grew again.',
+			'Here is what changed.',
+			'A milestone announcement.'
+		])
+			expect(text).toContain(expected);
+	});
+
+	// THE LOAD-BEARING EXCEPTION. Spans are the fragments of one sentence, so they must rejoin into
+	// one line — see the composition test at the bottom for why a newline here would lose a leak.
+	it('joins the spans of one paragraph into a single line', () => {
+		const text = documentText(para('The corpus holds ', '260', ' theorems.'));
+		expect(text).toBe('The corpus holds 260 theorems.');
+		expect(text).not.toContain('\n');
+	});
+
+	it('puts separate paragraphs on separate lines', () => {
+		expect(documentText([para('First.'), para('Second.')]).split('\n')).toEqual([
+			'First.',
+			'Second.'
+		]);
+	});
+
+	// Sanity reserves the `_` prefix, so nothing an editor typed can hide behind one — and letting
+	// `_type` through would salt every scan with the words "post", "block" and "span".
+	it('contributes nothing from system keys', () => {
+		expect(documentText({ _type: 'block', _key: 'abc', _rev: 'xyz' })).toBe('');
+	});
+
+	// Presentation metadata is skipped so the excerpts a human reads stay readable — "normal" on its
+	// own line above every paragraph is noise, not prose.
+	it('contributes nothing from Portable Text presentation metadata', () => {
+		const text = documentText({
+			_type: 'block',
+			style: 'h2',
+			listItem: 'bullet',
+			level: 2,
+			children: [{ _type: 'span', text: 'Only this.', marks: ['strong', 'k7'] }]
+		});
+		expect(text).toBe('Only this.');
+	});
+
+	// markDefs is deliberately NOT skipped: a link href is published text, and a path ending in the
+	// catalog size is a plausible way for the figure to ship.
+	it('walks link definitions, where an href can carry a figure', () => {
+		const text = documentText({
+			_type: 'block',
+			markDefs: [{ _type: 'link', _key: 'k7', href: 'https://example.invalid/theorems/346' }],
+			children: [{ _type: 'span', text: 'see the registry', marks: ['k7'] }]
+		});
+		expect(text).toContain('https://example.invalid/theorems/346');
+	});
+
+	// FAIL-CLOSED, and this is the assertion that says so. A type this file has never heard of — the
+	// next mathBlock, the next callout — must arrive inside the scan without anyone adding it here.
+	// An allowlist of known prose fields would return '' for it and report clean.
+	it('walks object and array types it does not recognize', () => {
+		const text = documentText({
+			_type: 'post',
+			body: [
+				{
+					_type: 'someBlockTypeInventedLater',
+					caption: 'A caption nobody allowlisted.',
+					nested: { deeper: [{ evenDeeper: 'buried prose' }] }
+				}
+			]
+		});
+		expect(text).toContain('A caption nobody allowlisted.');
+		expect(text).toContain('buried prose');
+	});
+
+	it('stringifies numbers, since a numeric field publishes just as well as a numeric word', () => {
+		expect(documentText({ _type: 'x', count: 346 })).toContain('346');
+	});
+
+	it.each([
+		['null', null],
+		['undefined', undefined],
+		['a boolean', true]
+	])('contributes nothing for %s', (_label, value) => {
+		expect(documentText(value)).toBe('');
+	});
+
+	it('drops empty strings rather than emitting blank lines', () => {
+		expect(documentText({ _type: 'x', a: 'kept', b: '', c: 'also kept' })).toBe('kept\nalso kept');
+	});
+});
+
+// The reason the span join is a rule and not a tidy-up. An editor who bolds the number splits the
+// sentence into three spans; flattened correctly the leak is one line and the detector sees it, and
+// this is the test that fails if `children` ever start being joined with '\n' — the number would
+// land on line 1, the word "catalogued" on line 3, and the pair window covers only 1+2.
+describe('documentText feeding the evidence-boundary detector', () => {
+	it('still finds a leak that an editor split across spans', () => {
+		const body = [
+			para('The corpus now holds 260 machine-checked theorems, '),
+			para('out of ', '346', ' catalogued.')
+		];
+		const hits = findCatalogTotalLeaksInRenderedText(documentText(body), 260);
+		expect(hits.length).toBeGreaterThan(0);
+		expect(hits.join(' ')).toContain('346');
+	});
+
+	it('reports nothing for a milestone paragraph that publishes only figures we do publish', () => {
+		const body = [para('In July we mechanized the 49th complete theorem; the corpus holds 260.')];
+		expect(findCatalogTotalLeaksInRenderedText(documentText(body), 260)).toEqual([]);
+	});
+});
