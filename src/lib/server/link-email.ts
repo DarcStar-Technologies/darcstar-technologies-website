@@ -6,9 +6,19 @@
 // `*_FROM` constant: same text/plain assembly, same 35-line HTML body, same palette inlined three
 // times over. Normalizing away the prefix, two of them diffed to nothing at all and the third to one
 // line of prettier wrapping. So the copy was the only real difference, and the template was a clone
-// waiting to be cloned again — DAR-121 has already committed us in public to two more link emails
-// (the double-opt-in confirmation and the login-free unsubscribe that `privacy_use_updates_body`
-// promises), which would have been copies four and five.
+// waiting to be cloned again.
+//
+// WHAT IS DELIBERATELY *NOT* HERE: DAR-139's updates confirmation (`waitlist-updates-notify.ts`),
+// which is the fourth message to reuse this shell's markup and is NOT a fourth instance of it. It
+// takes TWO links rather than one (the unsubscribe is a promise `/privacy` makes about every update,
+// including this one), greets nobody by name **on purpose** — it is the single message whose premise
+// is that the submitter and the recipient may be different people — carries RFC 3834 auto-reply
+// headers, and has no "if you didn't ask for this" line. Every one of those is a decision its own
+// module documents, so folding it in means optional fields and conditional rendering: a configurable
+// template rather than a shared one, which is how this kind of extraction rots. What it and these
+// three DO share is the shell markup — the wrapper div, the CTA button, the fallback-link block, now
+// four copies of the same palette — and unifying THAT is a separate extraction with a separate
+// judgement call, not an oversight here. Resist the urge to widen `LinkEmailCopy` to reach it.
 //
 // WHERE THE SEAM IS, AND WHY IT IS NOT THE SEND. The obvious extraction is one function that builds
 // AND posts, leaving three one-line callers. Do not: `email-senders.spec.ts` (DAR-121) derives its
