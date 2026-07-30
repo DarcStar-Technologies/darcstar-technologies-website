@@ -73,6 +73,20 @@ footer legal bar (`Footer.svelte`).
   and build double opt-in"; that now exists, so it says instead that being declared there is not
   authorization, and names `readUpdatesAudience` as the only definition of who may receive one.
   A tripwire that tells you to build what is already there is one people learn to click past.
+- **That allowlist also constrains where mail code may be FACTORED**, which is not obvious until
+  someone tries to deduplicate the mailers. It is keyed on which file imports `postEmail`, with a
+  per-call-site `sends` count, so a shared helper must never wrap the send: the three transactional
+  link emails share a **layout** (`link-email.ts` — they were byte-identical apart from an eight-key
+  message prefix) and the two fan-outs share their `allSettled` control flow (`settleSends`), but
+  neither shared module touches `postEmail`. Centralizing it would collapse **seven** declared
+  senders into one and reinstate DAR-102's "a send appended inside an already-listed file inherits
+  that file's pass" — the per-file `kind` is what makes "we send no marketing" contradictable by a
+  diff, and it says nothing once there is a single file to declare. DAR-139's confirmation request
+  is deliberately **not** folded into that shared layout: it takes two links rather than one, sends
+  no greeting by name on purpose (the submitter and the recipient may be different people), carries
+  auto-reply headers, and has no "if you didn't ask for this" line — so it shares the shell's
+  markup but not its shape, and forcing it in would make the template configurable rather than
+  shared. Unifying that remaining shell markup is a real open question, not an oversight.
 - **Settled public facts only** (see the About page): trade name only — no LLC/Inc —
   location "United States", contact via GitHub + email. Because no state is on record,
   the terms deliberately carry **no governing-law state clause**; add one if the entity
