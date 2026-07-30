@@ -26,6 +26,7 @@
 		"db:studio": "drizzle-kit studio",
 		"auth:schema": "better-auth generate --config src/lib/server/auth-cli.ts --output src/lib/server/db/auth.schema.ts --yes",
 		"admin:create": "tsx scripts/create-admin.ts",
+		"check:cms": "tsx scripts/check-cms-boundary.ts",
 		"smoke:signin": "node scripts/smoke-signin.mjs",
 		"smoke:invite": "tsx scripts/smoke-invite.ts",
 		"smoke:waitlist": "tsx scripts/smoke-waitlist.ts",
