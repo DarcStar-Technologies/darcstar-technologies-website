@@ -37,10 +37,23 @@ export const submitContact = form<ContactInput, { success: true }>(
 		const ip = event.getClientAddress();
 		const userAgent = event.request.headers.get('user-agent') ?? null;
 		// Captured before the first await (workerd platform is request-scoped) for the
-		// notification sends scheduled after the insert. `locale` localizes the submitter
-		// ack; note the remote POST may not carry the URL locale, so this can resolve to
-		// the base locale — harmless while `es` is untranslated (it falls back to `en`),
-		// but thread an explicit locale (hidden field) here once Spanish is real.
+		// notification sends scheduled after the insert. `locale` localizes the submitter ack.
+		//
+		// THE ONE MAILER THAT STILL TAKES THE REQUEST LOCALE (DAR-173). The two waitlist mailers gave
+		// theirs up: they write to an address a stranger may have typed, and the confirmation request
+		// in particular asks a question its recipient has to be able to ANSWER. This ack is a reply to
+		// whoever just wrote in, so a wrong language is cosmetic rather than disabling — it keeps the
+		// locale, deliberately.
+		//
+		// The caveat this comment used to state is understated, so here it is measured rather than
+		// guessed: it is not that the POST "may not" carry the URL locale, it is that the answer is
+		// DETERMINISTIC PER PATH and the two paths disagree. A native (no-JS) submit posts to the
+		// page's own URL and resolves `es`; the enhanced submit fetches `/_app/remote/<id>`, which has
+		// no locale prefix, and resolves the base locale — because `handleParaglide` reads
+		// `event.request` rather than the `event.url` Kit rewrites from `x-sveltekit-pathname`. So
+		// this value turns on whether the form had hydrated. Harmless while `es` is untranslated
+		// (everything falls back to `en`); thread an explicit locale (hidden field) once Spanish is
+		// real, or the ack's language is a race. docs/i18n.md carries the table.
 		const platform = event.platform;
 		const locale = getLocale();
 		// If a signed-in visitor submits, tie the row to their account (#96) so it shows under

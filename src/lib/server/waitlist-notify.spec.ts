@@ -64,7 +64,7 @@ describe('buildWaitlistLeadEmail', () => {
 
 describe('buildWaitlistAckEmail', () => {
 	it('greets by name when provided and marks itself an auto-reply', () => {
-		const email = buildWaitlistAckEmail(full, 'en');
+		const email = buildWaitlistAckEmail(full);
 		expect(email.to).toBe('ada@example.com');
 		expect(email.replyTo).toBe('info@darcstar.tech');
 		expect(email.text).toContain('Ada Lovelace');
@@ -72,12 +72,12 @@ describe('buildWaitlistAckEmail', () => {
 	});
 
 	it('uses a generic greeting when no name was given', () => {
-		const email = buildWaitlistAckEmail(minimal, 'en');
+		const email = buildWaitlistAckEmail(minimal);
 		expect(email.text).toContain('Hi there');
 	});
 
 	it('escapes HTML in the name', () => {
-		const email = buildWaitlistAckEmail({ ...full, name: '<b>x</b>' }, 'en');
+		const email = buildWaitlistAckEmail({ ...full, name: '<b>x</b>' });
 		expect(email.html).not.toContain('<b>x</b>');
 	});
 
@@ -95,10 +95,21 @@ describe('buildWaitlistAckEmail', () => {
 			economicImpact: 'SENTINEL-IMPACT'
 		} as CleanedWaitlist;
 
-		const email = buildWaitlistAckEmail(smuggled, 'en');
+		const email = buildWaitlistAckEmail(smuggled);
 		for (const body of [email.subject, email.text, email.html]) {
 			expect(body).not.toContain('SENTINEL');
 		}
+	});
+
+	// DAR-173. The ack is gated on `isNew`, which caps a victim at one of these — but a cap on the
+	// COUNT is not evidence about WHO typed the address, so the submitter does not get to pick the
+	// language of somebody else's welcome. Pinned by signature, exactly as the confirmation email's
+	// missing `name` is: there is nothing to pass. Restoring the parameter leaves this directive
+	// unused, which `pnpm check` reports.
+	it('accepts no locale from its caller', () => {
+		// @ts-expect-error — the second argument is gone on purpose; see buildWaitlistAckEmail.
+		const forced = buildWaitlistAckEmail(full, 'es');
+		expect(forced.subject).toBe(buildWaitlistAckEmail(full).subject);
 	});
 });
 
@@ -127,7 +138,7 @@ describe('sendWaitlistEmails', () => {
 		});
 		vi.stubGlobal('fetch', fetchMock);
 
-		await expect(sendWaitlistEmails('re_test_key', full, 'en')).resolves.toBeUndefined();
+		await expect(sendWaitlistEmails('re_test_key', full)).resolves.toBeUndefined();
 
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 		expect(errSpy).toHaveBeenCalledTimes(1);
