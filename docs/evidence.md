@@ -108,6 +108,8 @@ audit — this repo holds only the public prose, never the artifacts):
   delivery: `about_principle_oneengine_body` says the verified core **runs** from quadrotors to
   financial markets, deliberately not "ships". Neither surface restates the count in prose —
   both render `DOMAINS.length`, so a sixth domain can't leave a stale "Five" behind.
+  **"Nothing elsewhere" reaches outside this repo**: the GitHub org profile was written the day
+  before this rule landed and kept the retired verb until DAR-128 (at the end of this list).
 - **Scope 0.767 µs to the reference kernel.** The GIDE repo itself forbids citing it as "the
   controller latency" — the deployed controller is ≈52 µs p50 / ≈94 µs p99. Per-run
   provenance detail (ARM 0.75 attributed; committed x86 re-runs 0.81–0.91) lives ONLY in the
@@ -239,3 +241,43 @@ each replay a proven invariant` reports a leak and is perfectly publishable, the
   constants scan, since a bare `346` in isolation carries no theorem context of its own. Dropping
   the numerals costs nothing — the performance figures have their own claim card, and prose about
   proofs does not need them.
+- **The vocabulary binds surfaces OUTSIDE this repo, and the GitHub org profile is one (DAR-128).**
+  `DarcStar-Technologies/.github` → `profile/README.md` is what a technical evaluator often reads
+  before the site, and its bullet list is a **copy of /about's principles section** — the three
+  titles are verbatim `about_principle_*_title` values. That is what makes drift there both likely
+  and hand-checkable: every bullet body has a named twin in the catalog. **It did not drift so much
+  as get left behind by a rename**, which is the more useful framing and needed the dates to see:
+  the profile was committed 2026-07-24 and DAR-46 retired the verb on the site 2026-07-25, one day
+  later, so this was never a copy diverging over time — it was written against the previous
+  vocabulary and nothing carried it forward. Expect that shape whenever claim copy is retired here.
+  All three bodies were stale, and
+  **only one was the line the ticket named** — "the same verified core **ships** across robotics,
+  markets, …", the verb `about_principle_oneengine_body` exists to avoid. Checking the whole surface
+  against its twins found two more: "Safety **guarantees** are machine-checked" (every on-site
+  surface says _properties_, and the bullet named no boundary at all) and "fast enough to **hold
+  formal guarantees** inside a live control loop", which implies the timing carries a formal
+  guarantee — the thing this document forbids outright, and the worst of the three. Two bullets are
+  now byte-identical to their twins; the one-engine bullet carries `section_domains_scope`'s
+  exclusion (_not a demo, and not a customer deployment_) instead of the site's domain-list tail,
+  because that README stands alone with no scope definition anywhere else on it. **Read the profile
+  against `about_principle_*_body` whenever the site's claim copy changes** — it is the second
+  publishing surface the guards cannot reach, after CMS prose (DAR-171).
+- **That drift class is provably NOT machine-detectable, which is why this one is editorial rather
+  than a second `check:cms` (DAR-128).** Measured with a seeded positive control: both detectors
+  report **0 hits on the broken README and 0 on the fixed one** — they cannot tell the two apart. The
+  reason is _not_ that the file lives in another repo; a script could fetch it, and `check:cms`
+  already reaches a third-party API. It is that the drift is neither a banned phrase nor a forbidden
+  value but a **true claim with its qualification stripped** — the disclosure axis (DAR-117) — and a
+  pattern cannot see an absence. "ships" was the single lexical tell, and even that word is
+  legitimate on /evidence, where `evidence_domains_claim` defines it. So a scanner pointed at that
+  file would have reported clean on the exact text DAR-128 was filed to fix: coverage theatre, and
+  DAR-152's failure mode precisely. What it got instead is a header comment in the file itself, which
+  puts the rule where the editing happens and costs nothing (an HTML comment is invisible in the
+  rendered profile). The general form is worth keeping: **before scanning a new surface, check that
+  the detector can see the defect that surface actually produces** — a scan earns its place only
+  where a hit is possible.
+- **Keep the org profile FIGURELESS.** It carries no count ("many domains", never "five") and no
+  theorem numbers, and that is what stops it going stale: there is no `$lib/evidence.ts` to
+  single-source from in that repo and no test run against it, so a figure there would be a permanent
+  re-measure obligation with nothing to remind anyone of it. State the shape of the claim and link to
+  /evidence for the numbers — which is what the profile's closing paragraph already does.
