@@ -9,7 +9,7 @@
 	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import { loginDialog } from '$lib/login-dialog.svelte';
 	import { createSheenSync } from '$lib/glass-sheen';
-	import { glassDiagnostics } from '$lib/glass-diagnostics';
+	import { glassDiagnostics, STATIC_CLIP_PATH } from '$lib/glass-diagnostics';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { jsonLdScript, organizationJsonLd } from '$lib/jsonld';
@@ -90,7 +90,14 @@
 	<div
 		class="sheen-plane"
 		aria-hidden="true"
+		style:clip-path={glassDiag.noClip ? STATIC_CLIP_PATH : undefined}
 		{@attach (node) => {
+			// DAR-170's `noclip` arm: the plane and beam mount, but nothing observes scroll, so the
+			// per-frame clip write is gone while the fixed animated layer stays. Separates "the clip
+			// updates lag" from "this layer cannot sit above the glass on mobile at all". The inline
+			// clip above replaces the plane's CSS default (which hides everything until JS runs) with
+			// a static path, so the beam is actually visible with no sync attached.
+			if (glassDiag.noClip) return;
 			sheen = createSheenSync(node);
 			return () => {
 				sheen?.destroy();
