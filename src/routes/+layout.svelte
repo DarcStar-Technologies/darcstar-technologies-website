@@ -90,12 +90,13 @@
 	<div
 		class="sheen-plane"
 		aria-hidden="true"
+		style:clip-path={glassDiag.noClip ? STATIC_CLIP_PATH : undefined}
 		{@attach (node) => {
-			// DAR-170's `noclip` arm, kept past the fix as the reference for "nothing observes scroll
-			// at all": the plane and both beams mount, the sync never attaches, and each layer's clip
-			// is pinned to a static path (the inline `style:clip-path` below) so the beams are visible
-			// without JS ever writing geometry. The fix itself already removes the per-frame clip
-			// write, so this arm now differs from the default only in the two transform writes.
+			// DAR-170's `noclip` arm: the plane and beam mount, but nothing observes scroll, so the
+			// per-frame clip write is gone while the fixed animated layer stays. Separates "the clip
+			// updates lag" from "this layer cannot sit above the glass on mobile at all". The inline
+			// clip above replaces the plane's CSS default (which hides everything until JS runs) with
+			// a static path, so the beam is actually visible with no sync attached.
 			if (glassDiag.noClip) return;
 			sheen = createSheenSync(node);
 			return () => {
@@ -104,27 +105,7 @@
 			};
 		}}
 	>
-		<!-- Two clip surfaces, one per anchoring regime (DAR-170; see glass-sheen.ts). The viewport
-		     layer holds sticky/fixed glass — the nav and the dialog — whose viewport rects don't move
-		     with scroll, so it needs no transform. The page layer's clip is in PAGE coordinates and the
-		     layer is translated by -scroll, with the anchor inside translated back by +scroll so the
-		     beam stays screen-anchored. Net effect: scroll writes transforms, never a clip path. -->
-		<div
-			class="sheen-plane__layer"
-			style:clip-path={glassDiag.noClip ? STATIC_CLIP_PATH : undefined}
-			data-sheen-layer="viewport"
-		>
-			<div class="sheen-plane__beam"></div>
-		</div>
-		<div
-			class="sheen-plane__layer"
-			style:clip-path={glassDiag.noClip ? STATIC_CLIP_PATH : undefined}
-			data-sheen-layer="page"
-		>
-			<div class="sheen-plane__anchor" data-sheen-anchor>
-				<div class="sheen-plane__beam"></div>
-			</div>
-		</div>
+		<div class="sheen-plane__beam"></div>
 	</div>
 {/if}
 

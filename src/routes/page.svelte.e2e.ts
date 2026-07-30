@@ -77,15 +77,8 @@ test('the glass sheen clip-path is rebuilt on navigation (no ghost of the prior 
 }) => {
 	await page.goto('/');
 
-	// Read the PAGE layer, not the plane: since DAR-170 the plane carries no clip of its own — the
-	// clip lives on two layers (page-anchored and viewport-anchored) so that scrolling writes
-	// transforms instead of rewriting a clip path, which is what ghosted on mobile. The page layer is
-	// the one holding the route's own panels, so it is what changes across a navigation.
 	const clipPath = () =>
-		page.evaluate(
-			() =>
-				document.querySelector<HTMLElement>('[data-sheen-layer="page"]')?.style.clipPath ?? ''
-		);
+		page.evaluate(() => document.querySelector<HTMLElement>('.sheen-plane')?.style.clipPath ?? '');
 
 	// The clip is applied an rAF after load; wait for it, then capture the homepage geometry.
 	await expect.poll(clipPath).not.toBe('');
