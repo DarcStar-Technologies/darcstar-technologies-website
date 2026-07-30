@@ -63,14 +63,19 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      # No checkout — the action reads the title from the event payload.
+      # No checkout — but this is NOT a payload-only action, and `pull-requests: read` above is load
+      # bearing rather than boilerplate: it re-fetches the PR through `pulls.get` and validates the
+      # title it gets back, deliberately, because `github.context.payload` is a snapshot of the event
+      # and goes stale the moment someone edits the title. Dropping the permission as unused breaks
+      # the job. (It is also why a re-run of an old run validates today's title, not the one that
+      # failed.)
       #
       # No `types:` input. The action's default is `Object.keys(conventional-commit-types.types)` =
-      # feat fix docs style refactor perf test build ci chore revert, which is exactly the set this
-      # repo's own commitlint names when it rejects a commit ("type must be one of [build, chore, ci,
-      # docs, feat, fix, perf, refactor, revert, style, test]" — measured against the pre-commit hook,
-      # not read off a changelog), so the two jobs cannot disagree about what a valid type is.
-      # Restating the list here would only create somewhere for them to drift apart.
+      # feat fix docs style refactor perf test build ci chore revert, measured identical to the
+      # `type-enum` this repo's commitlint enforces (config-conventional 21.2.0, and the same list
+      # the pre-commit hook names when it rejects a commit). They are two independently versioned
+      # packages, so this is agreement rather than a guarantee — but restating the list here would
+      # add a THIRD copy, which is strictly worse than reading the one the action already has.
       #
       # No `validateSingleCommit` either — the job above already lints that commit, so enabling it
       # would report the same failure twice.

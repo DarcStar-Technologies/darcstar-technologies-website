@@ -251,7 +251,7 @@ previous version of that guard into a no-op (DAR-152). See
 
 ## CI (required checks)
 
-Every PR must pass seven required checks before merge to `main` (which triggers the production
+Every PR runs these seven checks before merge to `main` (which triggers the production
 deploy — see [deployment](deployment.md)):
 
 - `lint` ([lint.yml](../.github/workflows/lint.yml))
@@ -262,11 +262,17 @@ deploy — see [deployment](deployment.md)):
 
 `actionlint` also runs on workflow changes but isn't a required context.
 
+**Running is not gating.** Which of those seven actually block a merge is `main`'s _required
+contexts_ list, a GitHub branch-protection setting that is **invisible from this repo** — nothing
+here can assert it, which is the same observation DAR-166 makes about the deploy. Read it with
+`gh api repos/OWNER/REPO/branches/main/protection --jq '.required_status_checks.contexts'`.
+
 **A job's `name:` IS the required context**, so renaming one stops it reporting and hangs every open
 PR on "Expected — waiting for status to be reported". For a context that is _already_ required the
 trap is self-limiting — the PR making the rename is itself unmergeable, and `enforce_admins` is on —
-but that also means **adding** a check is two steps: merge the job, then add the context, never the
-other way round.
+but that also means **adding** a check is two steps: merge the job, then register the context by
+hand, never the other way round. `PR title` is the most recent addition (DAR-175), so it is the one
+worth confirming: until it is registered it runs on every PR and gates nothing.
 
 The one rule neither commitlint job enforces is `header-max-length` (100): GitHub appends ` (#N)` to
 the subject when it creates the squash commit, so a 96-character subject passes on the PR and is 102
