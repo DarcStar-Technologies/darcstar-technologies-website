@@ -64,6 +64,15 @@ footer legal bar (`Footer.svelte`).
   record but don't act on yet", and `privacy_use_operational_body` points down at the new
   paragraph rather than describing the confirmation twice — two paragraphs enumerating one email
   is how they drift. `PRIVACY_UPDATED` moved with all three.
+- **DAR-191 made an older promise in that same paragraph true.** `privacy_use_operational_body`
+  already said early-access mail "isn't a marketing list, and you can ask us to take you off it at
+  any time" — a promise whose only mechanism was an operator remembering, which is not a mechanism.
+  It now reads that we **record** the request against the entry, and adds the thing a reader could
+  not previously tell: that being left alone does not require having your record deleted. That
+  distinction is the point of the change, since deletion was the only vocabulary the page implied and
+  the only vocabulary `/admin/waitlist` had. The paragraph also now says optional updates are a
+  **separate** choice, because the flag deliberately does not cancel a subscription the mailbox
+  confirmed ([waitlist](waitlist.md#outreach-dont-contact-me-dar-191)).
 - **The tripwire survived the ticket and was re-aimed.**
   `src/lib/server/email-senders.spec.ts` holds every module that imports `postEmail` — in `src`
   **and in `scripts/`**, since a hand-run blast is how a first send would realistically get

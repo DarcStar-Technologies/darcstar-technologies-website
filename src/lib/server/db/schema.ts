@@ -243,10 +243,15 @@ export const waitlistLead = sqliteTable(
 		// On the lead for the same FORCED reason as the updates columns: a decision about a person cannot
 		// be recorded across N immutable submissions.
 		doNotContactAt: integer('do_not_contact_at', { mode: 'timestamp_ms' }),
-		// WHO recorded it. Unlike `updates_unsubscribed_by` there is no self-service link on this axis
-		// yet, so today this is always the staff id — the value it carries is WHICH operator, exactly as
-		// `invited_by` and `reviewed_by` do. Null is reserved for the mailbox itself, so a future link
-		// inherits DAR-140's vocabulary rather than inventing a second one.
+		// WHO recorded it — and it carries LESS meaning than `updates_unsubscribed_by`, deliberately.
+		// There, null is the mailbox holder pressing the emailed link, which is a real second writer and
+		// the strongest evidence there is. This axis has no self-service link, so every recorded request
+		// carries the staff id that recorded it and the value this column adds is WHICH operator, exactly
+		// as `invited_by` and `reviewed_by` do. A null beside a set timestamp is therefore an anomaly (a
+		// direct write), not a meaning: the admin view renders it as an em-dash rather than naming a
+		// party we cannot identify. DAR-140's vocabulary comes back here if a self-service route is ever
+		// added — with it, not before, which is DAR-140's own rule about recording a distinction only
+		// once a second writer exists.
 		//
 		// Cleared together with the timestamp by the admin-only lift, so the durable who-did-what history
 		// is the `[outreach]` Workers Logs line, not this column — the same posture `invited_at` has, where

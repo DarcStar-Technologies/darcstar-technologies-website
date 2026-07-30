@@ -634,14 +634,15 @@ export async function readUpdatesAudience(db: Db): Promise<{ id: string; email: 
  *
  * MONOTONIC, and the actor is stamped under the TIMESTAMP's first-writer-wins `case` rather than
  * `coalesce`d on its own value — the same shape as `unsubscribeUpdates`, and for the reason that was
- * mutation-proven there: null is a meaningful value on a `*_by` column (reserved here for a mailbox
- * acting for itself), so `coalesce(do_not_contact_by, <staff id>)` would overwrite it and the row
- * would then claim an operator did what the person had already done. SQLite evaluates SET against the
- * PRE-update row, which is what lets both expressions read the values they are replacing.
+ * mutation-proven there: `coalesce(do_not_contact_by, <staff id>)` reads the ACTOR to decide whether
+ * to write the actor, so any row already carrying a null recorder would silently gain the name of the
+ * next operator to press the button — a row claiming somebody recorded a request that predates them.
+ * SQLite evaluates SET against the PRE-update row, which is what lets both expressions read the values
+ * they are replacing.
  *
- * `recordedBy` is required-and-nullable for `unsubscribeUpdates`'s reason: today's single caller always
- * passes a staff id, and typing it `string` would make a future self-service link a signature change
- * rather than a call site saying `null` out loud.
+ * `recordedBy` is nullable because the COLUMN is, not because a caller should pass null: nothing
+ * produces one today (this axis has no self-service link), so a null recorder means we do not know,
+ * and the guard's job is to leave that alone rather than paper over it.
  *
  * Unconditional. There is no state from which "please stop contacting me" should be refused.
  */

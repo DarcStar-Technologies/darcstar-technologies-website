@@ -173,13 +173,15 @@
 			? m.admin_waitlist_donotcontact_error_gone()
 			: m.admin_waitlist_donotcontact_error();
 
-	// Same rule as `optOutRecordedBy`: a null actor beside a set timestamp is not missing data. Today
-	// only staff can record one, so it never renders — it exists because the column reserves null for a
-	// mailbox acting for itself, and a future self-service link must not need this to be rewritten.
-	const doNotContactRecordedBy = (lead: Lead): string =>
-		lead.doNotContactAt === null
-			? DASH
-			: (lead.doNotContactBy ?? m.admin_waitlist_donotcontact_self());
+	// NOT `optOutRecordedBy`'s rule, and the difference is which meanings a null actually HAS. There a
+	// null recorder is the recipient having pressed the emailed link — our strongest record, so an
+	// em-dash would report it as an absence. Here no code path produces one: this axis has no
+	// self-service link, so every recorded request carries the staff id that recorded it. A null beside
+	// a timestamp is therefore an anomaly (a direct write), and the honest rendering of "we do not know
+	// who recorded this" is the dash. Naming a party we cannot identify would be a fabrication in the
+	// one column an operator consults to answer "who did this, and on whose word?".
+	// If a self-service route is ever added, this is where DAR-140's vocabulary comes back — and it
+	// should come back with it, not before.
 
 	const basePath = $derived(localizeHref('/admin/waitlist'));
 	// SvelteKit reads the action name from the `?/name` key, so extra params ride alongside it. A bare
@@ -870,7 +872,7 @@
 											)}
 											{@render detail(
 												m.admin_waitlist_field_donotcontact_by(),
-												doNotContactRecordedBy(lead)
+												orDash(lead.doNotContactBy)
 											)}
 										</dl>
 									</details>

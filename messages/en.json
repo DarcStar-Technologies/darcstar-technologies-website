@@ -540,7 +540,6 @@
 	"admin_waitlist_donotcontact_badge": "Do not contact",
 	"admin_waitlist_field_donotcontact": "Do-not-contact recorded",
 	"admin_waitlist_field_donotcontact_by": "Recorded by",
-	"admin_waitlist_donotcontact_self": "The recipient",
 	"admin_waitlist_donotcontact": "Record do-not-contact",
 	"admin_waitlist_donotcontact_confirm": "Confirm do-not-contact",
 	"admin_waitlist_donotcontact_sr": "Record a do-not-contact request for {email}",

@@ -1085,9 +1085,14 @@ describe('the outreach do-not-contact flag', () => {
 			expect(after.doNotContactAt).toEqual(first);
 		});
 
-		it('keeps a null recorder rather than replacing it with a staff id', async () => {
+		// THE DIRECTION THAT CATCHES THE `coalesce` BUG, and the only one that does — mutation-measured:
+		// `coalesce(do_not_contact_by, <staff id>)` returns 'staff-1' for a pre-existing 'staff-1', so
+		// the test above passes against it. It is a null recorder that exposes the difference, because
+		// `coalesce` reads the ACTOR to decide whether to write the actor while the `case` reads the
+		// timestamp. A row carrying a request with no known recorder must not silently acquire the name
+		// of whoever presses the button next.
+		it('leaves an unknown recorder unknown rather than filling it in', async () => {
 			const leadId = await signup();
-			// The reserved shape: the person themselves, via a channel that names no operator.
 			await recordDoNotContact(db, leadId, null);
 
 			await recordDoNotContact(db, leadId, 'staff-1');
