@@ -135,6 +135,26 @@
 		}
 	}
 
+	// Recorded-opt-out outcome (DAR-140), narrowed on its own namespace key exactly like the invite
+	// above — `form` is a union across five actions now, and `ok`/`error` alone would match any of them.
+	const optOut = $derived(form && 'optOut' in form ? form.optOut : null);
+	const optOutOk = $derived(optOut && 'ok' in optOut ? optOut : null);
+	const optOutError = $derived(optOut && 'error' in optOut ? optOut.error : null);
+	// `not_found` gets its own line because the operator's next move differs: the row went away between
+	// render and click, so re-pressing is pointless and reloading is the answer.
+	const optOutErrorMessage = (code: string): string =>
+		code === 'not_found'
+			? m.admin_waitlist_updates_optout_error_gone()
+			: m.admin_waitlist_updates_optout_error();
+
+	// Who recorded a withdrawal, for the lead detail. NULL WITH A TIMESTAMP IS NOT MISSING DATA — it is
+	// the recipient having pressed the emailed link themselves, which is the strongest evidence there
+	// is, so rendering the usual em-dash would report our best record as an absence.
+	const optOutRecordedBy = (lead: Lead): string =>
+		lead.updatesUnsubscribedAt === null
+			? DASH
+			: (lead.updatesUnsubscribedBy ?? m.admin_waitlist_updates_optout_self());
+
 	const basePath = $derived(localizeHref('/admin/waitlist'));
 	// SvelteKit reads the action name from the `?/name` key, so extra params ride alongside it. A bare
 	// `?/delete` would resolve to /admin/waitlist?/delete and drop `class=`, bouncing the operator out
@@ -145,6 +165,7 @@
 	const deleteSubmissionAction = $derived(withFilter('deleteSubmission'));
 	const inviteAction = $derived(withFilter('invite'));
 	const reviewAction = $derived(withFilter('review'));
+	const optOutAction = $derived(withFilter('recordOptOut'));
 
 	const chipBase =
 		'rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500';
@@ -294,6 +315,17 @@
 		</p>
 	{:else if inviteError}
 		<p class="text-sm text-error-400" role="alert">{inviteErrorMessage(inviteError)}</p>
+	{/if}
+
+	<!-- Recorded opt-out (DAR-140), at the top for the invite's reason and one of its own: this write
+	     cannot be undone from here, so the confirmation has to name the address it hit rather than
+	     leaving the operator to find a changed badge somewhere in 200 rows. -->
+	{#if optOutOk}
+		<p class="text-sm text-success-400" role="status">
+			{m.admin_waitlist_updates_optout_done({ email: optOutOk.email })}
+		</p>
+	{:else if optOutError}
+		<p class="text-sm text-error-400" role="alert">{optOutErrorMessage(optOutError)}</p>
 	{/if}
 
 	<!-- Funnel readout (DAR-66). Distinct anonymous flows per stage, in funnel order, so the drop-off
@@ -556,6 +588,33 @@
 										>
 									</form>
 
+									<!-- Record an updates opt-out on this person's behalf (DAR-140) — for the request
+									     that arrives by reply or phone rather than through the unsubscribe link every
+									     message carries. Writes what that link writes, so honoring it by hand leaves
+									     the same durable state.
+									     Two-step confirm for the delete/invite reason, and more so: nothing on this
+									     page undoes it. Hidden once the address has already withdrawn — the write is
+									     idempotent, but a control that can only be a no-op is noise in a column an
+									     operator scans. Shown for `none` on purpose: someone whose address a stranger
+									     typed in has never been asked and wants never to be. -->
+									{#if lead.updatesState !== 'unsubscribed'}
+										<details class="mb-1.5 inline-block text-right">
+											<summary
+												class="{summaryBase} text-warning-300 hover:bg-warning-500/10 focus-visible:ring-warning-500"
+												>{m.admin_waitlist_updates_optout()}</summary
+											>
+											<form method="post" action={optOutAction} class="mt-1.5">
+												<input type="hidden" name="id" value={lead.id} />
+												<button
+													type="submit"
+													class="rounded bg-warning-500/20 px-2 py-1 text-xs font-medium text-warning-200 transition-colors hover:bg-warning-500/30 focus-visible:ring-1 focus-visible:ring-warning-500 focus-visible:outline-none"
+													aria-label={m.admin_waitlist_updates_optout_sr({ email: lead.email })}
+													>{m.admin_waitlist_updates_optout_confirm()}</button
+												>
+											</form>
+										</details>
+									{/if}
+
 									<!-- Two-step confirm, no JS: the <summary> reveals the delete button; clicking it
 									     again cancels. Avoids a one-click misclick without needing confirm(). This
 									     one takes the whole person AND every submission (schema cascade), so the
@@ -666,6 +725,26 @@
 												m.admin_waitlist_field_reviewed_by(),
 												orDash(lead.reviewedBy)
 											)}
+											<!-- The updates trail (DAR-139/DAR-140). The column above is one badge; what
+											     a request about consent actually asks is WHEN each thing happened and, for
+											     the withdrawal, WHO recorded it — which stopped being derivable from the
+											     timestamp alone the moment staff could record one too. -->
+											{@render detail(
+												m.admin_waitlist_field_updates_asked(),
+												lead.updatesConfirmSentAt ? fmt.format(lead.updatesConfirmSentAt) : DASH
+											)}
+											{@render detail(
+												m.admin_waitlist_field_updates_confirmed(),
+												lead.updatesConfirmedAt ? fmt.format(lead.updatesConfirmedAt) : DASH
+											)}
+											{@render detail(
+												m.admin_waitlist_field_updates_optout(),
+												lead.updatesUnsubscribedAt ? fmt.format(lead.updatesUnsubscribedAt) : DASH
+											)}
+											{@render detail(
+												m.admin_waitlist_field_updates_optout_by(),
+												optOutRecordedBy(lead)
+											)}
 										</dl>
 									</details>
 								</td>
@@ -682,6 +761,7 @@
 			<p class="mt-1.5 px-2 text-xs text-faint">{m.admin_waitlist_unverified_note()}</p>
 			<p class="mt-1.5 px-2 text-xs text-faint">{m.admin_waitlist_conflict_note()}</p>
 			<p class="mt-1.5 px-2 text-xs text-faint">{m.admin_waitlist_appendonly_note()}</p>
+			<p class="mt-1.5 px-2 text-xs text-faint">{m.admin_waitlist_updates_optout_note()}</p>
 		{/if}
 	</div>
 </section>

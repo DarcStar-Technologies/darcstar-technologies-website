@@ -44,7 +44,11 @@ export const actions: Actions = {
 			{ db, secret, method: request.method },
 			token,
 			verifyUpdatesUnsubscribeToken,
-			unsubscribeUpdates
+			// `null` is a claim, not a gap: whoever is holding this token read it in the mailbox, so this
+			// withdrawal is the address's own act rather than something staff recorded on their behalf
+			// (DAR-140). `unsubscribeUpdates` takes the actor as a REQUIRED parameter precisely so this
+			// call site has to say which of the two it is.
+			(db, leadId) => unsubscribeUpdates(db, leadId, null)
 		);
 		return { result, token };
 	}

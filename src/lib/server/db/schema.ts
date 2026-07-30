@@ -206,6 +206,21 @@ export const waitlistLead = sqliteTable(
 		// what actually happened, `mayReceiveUpdates` already excludes a withdrawn lead, and clearing it
 		// would destroy evidence to buy nothing.
 		updatesUnsubscribedAt: integer('updates_unsubscribed_at', { mode: 'timestamp_ms' }),
+		// WHO recorded that withdrawal (DAR-140), and the two values mean different things rather than one
+		// being a missing case of the other. NULL is the mailbox holder pressing the emailed link — the
+		// strongest evidence there is, since only they can read it. A staff user id is us transcribing a
+		// request that arrived some other way (a reply, info@, a phone call), because /privacy promises we
+		// will act on one and the link is no use to somebody who deleted the email.
+		//
+		// The distinction only became UNINFERABLE when the second writer existed: until DAR-140 a set
+		// `updates_unsubscribed_at` could only have come from the link. So this column is not decoration
+		// on an audit trail, it is the part of it that stopped being derivable.
+		//
+		// Plain text and no foreign key, like `invited_by` and `reviewed_by`: an audit breadcrumb must not
+		// cascade away with a departed operator's account, nor block deleting it. Written under the same
+		// first-writer-wins guard as the timestamp beside it (`unsubscribeUpdates`), so a later staff press
+		// cannot overwrite the record of somebody having unsubscribed themselves.
+		updatesUnsubscribedBy: text('updates_unsubscribed_by'),
 		// --- Human review (DAR-88) ---
 		// "A human has looked at this lead's submissions and reconciled them." Deliberately a STAMP and
 		// not a merge: the reconciliation lands in whatever the operator does next (an outreach, a CRM

@@ -983,6 +983,47 @@ re-tick can't restart the asks and a stale confirmation link can't reverse an op
 refuses inside its own SET expression, and the page says so rather than pretending the press did
 nothing). Re-entry needs a channel the form can't reach — email us, which `/privacy` offers.
 
+#### Honoring a request that arrives another way (DAR-140)
+
+The link serves whoever still has the email. `/privacy` promises we act on a request emailed to us
+from the address in question (`privacy_rights_body`, and now the updates paragraph too), and until
+DAR-140 the only vocabulary on `/admin/waitlist` was **delete** — so honoring one meant destroying
+answers nobody asked us to destroy. The `recordOptOut` action makes **exactly the
+write the link makes**, so a request honored by hand and one honored by the recipient leave the same
+lead in the same durable state.
+
+**Not "clear `consent_updates` on their submissions"**, which the ticket originally proposed and which
+fails three ways: the ask is triggered by the consent flag on the **incoming** submission
+(`waitlist.remote.ts`), so clearing stored ones stops no future email at all; the resulting state is
+indistinguishable from never having ticked the box, so the next submission asks again — a manual path
+_weaker_ than the self-service one it mirrors; and it edits an append-only row, where a fabricated
+submission already has the right tool in `deleteSubmission`.
+
+`updates_unsubscribed_by` carries who recorded it — **null is the mailbox holder pressing the link**,
+the strongest evidence there is, and a staff id is us transcribing a request. That distinction only
+stopped being derivable from the timestamp when the second writer existed, which is why the column
+arrives with this action and not with DAR-139. It is stamped under the timestamp's own
+first-writer-wins guard rather than `coalesce`d on its own value: null is meaningful here, so a
+`coalesce` would overwrite a self-service withdrawal the first time an operator pressed the button and
+the row would claim we did what the person had already done. It is **not** part of
+`WaitlistUpdatesSignals` — provenance is not state, and `waitlistUpdatesState` must keep answering from
+the three timestamps alone.
+
+**Still no re-entry**, and a finding here is why it needs its own design rather than a mirror-image
+button: clearing `updates_unsubscribed_at` alone would resurrect a **stale confirmation**, since
+`updates_confirmed_at` is deliberately kept, so `mayReceiveUpdates` would flip true with no fresh
+consent. Clearing both instead destroys the withdrawal record. Neither is a one-line inverse.
+
+The action is where `page.server.spec.ts` came from. SvelteKit does not run a layout guard before a
+form action, only on the re-render, so each action's inline `isStaff` line is the whole authorization
+boundary — and nothing proved it was there for any of the five. **Measured** rather than reasoned:
+with the gate removed, an anonymous POST at a real lead answered `303 → /login` **and wrote the row**
+(`updates_unsubscribed_by: "ANONYMOUS-PROBE"`). The redirect is emitted by the re-render, so it reads
+exactly like a refusal while the write has already landed; a signed-in end-user gets the same shape
+(`303 → /account`). That is what makes a missing gate invisible from the response, and a test the only
+thing that can see it. Survivable while the vocabulary was "delete", which fails loudly; a silent
+irreversible write is what made it worth closing. `/admin` redirects in CI, so this cannot be an e2e.
+
 **Two signed values, two TTLs** (`waitlist-updates-token.ts`, fifth and sixth on the `mintSignedValue`
 core): `c1` confirm at **7 days**, `u1` unsubscribe at **1 year**. DAR-98's rule applied rather than
 copied — a TTL is sized to what the capability is FOR, and a grant goes stale where a removal must
@@ -1126,6 +1167,15 @@ submissions under their lead, classifies each one, and **flags** the fields they
 - **Two deletes, deliberately separate** — `?/deleteSubmission` drops one junk claim and keeps the
   person; `?/delete` removes the lead and cascades to every submission. One button doing both by
   context would eventually delete the wrong thing.
+- **`?/recordOptOut`** (DAR-140) — records an updates withdrawal for someone who asked by reply or
+  phone rather than through the unsubscribe link, writing exactly what that link writes. Two-step
+  `<details>` confirm, hidden once the address has already withdrawn (the write is idempotent, but a
+  control that can only be a no-op is noise in a scanned column) and offered for `none` on purpose:
+  somebody whose address a stranger typed in has never been asked and wants never to be. Reports a
+  vanished lead as `not_found` rather than a silent no-op, unlike `?/delete` — nothing here undoes it.
+  The lead detail carries the whole trail (asked / confirmed / opted out / **recorded by**), where a
+  null recorder beside a timestamp renders as "the recipient, via the unsubscribe link" and not as a
+  dash: it is our strongest record, not an absence. See [the sending gate](#honoring-a-request-that-arrives-another-way-dar-140).
 - **Filter chips** are plain links over a `?class=` GET, so filtering works without JS and every view
   is bookmarkable. Counts are over the whole window, not the filtered slice, so the shape of the list
   stays visible while a filter is on. An unrecognized `?class=` is "no filter", never an error.
