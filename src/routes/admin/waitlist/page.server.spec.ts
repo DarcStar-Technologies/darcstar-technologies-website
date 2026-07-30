@@ -5,9 +5,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // WHY THIS FILE EXISTS AT ALL: SvelteKit does NOT run a layout guard before a form action — only on
 // the re-render afterwards — so `../+layout.server.ts` protects the PAGE and not a single one of these
 // POSTs. The `isStaff` line inside each action is therefore the whole authorization boundary, and
-// nothing anywhere proved it was there. That was survivable while the vocabulary was "delete", which
-// at least fails loudly; DAR-140 adds a write that is silent, durable and irreversible from this page,
-// which is what made the gap worth closing rather than noting.
+// nothing anywhere proved it was there.
+//
+// That was MEASURED rather than reasoned from the docs, because the response actively hides it: with
+// the gate removed, an anonymous POST at a real lead against a running preview answered `303 → /login`
+// AND wrote the row (`updates_unsubscribed_by: "ANONYMOUS-PROBE"`). The redirect comes from the
+// re-render, so an ungated action looks exactly like a refused one — a signed-in end-user gets the
+// same shape, `303 → /account`. Nothing about the response can tell you the gate is missing.
+//
+// Survivable while the vocabulary was "delete", which at least fails loudly; DAR-140 adds a write that
+// is silent, durable and irreversible from this page, which is what made the gap worth closing.
 //
 // It cannot be an e2e: /admin redirects in CI (no session cookie, no reachable DB), so
 // `page.svelte.e2e.ts` can only ever assert that redirect. Mocking the request-scoped handles is the
@@ -40,10 +47,10 @@ vi.mock('$lib/server/waitlist-invite', () => ({
 
 /**
  * Every write an action can reach past its gate. A gate test asserts on ALL of them rather than on the
- * one this action happens to use, because "didn't delete" is vacuously true of an action that updates —
+ * one that action happens to use, because "didn't delete" is vacuously true of an action that updates —
  * which is exactly the shape a per-action assertion drifts into.
  */
-const writes = () => [unsubscribeUpdates, markWaitlistReviewed, deleteWhere];
+const WRITES = [unsubscribeUpdates, markWaitlistReviewed, deleteWhere];
 
 const { actions } = await import('./+page.server');
 
@@ -63,9 +70,12 @@ const call = (name: keyof typeof actions, user: Actor, fields: Record<string, st
 const OPERATOR: Actor = { id: 'staff-1', role: 'operator' };
 const SIGNED_IN_USER: Actor = { id: 'someone', role: 'user' };
 
+// The action's audit line. Silenced once for the file rather than re-spied per test, which would
+// stack a new spy on every `beforeEach`; `clearAllMocks` only clears call data, not implementations.
+vi.spyOn(console, 'info').mockImplementation(() => {});
+
 beforeEach(() => {
 	vi.clearAllMocks();
-	vi.spyOn(console, 'info').mockImplementation(() => {});
 });
 
 describe('recordOptOut (DAR-140)', () => {
@@ -83,9 +93,10 @@ describe('recordOptOut (DAR-140)', () => {
 	});
 
 	// THE POINT OF THE COLUMN. A withdrawal recorded by staff has to be distinguishable from one the
-	// mailbox made itself, and the only thing that carries that distinction is the actor this action
-	// hands down. Passing `undefined` (or nothing) type-checks against `string | null` nowhere, but
-	// passing the WRONG id would, so assert the signed-in operator specifically.
+	// mailbox made itself, and the only thing carrying that distinction is the actor this action hands
+	// down. The required `string | null` parameter stops it being FORGOTTEN, and cannot stop it being
+	// WRONG — `null` and the lead's own id both type-check — so this asserts the signed-in operator's
+	// id specifically rather than merely that three arguments were passed.
 	it('passes the signed-in operator down as the recorder', async () => {
 		unsubscribeUpdates.mockResolvedValue({ email: 'ada@example.com' });
 
@@ -103,7 +114,7 @@ describe('recordOptOut (DAR-140)', () => {
 		const result = await call('recordOptOut', user, { id: 'lead-1' });
 
 		expect(result).toMatchObject({ status: 403 });
-		for (const write of writes()) expect(write).not.toHaveBeenCalled();
+		for (const write of WRITES) expect(write).not.toHaveBeenCalled();
 	});
 
 	it('refuses a submit with no lead id', async () => {
@@ -138,7 +149,7 @@ describe('the staff gate on the other write actions', () => {
 			expect(result).toMatchObject({ status: 403 });
 			// Every write, not this action's own: `review` never deletes, so asserting only on `deleteWhere`
 			// would be vacuously true of it and the row would be covered in name only.
-			for (const write of writes()) expect(write).not.toHaveBeenCalled();
+			for (const write of WRITES) expect(write).not.toHaveBeenCalled();
 		}
 	);
 });
