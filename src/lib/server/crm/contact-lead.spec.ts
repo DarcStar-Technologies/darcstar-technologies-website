@@ -102,4 +102,24 @@ describe('handing a contact lead to the CRM', () => {
 	it('tolerates no platform at all', () => {
 		expect(() => captureContactLead(undefined, lead)).not.toThrow();
 	});
+
+	// A SYNCHRONOUS throw from building the signal must not escape either. Reaching it needs a bad
+	// caller — `createdAt` typed as a `Date` and not being one — which is why the assertion is about
+	// where the failure LANDS rather than about a shape anybody expects: the row is already committed,
+	// so this must log like any other produce failure and leave the submission successful.
+	it('swallows a failure to even build the signal', async () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const send = vi.fn(async () => {});
+		const { platform, scheduled } = fakePlatform({ send });
+		const bad = { ...lead, createdAt: 1785000000000 as unknown as Date };
+
+		expect(() => captureContactLead(platform, bad)).not.toThrow();
+		await expect(Promise.all(scheduled)).resolves.toBeDefined();
+		expect(send).not.toHaveBeenCalled();
+		expect(error).toHaveBeenCalledWith(
+			'crm ingest produce failed for submission row-1',
+			expect.any(Error)
+		);
+		error.mockRestore();
+	});
 });

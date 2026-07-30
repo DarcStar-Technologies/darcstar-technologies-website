@@ -52,6 +52,13 @@ Three layers, so a regression fails fast at the cheapest one:
 
 The happy-path submit (validation → Turso) is exercised manually rather than in CI, to avoid writing to the production DB.
 
+## CRM egress (DAR-136)
+
+Beside the two Resend sends, a committed submission also becomes one versioned `ContactSignal` on the
+CRM-owned **`crm-ingest`** queue — same `ctx.waitUntil`, same never-fail-the-submission contract. Only
+a name, an email address and a company travel; the contract has no field for the message. `/privacy`
+names Twenty as a processor because of it. See [crm.md](crm.md).
+
 ## Follow-ups (filed separately)
 
 Cloudflare Turnstile (#53, stronger than the honeypot) — note DAR-67 **removed** the `captcha` plugin along with public sign-up, so this would mean re-registering it (the keys and the CSP allowlist are still in place). ✅ Lead notification on submit (#52), the `info@` role alias (#54), the `/contact` no-JS fallback page (#55), the gated `/admin` submissions view (#69), and message ownership → the `/account` end-user portal (#96 PR 1, see [auth.md](auth.md)) shipped.
