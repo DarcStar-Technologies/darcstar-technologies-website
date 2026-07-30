@@ -16,13 +16,13 @@ array in `src/routes/evidence/+page.svelte`.
 Every figure was transcribed from the GIDE hub's own source-of-record documents (July 2026
 audit — this repo holds only the public prose, never the artifacts):
 
-| Card                         | Source of record (in `../gide`)                                                                                                                                                                                                                                                                                                                     |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0.767 µs CfC inference       | `docs/benchmarks/cfc-controller-performance.md` (mean of 10,000 calls / 1,000 warmup, Dec 2025) + `benchmarks/results/README.md` (attribution ledger: that run is UNATTRIBUTED; the ARM Neoverse-N2 log is the attributed cross-check at 0.75 µs)                                                                                                   |
-| 13,000× real time            | Derived, never measured: 10 ms (100 Hz budget) ÷ 0.767 µs ≈ 13,000 (`docs/project-overview.md`)                                                                                                                                                                                                                                                     |
-| 219 theorems machine-checked | `docs/theoretical-framework/THEOREM-CATALOG-0001.md` + `src/core/services/axiomatic/theorem_conformance.zig` (CI census gate keeps them consistent): 31 complete (dual-prover, zero local axioms) + 188 axiom-backed, as of release v2026.07.1                                                                                                      |
-| Formal safety guarantees     | The complete zero-axiom cluster: T026 (Nagumo forward invariance), T072 (CBF safe-control existence + minimally-invasive QP), T073 (robust Nagumo under learning), T090–T096 (latency margin, keep-out) in `proofs/Layer1/` — Lean 4 v4.30.0 + Isabelle2025-2/AFP 2026-06-01, SMT portfolio Z3 4.16.0 / CVC5 1.3.4 / Yices2 2.6.5 / dReal 4.21.06.2 |
-| 5 domains shipped            | `src/domains/{cart_pole,quadrotor,fx,llm,self_dev}`; Self-Dev is explicitly pre-milestone ("approaching its first fully autonomous cycle") and the card says so                                                                                                                                                                                     |
+| Card                         | Source of record (in `../gide`)                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.767 µs CfC inference       | `docs/benchmarks/cfc-controller-performance.md` (mean of 10,000 calls / 1,000 warmup, Dec 2025) + `benchmarks/results/README.md` (attribution ledger: that run is UNATTRIBUTED; the ARM Neoverse-N2 log is the attributed cross-check at 0.75 µs)                                                                                                                                        |
+| 13,000× real time            | Derived, never measured: 10 ms (100 Hz budget) ÷ 0.767 µs ≈ 13,000 (`docs/project-overview.md`)                                                                                                                                                                                                                                                                                          |
+| 260 theorems machine-checked | `docs/theoretical-framework/THEOREM-CATALOG-0001.md` + `src/core/services/axiomatic/theorem_conformance.zig` (CI census gate keeps them consistent): 49 complete (dual-prover, zero local axioms) + 211 axiom-backed. **Measured against hub `main` on 2026-07-29**, cross-checked between the catalog's distribution table and the registry's `.met` count — see the vintage rule below |
+| Formal safety guarantees     | The complete zero-axiom cluster: T026 (Nagumo forward invariance), T072 (CBF safe-control existence + minimally-invasive QP), T073 (robust Nagumo under learning), T090–T096 (latency margin, keep-out) in `proofs/Layer1/` — Lean 4 v4.30.0 + Isabelle2025-2/AFP 2026-06-01, SMT portfolio Z3 4.16.0 / CVC5 1.3.4 / Yices2 2.6.5 / dReal 4.21.06.2                                      |
+| 5 domains shipped            | `src/domains/{cart_pole,quadrotor,fx,llm,self_dev}`; Self-Dev is explicitly pre-milestone ("approaching its first fully autonomous cycle") and the card says so                                                                                                                                                                                                                          |
 
 ## Rules when editing
 
@@ -35,17 +35,32 @@ audit — this repo holds only the public prose, never the artifacts):
   updates the assertions with the copy and a partial edit still fails loudly.
 - **Numbers are dated claims.** A figure and its `*_dated` line change together, never
   alone. Re-measured → update both; don't quietly bump a figure.
+- **The theorem figures are dated to a MEASUREMENT, not a release (DAR-152)** — `Measured 29 July
+2026 · GIDE conformance registry`, and that phrasing is the fix rather than a shortcut. They
+  used to read "As of GIDE release v2026.07.1", a tag that **never held them**: it carried
+  22/131/153, about six weeks behind, while 31/188/219 had been transcribed from hub `main` mid-way
+  through DAR-43. So the number was real and the provenance line was not — on the one page whose
+  stated purpose is dated claims. Re-dating to the tag was rejected (it would have downgraded the
+  homepage headline from 31 to 22, and the tag is stale anyway); keeping the figures and fixing
+  only the date was rejected as needlessly weak. **There is exactly one release tag**, so no tag
+  carries a current count and a measurement date is the strongest claim available. Two
+  consequences: re-measure **both** halves from the hub in one pass (the catalog's distribution
+  table AND the registry's `.met` count — they are kept consistent by a CI census gate, so a
+  disagreement means read the gate, not pick one), and expect this to go stale, because `complete`
+  is the fastest-moving figure in the corpus (measured moving 46 → 49 in thirteen hours) and it is
+  the **homepage headline** since DAR-117. DAR-160 scopes the release-cadence mechanism that would
+  end the re-measure treadmill; it is blocked on the hub cutting releases regularly.
 - **The theorems figure is the machine-checked count** from the conformance registry
   (`.met = true` = complete + axiom-backed) — NOT the Layer-1 catalog size. The site shipped
   "150 theorems proven" for a while; that was the Layer-1 count, not a proven count, and
-  DAR-43 corrected it to 219 (`THEOREMS_CHECKED`). Don't reintroduce it.
+  DAR-43 corrected it to the conformance count (`THEOREMS_CHECKED`). Don't reintroduce it.
 - **The homepage leads with `THEOREMS_COMPLETE`, /evidence with `THEOREMS_CHECKED`** (DAR-117),
   and that split is deliberate, not drift. The homepage readout is the largest type on the site
   and had the raw total in it, unqualified — most of the checked corpus rests on local axioms
   awaiting discharge, so a formal-methods reviewer reads a bare total as inflated. The readout now
   shows the complete count with the total as its denominator (`readout_theorems_label` takes
   `{checked}` as a param — a figure passed into prose, never re-typed into it), and `/evidence`
-  keeps the full catalog: card value `219`, breakdown in the claim sentence. **"Complete" is a
+  keeps the full catalog: card value = `THEOREMS_CHECKED`, breakdown in the claim sentence. **"Complete" is a
   term of art, so the homepage defines it where it uses it** — `section_proven_body`, DAR-46's
   rule. `src/lib/evidence-disclosure.spec.ts` is the third copy guard (IP boundary → truth
   boundary → **disclosure** boundary: a figure we do publish must not be shown stripped of its
