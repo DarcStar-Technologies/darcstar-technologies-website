@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // mutation to the gate fails here rather than being absorbed by a stub that agrees with it.
 
 const unsubscribeUpdates = vi.fn();
+const markWaitlistReviewed = vi.fn();
 const deleteWhere = vi.fn();
 
 vi.mock('$lib/server/db', () => ({
@@ -28,6 +29,21 @@ vi.mock('$lib/server/waitlist-store', () => ({
 	unsubscribeUpdates,
 	readWaitlistTriageWindow: vi.fn()
 }));
+// Only `review`'s write is needed, but the module is mocked whole, so the other three are stubbed to
+// keep the import graph honest rather than left undefined.
+vi.mock('$lib/server/waitlist-invite', () => ({
+	markWaitlistReviewed,
+	findAccountByEmail: vi.fn(),
+	findWaitlistInviteTarget: vi.fn(),
+	markWaitlistInvited: vi.fn()
+}));
+
+/**
+ * Every write an action can reach past its gate. A gate test asserts on ALL of them rather than on the
+ * one this action happens to use, because "didn't delete" is vacuously true of an action that updates —
+ * which is exactly the shape a per-action assertion drifts into.
+ */
+const writes = () => [unsubscribeUpdates, markWaitlistReviewed, deleteWhere];
 
 const { actions } = await import('./+page.server');
 
@@ -87,7 +103,7 @@ describe('recordOptOut (DAR-140)', () => {
 		const result = await call('recordOptOut', user, { id: 'lead-1' });
 
 		expect(result).toMatchObject({ status: 403 });
-		expect(unsubscribeUpdates).not.toHaveBeenCalled();
+		for (const write of writes()) expect(write).not.toHaveBeenCalled();
 	});
 
 	it('refuses a submit with no lead id', async () => {
@@ -120,7 +136,9 @@ describe('the staff gate on the other write actions', () => {
 			const result = await call(action, SIGNED_IN_USER, { id: 'lead-1' });
 
 			expect(result).toMatchObject({ status: 403 });
-			expect(deleteWhere).not.toHaveBeenCalled();
+			// Every write, not this action's own: `review` never deletes, so asserting only on `deleteWhere`
+			// would be vacuously true of it and the row would be covered in name only.
+			for (const write of writes()) expect(write).not.toHaveBeenCalled();
 		}
 	);
 });

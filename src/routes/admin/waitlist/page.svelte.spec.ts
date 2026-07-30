@@ -489,6 +489,26 @@ describe('/admin/waitlist invitations', () => {
 		const { container } = mount(undefined, { error: 'forbidden' });
 		expect(container.textContent).not.toContain("Couldn't send that invitation");
 	});
+
+	// Same hazard one action along (DAR-140), and the second direction is the load-bearing one:
+	// `recordOptOut`'s failure is NESTED under `optOut`, which is the only thing keeping it out of the
+	// page's generic `'error' in form` banner. Flatten it to `{ error }` and an operator whose opt-out
+	// failed is told a SUBMISSION couldn't be deleted — a message about the wrong row and the wrong
+	// verb, on a page where one of those two things is destructive.
+	it('keeps the delete error and the opt-out error apart', async () => {
+		const flat = mount(undefined, { error: 'forbidden' });
+		expect(flat.container.textContent).not.toContain("Couldn't record that opt-out");
+
+		const nested = mount(undefined, { optOut: { error: 'not_found' } });
+		expect(nested.container.textContent).toContain('That lead no longer exists');
+		expect(nested.container.textContent).not.toContain("Couldn't delete that submission");
+	});
+
+	// The other branch of the same function, so "vanished" isn't the only message it can ever produce.
+	it('falls back to the generic message for any other opt-out failure', async () => {
+		const { container } = mount(undefined, { optOut: { error: 'forbidden' } });
+		expect(container.textContent).toContain("Couldn't record that opt-out");
+	});
 });
 
 // DAR-88 — a row is a PERSON with N submissions, and the view's job is to show them side by side
