@@ -12,6 +12,8 @@ import { m } from '$lib/paraglide/messages.js';
 import { type OutboundEmail, postEmail } from './email';
 import { buildLinkEmail, type LinkEmailInput } from './link-email';
 
+/** `url` is Better Auth's reset link — our own origin plus a single-use token, escaped defensively in
+ * the href because the query string carries an `&`. `name` is the account holder's display name. */
 export type PasswordResetEmailInput = LinkEmailInput;
 
 /** Render the password-reset email. Pure — unit-tested. Copy is Paraglide, resolved for `locale`;

@@ -17,6 +17,9 @@ import { m } from '$lib/paraglide/messages.js';
 import { type OutboundEmail, postEmail } from './email';
 import { buildLinkEmail, type LinkEmailInput } from './link-email';
 
+/** `url` is the activation link from `mintActivationLink` — a hand-minted password-reset token with a
+ * week-long expiry. `name` comes from the EARLIEST submission that gave one (DAR-67): newest-name
+ * would let a stranger choose the greeting on mail we send to the real person's inbox. */
 export type ActivationEmailInput = LinkEmailInput;
 
 /** Render the activation email. Pure — unit-tested. Copy is Paraglide, resolved for `locale`; the

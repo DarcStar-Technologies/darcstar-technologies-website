@@ -23,11 +23,16 @@
 // WHERE THE SEAM IS, AND WHY IT IS NOT THE SEND. The obvious extraction is one function that builds
 // AND posts, leaving three one-line callers. Do not: `email-senders.spec.ts` (DAR-121) derives its
 // surface from which files import `postEmail` and holds each against an allowlist declaring `kind`
-// and a per-call-site `sends` count. Funnel the send through here and six declared entries collapse
+// and a per-call-site `sends` count. Funnel the send through here and seven declared entries collapse
 // to one, which is exactly the "a send appended inside an already-listed file inherits that file's
 // pass" defect DAR-102 measured — the per-file `kind` is what makes "we send no marketing" a claim a
-// diff can contradict. So this module is a BUILDER ONLY. It never imports `postEmail`, every mailer
-// keeps its own send, and that spec is untouched by this refactor.
+// diff can contradict. So this module is a BUILDER ONLY. It never imports `postEmail` and every
+// mailer keeps its own send.
+//
+// That is enforced, not merely asked for: adding a `postEmail` import here makes this an undeclared
+// sender, and the spec's "lets only declared modules import the send function" assertion fails. The
+// wrong move would be to silence it by adding this file to the allowlist — the entry would describe a
+// module that sends everything and therefore says nothing about any of it.
 //
 // WHAT THE CALLER STILL OWNS: its copy (the eight-message family below), its own `send*` wrapper, and
 // the failure policy on it — the activation send is the one AWAITED, surfaced mail in the repo

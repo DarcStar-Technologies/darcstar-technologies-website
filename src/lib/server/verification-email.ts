@@ -12,6 +12,8 @@ import { m } from '$lib/paraglide/messages.js';
 import { type OutboundEmail, postEmail } from './email';
 import { buildLinkEmail, type LinkEmailInput } from './link-email';
 
+/** `url` is Better Auth's verify link — our own origin plus a signed token. `name` is caller-supplied
+ * at sign-up, so it is untrusted display text (the shared builder escapes it in the HTML body). */
 export type VerificationEmailInput = LinkEmailInput;
 
 /** Render the verification email. Pure — unit-tested. Copy is Paraglide, resolved for `locale`; the

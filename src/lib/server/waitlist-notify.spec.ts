@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { buildWaitlistLeadEmail, buildWaitlistAckEmail } from './waitlist-notify';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+	buildWaitlistLeadEmail,
+	buildWaitlistAckEmail,
+	sendWaitlistEmails
+} from './waitlist-notify';
 import type { CleanedWaitlist } from './waitlist';
 
 const full: CleanedWaitlist = {
@@ -95,5 +99,35 @@ describe('buildWaitlistAckEmail', () => {
 		for (const body of [email.subject, email.text, email.html]) {
 			expect(body).not.toContain('SENTINEL');
 		}
+	});
+});
+
+// The fan-out itself, which had no test on this side — `contact-notify.spec.ts` covered the identical
+// hand-written copy and this one was taken on trust. It matters more now that both go through the
+// shared `settleSends`: the log prefix used to be a string literal inside this function and is now an
+// ARGUMENT, so "the lead survives an ack failure" is covered by the sibling's test while passing the
+// wrong label here is a new way to be wrong that nothing would have noticed. A misleading role line is
+// only a log defect, but logs are what somebody reads at 3am when the acks start bouncing.
+describe('sendWaitlistEmails', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	it('sends the lead even when the ack bounces, and logs that by role', async () => {
+		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+			const body = JSON.parse((init?.body as string) ?? '{}');
+			// Fail only the ack (to the signer); the lead into info@ must still go out.
+			return body.to === 'ada@example.com'
+				? new Response('bounced', { status: 422 })
+				: new Response('{"id":"abc"}', { status: 200 });
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		await expect(sendWaitlistEmails('re_test_key', full, 'en')).resolves.toBeUndefined();
+
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(errSpy).toHaveBeenCalledTimes(1);
+		// By role and under THIS fan-out's name — never the recipient address (no PII in logs).
+		expect(errSpy.mock.calls[0][0]).toBe('waitlist ack email failed');
+		errSpy.mockRestore();
 	});
 });

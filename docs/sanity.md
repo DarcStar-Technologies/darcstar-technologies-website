@@ -162,17 +162,17 @@ website **never queried it** — every field was editable and inert. That is not
 a `socialLinks` edit adding LinkedIn and BlueSky was published in `dev`, promoted to `production`, and
 rendered nowhere, with no feedback. **One field is now wired; the rest are still inert.**
 
-| Field              | Status   | What drives the site                                                                                                |
-| ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------- |
-| `socialLinks`      | **live** | the footer's profile row + the Organization `sameAs`                                                                |
-| `title`            | inert    | `SITE_NAME` (`$lib/site.ts`)                                                                                        |
-| `tagline`          | inert    | Paraglide `footer_tagline`                                                                                          |
-| `description`      | inert    | Paraglide `seo_default_description` (localized; the CMS field isn't)                                                |
-| `contactEmail`     | inert    | `CONTACT_EMAIL` — also the Resend **From:** address on five mailers, so CMS control would break domain verification |
-| `logo` / `favicon` | inert    | `$lib/assets/favicon.svg`, fingerprint-imported                                                                     |
-| `titleTemplate`    | inert    | Paraglide `content_doc_title` (`"{title} — DarcStar Technologies"`)                                                 |
-| `defaultOgImage`   | inert    | build-time `scripts/gen-og.mjs` (DAR-69)                                                                            |
-| `primaryNav`       | inert    | hardcoded nav — and its live value points at `/blog`, `/papers`, `/team`, none of which exist                       |
+| Field              | Status   | What drives the site                                                                                                                               |
+| ------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `socialLinks`      | **live** | the footer's profile row + the Organization `sameAs`                                                                                               |
+| `title`            | inert    | `SITE_NAME` (`$lib/site.ts`)                                                                                                                       |
+| `tagline`          | inert    | Paraglide `footer_tagline`                                                                                                                         |
+| `description`      | inert    | Paraglide `seo_default_description` (localized; the CMS field isn't)                                                                               |
+| `contactEmail`     | inert    | `CONTACT_EMAIL` — also the Resend **From:** address of every user-facing mailer (via `EMAIL_FROM`), so CMS control would break domain verification |
+| `logo` / `favicon` | inert    | `$lib/assets/favicon.svg`, fingerprint-imported                                                                                                    |
+| `titleTemplate`    | inert    | Paraglide `content_doc_title` (`"{title} — DarcStar Technologies"`)                                                                                |
+| `defaultOgImage`   | inert    | build-time `scripts/gen-og.mjs` (DAR-69)                                                                                                           |
+| `primaryNav`       | inert    | hardcoded nav — and its live value points at `/blog`, `/papers`, `/team`, none of which exist                                                      |
 
 Trimming the inert fields from the Studio schema is DAR-73's **deferred half**; until then, treat this
 table as the source of truth for what an edit will actually do.
