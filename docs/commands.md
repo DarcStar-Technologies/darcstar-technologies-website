@@ -70,6 +70,60 @@ clear a bucket**, not waiting. And the hand-run smokes now reach `/api/auth/*` t
 [`smoke-invite.ts`](../scripts/smoke-invite.ts) uses to follow the emailed activation link and to
 probe the anti-enumerating endpoints (DAR-91).
 
+## The database the e2e suite runs against (DAR-85)
+
+Two more `--var`s (`DATABASE_URL` + `DATABASE_AUTH_TOKEN`) are baked on top of the four above, and
+they belong to the **test harness rather than to `pnpm preview`** —
+[`playwright.config.ts`](../playwright.config.ts) appends `hermeticDbVarArgs()` to the webServer
+command, so `DATABASE_URL` becomes `libsql://127.0.0.1:1` for the suite and for nothing else:
+
+| Where                      | Database                                    |
+| -------------------------- | ------------------------------------------- |
+| `pnpm test:e2e`            | `libsql://127.0.0.1:1` — refused at connect |
+| `pnpm preview` (by itself) | whatever `.env` names                       |
+| `pnpm smoke:*`             | whatever `.env` names (they assert on rows) |
+
+**That split is load-bearing, and folding it into `previewVars` is the mistake to avoid.**
+`smoke:invite` and `smoke:waitlist` are hand-run against a preview and assert on rows in the `.env`
+database — they are the only coverage the invite path and the composed waitlist flow have — so a
+dead DB in `previewVars` would break every run of both, and their own diagnostic ("is the preview
+pointed at a different database than `.env`?") would send the reader after an `.env` that is fine. A
+spec pins the separation in both directions.
+
+**Why the suite needed its own value.** The CI workflow hand-wrote `DATABASE_URL=libsql://placeholder.invalid`
+into a `.env`, so **only CI was hermetic**: a local run used the developer's real dev database, which
+is DAR-81's defect one var over — one suite testing two different things, with the local half writing
+to shared data. Measured on the dev DB when this was found: 5,118 `waitlist_funnel_event` rows
+against **0** leads and 0 submissions, i.e. `/admin/waitlist`'s conversion readout computed entirely
+over automated traffic.
+
+**Why an IP and not a hostname.** An unresolvable _host_ is what made a CI e2e log unreadable: workerd
+logs every failed DNS lookup itself, raises a `jsgInternalError` with a full native stack per attempt,
+and leaves one rejection per query unobserved — `Uncaught Error: internal error; reference = …`, which
+is indistinguishable from a real fault. Measured over four DB-touching requests:
+
+| `DATABASE_URL`                 | DNS-fail lines | `Uncaught` | workerd internal | our own logs | `/sign-up` | `/forgot-password` |
+| ------------------------------ | -------------- | ---------- | ---------------- | ------------ | ---------- | ------------------ |
+| `libsql://placeholder.invalid` | 9              | 3          | 9                | 2            | 400        | 200                |
+| `libsql://127.0.0.1:1`         | **0**          | **0**      | **0**            | 2            | 400        | 200                |
+| _absent_                       | 0              | 0          | 0                | 0            | **500**    | **500**            |
+
+**The absent row is the trap.** `getDb()` throws when either var is missing and `authOptions` calls it
+eagerly (`drizzleAdapter(getDb(), …)`), so `getAuth()` throws and every auth route answers 500 —
+including DAR-67's sign-up boundary, whose `400 EMAIL_PASSWORD_SIGN_UP_DISABLED` becomes a 500 that
+`expect(res.ok()).toBe(false)` still passes. That is DAR-81's two-gates-failing-closed-into-a-pass,
+reinstated. So the requirement is **constructible but unreachable**: the client must build and only
+the query may fail. `libsql://` (not `http://`) keeps the production scheme; port 1 needs root to
+bind, so nothing can answer it by accident.
+
+What remains in the log is our own labelled output — `waitlist funnel capture failed …`, Better
+Auth's error line — which is honest and greppable. Don't silence those: the point was to remove the
+lines nobody could attribute, not the ones that say which code path noticed.
+
+**`E2E_REUSE_SERVER=1` opts out of this too**, since the override lives in the command Playwright
+would otherwise run: a hand-started `pnpm preview` serves the specs from your `.env` database. The
+warning the config prints says so.
+
 ## Tests
 
 - `pnpm test:unit` — Vitest (watch). `pnpm test:unit --run` for a single pass. Filter with a path/name, e.g. `pnpm test:unit --run src/lib/vitest-examples/greet.spec.ts`.
@@ -114,11 +168,12 @@ pnpm test:unit --run --reporter=verbose --reporter=./scripts/vitest-failure-repo
 ```
 
 Both suites are **hermetic** — no real credentials anywhere: CI runs the unit suite with no env
-at all, and the e2e job against committed placeholder values (test.yml writes them; the worker
-needs vars _present_ to construct its DB/auth clients, but the specs are written DB-free and
-never query). A Sanity-token-less preview degrades to empty content lists, which the specs
-tolerate. Keep new tests that way; anything needing real credentials belongs in a **manual smoke**
-(below), not the gated suites.
+at all, and the e2e suite against placeholder values. The worker needs vars _present_ to construct
+its DB/auth clients, but the specs are written DB-free and never query; the database placeholder is
+[derived by the harness](#the-database-the-e2e-suite-runs-against-dar-85) so a **local** run is
+hermetic too, and `test.yml` hand-writes only `BETTER_AUTH_SECRET`. A Sanity-token-less preview
+degrades to empty content lists, which the specs tolerate. Keep new tests that way; anything needing
+real credentials belongs in a **manual smoke** (below), not the gated suites.
 
 ### Manual smokes (not in CI)
 
