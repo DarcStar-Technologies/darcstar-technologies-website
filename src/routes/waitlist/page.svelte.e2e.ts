@@ -593,6 +593,21 @@ test.describe('resuming after a reload', () => {
 	// Asserted on the invalidation response itself rather than on the rendered field, because the field
 	// shows the value the step RESPONSE echoed — which was always right. It was the load running beside
 	// it that disagreed.
+	//
+	// AND THE BODY IS CAPTURED BY US RATHER THAN FETCHED BACK OUT OF CHROMIUM (DAR-93). This read used
+	// to be `await invalidation.text()` on a `Response` handed back by `waitForResponse`, and that is
+	// not a buffered copy — it asks Chromium for the body over CDP at the moment it is called, so the
+	// submit's own re-render can evict the entry first and CDP answers "No data found for resource with
+	// given identifier". It blocked two consecutive merges and the third time it reproduced through
+	// Playwright's `retries: 1` as well, so a retry was never the mitigation it looked like.
+	//
+	// Intercepting is what makes it deterministic instead of merely rarer: `route.fetch()` performs
+	// Kit's own request once, and the bytes come back into THIS process, where nothing can evict them.
+	// The alternative fix — reading the body inside a `page.on('response')` handler — only narrows the
+	// window, because it still retrieves over CDP.
+	//
+	// Deliberately NOT the rendered field, which the ticket flagged as the wrong test for the reason in
+	// the paragraph above: it would pass against the very regression this exists to catch.
 	test('the load Kit re-runs after a submit reports the same flow id', async ({ page }) => {
 		await page.goto('/waitlist');
 		const main = page.getByRole('main');
@@ -602,15 +617,25 @@ test.describe('resuming after a reload', () => {
 		await main.getByLabel('Email', { exact: true }).fill('bot@bot');
 		await main.locator('input[name="website"]').fill('bot', { force: true });
 
-		const [invalidation] = await Promise.all([
-			page.waitForResponse((r) => r.url().includes('/waitlist/__data.json')),
-			main.getByRole('button', { name: 'Join the waitlist' }).click()
-		]);
+		// Registered here, AFTER the fills and immediately before the click, so everything it captures
+		// was caused by the submit. Registering it earlier would risk capturing some other
+		// `__data.json` and then asserting against a body that legitimately carries the original id —
+		// which would pass while a re-run load minting a FRESH id sat unexamined behind it.
+		const invalidations: string[] = [];
+		await page.route(/\/waitlist\/__data\.json/, async (route) => {
+			const response = await route.fetch();
+			invalidations.push(await response.text());
+			await route.fulfill({ response });
+		});
+
+		await main.getByRole('button', { name: 'Join the waitlist' }).click();
+		await expect.poll(() => invalidations.length).toBeGreaterThan(0);
 
 		// The re-run load mints its own handle around the SAME flow id, which is the whole claim here:
 		// the id is what every funnel count is keyed on, and it came from the resume cookie rather than
-		// from a fresh `crypto.randomUUID()`.
-		expect(await invalidation.text()).toContain(flowId);
+		// from a fresh `crypto.randomUUID()`. Indexed rather than joined, so a fresh id in the
+		// invalidation cannot hide behind some later body that happens to carry the right one.
+		expect(invalidations[0]).toContain(flowId);
 	});
 
 	// Branch A specifically. The step-3 reload above proves a resumed CLAIM still routes; this proves a
