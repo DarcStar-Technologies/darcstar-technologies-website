@@ -29,6 +29,16 @@
 // for the moment before publishing a post that quotes a figure, and docs/evidence.md names it as the
 // pre-publish step. What it does buy is that the check is one command instead of a memory of a rule.
 //
+// A GREEN RUN HERE IS NOT SELF-VALIDATING, so the wiring was mutation-proven against the live
+// dataset rather than inferred from the clean result. Lowering the published maximum does NOT do it —
+// this corpus has no bare integer within the window of any theorem wording, so thresholds of 40 and
+// even 0 both stayed green, which is exactly the kind of "passes for the wrong reason" a low
+// threshold looks like it rules out. Two mutations that DO fire, one per route: widening
+// THEOREM_CONTEXT to a word the corpus uses ("attention") flags the two FlashAttention papers
+// through route 1, and pointing a safety pattern at `/\bthe\b/` flags 26 documents — both with the
+// right excerpt, exit code 1 and the guidance text. Fetch → flatten → detect → report is live; the
+// zero is a property of the content.
+//
 // USAGE
 //   pnpm check:cms                     # the dataset the site serves, published documents only
 //   pnpm check:cms -- --dataset=dev    # before promoting: check the Studio's working dataset

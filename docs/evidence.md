@@ -208,4 +208,7 @@ each replay a proven invariant` reports a leak and is perfectly publishable, the
   108,632 characters of prose reached across 174 documents, **0 hits** — and the clean result was
   verified non-blind (7 documents carry theorem-context wording and 14 carry a bare integer above
   40, they simply never coincide inside the window), because "no hits" and "the scan reaches
-  nothing" print identically.
+  nothing" print identically. **Lowering the published maximum does not prove the wiring** — this
+  corpus trips nothing at a threshold of 40 or even 0, so that mutation looks decisive and is
+  vacuous. The two that fire, one per route: widening `THEOREM_CONTEXT` to "attention" flags the
+  FlashAttention papers, and pointing a safety pattern at `/\bthe\b/` flags 26 documents.
