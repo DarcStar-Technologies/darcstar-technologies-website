@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { documentText } from './document-text';
+import { documentFields, documentText } from './document-text';
 import { findCatalogTotalLeaksInRenderedText } from '$lib/evidence-boundary';
 
 // DAR-171. This is the half of `pnpm check:cms` that can be tested at all: the script itself needs a
@@ -123,6 +123,67 @@ describe('documentText', () => {
 
 	it('drops empty strings rather than emitting blank lines', () => {
 		expect(documentText({ _type: 'x', a: 'kept', b: '', c: 'also kept' })).toBe('kept\nalso kept');
+	});
+});
+
+describe('documentFields', () => {
+	it('returns one entry per top-level field that has prose', () => {
+		expect(
+			documentFields({
+				_type: 'post',
+				_id: 'post.x',
+				title: 'A title',
+				body: [para('A paragraph.')]
+			})
+		).toEqual([
+			['title', 'A title'],
+			['body', 'A paragraph.']
+		]);
+	});
+
+	it('drops fields with no prose rather than returning empty text', () => {
+		expect(documentFields({ _type: 'x', empty: '', blank: null, kept: 'here' })).toEqual([
+			['kept', 'here']
+		]);
+	});
+
+	// So a caller can read "no entries" as "no prose in this document" without re-checking.
+	it('returns nothing for a document with no prose at all', () => {
+		expect(documentFields({ _type: 'x', _id: 'y', flag: true })).toEqual([]);
+	});
+
+	it.each([
+		['null', null],
+		['a string', 'not a document'],
+		['an array', [{ title: 'x' }]]
+	])('returns nothing for %s', (_label, value) => {
+		expect(documentFields(value)).toEqual([]);
+	});
+
+	// THE PROPERTY THIS FUNCTION EXISTS FOR. Two fields must never share a detection window: the API
+	// serializes a document's fields in an order nobody authored, so a value in one field landing next
+	// to a context word in another is a coincidence of that order — a spurious pair, and an
+	// order-dependent miss when some third field sits between them. Splitting per field means every
+	// pair the window can form is one an author actually wrote.
+	it('never lets two fields form one detection window', () => {
+		// Deliberately split so NEITHER field carries both halves: the number lives in `title` with no
+		// context word beside it, the context word lives in `excerpt` with no number.
+		const doc = { _type: 'post', title: 'We reached 346', excerpt: 'theorems this quarter.' };
+		// Whole-document flattening pairs those two lines and reports a leak neither field contains.
+		expect(findCatalogTotalLeaksInRenderedText(documentText(doc), 260)).not.toEqual([]);
+		// Per field, neither half is a leak on its own.
+		for (const [, text] of documentFields(doc))
+			expect(findCatalogTotalLeaksInRenderedText(text, 260)).toEqual([]);
+	});
+
+	// The flip side, stated so the trade is deliberate: a leak really split across two fields is not
+	// seen. Accepted — a leak lives in a sentence, and `body` keeps the window intact within itself.
+	it('still finds a leak contained in one field', () => {
+		const doc = { _type: 'post', body: [para('We catalogued 346 theorems this quarter.')] };
+		const hits = documentFields(doc).flatMap(([, text]) =>
+			findCatalogTotalLeaksInRenderedText(text, 260)
+		);
+		expect(hits.join(' ')).toContain('346');
 	});
 });
 

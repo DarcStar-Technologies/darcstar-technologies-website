@@ -204,14 +204,28 @@ each replay a proven invariant` reports a leak and is perfectly publishable, the
   the catalog size is a plausible carrier; and a block's `children` are joined with **''** rather
   than a newline, since spans are the fragments of one paragraph — split them and a claim whose
   number sits in the first span and whose subject sits in the third falls outside the line-pair
-  window, a miss created purely by the editor's formatting. Measured against the live dataset:
+  window, a miss created purely by the editor's formatting. **And the scan runs per FIELD, not per
+  document** (`documentFields`), which is about the detection window rather than tidier output: the
+  line-pair window reunites a value with a label on the next line, so flattening a whole document
+  puts unrelated top-level fields on adjacent lines **in whatever order the API serialized them** —
+  a cross-field pair is a coincidence of that order, which cuts both ways (a spurious pair, and an
+  order-dependent _miss_ when a third field lands between a number and the word that gives it
+  meaning). Per field, every pair the window can form is one an author actually wrote, and a hit
+  names where it is. The trade is deliberate and tested in both directions: a leak genuinely split
+  across two fields is not seen, which is fine because a leak lives in a sentence and `body` keeps
+  the window intact within itself. Measured against the live dataset:
   108,632 characters of prose reached across 174 documents, **0 hits** — and the clean result was
   verified non-blind (7 documents carry theorem-context wording and 14 carry a bare integer above
   40, they simply never coincide inside the window), because "no hits" and "the scan reaches
   nothing" print identically. **Lowering the published maximum does not prove the wiring** — this
   corpus trips nothing at a threshold of 40 or even 0, so that mutation looks decisive and is
-  vacuous. The two that fire, one per route: widening `THEOREM_CONTEXT` to "attention" flags the
-  FlashAttention papers, and pointing a safety pattern at `/\bthe\b/` flags 26 documents.
+  vacuous. What does fire, each naming its route: `THEOREM_CONTEXT += token` → 2 hits on route 1
+  (integer above the published total); `+= attention` → 2 on route 2 (the FlashAttention abstracts
+  quote utilization percentages); a safety pattern pointed at `/\bthe\b/` → 26 documents. One trap
+  worth keeping, because the first version of this note fell into it: the guidance the script prints
+  on a hit contains the phrase "is not a theorem count", so grepping its output for "theorem count"
+  matches the **advice** and reads as a route-1 hit that never happened. Grep for the route's own
+  message shape (`theorem count N above`), never for a word the failure text also contains.
 - **The one false positive you will actually hit is `REALTIME_MULTIPLE` beside proof language, and
   the answer is to reword (DAR-171).** A verification post naturally discusses both the proofs and
   the performance claim, so "…is measured and the **13,000×** headroom is derived from it — neither

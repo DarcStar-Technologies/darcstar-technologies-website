@@ -86,10 +86,12 @@ Everything an editor types here is published copy, and it is the **one** surface
 can't reach — the unit specs scan the Paraglide catalogs, the e2e scans rendered pages but runs
 without a read token (DAR-96), so CMS-driven pages are empty in CI. **`pnpm check:cms`** closes that
 gap by hand: `$lib/sanity/document-text.ts` flattens a document to prose and both boundaries run over
-it. The flattener is **fail-closed** — an unrecognized block type is walked, so a type added to the
-Studio arrives inside the scan without anyone editing that file — and a block's `children` are joined
-with `''`, because spans are the fragments of one paragraph. Why a script and not a check, and what
-to do on a hit, is in [evidence](evidence.md).
+it, **one top-level field at a time** (`documentFields`) — the detector's window pairs a line with its
+successor, so flattening a whole document would let two unrelated fields form a window in whatever
+order the API serialized them. The flattener is **fail-closed** — an unrecognized block type is
+walked, so a type added to the Studio arrives inside the scan without anyone editing that file — and a
+block's `children` are joined with `''`, because spans are the fragments of one paragraph. Why a
+script and not a check, and what to do on a hit, is in [evidence](evidence.md).
 
 ### Math is typeset on the server (DAR-106)
 

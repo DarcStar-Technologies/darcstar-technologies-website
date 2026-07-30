@@ -33,11 +33,20 @@
 // dataset rather than inferred from the clean result. Lowering the published maximum does NOT do it —
 // this corpus has no bare integer within the window of any theorem wording, so thresholds of 40 and
 // even 0 both stayed green, which is exactly the kind of "passes for the wrong reason" a low
-// threshold looks like it rules out. Two mutations that DO fire, one per route: widening
-// THEOREM_CONTEXT to a word the corpus uses ("attention") flags the two FlashAttention papers
-// through route 1, and pointing a safety pattern at `/\bthe\b/` flags 26 documents — both with the
-// right excerpt, exit code 1 and the guidance text. Fetch → flatten → detect → report is live; the
-// zero is a property of the content.
+// threshold looks like it rules out. What does fire, each measured and each naming its route:
+//
+//   · THEOREM_CONTEXT += `token`     → 2 hits on route 1 (integer above the published total)
+//   · THEOREM_CONTEXT += `attention` → 2 hits on route 2 (the FlashAttention abstracts quote
+//                                       utilization percentages)
+//   · a safety pattern → /\bthe\b/   → 26 documents
+//
+// All with the right excerpt, the owning FIELD named, exit code 1 and the guidance text. Fetch →
+// flatten → detect → report is live; the zero is a property of the content.
+//
+// Worth knowing how the earlier version of this note got it wrong: it claimed the `attention`
+// mutation fired route 1, which came from reading the guidance text's own phrase "is not a theorem
+// count" as a hit line. Grep for the route's actual message (`theorem count N above`), never for a
+// word the failure output also contains.
 //
 // USAGE
 //   pnpm check:cms                     # the dataset the site serves, published documents only
@@ -47,7 +56,7 @@ import { createClient } from '@sanity/client';
 import { THEOREMS_CHECKED } from '../src/lib/evidence';
 import { findCatalogTotalLeaksInRenderedText } from '../src/lib/evidence-boundary';
 import { findSafetyLanguageViolations } from '../src/lib/safety-language';
-import { documentText } from '../src/lib/sanity/document-text';
+import { documentFields } from '../src/lib/sanity/document-text';
 import {
 	DEFAULT_SANITY_API_VERSION,
 	DEFAULT_SANITY_DATASET,
@@ -112,18 +121,23 @@ async function main() {
 	const flagged: string[] = [];
 
 	for (const doc of docs) {
-		const text = documentText(doc);
-		if (!text.trim()) continue;
+		// Per FIELD, not per document — `documentFields` explains why the detection window requires it.
+		const fields = documentFields(doc);
+		if (!fields.length) continue;
 		scanned++;
-		const hits = [
-			...findCatalogTotalLeaksInRenderedText(text, THEOREMS_CHECKED),
-			...findSafetyLanguageViolations(text)
-		];
-		if (!hits.length) continue;
+
+		const docHits = fields.flatMap(([field, text]) =>
+			[
+				...findCatalogTotalLeaksInRenderedText(text, THEOREMS_CHECKED),
+				...findSafetyLanguageViolations(text)
+			].map((hit) => `${field}: ${hit}`)
+		);
+
+		if (!docHits.length) continue;
 		flagged.push(label(doc));
 		console.log(`\n✗ ${label(doc)}`);
 		console.log(`  ${doc._id}`);
-		for (const hit of hits) console.log(`  - ${hit}`);
+		for (const hit of docHits) console.log(`  - ${hit}`);
 	}
 
 	console.log(`\nScanned ${scanned} documents with prose (of ${docs.length} fetched).`);

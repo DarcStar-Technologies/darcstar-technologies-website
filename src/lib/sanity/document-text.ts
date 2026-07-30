@@ -82,3 +82,29 @@ export function documentText(value: unknown): string {
 	// Booleans and null contribute nothing a reader reads.
 	return '';
 }
+
+/**
+ * A document split into its top-level prose fields — `[field, text]` for each one that has any.
+ *
+ * SCANNING PER FIELD IS ABOUT THE DETECTION WINDOW, not about prettier output.
+ * `findCatalogTotalLeaksInRenderedText` reunites a value with a label on the NEXT line, which is what
+ * makes it right for prose and for a claim card. Flattening a whole document instead puts unrelated
+ * top-level fields on adjacent lines in whatever order the API serialized them, so any cross-field
+ * pair is a coincidence of that order — which cuts both ways: a spurious pair, and an order-dependent
+ * MISS when some other field lands between a number and the word that gives it meaning. Per field,
+ * every pair the window forms is one an author actually wrote, and a hit can say where it is.
+ *
+ * The cost, accepted: a leak split across two fields — the number in `title`, the subject in
+ * `excerpt` — is not seen. A leak lives in a sentence, and inside a multi-block field like `body` the
+ * window still works exactly as designed.
+ *
+ * Empty fields are dropped rather than returned with `''`, so a caller can treat "no entries" as "no
+ * prose in this document" without re-checking.
+ */
+export function documentFields(doc: unknown): [field: string, text: string][] {
+	if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return [];
+	return Object.entries(doc as Record<string, unknown>)
+		.filter(([key]) => !isSystemKey(key))
+		.map(([key, value]): [string, string] => [key, documentText(value)])
+		.filter(([, text]) => text.trim() !== '');
+}
