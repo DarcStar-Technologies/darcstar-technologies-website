@@ -64,8 +64,19 @@ const PAGE_SLICE = `[$offset...$end]`;
 // FAIL-SAFE, like the origin polarity above: a sort key is a `production` artifact, so a person
 // without one just fails this arm and the predicate degrades to exactly the old behaviour rather
 // than erroring (measured against `dev`, where no document has the key).
+// `$contribution` (DAR-162) is an exact match on a closed enum, not a `match` like `$author`: the
+// four values are schema literals, and the URL vocabulary is validated against the same list in TS
+// before the param is bound (`CONTRIBUTION_KINDS`, $lib/research-filters.ts). So an unknown value
+// never reaches GROQ — but if one did, `contribution == $contribution` answers nothing rather than
+// everything, which is the right direction for a filter.
+//
+// Note what it does NOT need: an unset field is null, `null == "conceptual"` is false, and the 17
+// papers carrying no kind therefore drop out of every non-null filter without a `defined()` guard.
+// That is the honest answer — "undeclared" is not a kind — and it is why the facet below offers only
+// values in use rather than all four.
 const PAPER_MATCH = `_type == "paper" && defined(slug.current)
 		&& ($topic == null || $topic in topics[]->slug.current)
+		&& ($contribution == null || contribution == $contribution)
 		&& ($author == null || $author in authors[]->slug.current || authors[]->name match ($author + "*") || authors[]->nameSortKey match ($author + "*"))
 		&& ($origin == null
 			|| ($origin == "darcstar" && darcstarAuthored == true)
@@ -98,6 +109,7 @@ const PAPER_CARD = `
 			title,
 			"slug": slug.current,
 			status,
+			contribution,
 			darcstarAuthored,
 			"hasCommentary": coalesce(count(commentary) > 0, false),
 			venue,
@@ -142,6 +154,17 @@ const ORDER_PERSON_NAME = `coalesce(nameSortKey, lower(name)) asc`;
 // Dao" in the box. It matches on the SLUG ONLY — never the `match` form the filter accepts —
 // because a broad term like `?author=da` would otherwise label the control with one person while
 // the results legitimately contained several.
+//
+// `contributions` (DAR-162) is the same "only offer values in use" guarantee for a facet that has no
+// documents behind it — `contribution` is a closed enum on `paper`, so there is nothing to
+// `references()` and the values come from the papers themselves. It projects RAW values, not labels:
+// a topic's title is authored, an enum value's label is chrome, so it is translated in Paraglide and
+// ordered by `CONTRIBUTION_KINDS` ($lib/research-filters.ts) rather than by whatever order this
+// returns. Bounded by construction at four rows however large the corpus gets.
+//
+// Deliberately not `count(… > 0)`-shaped like the two above: `array::unique` over a projection is
+// the equivalent when the vocabulary lives IN the documents, and it is one expression rather than
+// four hard-coded existence checks that would need editing whenever the enum grows.
 const PAPER_PAGE_META = `
 		"total": count(*[${PAPER_MATCH}]),
 		"totalAll": count(*[_type == "paper" && defined(slug.current)]),
@@ -150,6 +173,7 @@ const PAPER_PAGE_META = `
 			title,
 			description
 		},
+		"contributions": array::unique(*[_type == "paper" && defined(slug.current) && defined(contribution)].contribution),
 		"teamAuthors": *[_type == "person" && kind != "external" && defined(slug.current) && count(*[_type == "paper" && defined(slug.current) && references(^._id)]) > 0] | order(${ORDER_PERSON_NAME}) {
 			"value": slug.current,
 			"label": name,
@@ -290,6 +314,7 @@ export const paperBySlugQuery = defineQuery(`
 		title,
 		"slug": slug.current,
 		status,
+		contribution,
 		darcstarAuthored,
 		abstract,
 		commentary,

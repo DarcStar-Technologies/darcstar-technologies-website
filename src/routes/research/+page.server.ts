@@ -44,6 +44,7 @@ const empty = (): PapersPage => ({
 	total: 0,
 	totalAll: 0,
 	topics: [],
+	contributions: [],
 	teamAuthors: [],
 	authorLabel: null
 });
@@ -53,7 +54,13 @@ const empty = (): PapersPage => ({
 // query-building function silently degrades the result to `any`).
 function fetchPapersPage(
 	sort: ResearchSort,
-	params: { topic: string | null; author: string | null; origin: string | null; offset: number }
+	params: {
+		topic: string | null;
+		contribution: string | null;
+		author: string | null;
+		origin: string | null;
+		offset: number;
+	}
 ): Promise<PapersPage> {
 	const query =
 		sort === 'title'
@@ -72,6 +79,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	try {
 		result = await fetchPapersPage(filters.sort, {
 			topic: filters.topic,
+			contribution: filters.contribution,
 			author: filters.author,
 			origin: filters.origin,
 			offset: pageOffset(requested)

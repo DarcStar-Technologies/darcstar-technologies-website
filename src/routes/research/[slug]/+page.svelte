@@ -9,6 +9,7 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import PageHero from '$lib/components/PageHero.svelte';
 	import PaperStatus, { pillClass } from '$lib/components/PaperStatus.svelte';
+	import PaperContribution from '$lib/components/PaperContribution.svelte';
 	import PaperOrigin from '$lib/components/PaperOrigin.svelte';
 	import PaperVenueDate from '$lib/components/PaperVenueDate.svelte';
 	import PaperExternalDisclaimer from '$lib/components/PaperExternalDisclaimer.svelte';
@@ -16,6 +17,7 @@
 	import { researchTopicHref } from '$lib/research-filters';
 	import PaperLinks from '$lib/components/PaperLinks.svelte';
 	import PortableBody from '$lib/components/portable/PortableBody.svelte';
+	import { inlineLinkClass } from '$lib/styles';
 	import { m } from '$lib/paraglide/messages.js';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { contentSeo } from '$lib/sanity/content-seo';
@@ -25,6 +27,14 @@
 
 	let { data }: { data: PageServerData } = $props();
 	const paper = $derived(data.paper);
+
+	// Only `conceptual` earns the caveat, and only alongside commentary to point at. The other three
+	// kinds are claims a paper can back — a formal result, a measured study, a shipped system — so
+	// prefacing them with "not a demonstrated result" would be false. This is deliberately narrow:
+	// one kind, one condition, or it becomes chrome nobody reads.
+	const conceptualCaveat = $derived(
+		paper.contribution === 'conceptual' && (paper.commentary?.length ?? 0) > 0
+	);
 
 	// Third-party papers lead their fallback description with the not-ours statement — the social
 	// preview (site-suffixed title + default DarcStar OG card) otherwise carries no origin signal.
@@ -78,6 +88,7 @@
 			>
 			<div class="flex flex-wrap items-center gap-3">
 				<PaperStatus status={paper.status} />
+				<PaperContribution contribution={paper.contribution ?? null} />
 				<PaperOrigin darcstarAuthored={paper.darcstarAuthored} />
 				<PaperVenueDate venue={paper.venue} publishedDate={paper.publishedDate} />
 			</div>
@@ -106,6 +117,32 @@
 			url={paper.url}
 		/>
 
+		<!-- The abstract card comes BEFORE the commentary card, so a reader meets the paper's strongest
+		     claims before anything that qualifies them. For a conceptual entry that order is backwards
+		     — the whole point of DAR-120 was that a framework put out to be argued with must not
+		     present like a settled result — so this points down at our assessment before the claims
+		     land. Not a reorder: on a paper page the paper's own words should still lead.
+
+		     Gated on the commentary EXISTING, because it links to it. And the copy names no heading from
+		     inside that commentary ("Technical status and limitations" is authored in the Studio,
+		     invisible from here) — it points at the commentary card's own heading, which is this repo's
+		     string. A code-side claim about content goes stale with nothing here to notice; that is the
+		     DAR-130 rule pointing the other way.
+
+		     The statement is TEXT and only the last clause is the link, rather than the whole card being
+		     one anchor. Two reasons, and the second is the one that made it wrong: a card-sized anchor
+		     gives a screen reader a two-sentence link name where "Read our assessment…" is the phrase
+		     that says where it goes; and with no underline or accent it did not LOOK clickable, its only
+		     affordance being a hover border — which touch never shows. `inlineLinkClass` is the
+		     site-wide answer to exactly that (the other in-page anchor, the homepage's #gide, is a
+		     glass-btn for the same reason). -->
+		{#if conceptualCaveat}
+			<p class="glass-card p-4 text-sm leading-relaxed text-body sm:p-5">
+				{m.research_conceptual_caveat()}
+				<a href="#commentary" class={inlineLinkClass}>{m.research_conceptual_caveat_link()}</a>
+			</p>
+		{/if}
+
 		{#if paper.abstract}
 			<section class="glass-card p-8 sm:p-10">
 				<h2 class="text-lg font-medium tracking-tight text-white">
@@ -116,7 +153,9 @@
 		{/if}
 
 		{#if paper.commentary && paper.commentary.length > 0}
-			<section class="glass-card p-8 sm:p-10">
+			<!-- `id` is the caveat link's target above; `scroll-mt-*` keeps the heading clear of the
+			     fixed header when it lands. -->
+			<section id="commentary" class="glass-card scroll-mt-24 p-8 sm:p-10">
 				<h2 class="text-lg font-medium tracking-tight text-white">
 					{m.research_commentary_heading()}
 				</h2>
