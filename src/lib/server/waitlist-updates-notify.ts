@@ -17,11 +17,11 @@
 // whose address a stranger typed into the form, for whom "don't ask again" is the only useful control
 // on the page. It is also what bounds the exposure the claim cannot: the window caps a stranger at one
 // email a day, and this link ends it outright.
-import type { Locale } from '$lib/paraglide/runtime';
 import type { Db } from './db';
 import type { WaitlistSigningSecret } from './waitlist-secret';
 import { CONTACT_EMAIL, EMAIL_FROM } from '$lib/site';
 import { m } from '$lib/paraglide/messages.js';
+import { baseLocale } from '$lib/paraglide/runtime';
 import { type OutboundEmail, escapeHtml, postEmail } from './email';
 import { claimUpdatesConfirmSend } from './waitlist-store';
 import { mintUpdatesConfirmToken, mintUpdatesUnsubscribeToken } from './waitlist-updates-token';
@@ -49,9 +49,9 @@ export interface UpdatesConfirmEmailInput {
 }
 
 /**
- * Render the confirmation request. Pure — unit-tested. Copy is Paraglide, resolved for `locale`; the
- * two URLs are HTML-escaped in the html body (they are ours, but a builder that escapes only some of
- * its inputs is one refactor from escaping none).
+ * Render the confirmation request. Pure — unit-tested. Copy is Paraglide, always in the BASE LOCALE
+ * (below); the two URLs are HTML-escaped in the html body (they are ours, but a builder that escapes
+ * only some of its inputs is one refactor from escaping none).
  *
  * NO NAME, AND NOT BECAUSE THE FIELD IS OPTIONAL. The waitlist's name is supplied by whoever filled in
  * the form, and this is the one message in the codebase whose whole premise is that the submitter and
@@ -60,12 +60,22 @@ export interface UpdatesConfirmEmailInput {
  * answered it by taking the earliest submission's name; here there is a better answer available,
  * because a message that says "someone asked us, was it you?" has no business claiming to know who it
  * is writing to. Escaping stops injection and does nothing about abuse by content.
+ *
+ * AND NO LANGUAGE EITHER (DAR-173) — the same hazard one level up, and it takes NO PARAMETER rather
+ * than taking one the caller fills with `baseLocale`, because a parameter is an invitation and the
+ * next caller accepts it. This asks a question the recipient has to be able to ANSWER; rendering it
+ * in a language chosen by the person we are asking ABOUT defeats the control rather than merely
+ * looking odd. That is the line between this and the acks beside it: a wrong language on "you're on
+ * the list" is cosmetic, a wrong language on "was this you?" is an unanswerable question.
+ *
+ * The submitter loses nothing they had: `m.waitlist_error_*()` resolve the ambient locale, so the
+ * page and its validation errors stay localized. Only the mail to a third party stops being.
  */
-export function buildUpdatesConfirmEmail(
-	input: UpdatesConfirmEmailInput,
-	locale: Locale
-): OutboundEmail {
-	const o = { locale };
+export function buildUpdatesConfirmEmail(input: UpdatesConfirmEmailInput): OutboundEmail {
+	// `as const` because an object-literal property widens `"en"` back to `string`, which the message
+	// options reject. Never a `: { locale: Locale }` annotation — naming that type here is the very
+	// thing this module gave up (and `email-locale.spec.ts` pins that it does not).
+	const o = { locale: baseLocale } as const;
 	const subject = m.waitlist_updates_confirm_email_subject({}, o);
 	const body = m.waitlist_updates_confirm_email_body({}, o);
 	const button = m.waitlist_updates_confirm_email_button({}, o);
@@ -136,10 +146,9 @@ export function buildUpdatesConfirmEmail(
  */
 export async function sendUpdatesConfirmEmail(
 	apiKey: string,
-	input: UpdatesConfirmEmailInput,
-	locale: Locale
+	input: UpdatesConfirmEmailInput
 ): Promise<void> {
-	await postEmail(apiKey, buildUpdatesConfirmEmail(input, locale));
+	await postEmail(apiKey, buildUpdatesConfirmEmail(input));
 }
 
 /** Where the two landing pages live. One place, so a rename can't move only half the pair. */
@@ -198,8 +207,7 @@ export function captureUpdatesConsent(
 	db: Db,
 	platform: App.Platform | undefined,
 	env: UpdatesConfirmEnv,
-	target: UpdatesConfirmTarget,
-	locale: Locale
+	target: UpdatesConfirmTarget
 ): void {
 	const { resendKey, origin, secret } = env;
 	if (!resendKey || !origin || !secret) return;
@@ -208,23 +216,19 @@ export function captureUpdatesConsent(
 		// Claim first — see claimUpdatesConfirmSend. False means already confirmed, already withdrawn,
 		// asked within the window, or the lead is gone; nothing to do in any of those cases.
 		if (!(await claimUpdatesConfirmSend(db, target.leadId))) return;
-		await sendUpdatesConfirmEmail(
-			resendKey,
-			{
-				to: target.email,
-				confirmUrl: updatesUrl(
-					origin,
-					UPDATES_CONFIRM_PATH,
-					await mintUpdatesConfirmToken(secret, target.leadId)
-				),
-				unsubscribeUrl: updatesUrl(
-					origin,
-					UPDATES_UNSUBSCRIBE_PATH,
-					await mintUpdatesUnsubscribeToken(secret, target.leadId)
-				)
-			},
-			locale
-		);
+		await sendUpdatesConfirmEmail(resendKey, {
+			to: target.email,
+			confirmUrl: updatesUrl(
+				origin,
+				UPDATES_CONFIRM_PATH,
+				await mintUpdatesConfirmToken(secret, target.leadId)
+			),
+			unsubscribeUrl: updatesUrl(
+				origin,
+				UPDATES_UNSUBSCRIBE_PATH,
+				await mintUpdatesUnsubscribeToken(secret, target.leadId)
+			)
+		});
 	})().catch((err: unknown) => {
 		// Logged by role, never with the recipient address — the rule every waitlist send follows.
 		console.error('waitlist updates confirmation email failed', err);

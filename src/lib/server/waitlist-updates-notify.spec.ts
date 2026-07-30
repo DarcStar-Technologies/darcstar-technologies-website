@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildUpdatesConfirmEmail, type UpdatesConfirmEmailInput } from './waitlist-updates-notify';
 import { m } from '$lib/paraglide/messages.js';
+import { baseLocale, getLocale, overwriteGetLocale } from '$lib/paraglide/runtime';
 
 // DAR-139's one new send. What is worth pinning here is not the prose but the two properties the
 // message is declared `operational` on the strength of: it carries BOTH links (the confirm and the
@@ -12,8 +13,7 @@ const INPUT: UpdatesConfirmEmailInput = {
 	unsubscribeUrl: 'https://darcstar.tech/updates/unsubscribe?token=u1.lead.999.mac'
 };
 
-const build = (over: Partial<typeof INPUT> = {}) =>
-	buildUpdatesConfirmEmail({ ...INPUT, ...over }, 'en');
+const build = (over: Partial<typeof INPUT> = {}) => buildUpdatesConfirmEmail({ ...INPUT, ...over });
 
 describe('buildUpdatesConfirmEmail', () => {
 	it('addresses the person whose consent is being confirmed', () => {
@@ -71,5 +71,39 @@ describe('buildUpdatesConfirmEmail', () => {
 	// headers the waitlist ack carries, for the same reason.
 	it('marks itself as an auto-reply', () => {
 		expect(build().headers).toMatchObject({ 'Auto-Submitted': 'auto-replied' });
+	});
+
+	// SPEAKS NOBODY'S CHOSEN LANGUAGE EITHER (DAR-173) — the name rule above, one level up, and the
+	// guard is the same one: the SIGNATURE. A stranger typing a victim's address used to choose the
+	// language of the mail asking that victim whether they had asked for it, which is a question they
+	// then may not be able to read. There is no parameter to pass, so the caller cannot.
+	//
+	// This is the LIVE half of the pair below. It fails at compile time, today, on a build where the
+	// parameter came back.
+	it('accepts no locale from its caller', () => {
+		// @ts-expect-error — a second argument is refused on purpose. Put the parameter back and this
+		// directive becomes UNUSED, which is itself a `pnpm check` error, so the pin cannot rot quietly.
+		const forced = buildUpdatesConfirmEmail(INPUT, 'es');
+		expect(forced.subject).toBe(build().subject);
+	});
+
+	// AND THE DORMANT HALF, STATED AS DORMANT. `es.json` carries no translated keys (DAR-53), so every
+	// locale renders the same English bytes and this assertion cannot fail today whatever the code
+	// does — it is armed for the day Spanish is real, not evidence of anything now. Saying so is the
+	// point: a test that reads as coverage while proving nothing is worse than no test.
+	//
+	// What IS checked today is the instrument. If `overwriteGetLocale` ever stopped taking effect this
+	// would go quiet for a reason that has nothing to do with the rule, so the override is asserted
+	// before the thing it exists to override.
+	it('renders in the base locale even when the ambient locale is not (armed, not yet live)', () => {
+		overwriteGetLocale(() => 'es');
+		try {
+			expect(getLocale()).toBe('es');
+			expect(build().subject).toBe(
+				m.waitlist_updates_confirm_email_subject({}, { locale: baseLocale })
+			);
+		} finally {
+			overwriteGetLocale(() => baseLocale);
+		}
 	});
 });

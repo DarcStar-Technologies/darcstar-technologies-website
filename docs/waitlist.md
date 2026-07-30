@@ -37,11 +37,19 @@ one, added by DAR-66 for the funnel and extended by DAR-75 for
   conflict is what `isNew` means. The returned `id` is the **submission's**, so the continuation token
   binds to the row this submitter just created. See
   [Append-only submissions](#append-only-submissions-dar-88).
-- **Emails gated on `isNew`** — a lead → `info@` and a localized signer ack, fire-and-forget via
+- **Emails gated on `isNew`** — a lead → `info@` and a signer ack, fire-and-forget via
   `ctx.waitUntil`. This is the mailbomb guard, and append-only makes it **more** load-bearing, not
   less: every submit now inserts a row, so "a row was created" is no longer any evidence of a new
   person. `isNew` is the LEAD insert winning — the only thing that means "we have never mailed this
   address".
+- **Waitlist mail is base-locale, by signature (DAR-173).** Neither the ack nor DAR-139's
+  confirmation request takes a locale — the parameter is **deleted**, not defaulted, so a caller
+  cannot supply one. Both write to an address a stranger may have typed, and `isNew` caps how many
+  such messages a victim receives without saying anything about who typed it. The request locale was
+  not even the submitter's choice: measured, it resolves to the URL locale on a native submit and to
+  the base locale on a hydrated one ([i18n](i18n.md)). The page and its validation errors stay
+  localized — only the mail stops being. Guarded by `email-locale.spec.ts` + a `@ts-expect-error`
+  per builder.
 - **Anti-enumeration** — new vs. existing email return the identical success shape. Since DAR-88 that
   is simply true rather than a cover story: there is no difference left to hide.
 

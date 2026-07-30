@@ -21,7 +21,6 @@ import { readEnv } from '$lib/server/env';
 import { captureWaitlistFunnel, resolveWaitlistFlowId } from '$lib/server/waitlist-funnel';
 import { echoFlowId } from '$lib/waitlist-funnel';
 import { m } from '$lib/paraglide/messages.js';
-import { getLocale } from '$lib/paraglide/runtime';
 
 // Abuse throttle: at most THROTTLE_MAX signups per hashed IP per window (same as the contact form).
 const THROTTLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -73,7 +72,17 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		const userAgent = event.request.headers.get('user-agent') ?? null;
 		const platform = event.platform;
 		const cookies = event.cookies;
-		const locale = getLocale();
+		// NO `locale` HERE, DELIBERATELY (DAR-173). Both waitlist mailers used to take one from
+		// `getLocale()`, and neither should: the ack and the confirmation request are addressed to an
+		// address a stranger may have typed, so the submitter would be choosing the language of
+		// somebody else's mail. Measured, the value was not even the submitter's own choice — it
+		// resolves to the URL locale on a native POST and to the base locale on the enhanced one,
+		// because Kit fetches `/_app/remote/<id>` (no locale prefix) and `handleParaglide` reads
+		// `event.request`, not the `event.url` Kit rewrites from `x-sveltekit-pathname`. So the
+		// language turned on whether the form had hydrated. docs/i18n.md carries the measurement.
+		//
+		// The visitor keeps their language where it is theirs: `m.waitlist_error_*()` below resolve
+		// the ambient locale, so this response and the page around it stay localized.
 		// The token signing secret, via the shared per-request resolver (sync — valid at this
 		// pre-await point). Reused from Better Auth (domain-separated inside waitlist-token.ts) so no
 		// new secret needs provisioning.
@@ -157,7 +166,7 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 		// info@; the per-IP throttle bounds the rate but not the targeting.
 		const resendKey = platform?.env?.RESEND_API_KEY;
 		if (isNew && resendKey) {
-			const send = sendWaitlistEmails(resendKey, cleaned, locale).catch((err) =>
+			const send = sendWaitlistEmails(resendKey, cleaned).catch((err) =>
 				console.error('waitlist notifications failed', err)
 			);
 			if (platform?.ctx) platform.ctx.waitUntil(send);
@@ -177,8 +186,7 @@ export const joinWaitlist = form<WaitlistInput, WaitlistResult>(
 				db,
 				platform,
 				{ resendKey, origin: originUrl, secret: tokenSecret },
-				{ leadId, email: cleaned.email },
-				locale
+				{ leadId, email: cleaned.email }
 			);
 		}
 

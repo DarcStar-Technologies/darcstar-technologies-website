@@ -3,7 +3,8 @@
 //   1. Lead notification → the monitored info@ inbox (plain English ops output, outside the
 //      no-raw-text rule).
 //   2. Signer acknowledgement → the (validated) address, a warm "you're on the list" confirmation.
-//      User-facing, so its copy is Paraglide, localized to the request locale.
+//      User-facing, so its copy is Paraglide — but in the BASE locale, never the request's
+//      (DAR-173; see buildWaitlistAckEmail).
 //
 // The row is already persisted before either send, so a failure is logged, never surfaced. Wire
 // primitives (OutboundEmail/escapeHtml/postEmail) live in email.ts, shared with the contact + sign-up
@@ -14,9 +15,9 @@ import type { WaitlistRole } from '$lib/waitlist-roles';
 import type { WaitlistCompanySize } from '$lib/waitlist-company-sizes';
 import type { WaitlistReferralSource } from '$lib/waitlist-referral-sources';
 import type { WaitlistRegion } from '$lib/waitlist-qualification';
-import type { Locale } from '$lib/paraglide/runtime';
 import { CONTACT_EMAIL, EMAIL_FROM } from '$lib/site';
 import { m } from '$lib/paraglide/messages.js';
+import { baseLocale } from '$lib/paraglide/runtime';
 import { type OutboundEmail, escapeHtml, postEmail, settleSends } from './email';
 
 // Both messages send FROM the Resend-verified role alias (single-sourced from site.ts). The lead
@@ -115,11 +116,26 @@ export function buildWaitlistLeadEmail(sub: CleanedWaitlist): OutboundEmail {
 
 /**
  * Render the signer-facing "you're on the list" acknowledgement. Pure — unit-tested. Copy is
- * Paraglide, resolved for `locale`; the name (if given) is HTML-escaped in the html body. A generic
- * greeting is used when no name was provided (name is optional on the waitlist).
+ * Paraglide, always in the BASE LOCALE (below); the name (if given) is HTML-escaped in the html
+ * body. A generic greeting is used when no name was provided (name is optional on the waitlist).
+ *
+ * NO LOCALE PARAMETER (DAR-173). This used to render in the locale of whoever submitted the form,
+ * and two things are wrong with that. The recipient may not be the submitter — `isNew` gates this
+ * send to a once-ever welcome, which bounds how many of these a victim can receive but says nothing
+ * about WHO typed their address. And the value being threaded was not a preference at all: measured,
+ * `getLocale()` inside a remote form resolves to the URL locale on a native POST and to the base
+ * locale on the enhanced one, because Kit's enhanced submit fetches `/_app/remote/<id>` — no locale
+ * prefix — and `handleParaglide` reads `event.request` rather than the `event.url` Kit rewrites from
+ * `x-sveltekit-pathname`. Same visitor, same page, different language depending on whether the form
+ * had hydrated. See docs/i18n.md.
+ *
+ * The parameter is DELETED rather than defaulted, so a stranger-chosen language is unspellable —
+ * DAR-139's move on this flow's other caller-supplied value, the recipient's name.
  */
-export function buildWaitlistAckEmail(sub: CleanedWaitlist, locale: Locale): OutboundEmail {
-	const o = { locale };
+export function buildWaitlistAckEmail(sub: CleanedWaitlist): OutboundEmail {
+	// `as const`: see buildUpdatesConfirmEmail — an object-literal property widens the literal back to
+	// `string`, and the annotation that would fix it names the type this module gave up.
+	const o = { locale: baseLocale } as const;
 	const subject = m.waitlist_ack_subject({}, o);
 	const greeting = sub.name
 		? m.waitlist_ack_greeting_named({ name: sub.name }, o)
@@ -156,15 +172,11 @@ export function buildWaitlistAckEmail(sub: CleanedWaitlist, locale: Locale): Out
  * `allSettled` so one failure is logged by role (never the recipient address — no PII in logs)
  * without dropping the other. The caller schedules this via `ctx.waitUntil` (runs after the response).
  */
-export async function sendWaitlistEmails(
-	apiKey: string,
-	sub: CleanedWaitlist,
-	locale: Locale
-): Promise<void> {
+export async function sendWaitlistEmails(apiKey: string, sub: CleanedWaitlist): Promise<void> {
 	// Build INSIDE each thunk so a synchronous builder throw is captured per-email by settleSends
 	// (see email.ts for why — preserves "lead survives an ack failure").
 	await settleSends('waitlist', [
 		['lead', async () => postEmail(apiKey, buildWaitlistLeadEmail(sub))],
-		['ack', async () => postEmail(apiKey, buildWaitlistAckEmail(sub, locale))]
+		['ack', async () => postEmail(apiKey, buildWaitlistAckEmail(sub))]
 	]);
 }
