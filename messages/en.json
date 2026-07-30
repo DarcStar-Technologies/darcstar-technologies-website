@@ -878,7 +878,7 @@
 	"privacy_processors_cloudflare_title": "Cloudflare",
 	"privacy_processors_cloudflare_body": "Hosts and serves the site, provides security features (including the Turnstile bot check), and briefly processes request data like IP addresses in operational logs.",
 	"privacy_processors_turso_title": "Turso",
-	"privacy_processors_turso_body": "The database where form submissions, waitlist entries, accounts, security logs, and the contact records we build from them are stored.",
+	"privacy_processors_turso_body": "The database where form submissions, waitlist entries, accounts, and security logs are stored, along with the contact record we build when you write to us through the contact form.",
 	"privacy_processors_resend_title": "Resend",
 	"privacy_processors_resend_body": "Delivers our transactional email — contact acknowledgements, waitlist notifications, verification and password-reset messages.",
 	"privacy_processors_sanity_title": "Sanity",
