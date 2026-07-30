@@ -111,8 +111,11 @@ export const submitContact = form<ContactInput, { success: true }>(
 		// survive the CRM being down and `ctx.waitUntil` only extends ~30s past this response.
 		//
 		// Reached only on the genuine-insert path — past the honeypot and the throttle — so a bot
-		// cannot enqueue, exactly as it cannot trigger the acknowledgement email. In the preview
-		// Worker there is no `CRM_INGEST` binding at all and this is a silent skip (wrangler.jsonc).
+		// cannot enqueue, exactly as it cannot trigger the acknowledgement email. The preview Worker
+		// declares no queue binding at all, so there this is a silent skip (see wrangler.jsonc). That
+		// binding is deliberately not NAMED here: `crm-egress.spec.ts` asserts exactly one source file
+		// names it, and while comments are stripped before that scan, source-scan.ts's own rule is that
+		// a scanned file must not lean on the stripper to stay clean.
 		// Fields named ONE BY ONE rather than spreading `cleaned`: the guarantee that the message body
 		// never leaves for the CRM is worth being able to read here, and a spread would hand it to the
 		// producer to be dropped out of sight (`contact-signal.ts` has no field for it either way).

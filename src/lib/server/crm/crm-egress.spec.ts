@@ -42,11 +42,25 @@ type SignalSource = 'website_form' | 'waitlist';
  *
  * `sends` is PER CALL SITE rather than per file, which DAR-102 measured to matter on the sibling
  * rule: a second produce appended INSIDE an already-listed file inherits that file's pass otherwise.
+ *
+ * `entry` and `calledBy` exist because THE CHOKEPOINT IS NOT THE ONLY DOOR, which was measured rather
+ * than reasoned about: a waitlist producer that imports neither `postContactSignal` nor the binding,
+ * and instead reuses `captureContactLead` one hop up, passed all 26 assertions here while sending
+ * waitlist entries to the CRM as `website_form` signals — falsifying the /privacy sentence below with
+ * a fully green suite. It is also the LIKELY mistake rather than a contrived one: whoever builds
+ * DAR-177 will read this producer first, and a waitlist row has an id and a `created_at` just like a
+ * contact one, so it fits `ContactLead` without complaint. So each producer declares its public entry
+ * point and exactly who may call it.
  */
-const PRODUCERS: Record<string, { sends: number; source: SignalSource; what: string }> = {
+const PRODUCERS: Record<
+	string,
+	{ sends: number; source: SignalSource; entry: string; calledBy: string[]; what: string }
+> = {
 	'src/lib/server/crm/contact-lead.ts': {
 		sends: 1,
 		source: 'website_form',
+		entry: 'captureContactLead',
+		calledBy: ['src/lib/contact.remote.ts'],
 		what:
 			'one signal per committed contact_submission row — the name, email and company of somebody ' +
 			'who chose to write to us, and never the message they wrote'
@@ -57,6 +71,12 @@ const QUEUE_MODULE = '$lib/server/crm/queue';
 const PRODUCE = 'postContactSignal';
 const BINDING = 'CRM_INGEST';
 const declared = Object.keys(PRODUCERS);
+
+/**
+ * The `$lib` specifier a file under `src/lib` is imported by, DERIVED rather than written down beside
+ * the path — two spellings of one module is the drift this whole file exists to prevent.
+ */
+const moduleFor = (path: string) => path.replace(/^src\/lib\//, '$lib/').replace(/\.ts$/, '');
 
 /**
  * THE SURFACE: the worker AND the hand-run scripts, for DAR-121's measured reason — a script is how
@@ -107,6 +127,41 @@ describe('the CRM egress is one declared route', () => {
 					`This spec cannot read intent and does not try to. It makes the decision loud.`
 			).not.toBe('waitlist');
 		}
+	});
+
+	// THE SECOND DOOR. `postContactSignal` being the only route to the queue says nothing about who
+	// may reach the function that CALLS it, and a producer's whole job is to be callable. Measured: a
+	// waitlist producer reusing `captureContactLead` passed everything else here.
+	//
+	// Excludes the producer itself (it defines the entry, so it "names" it) and specs, which the scan
+	// already drops. Two-sided `toEqual`, so a removed call site fails too — an entry nobody calls is
+	// an allowlist rotting into names nobody checks.
+	it('lets only declared call sites invoke a producer', () => {
+		for (const [path, producer] of Object.entries(PRODUCERS)) {
+			const callers = surface().filter(
+				(file) => file !== path && importedNames(file, moduleFor(path)).includes(producer.entry)
+			);
+			expect(
+				callers.sort(),
+				`${producer.entry} (${path}) may be called from ${producer.calledBy.join(', ') || '(nowhere)'} ` +
+					`and is reached from ${callers.join(', ') || '(nowhere)'}.\n` +
+					`\n` +
+					`A producer is a second door to the queue: reaching it sends "${producer.what}", ` +
+					`whatever row is handed over. A waitlist row fits ContactLead perfectly well, which is ` +
+					`exactly how /privacy's "waitlist entries are not sent to it at all" would become false ` +
+					`without a single assertion above this one noticing. Declare a new call site here, and ` +
+					`if what it hands over is not what this producer says it sends, write a new producer.`
+			).toEqual([...producer.calledBy].sort());
+		}
+	});
+
+	// Sideways at the PRODUCER, not just at the queue module — same two routes, same reason.
+	it('lets nobody reach a producer through a namespace or a dynamic import', () => {
+		const modules = declared.map(moduleFor);
+		const sideways = surface().filter((file) =>
+			modules.some((module) => importsNamespace(file, module) || importsDynamically(file, module))
+		);
+		expect(sideways).toEqual([]);
 	});
 
 	// PER CALL SITE, not per file — see the note on `sends`.

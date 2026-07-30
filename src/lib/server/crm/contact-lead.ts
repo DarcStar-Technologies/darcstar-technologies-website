@@ -36,14 +36,17 @@ export interface ContactLead {
 export function buildContactLeadSignal(lead: ContactLead): ContactSignal {
 	const company = lead.company?.trim();
 	const name = lead.name.trim();
+	// One identity, built once: `email` is a MIRROR of it, so deriving the two independently would be
+	// two chances to normalize differently — and the consumer matches identities by exact string.
+	const identity = emailIdentity(lead.email);
 	return {
 		v: CONTACT_SIGNAL_VERSION,
 		source: 'website_form',
 		sourceRef: lead.submissionId,
 		occurredAt: lead.createdAt.toISOString(),
 		createdBy: 'system:website_form',
-		identities: [emailIdentity(lead.email)],
-		email: emailIdentity(lead.email).externalId,
+		identities: [identity],
+		email: identity.externalId,
 		...(name ? { displayName: name } : {}),
 		...(company ? { company } : {})
 	};

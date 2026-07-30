@@ -36,8 +36,9 @@ export type ProduceOutcome = 'sent' | 'skipped';
  *
  * Absence is therefore a SKIP, never a failure: a preview submission persists to
  * `contact_submission` and simply never reaches the CRM, which is what should happen to test data.
- * `vite dev` and a local `wrangler dev` both resolve a LOCAL simulated queue, so a developer can see
- * the produce happen without anything leaving the machine.
+ * A local `wrangler dev` (which is what `pnpm preview` and the e2e run) resolves a SIMULATED queue —
+ * wrangler's default is local mode and nothing here passes `--remote` — so a development submit
+ * enqueues nothing that leaves the machine.
  *
  * Rejects if the queue itself refuses the message, so the caller can log it. Nothing upstream may
  * turn that into a failed submission — the row is already committed by the time this runs.

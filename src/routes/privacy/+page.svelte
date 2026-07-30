@@ -69,7 +69,7 @@
 			</LegalSection>
 
 			<!-- A CLOSED ENUMERATION, in the same way privacy_collect_technical_body's cookie list is
-			     (DAR-75): the intro says "a small set of infrastructure providers" and then names them,
+			     (DAR-75): the intro says "a small set of service providers" and then names them,
 			     so a provider that starts receiving personal data and is not on this list makes the page
 			     untrue. Twenty is the fifth, added with the contact-form produce it describes (DAR-136)
 			     rather than after it — shipping the egress ahead of the disclosure is DAR-121's defect,

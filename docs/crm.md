@@ -51,6 +51,10 @@ Declaring the binding in one environment also earns a compile-time guard, **meas
 assumed: one env yields `CRM_INGEST?: Queue` (optional, and absent from `Cloudflare.PreviewEnv`),
 both envs yield a required `CRM_INGEST: Queue`. The omission is what forces callers to handle absence.
 
+In development the queue is **simulated**: `pnpm preview` and the e2e run go through `wrangler dev`,
+whose default is local mode, and nothing passes `--remote`. So a submit against a local build enqueues
+nothing that leaves the machine.
+
 `preview-worker.spec.ts` pins both halves. Nothing breaks loudly if that drifts — adding `queues` to
 the preview env silently starts filing every preview submission as a real lead and `pnpm check` stays
 green.
@@ -77,6 +81,21 @@ describes a system we don't have. Two of that entry's claims are guarded by `crm
 exists, so "one file names it" is strictly stronger than "one file calls `.send()`" — a caller handed
 a `Queue` would satisfy the second and walk past the first. Mutation-verified: a producer that
 resolves the binding for itself imports nothing and is caught only by the binding rule.
+
+### The chokepoint is not the only door
+
+A guard on `postContactSignal` says nothing about who may reach the function that **calls** it, and a
+producer's whole job is to be callable. Measured, not reasoned about: a waitlist producer importing
+`captureContactLead` — touching neither the queue module nor the binding — passed **all 26**
+assertions here while sending waitlist entries to the CRM as `website_form` signals.
+
+It is also the _likely_ mistake rather than a contrived one. Whoever builds DAR-177 will read this
+producer first, and a waitlist row has an id and a `created_at`, so it satisfies `ContactLead` without
+complaint. Hence each producer declares its public **entry point** and exactly **who may call it**,
+two-sided so a removed call site fails too.
+
+The rule for a new call site: declare it — and if what it hands over is not what that producer says it
+sends, write a new producer rather than widening an existing one.
 
 ## What the version field does NOT cover
 

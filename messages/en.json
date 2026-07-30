@@ -874,7 +874,7 @@
 	"privacy_use_updates_title": "Optional product and research updates",
 	"privacy_use_updates_body": "Separate from early access, and entirely optional: the tick box on the waitlist form asks whether you would like occasional product and research updates, and the question at the end of that form records which kinds you would find useful — a content preference, not a permission. Because anyone can type someone else's address into a form like ours, a ticked box on its own is not permission to send. All it does is cause one email, asking you to confirm the address is yours; nothing else is sent unless you answer it, and we ask at most once a day however many times the form is filled in. That email — and every update, if and when we send any — carries a link that stops us without signing in: use it and we will not write to you about updates again, or ask again. We are still not sending product and research updates; what exists today is the consent step that has to come first. None of this touches your place on the early-access waitlist, or the operational email above.",
 	"privacy_processors_heading": "Where it lives",
-	"privacy_processors_intro": "We don't sell or share personal information for marketing. A small set of infrastructure providers process it on our behalf:",
+	"privacy_processors_intro": "We don't sell or share personal information for marketing. A small set of service providers process it on our behalf:",
 	"privacy_processors_cloudflare_title": "Cloudflare",
 	"privacy_processors_cloudflare_body": "Hosts and serves the site, provides security features (including the Turnstile bot check), and briefly processes request data like IP addresses in operational logs.",
 	"privacy_processors_turso_title": "Turso",
