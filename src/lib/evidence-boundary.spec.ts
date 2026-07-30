@@ -110,8 +110,16 @@ describe('the theorem-catalog total stays off the published surface', () => {
 // imagined): drop the band and "Lean 4" reports itself, drop the proximity test and the benchmark
 // iteration counts report themselves, and neither half survives without the calendar-year
 // exclusion, since both dated lines put a year beside the words "corpus" and "theorems".
+// A FIXTURE for the two detector suites below, deliberately not THEOREMS_CHECKED. Every case is
+// written relative to this number, so pinning it keeps them meaning the same thing forever;
+// wiring the live constant in would make a legitimate re-measure change what they assert — and
+// once the published count passed 338 the "catches a bare total" case would flip to expecting
+// silence and fail for a reason that has nothing to do with the rule. The SCANS above are what
+// must track the real figure, and they do.
+const PUBLISHED_MAX = 219;
+
 describe('findCatalogTotalLeaks', () => {
-	const leaks = (text: string) => findCatalogTotalLeaks(text, 219);
+	const leaks = (text: string) => findCatalogTotalLeaks(text, PUBLISHED_MAX);
 
 	it.each([
 		['a bare total beside theorem wording', 'The catalog holds 338 theorems in total.'],
@@ -187,17 +195,19 @@ describe('findCatalogTotalLeaks', () => {
 	// once 338 is below the published count it is no longer a total, and the next one is caught.
 	it('moves with the published count instead of pinning a vintage', () => {
 		const text = 'The catalog holds 338 theorems.';
-		expect(findCatalogTotalLeaks(text, 219)).not.toEqual([]);
+		expect(findCatalogTotalLeaks(text, PUBLISHED_MAX)).not.toEqual([]);
 		expect(findCatalogTotalLeaks(text, 400)).toEqual([]);
 		expect(findCatalogTotalLeaks('The catalog holds 512 theorems.', 400)).not.toEqual([]);
 	});
 });
 
-// Rendered pages, where a "line" is an element rather than a sentence. Both fixtures below are
-// the REAL rendered text of the pages they name, captured from the running preview — reasoning
-// about what innerText would produce is exactly what put the card-shaped hole in the first cut.
+// Rendered pages, where a "line" is an element rather than a sentence. The LINE STRUCTURE below
+// was captured from the real pages on a running preview — reasoning about what innerText would
+// produce is exactly what put the card-shaped hole in the first cut — while the figures are
+// PUBLISHED_MAX's, not today's, for the reason given above. What matters is the arrangement.
 describe('findCatalogTotalLeaksInRenderedText', () => {
-	const rendered = (lines: string[]) => findCatalogTotalLeaksInRenderedText(lines.join('\n'), 219);
+	const rendered = (lines: string[]) =>
+		findCatalogTotalLeaksInRenderedText(lines.join('\n'), PUBLISHED_MAX);
 
 	// The shape the claim cards use: a bare value in large type, its label in the next element.
 	// The line-at-a-time scan this replaced could not see it — measured, `346` above "Theorems in

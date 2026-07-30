@@ -14,11 +14,19 @@ export const CFC_KERNEL_LATENCY = '0.767 µs';
  * kernel latency above. */
 export const REALTIME_MULTIPLE = '13,000×';
 
-// Machine-checked theorem counts as of GIDE release v2026.07.1 (July 2026): complete
-// (dual-prover, zero local axioms) + axiom-backed. Deliberately NOT here: the catalog total /
-// not-yet-mechanized remainder — the public surface states what IS proven, not the backlog.
-export const THEOREMS_COMPLETE = 31;
-export const THEOREMS_AXIOM_BACKED = 188;
+// Machine-checked theorem counts, measured 2026-07-29 against the GIDE hub's theorem catalog and
+// conformance registry: complete (dual-prover, zero local axioms) + axiom-backed. Deliberately
+// NOT here: the catalog total / not-yet-mechanized remainder — the public surface states what IS
+// proven, not the backlog (evidence-boundary.ts derives that guard FROM the checked total below,
+// so re-measuring moves the boundary automatically; nothing else to update).
+//
+// Dated to a MEASUREMENT, not a release (DAR-152). These figures were previously labelled "as of
+// release v2026.07.1", which that tag never held — it carried 22/131/153, roughly six weeks of
+// work behind. Only one release tag exists, so there is no tag carrying a current count; a
+// measurement date is the claim we can actually make. Re-measure → change these two numbers and
+// evidence_theorems_dated together, never one alone.
+export const THEOREMS_COMPLETE = 49;
+export const THEOREMS_AXIOM_BACKED = 211;
 export const THEOREMS_CHECKED = THEOREMS_COMPLETE + THEOREMS_AXIOM_BACKED;
 
 /** The shipped-domain spine, ordered. Message references stay UNCALLED here so render sites

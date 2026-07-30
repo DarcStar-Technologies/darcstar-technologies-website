@@ -129,7 +129,7 @@
 	"evidence_realtime_method": "The numerator is the control-loop period GIDE targets (100 Hz); the denominator is the measured mean kernel latency above. The margin therefore inherits every scope caveat of the 0.767 µs figure.",
 	"evidence_realtime_not_covered": "The multiple applies to the reference kernel. Deployed controllers are larger and slower — see the hardware runs — yet still clear the same 10 ms budget by roughly two orders of magnitude. No real-time bound is formally proven.",
 	"evidence_theorems_title": "Theorems machine-checked",
-	"evidence_theorems_dated": "As of GIDE release v2026.07.1 · July 2026",
+	"evidence_theorems_dated": "Measured 29 July 2026 · GIDE conformance registry",
 	"evidence_theorems_claim": "{checked} theorems in the GIDE framework are machine-checked. {complete} of those are complete — mechanized end-to-end in both Lean 4 and Isabelle/HOL with zero local axioms. The other {axiomBacked} are machine-checked modulo explicitly declared local axioms: named real-analysis backbones, each documented and tracked for discharge.",
 	"evidence_theorems_more": "What machine-checked means →",
 	"evidence_theorems_provers": "Lean 4 v4.30.0 with Mathlib and Isabelle2025-2 with AFP 2026-06-01, both pinned by digest in container images. Runtime numerical checking uses an SMT portfolio: Z3 4.16.0, CVC5 1.3.4, Yices2 2.6.5, dReal 4.21.06.2.",
