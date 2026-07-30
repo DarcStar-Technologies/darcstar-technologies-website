@@ -1,20 +1,99 @@
 name: commitlint
 
+# Lint the commit subject on BOTH paths it can take to main. This repo is
+# `squash_merge_commit_title: COMMIT_OR_PR_TITLE` (read from the API, not assumed), so GitHub takes
+# the squash subject from the branch COMMIT on a single-commit PR and from the PR TITLE on a
+# multi-commit one. wagoid reads commits and never sees the title; semantic-pull-request reads the
+# title and never sees the commits — so before DAR-175 the title path reached main unchecked.
+#
+# THE TWO JOBS DO NOT ENFORCE THE SAME RULES, and the difference bites AFTER the merge rather than
+# before it: a title `PR title` accepts becomes the squash subject, which the `push: main` run then
+# lints with the full config-conventional rule set — at a point where the message can only be
+# changed by force-pushing main, so a red X stays attached to that commit permanently. Every other
+# check in this repo fails while you can still fix it.
+#
+# `header-max-length` (100) is the one rule that stays UNCOVERED on both paths, and it is a real
+# gap rather than an oversight: the action has no length input at all, and GitHub appends ` (#N)`
+# to whatever you write, so a 96-character subject passes `commitlint` here and is 102 on main.
+# Effective budget is 100 minus the suffix. That residual is DAR-174, which is filed against
+# crm-service's byte-identical copy of commitlint.config.js and has two candidate fixes that differ
+# in which repo has to change — so it is deliberately NOT pre-empted here. Subjects run 60–80
+# characters today; keep them short until it lands, then copy whatever it lands on.
+#
+# The `push: main` job also leans on a second repo setting: `squash_merge_commit_message` is
+# COMMIT_MESSAGES, so the squashed body is the commit body. Switching it to PR_BODY would fail
+# nearly every merge on `body-max-line-length` — PR bodies here carry long prose lines and tables.
+
 on:
   push:
     branches: [main]
   pull_request:
+    # `edited` is not in the default set (`opened`, `synchronize`, `reopened`), and without it a
+    # rejected title stays red after the author fixes it — nothing re-runs until they push a commit,
+    # which is the one thing fixing a title does not involve. The types apply to the whole workflow,
+    # so `commitlint` re-runs on body edits too; that is the price of the title job reporting on the
+    # edit that repairs it.
+    types: [opened, edited, synchronize, reopened]
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
+  # Job names are the required status checks on main. Renaming `commitlint` stops it reporting and
+  # hangs every open PR on "Expected — waiting for status to be reported" (see lint.yml for the same
+  # warning) — though note that trap is self-limiting for an ALREADY-required context: the PR making
+  # the rename is itself unmergeable, and `enforce_admins` is on, so nobody can wave it through.
+  # `PR title` has no such protection until it is added as a seventh required context, which can only
+  # be done AFTER this has merged and reported once (an unreported context hangs every open PR).
   commitlint:
     name: commitlint
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 — the action lints the pushed/PR commit range and needs the history for it.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Lint commit messages
         uses: wagoid/commitlint-github-action@v6
+
+  pr-title:
+    name: PR title
+    # A title only exists on a pull_request event; on a push to main there is nothing to read.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      # No checkout — but this is NOT a payload-only action, and `pull-requests: read` above is load
+      # bearing rather than boilerplate: it re-fetches the PR through `pulls.get` and validates the
+      # title it gets back, deliberately, because `github.context.payload` is a snapshot of the event
+      # and goes stale the moment someone edits the title. Dropping the permission as unused breaks
+      # the job. (It is also why a re-run of an old run validates today's title, not the one that
+      # failed.)
+      #
+      # No `types:` input. The action's default is `Object.keys(conventional-commit-types.types)` =
+      # feat fix docs style refactor perf test build ci chore revert, measured identical to the
+      # `type-enum` this repo's commitlint enforces (config-conventional 21.2.0, and the same list
+      # the pre-commit hook names when it rejects a commit). They are two independently versioned
+      # packages, so this is agreement rather than a guarantee — but restating the list here would
+      # add a THIRD copy, which is strictly worse than reading the one the action already has.
+      #
+      # No `validateSingleCommit` either — the job above already lints that commit, so enabling it
+      # would report the same failure twice.
+      #
+      # subjectPattern is `.*[^.]$`, not the `.+$` the action's own docs suggest, so a legitimate
+      # one-character subject still passes — `.+[^.]$` would need two. It is the closest expressible
+      # match for config-conventional's `subject-case` (which bans sentence/start/pascal/upper) plus
+      # `subject-full-stop`; a lower-case first character rules out all four banned cases at once.
+      # The action requires the pattern to match the subject WHOLE, so the anchors are belt-and-braces.
+      - name: Lint the PR title
+        uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          subjectPattern: ^(?![A-Z]).*[^.]$
+          # `>-`, not `|`: this string becomes a `::error::` annotation, and a literal block keeps the
+          # wrap, which GitHub renders as a two-line annotation (observed on this PR's first run).
+          # Folded joins it back into the one sentence it is.
+          subjectPatternError: >-
+            The subject "{subject}" in "{title}" must start with a lower-case character and must not
+            end with a period, or commitlint will reject the squashed subject on main after merge.

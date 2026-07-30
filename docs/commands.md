@@ -251,12 +251,31 @@ previous version of that guard into a no-op (DAR-152). See
 
 ## CI (required checks)
 
-Every PR must pass six required checks before merge to `main` (which triggers the production
+Every PR runs these seven checks before merge to `main` (which triggers the production
 deploy — see [deployment](deployment.md)):
 
-- `lint` + `commitlint` ([lint.yml](../.github/workflows/lint.yml), commitlint.yml)
+- `lint` ([lint.yml](../.github/workflows/lint.yml))
+- `commitlint` + `PR title` ([commitlint.yml](../.github/workflows/commitlint.yml)) — **two jobs because a squash subject has two sources.** The repo is `squash_merge_commit_title: COMMIT_OR_PR_TITLE`, so GitHub takes the subject from the branch commit on a single-commit PR and from the **PR title** on a multi-commit one; wagoid lints commits and never sees the title, so the title path reached `main` unchecked until DAR-175
 - `migrations in sync` ([drizzle.yml](../.github/workflows/drizzle.yml)) — drizzle/ trail matches the schema
 - `check` ([check.yml](../.github/workflows/check.yml)) — `pnpm check` + a drift guard on the committed `worker-configuration.d.ts` (DAR-49)
 - `unit tests` + `e2e` ([test.yml](../.github/workflows/test.yml)) — the three vitest projects, then Playwright against the built Cloudflare bundle (DAR-49)
 
 `actionlint` also runs on workflow changes but isn't a required context.
+
+**Running is not gating.** Which of those seven actually block a merge is `main`'s _required
+contexts_ list, a GitHub branch-protection setting that is **invisible from this repo** — nothing
+here can assert it, which is the same observation DAR-166 makes about the deploy. Read it with
+`gh api repos/OWNER/REPO/branches/main/protection --jq '.required_status_checks.contexts'`.
+
+**A job's `name:` IS the required context**, so renaming one stops it reporting and hangs every open
+PR on "Expected — waiting for status to be reported". For a context that is _already_ required the
+trap is self-limiting — the PR making the rename is itself unmergeable, and `enforce_admins` is on —
+but that also means **adding** a check is two steps: merge the job, then register the context by
+hand, never the other way round. `PR title` is the most recent addition (DAR-175), so it is the one
+worth confirming: until it is registered it runs on every PR and gates nothing.
+
+The one rule neither commitlint job enforces is `header-max-length` (100): GitHub appends ` (#N)` to
+the subject when it creates the squash commit, so a 96-character subject passes on the PR and is 102
+on `main` — where the message can only be changed by force-pushing `main`, so the red X is permanent.
+Keep subjects short. Tracked as DAR-174, deliberately not pre-empted here because its two candidate
+fixes differ in which repo changes.
