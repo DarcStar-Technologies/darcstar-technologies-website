@@ -16,6 +16,7 @@ interface __BaseEnv_Env {
 	TURNSTILE_SECRET_KEY: string;
 	SANITY_VIEWER_TOKEN: string;
 	ADMIN_USER_IDS: string;
+	CRM_INGEST?: Queue;
 }
 declare namespace Cloudflare {
 	interface PreviewEnv {

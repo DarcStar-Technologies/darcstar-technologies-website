@@ -14,6 +14,28 @@
 		"binding": "ASSETS",
 		"directory": ".svelte-kit/cloudflare"
 	},
+	// The one outbound queue: contact submissions become a `ContactSignal` on `crm-ingest`, whose
+	// sole consumer is the CRM Worker (DAR-136). WE OWN THE BINDING NAME, NOT THE QUEUE — the queue
+	// and every consumer setting (batching, retries, DLQ) are created and configured CRM-side, and
+	// the platform enforces that: a queue accepts exactly one consumer configuration, so declaring
+	// one here would fail that repo's next deploy.
+	//
+	// DELIBERATELY ABSENT FROM `[env.preview]` BELOW, and that omission is the isolation. Bindings
+	// are non-inheritable in wrangler — the same rule the `assets`/`vars` note below is about — so
+	// the preview Worker gets NO `CRM_INGEST` and `platform.env.CRM_INGEST` is `undefined` there.
+	// It also buys a compile-time guard, and this was measured rather than assumed: declaring the
+	// binding in ONE env makes `pnpm gen` type it `CRM_INGEST?: Queue` (optional) and leave it out
+	// of `Cloudflare.PreviewEnv`, while declaring it in BOTH yields a required `CRM_INGEST: Queue`
+	// in both. So the omission is what forces every caller to handle an absent queue.
+	// The alternative would be pointing preview at this same queue, which puts test submissions in
+	// the real contact graph and thence in Twenty; there is no `crm-ingest-preview` to point at
+	// instead, because the CRM has no preview environment (its wrangler.jsonc says why). So a
+	// preview submission persists to `contact_submission` and simply never reaches the CRM, which
+	// is the correct behaviour for test data — and `crm-egress.ts` treats an absent binding as a
+	// skip rather than a failure. `preview-worker.spec.ts` pins both halves.
+	"queues": {
+		"producers": [{ "queue": "crm-ingest", "binding": "CRM_INGEST" }]
+	},
 	"workers_dev": true,
 	"preview_urls": true,
 	// Non-production branches deploy here, so Cloudflare preview URLs run as a SEPARATE Worker —

@@ -68,6 +68,15 @@
 				/>
 			</LegalSection>
 
+			<!-- A CLOSED ENUMERATION, in the same way privacy_collect_technical_body's cookie list is
+			     (DAR-75): the intro says "a small set of service providers" and then names them,
+			     so a provider that starts receiving personal data and is not on this list makes the page
+			     untrue. Twenty is the fifth, added with the contact-form produce it describes (DAR-136)
+			     rather than after it — shipping the egress ahead of the disclosure is DAR-121's defect,
+			     and shipping the disclosure ahead of the egress describes a system we don't have.
+			     Its body carries two promises code could falsify, both guarded by `crm-egress.spec.ts`:
+			     the message body never leaves (structural — the contract has no field for it), and
+			     waitlist entries are not produced at all (an allowlist with one entry in it). -->
 			<LegalSection heading={m.privacy_processors_heading()} body={m.privacy_processors_intro()}>
 				<TitledItems
 					entries={[
@@ -80,7 +89,14 @@
 							title: m.privacy_processors_resend_title(),
 							body: m.privacy_processors_resend_body()
 						},
-						{ title: m.privacy_processors_sanity_title(), body: m.privacy_processors_sanity_body() }
+						{
+							title: m.privacy_processors_sanity_title(),
+							body: m.privacy_processors_sanity_body()
+						},
+						{
+							title: m.privacy_processors_twenty_title(),
+							body: m.privacy_processors_twenty_body()
+						}
 					]}
 				/>
 			</LegalSection>
