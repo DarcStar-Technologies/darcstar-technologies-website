@@ -539,16 +539,39 @@ export async function confirmUpdates(
  * Unconditional, unlike its twin: there is no state from which a withdrawal should be refused. A lead
  * that was never asked can still say "don't", which is exactly what someone whose address a stranger
  * typed in would want to do.
+ *
+ * `recordedBy` is REQUIRED and nullable rather than optional (DAR-140), and the awkwardness is the
+ * point: two callers now reach this — the emailed link, where the mailbox itself acted, and
+ * /admin/waitlist, where staff transcribed a request that arrived another way — and the difference is
+ * the whole audit value of the column. An optional parameter would let a future third caller record a
+ * withdrawal with no actor by simply not thinking about it; a required one makes the self-service call
+ * site say `null` out loud, which is a claim rather than an omission.
+ *
+ * It is stamped under the SAME first-writer-wins guard as the timestamp, not `coalesce`d on its own
+ * value, because null is a MEANINGFUL value here: `coalesce(updates_unsubscribed_by, <staff id>)` would
+ * happily overwrite a self-service withdrawal's null the first time an operator pressed the button, and
+ * the row would then claim we did what the person had already done for themselves. SQLite evaluates SET
+ * against the pre-update row, so both expressions read the values they are replacing.
+ *
+ * Returns `email` alongside the signals so the admin action can name the address it just acted on — a
+ * one-click irreversible write has to confirm WHICH row, the same rule DAR-67's invite follows. The
+ * public route ignores the extra field.
  */
 export async function unsubscribeUpdates(
 	db: Db,
-	leadId: string
-): Promise<WaitlistUpdatesSignals | null> {
+	leadId: string,
+	recordedBy: string | null
+): Promise<(WaitlistUpdatesSignals & { email: string }) | null> {
 	const rows = await db
 		.update(waitlistLead)
-		.set({ updatesUnsubscribedAt: sql`coalesce(updates_unsubscribed_at, ${DB_NOW})` })
+		.set({
+			updatesUnsubscribedAt: sql`coalesce(updates_unsubscribed_at, ${DB_NOW})`,
+			updatesUnsubscribedBy: sql`case when updates_unsubscribed_at is null
+				then ${recordedBy}
+				else updates_unsubscribed_by end`
+		})
 		.where(eq(waitlistLead.id, leadId))
-		.returning(UPDATES_SIGNALS);
+		.returning({ ...UPDATES_SIGNALS, email: waitlistLead.email });
 	return rows[0] ?? null;
 }
 
@@ -621,6 +644,11 @@ export async function readWaitlistTriageWindow(
 			// Where this address stands on updates (DAR-139) — a lead-level fact, so it belongs on the
 			// lead read rather than being inferred from the per-submission `consent_updates` claims below.
 			...UPDATES_SIGNALS,
+			// Listed separately rather than folded into UPDATES_SIGNALS: that map is typed by
+			// `WaitlistUpdatesSignals`, which is exactly the set `waitlistUpdatesState` derives from, and
+			// who recorded a withdrawal is PROVENANCE rather than state (DAR-140). Widening the signals
+			// would offer the state function an input it must never branch on.
+			updatesUnsubscribedBy: waitlistLead.updatesUnsubscribedBy,
 			createdAt: waitlistLead.createdAt
 		})
 		.from(waitlistLead)

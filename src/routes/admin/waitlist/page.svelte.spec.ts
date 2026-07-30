@@ -77,6 +77,7 @@ const ROW: Lead = {
 	updatesConfirmSentAt: null,
 	updatesConfirmedAt: null,
 	updatesUnsubscribedAt: null,
+	updatesUnsubscribedBy: null,
 	createdAt: new Date('2026-07-01T12:00:00Z'),
 	submissions: [SUBMISSION],
 	leadClass: 'priority-a',
@@ -211,6 +212,76 @@ describe('/admin/waitlist', () => {
 		});
 		await expect.element(page.getByText('Opted out', { exact: true })).toBeVisible();
 		expect(page.getByText('Confirmed', { exact: true }).elements()).toHaveLength(0);
+	});
+
+	// --- Recording an opt-out on someone's behalf (DAR-140) ---
+
+	// The control exists for every state EXCEPT withdrawn, and `none` is the one worth naming: someone
+	// whose address a stranger typed in has never been asked and wants never to be, so gating the
+	// button on having asked would leave exactly that person unservable.
+	it('offers the opt-out control for an address that has not withdrawn', async () => {
+		const { container } = mount({ leads: [ROW] });
+
+		expect(actionsOf(container, 'recordOptOut')).toEqual(['?/recordOptOut']);
+		await expect.element(page.getByText('Record opt-out', { exact: true })).toBeVisible();
+	});
+
+	// The write is idempotent, so this is not a correctness gate — it is that a control which can only
+	// ever be a no-op is noise in a column an operator scans under pressure. Asserting the FORM is
+	// gone, not just the label, since the label is what a careless fix would hide.
+	it('withholds it from an address that has already withdrawn', async () => {
+		const { container } = mount({
+			leads: [
+				{
+					...ROW,
+					updatesUnsubscribedAt: new Date('2026-07-04T08:00:00Z'),
+					updatesState: 'unsubscribed'
+				}
+			]
+		});
+
+		expect(actionsOf(container, 'recordOptOut')).toEqual([]);
+		expect(page.getByText('Record opt-out', { exact: true }).elements()).toHaveLength(0);
+	});
+
+	// It carries the active filter like every other action here, or honoring one request would bounce
+	// the operator out of the band they were working through.
+	it('carries the active band filter on its action', async () => {
+		const { container } = mount({ filter: 'priority-a', leads: [ROW] });
+
+		expect(actionsOf(container, 'recordOptOut')).toEqual(['?/recordOptOut&class=priority-a']);
+	});
+
+	// A NULL RECORDER WITH A TIMESTAMP IS NOT MISSING DATA — it is the recipient having pressed the
+	// emailed link, which is the strongest evidence we can hold. Rendering the usual em-dash there
+	// would report our best record as an absence, and would read identically to a row we know nothing
+	// about. Both fixtures are withdrawn, so the two labels are the only difference between them.
+	//
+	// The recorder is deliberately NOT `staff-1`: that is the RESEARCHER fixture's `invited_by`, so the
+	// assertion would be satisfied by the invitation row and would keep passing against a detail panel
+	// that never rendered this column at all.
+	it('distinguishes a staff-recorded opt-out from one the recipient made themselves', async () => {
+		mount({
+			leads: [
+				{
+					...ROW,
+					updatesUnsubscribedAt: new Date('2026-07-04T08:00:00Z'),
+					updatesUnsubscribedBy: 'operator-9',
+					updatesState: 'unsubscribed'
+				},
+				{
+					...RESEARCHER,
+					updatesUnsubscribedAt: new Date('2026-07-05T08:00:00Z'),
+					updatesUnsubscribedBy: null,
+					updatesState: 'unsubscribed'
+				}
+			]
+		});
+
+		await expect.element(page.getByText('operator-9', { exact: true })).toBeInTheDocument();
+		await expect
+			.element(page.getByText('The recipient, via the unsubscribe link', { exact: true }))
+			.toBeInTheDocument();
 	});
 
 	it('marks exactly one filter chip current and uses the band-specific empty state', async () => {

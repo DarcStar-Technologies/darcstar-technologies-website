@@ -56,6 +56,7 @@ beforeAll(async () => {
 			invited_at integer, invited_by text, activated_at integer,
 			priority_a_notified_at integer,
 			updates_confirm_sent_at integer, updates_confirmed_at integer, updates_unsubscribed_at integer,
+			updates_unsubscribed_by text,
 			reviewed_at integer, reviewed_by text,
 			created_at integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 		)`
@@ -832,7 +833,7 @@ describe('the updates sending gate', () => {
 		// explicitly opted out, and unsubscribing would stop one message instead of the relationship.
 		it('never asks an address that has withdrawn, however long ago and however often they re-tick', async () => {
 			const leadId = await signup({ consentUpdates: true });
-			await unsubscribeUpdates(db, leadId);
+			await unsubscribeUpdates(db, leadId, null);
 
 			await askedAgo(leadId, WAITLIST_UPDATES_CONFIRM_WINDOW_MS * 400);
 			expect(await claimUpdatesConfirmSend(db, leadId)).toBe(false);
@@ -886,7 +887,7 @@ describe('the updates sending gate', () => {
 		// hands back the state instead of a boolean it would have to interpret.
 		it('does not re-subscribe an address that has withdrawn', async () => {
 			const leadId = await signup({ consentUpdates: true });
-			await unsubscribeUpdates(db, leadId);
+			await unsubscribeUpdates(db, leadId, null);
 
 			const after = await confirmUpdates(db, leadId);
 			expect(waitlistUpdatesState(after!)).toBe('unsubscribed');
@@ -905,7 +906,7 @@ describe('the updates sending gate', () => {
 			const leadId = await signup({ consentUpdates: true });
 			await confirmUpdates(db, leadId);
 
-			const after = await unsubscribeUpdates(db, leadId);
+			const after = await unsubscribeUpdates(db, leadId, null);
 			expect(waitlistUpdatesState(after!)).toBe('unsubscribed');
 			expect(mayReceiveUpdates(after!)).toBe(false);
 			// Kept on purpose — the record of what actually happened. Clearing it would destroy evidence
@@ -919,20 +920,71 @@ describe('the updates sending gate', () => {
 		it('withdraws an address that was never confirmed', async () => {
 			const leadId = await signup({ consentUpdates: true });
 			await claimUpdatesConfirmSend(db, leadId);
-			const after = await unsubscribeUpdates(db, leadId);
+			const after = await unsubscribeUpdates(db, leadId, null);
 			expect(waitlistUpdatesState(after!)).toBe('unsubscribed');
 		});
 
 		it('is monotonic — re-clicking never rewrites when they opted out', async () => {
 			const leadId = await signup({ consentUpdates: true });
-			const first = await unsubscribeUpdates(db, leadId);
-			const second = await unsubscribeUpdates(db, leadId);
+			const first = await unsubscribeUpdates(db, leadId, null);
+			const second = await unsubscribeUpdates(db, leadId, null);
 			expect(second!.updatesUnsubscribedAt).toEqual(first!.updatesUnsubscribedAt);
 		});
 
 		it('reports null for a lead that no longer exists, without creating one', async () => {
-			expect(await unsubscribeUpdates(db, crypto.randomUUID())).toBeNull();
+			expect(await unsubscribeUpdates(db, crypto.randomUUID(), null)).toBeNull();
 			expect(await leads()).toHaveLength(0);
+		});
+
+		// --- Who recorded it (DAR-140) ---
+		// Two callers reach this now: the emailed link (`null` — the mailbox itself), and /admin/waitlist
+		// recording a request that arrived by reply or phone. The column is the only place that
+		// distinction survives, and it stopped being inferable from the timestamp the moment the second
+		// caller existed.
+
+		it('records the staff actor beside the timestamp', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			const after = await unsubscribeUpdates(db, leadId, 'operator-7');
+			expect(waitlistUpdatesState(after!)).toBe('unsubscribed');
+			const [row] = await leads();
+			expect(row.updatesUnsubscribedBy).toBe('operator-7');
+			expect(row.updatesUnsubscribedAt).toBeInstanceOf(Date);
+		});
+
+		it('leaves the actor null when the recipient used the link themselves', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			await unsubscribeUpdates(db, leadId, null);
+			expect((await leads())[0].updatesUnsubscribedBy).toBeNull();
+		});
+
+		// THE MUTATION TARGET, and the reason the actor is written under the timestamp's own
+		// first-writer-wins guard rather than `coalesce`d on its own value: null is MEANINGFUL here, so a
+		// `coalesce(updates_unsubscribed_by, <staff id>)` would overwrite it on the first operator press
+		// and the row would then claim we did what the person had already done for themselves — the one
+		// direction that turns the audit trail into a false one.
+		it('keeps the recipient as the recorder when staff press the button afterwards', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			const first = await unsubscribeUpdates(db, leadId, null);
+			const second = await unsubscribeUpdates(db, leadId, 'operator-7');
+			expect((await leads())[0].updatesUnsubscribedBy).toBeNull();
+			expect(second!.updatesUnsubscribedAt).toEqual(first!.updatesUnsubscribedAt);
+		});
+
+		// The same rule in the other direction — a later self-service click must not erase the record of
+		// the operator who acted first, which is what a bare `${recordedBy}` with no guard would do.
+		it('keeps the first operator when the recipient clicks the link afterwards', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			await unsubscribeUpdates(db, leadId, 'operator-7');
+			await unsubscribeUpdates(db, leadId, null);
+			expect((await leads())[0].updatesUnsubscribedBy).toBe('operator-7');
+		});
+
+		// The admin action names the address it just acted on, and an irreversible one-click write has
+		// to (DAR-67's rule for the invite). Read from the row rather than from the form, so it names
+		// the row that was actually written.
+		it('reports the address it withdrew', async () => {
+			const leadId = await signup({ email: 'grace@example.com', consentUpdates: true });
+			expect((await unsubscribeUpdates(db, leadId, 'operator-7'))!.email).toBe('grace@example.com');
 		});
 	});
 
@@ -951,7 +1003,7 @@ describe('the updates sending gate', () => {
 
 			await confirmUpdates(db, ada);
 			await confirmUpdates(db, grace);
-			await unsubscribeUpdates(db, grace);
+			await unsubscribeUpdates(db, grace, null);
 
 			expect((await readUpdatesAudience(db)).map((r) => r.email)).toEqual(['ada@example.com']);
 		});
@@ -974,7 +1026,7 @@ describe('the updates sending gate', () => {
 				const leadId = await signup({ email: c.email, consentUpdates: true });
 				if (c.ask) await claimUpdatesConfirmSend(db, leadId);
 				if (c.confirm) await confirmUpdates(db, leadId);
-				if (c.withdraw) await unsubscribeUpdates(db, leadId);
+				if (c.withdraw) await unsubscribeUpdates(db, leadId, null);
 			}
 
 			const predicate = (await leads()).filter(mayReceiveUpdates).map((l) => l.email);

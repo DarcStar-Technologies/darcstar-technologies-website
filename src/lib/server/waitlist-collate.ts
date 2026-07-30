@@ -128,6 +128,13 @@ export interface WaitlistLeadRow extends WaitlistUpdatesSignals {
 	invitedAt: Date | null;
 	invitedBy: string | null;
 	activatedAt: Date | null;
+	/**
+	 * Who recorded the withdrawal (DAR-140) — null meaning the mailbox holder used the emailed link, a
+	 * staff id meaning we recorded a request that reached us another way. Beside the signals rather than
+	 * inside them, because `waitlistUpdatesState` derives from the three timestamps and must not see
+	 * this: provenance is not state.
+	 */
+	updatesUnsubscribedBy: string | null;
 	reviewedAt: Date | null;
 	reviewedBy: string | null;
 	createdAt: Date;

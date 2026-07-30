@@ -8,5 +8,9 @@
 // crossed midnight UTC — so the page announced a new processor under an unchanged date. Read the
 // clock at MERGE time, not at edit time; a stale date here is the one thing on the page that
 // silently tells a returning reader nothing has changed.
+// 2026-07-30: DAR-140 added the second route out of the updates ask — staff can now record a
+// withdrawal for somebody who asks by reply or phone instead of using the emailed link — so
+// `privacy_use_updates_body` names both. Same date as DAR-136 above rather than a bump, because both
+// landed on the 30th; the constant not moving here is correct, not an oversight.
 export const PRIVACY_UPDATED = '2026-07-30';
 export const TERMS_UPDATED = '2026-07-23';

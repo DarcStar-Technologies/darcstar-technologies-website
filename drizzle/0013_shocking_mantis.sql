@@ -1,0 +1,1 @@
+ALTER TABLE `waitlist_lead` ADD `updates_unsubscribed_by` text;

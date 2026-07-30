@@ -169,6 +169,7 @@ beforeAll(async () => {
 			invited_at integer, invited_by text, activated_at integer,
 			priority_a_notified_at integer,
 			updates_confirm_sent_at integer, updates_confirmed_at integer, updates_unsubscribed_at integer,
+			updates_unsubscribed_by text,
 			reviewed_at integer, reviewed_by text,
 			created_at integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 		)`

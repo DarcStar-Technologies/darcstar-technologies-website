@@ -5,7 +5,7 @@ import { getAuth } from '$lib/server/auth';
 import { waitlistLead, waitlistSubmission } from '$lib/server/db/schema';
 import { isStaff } from '$lib/server/admin-access';
 import { collateWaitlistLeads } from '$lib/server/waitlist-collate';
-import { readWaitlistTriageWindow } from '$lib/server/waitlist-store';
+import { readWaitlistTriageWindow, unsubscribeUpdates } from '$lib/server/waitlist-store';
 import { readWaitlistFunnelCounts, signupConversionRate } from '$lib/server/waitlist-funnel';
 import {
 	findAccountByEmail,
@@ -142,6 +142,53 @@ export const actions: Actions = {
 		if (!id) return fail(400, { error: 'missing' as const });
 		await db.delete(waitlistSubmission).where(eq(waitlistSubmission.id, id));
 		return { ok: true as const };
+	},
+
+	// Record that this address has withdrawn from product-and-research updates (DAR-140) — the operator
+	// half of the login-free unsubscribe DAR-139 built.
+	//
+	// /privacy promises we will act on a request that reaches us by email, and until this existed the
+	// only vocabulary here was DELETE: honoring "please take me off that" meant destroying answers
+	// nobody asked us to destroy. It writes exactly what the emailed link writes, deliberately, so a
+	// request honored by hand and one honored by the recipient land the SAME lead in the SAME state —
+	// the durable one that `claimUpdatesConfirmSend` refuses forever after.
+	//
+	// NOT "clear consent_updates on their submissions", which the ticket originally proposed and which
+	// is wrong three times over: the ask is triggered by the consent flag on the INCOMING submission
+	// (waitlist.remote.ts), so clearing stored ones stops no future email at all; the resulting state is
+	// indistinguishable from never having ticked the box, so the next submission would ask again — a
+	// manual path weaker than the self-service one it mirrors; and it would edit an append-only row,
+	// where a fabricated submission already has the right tool in `deleteSubmission` above.
+	//
+	// The actor is passed through to `updates_unsubscribed_by`, which is what keeps "the mailbox itself
+	// said so" (null) distinguishable from "we recorded this on their behalf" — different strengths of
+	// evidence, and a distinction that stopped being inferable from the timestamp the moment this action
+	// existed.
+	recordOptOut: async ({ request, locals }) => {
+		if (!isStaff(locals.user, readEnv('ADMIN_USER_IDS'))) {
+			return fail(403, { optOut: { error: 'forbidden' as const } });
+		}
+		const db = getDb();
+		const actorId = locals.user!.id;
+		const data = await request.formData();
+		const id = String(data.get('id') ?? '');
+		if (!id) return fail(400, { optOut: { error: 'missing' as const } });
+
+		// Unlike `delete` above, a missing lead is reported rather than treated as a no-op: this write is
+		// irreversible from here, so an operator who pressed the button has to learn that the row went
+		// away between render and click instead of being told it worked.
+		const row = await unsubscribeUpdates(db, id, actorId);
+		if (!row) return fail(404, { optOut: { error: 'not_found' as const } });
+
+		// The durable who-recorded-what history, same posture as the invite line below: the column holds
+		// the FIRST recorder and a later press cannot overwrite it, so this log is where a repeat press —
+		// or a press against a lead that had already unsubscribed itself — is visible at all.
+		console.info(
+			'[updates] optout.recorded',
+			JSON.stringify({ leadId: id, email: row.email, recordedBy: actorId })
+		);
+
+		return { optOut: { ok: true as const, email: row.email } };
 	},
 
 	// Mark a lead's submissions as reconciled by a human (DAR-88). A STAMP, not a merge — nothing is
