@@ -1,8 +1,13 @@
 // Shared transactional-email primitives (Resend over plain HTTPS `fetch` — no npm SDK, so the
-// Worker stays lean and these stay pure/unit-testable). Two senders build on this: the contact
-// fan-out (contact-notify.ts) and the sign-up verification email (verification-email.ts). Provider:
-// Resend (https://resend.com), reachable from workerd via fetch. All copy/escaping lives in the
-// callers; this module only knows the wire shape + the POST.
+// Worker stays lean and these stay pure/unit-testable). Provider: Resend (https://resend.com),
+// reachable from workerd via fetch. All copy/escaping lives in the callers; this module knows the
+// wire shape, the POST, and — for the two fan-outs that send a pair — how independent sends relate
+// when one of them fails. Layout for the transactional link emails is link-email.ts.
+//
+// This is the ONLY file that names the provider, which `email-senders.spec.ts` (DAR-121) pins rather
+// than assumes: a second route to Resend from anywhere else would make that whole rule beside the
+// point. Note it holds callers to a per-file `postEmail(` COUNT, so a shared helper here must never
+// wrap the send itself — see `settleSends`.
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 
@@ -53,4 +58,34 @@ export async function postEmail(apiKey: string, email: OutboundEmail): Promise<v
 		const detail = await res.text().catch(() => '');
 		throw new Error(`Resend responded ${res.status}${detail ? `: ${detail}` : ''}`);
 	}
+}
+
+/**
+ * Run several INDEPENDENT sends and log whichever fail, without letting one failure drop the others.
+ *
+ * Both fan-outs (contact-notify.ts, waitlist-notify.ts) send a pair: a lead into info@ and an
+ * acknowledgement to a caller-supplied address that could bounce or 4xx. The lead is the message that
+ * matters and must survive the ack failing, so this is `allSettled` over two sends rather than a
+ * Resend batch. It was written out in both modules — identically, one of them pointing at the other
+ * for the reasoning, which is how a subtle invariant ends up documented twice and drifting once.
+ *
+ * TAKES THUNKS, NOT EMAILS, and that is the load-bearing part: the caller builds INSIDE its thunk, so
+ * a synchronous *builder* throw is captured per-email here too. Hand this built `OutboundEmail`s
+ * instead and a throw in the ack builder happens before the fan-out starts and takes the lead down
+ * with it — the exact invariant this exists to hold. It also keeps `postEmail` at the CALL SITE,
+ * which `email-senders.spec.ts` counts per file (DAR-121); wrapping the send here would collapse six
+ * declared senders into one and blind that rule.
+ *
+ * Logs by ROLE, never the recipient address — no PII in logs.
+ */
+export async function settleSends(
+	label: string,
+	senders: [role: string, send: () => Promise<void>][]
+): Promise<void> {
+	const results = await Promise.allSettled(senders.map(([, send]) => send()));
+	results.forEach((result, i) => {
+		if (result.status === 'rejected') {
+			console.error(`${label} ${senders[i][0]} email failed`, result.reason);
+		}
+	});
 }

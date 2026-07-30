@@ -15,14 +15,14 @@ import type { WaitlistCompanySize } from '$lib/waitlist-company-sizes';
 import type { WaitlistReferralSource } from '$lib/waitlist-referral-sources';
 import type { WaitlistRegion } from '$lib/waitlist-qualification';
 import type { Locale } from '$lib/paraglide/runtime';
-import { CONTACT_EMAIL, SITE_NAME } from '$lib/site';
+import { CONTACT_EMAIL, EMAIL_FROM } from '$lib/site';
 import { m } from '$lib/paraglide/messages.js';
-import { type OutboundEmail, escapeHtml, postEmail } from './email';
+import { type OutboundEmail, escapeHtml, postEmail, settleSends } from './email';
 
 // Both messages send FROM the Resend-verified role alias (single-sourced from site.ts). The lead
 // lands in info@ with Reply-To set to the signer; the ack goes to the signer with Reply-To to info@.
 const LEAD_FROM = `DarcStar Waitlist <${CONTACT_EMAIL}>`;
-const ACK_FROM = `${SITE_NAME} <${CONTACT_EMAIL}>`;
+const ACK_FROM = EMAIL_FROM;
 
 // RFC 3834 auto-reply headers (ack only) — keep an out-of-office responder from replying and opening
 // a mail loop. Same rationale + choices as contact-notify.ts (no `Precedence: bulk`).
@@ -161,16 +161,10 @@ export async function sendWaitlistEmails(
 	sub: CleanedWaitlist,
 	locale: Locale
 ): Promise<void> {
-	// Build INSIDE each thunk so a synchronous builder throw is captured per-email by allSettled
-	// (see contact-notify.ts for why — preserves "lead survives an ack failure").
-	const senders: [role: string, send: () => Promise<void>][] = [
+	// Build INSIDE each thunk so a synchronous builder throw is captured per-email by settleSends
+	// (see email.ts for why — preserves "lead survives an ack failure").
+	await settleSends('waitlist', [
 		['lead', async () => postEmail(apiKey, buildWaitlistLeadEmail(sub))],
 		['ack', async () => postEmail(apiKey, buildWaitlistAckEmail(sub, locale))]
-	];
-	const results = await Promise.allSettled(senders.map(([, send]) => send()));
-	results.forEach((r, i) => {
-		if (r.status === 'rejected') {
-			console.error(`waitlist ${senders[i][0]} email failed`, r.reason);
-		}
-	});
+	]);
 }
