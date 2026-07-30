@@ -539,6 +539,13 @@ select.glass-field {
 	left: 0;
 	width: 100%;
 	height: 0;
+	/* BELOW the scrim (40) and header (50), unlike the single plane it replaces. That plane sat at 70
+	   so it could light the nav and the modal as well as the page; splitting the two regimes means
+	   this one no longer has to, and being above the scrim was actively wrong: a panel scrolled UNDER
+	   the nav still has a clip window there, so its sheen painted over the scrim and the nav — a lit
+	   rectangle revealing content the scrim exists to dissolve. Reported as "too much transparency
+	   behind the navbar". Now the page sheen is occluded exactly like the panel it sits on. */
+	z-index: 30;
 }
 /* Sticky/fixed glass — the nav and the dialog — whose viewport rects don't move with scroll. */
 .sheen-plane-v2[data-sheen-plane='viewport'] {

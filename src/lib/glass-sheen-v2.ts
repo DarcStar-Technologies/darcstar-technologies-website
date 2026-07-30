@@ -99,12 +99,16 @@ export function createSheenSyncV2(pagePlane: HTMLElement, viewportPlane: HTMLEle
 	let modalOpen = false;
 	let windows: Window_[] = [];
 
-	function clip() {
+	/**
+	 * @param scope `'viewport'` rebuilds only the fixed/sticky plane — see `trackViewport` below.
+	 */
+	function clip(scope: 'both' | 'viewport' = 'both') {
 		const scrollX = window.scrollX;
 		const scrollY = window.scrollY;
 		let pageD = '';
 		let viewD = '';
 		for (const { el, radius, viewportAnchored } of windows) {
+			if (scope === 'viewport' && !viewportAnchored) continue;
 			const r = el.getBoundingClientRect();
 			if (r.width === 0 || r.height === 0) continue;
 			// The scroll offsets convert a viewport rect to a PAGE rect. They are read here, at rebuild
@@ -113,7 +117,7 @@ export function createSheenSyncV2(pagePlane: HTMLElement, viewportPlane: HTMLEle
 			if (viewportAnchored) viewD += roundedRect(r.left, r.top, r.width, r.height, radius);
 			else pageD += roundedRect(r.left + scrollX, r.top + scrollY, r.width, r.height, radius);
 		}
-		pagePlane.style.clipPath = pageD ? `path('${pageD}')` : EMPTY_CLIP;
+		if (scope === 'both') pagePlane.style.clipPath = pageD ? `path('${pageD}')` : EMPTY_CLIP;
 		viewportPlane.style.clipPath = viewD ? `path('${viewD}')` : EMPTY_CLIP;
 	}
 
@@ -169,9 +173,30 @@ export function createSheenSyncV2(pagePlane: HTMLElement, viewportPlane: HTMLEle
 		settleTimer = setTimeout(clip, 150);
 	};
 
+	// The sticky nav is viewport-anchored against the LAYOUT viewport, and on mobile that is not the
+	// whole story: scrolling hard to the top expands the URL bar, which moves the visual viewport
+	// under the layout one. The nav rides that movement while a static clip does not, so the nav's
+	// sheen visibly slid down, ghosted, and snapped back when the debounced settle caught up.
+	//
+	// `visualViewport` is the event that reports exactly this, and the response is deliberately narrow:
+	// rebuild ONLY the viewport plane — one or two small rects — never the page plane, whose clip is
+	// genuinely scroll-invariant and must not be rewritten during a transition. rAF-batched so a burst
+	// of events costs one write per frame.
+	//
+	// Yes, this is a clip write during a gesture, which is the shape of the original bug. The
+	// difference is scale and duration: one nav rect for the ~200ms of a URL-bar animation, versus
+	// every panel for as long as a scroll lasts. Nothing else can keep the nav's light on the nav.
+	let vvRaf = 0;
+	const trackViewport = () => {
+		cancelAnimationFrame(vvRaf);
+		vvRaf = requestAnimationFrame(() => clip('viewport'));
+	};
+
 	sync();
 	window.addEventListener('scroll', settle, { passive: true });
 	window.addEventListener('resize', sync, { passive: true });
+	window.visualViewport?.addEventListener('resize', trackViewport, { passive: true });
+	window.visualViewport?.addEventListener('scroll', trackViewport, { passive: true });
 
 	return {
 		refresh(nextModalOpen: boolean) {
@@ -186,10 +211,13 @@ export function createSheenSyncV2(pagePlane: HTMLElement, viewportPlane: HTMLEle
 		destroy() {
 			clearTimeout(retry);
 			clearTimeout(settleTimer);
+			cancelAnimationFrame(vvRaf);
 			sizeObserver.disconnect();
 			domObserver.disconnect();
 			window.removeEventListener('scroll', settle);
 			window.removeEventListener('resize', sync);
+			window.visualViewport?.removeEventListener('resize', trackViewport);
+			window.visualViewport?.removeEventListener('scroll', trackViewport);
 		}
 	};
 }
