@@ -72,10 +72,17 @@ const LOCALE_SOURCE: Record<string, 'base' | 'caller' | 'request' | 'none'> = {
 	'src/lib/server/waitlist-priority-notify.ts': 'none'
 };
 
-const baseLocaleMailers = () =>
+const mailersWhere = (match: (source: (typeof LOCALE_SOURCE)[string]) => boolean) =>
 	Object.entries(LOCALE_SOURCE)
-		.filter(([, source]) => source === 'base')
+		.filter(([, source]) => match(source))
 		.map(([path]) => path);
+
+/** Resolve their own base locale — the two this ticket changed. */
+const baseLocaleMailers = () => mailersWhere((source) => source === 'base');
+/** Render Paraglide copy at all, wherever the locale comes from. */
+const localizedMailers = () => mailersWhere((source) => source !== 'none');
+/** Claim to render no Paraglide copy — asserted, so `none` is a checked fact rather than a label. */
+const unlocalizedMailers = () => mailersWhere((source) => source === 'none');
 
 /**
  * Every `m.<key>(…)` call's argument list. One level of nested parens is handled (an `escapeHtml(…)`
@@ -90,13 +97,31 @@ const messageCallArgs = (text: string): string[] =>
 const messageCallCount = (text: string): number => (text.match(/\bm\.\w+\(/g) ?? []).length;
 
 /**
+ * Strip braced groups, innermost first and repeatedly until nothing more goes.
+ *
+ * The loop is the point. A single `replace` pass removes only the INNERMOST braces, so
+ * `{ a: { b: 1 }, c: 2 }` would come back as `{ a: , c: 2 }` — still carrying a comma that belongs to
+ * the object rather than to a second argument, i.e. a false PASS, which is the one direction a guard
+ * must not fail in. Unreachable with today's flat Paraglide params; three lines to make it stay that
+ * way regardless.
+ */
+const withoutBracedGroups = (args: string): string => {
+	let out = args;
+	let previous = '';
+	while (out !== previous) {
+		previous = out;
+		out = out.replace(/\{[^{}]*\}/g, '');
+	}
+	return out;
+};
+
+/**
  * Does this argument list carry a second, top-level argument — the locale option?
  *
- * Braced groups go first, so the comma inside `{ name: sub.name }` is not mistaken for one. Checking
- * for "a second argument" rather than for the local variable's name keeps the rule from breaking on a
- * rename, which would be a false failure rather than a caught defect.
+ * Checking for "a second argument" rather than for the local variable's name keeps the rule from
+ * breaking on a rename, which would be a false failure rather than a caught defect.
  */
-const passesLocaleOption = (args: string): boolean => args.replace(/\{[^{}]*\}/g, '').includes(',');
+const passesLocaleOption = (args: string): boolean => withoutBracedGroups(args).includes(',');
 
 describe('email is never localized by whoever filled in the form', () => {
 	// Non-vacuity first. Everything below is either a "nothing matched" or a per-path lookup, so a
@@ -104,9 +129,10 @@ describe('email is never localized by whoever filled in the form', () => {
 	// `email-senders.spec.ts`, for the same reason.
 	it('classifies every mailer, and only mailers', () => {
 		expect(Object.keys(LOCALE_SOURCE).sort()).toEqual(mailers().sort());
-		// The `base` half is what the assertions below iterate; an empty one would register no tests
-		// at all rather than failing.
+		// The categories below drive `it.each`, and an empty one registers no tests at all rather
+		// than failing — so the two that carry assertions are pinned as non-empty here.
 		expect(baseLocaleMailers().length).toBeGreaterThan(0);
+		expect(localizedMailers().length).toBeGreaterThan(0);
 	});
 
 	// THE ROUTE NO SIGNATURE CAN SEE, first shape. A mailer that called `getLocale()` internally would
@@ -132,7 +158,13 @@ describe('email is never localized by whoever filled in the form', () => {
 	// call a message, so a new line added to one of these builders is likelier to be wrong this way
 	// than any other. Nothing but the source can see it: the types are identical either way, and the
 	// rendered output is identical too while `es.json` is empty.
-	it.each(baseLocaleMailers())('passes an explicit locale to every message call in %s', (path) => {
+	//
+	// EVERY localized mailer, not only the two this ticket changed. `base` and `caller` differ in
+	// WHERE the locale comes from, and neither of them wants the ambient one — an activation email
+	// silently falling back to the request locale is DAR-67's bug, not a lesser version of it. So the
+	// rule is the same for all of them and only `none` is excluded, which is asserted below rather
+	// than assumed.
+	it.each(localizedMailers())('passes an explicit locale to every message call in %s', (path) => {
 		const text = sourceText(path);
 		const calls = messageCallArgs(text);
 
@@ -145,10 +177,18 @@ describe('email is never localized by whoever filled in the form', () => {
 			expect(
 				passesLocaleOption(args),
 				`m.…(${args}) in ${path} renders in the AMBIENT locale — the request's — because it ` +
-					`passes no locale option. This mailer writes to an address a stranger may have typed ` +
-					`(DAR-173): pass the module's base-locale options object as the second argument.`
+					`passes no locale option. No mailer wants that: it is mail, and the person reading it ` +
+					`is not the person who made the request (DAR-173). Pass this module's options object ` +
+					`as the second argument.`
 			).toBe(true);
 		}
+	});
+
+	// The other side of that: `none` claims the module renders no Paraglide copy at all, and a claim
+	// nothing checks is a label. Asserting it is what stops `none` becoming the quiet way past the
+	// rule above — mark a new mailer `none`, and it must actually contain no message calls.
+	it.each(unlocalizedMailers())('renders no Paraglide copy in %s', (path) => {
+		expect(messageCallCount(sourceText(path))).toBe(0);
 	});
 
 	// Two-sided, so the rule cannot rot in either direction: the positive half fails if one of these
