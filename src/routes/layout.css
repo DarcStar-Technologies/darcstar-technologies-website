@@ -492,3 +492,27 @@ select.glass-field {
 		animation: none;
 	}
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────────────────────
+   TEMPORARY diagnostic (DAR-170) — DELETE WITH THE TICKET, along with $lib/glass-diagnostics
+   and its wiring in +layout.svelte.
+
+   The `noblur` arm of the mobile scroll-ghosting bisect: `?glassdiag=noblur` sets
+   `data-glass-diag` on the layout wrapper, and this strips every frosted surface's
+   backdrop-filter. If the ghosting survives with no blur anywhere, the cause is the sheen
+   plane's per-frame clip-path write; if it stops, the cause is backdrop-filter re-sampling
+   under compositor scroll. The `nosheen` arm is the complementary render gate in the layout.
+
+   Selection matches the sheen's own structural rule (`[class*="glass-"]`) rather than an
+   enumerated list, for exactly the reason #108 gives: a Tailwind `@utility` inlines styles but
+   never puts its own name on the element, so a class list here would silently miss the panels —
+   the one thing this arm must not do.
+
+   NO `!important`, and that is deliberate rather than lucky: `@utility glass` compiles into
+   Tailwind's `utilities` layer, while this block is unlayered, and unlayered rules beat layered
+   ones in the cascade regardless of specificity.
+   ───────────────────────────────────────────────────────────────────────────────────────────── */
+[data-glass-diag~='noblur'] [class*='glass-'] {
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+}

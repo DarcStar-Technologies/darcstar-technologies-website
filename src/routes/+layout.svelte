@@ -9,6 +9,7 @@
 	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import { loginDialog } from '$lib/login-dialog.svelte';
 	import { createSheenSync } from '$lib/glass-sheen';
+	import { glassDiagnostics } from '$lib/glass-diagnostics';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { jsonLdScript, organizationJsonLd } from '$lib/jsonld';
@@ -22,6 +23,15 @@
 	// the one case where layout data is absent entirely — an error page rendered before the load ran
 	// — and must be the FLOOR, not `[]`, or that page would ship an empty social row.
 	const socialLinks = $derived(page.data.socialLinks ?? FALLBACK_SOCIAL_LINKS);
+
+	// TEMPORARY (DAR-170) — remove with the ticket, along with $lib/glass-diagnostics and the
+	// diagnostic block at the foot of layout.css. `?glassdiag=nosheen|noblur` isolates the two
+	// candidate causes of the mobile scroll ghosting so one deploy can answer the whole matrix on a
+	// real device. Derived from the URL, so it survives client-side navigation between pages (the
+	// artifact appears on all of them) and is already correct in the SSR'd HTML — no unfrosted flash
+	// on the `noblur` arm. Inert without the parameter: `attr` is then undefined and Svelte omits
+	// the attribute entirely.
+	const glassDiag = $derived(glassDiagnostics(page.url.searchParams));
 
 	// One coherent light source across all frosted glass (see `.sheen-plane`). The sync
 	// keeps the plane's clip-path tracking the glass windows; re-clip when a modal (contact or
@@ -55,7 +65,11 @@
 	)}
 </svelte:head>
 
-<div class="flex min-h-dvh flex-col">
+<!-- `data-glass-diag` is DAR-170's diagnostic hook (absent in normal operation) and carries the
+     `noblur` arm to layout.css. It sits on this wrapper rather than <html>, which covers every
+     scroll-relevant glass surface — the nav, the cards, the buttons, the footer icons. The portalled
+     dialogs mount outside it and so keep their blur; they are not part of a scroll artifact. -->
+<div class="flex min-h-dvh flex-col" data-glass-diag={glassDiag.attr}>
 	<Header />
 	<main class="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-10">
 		{@render children()}
@@ -67,20 +81,26 @@
      void before it slides under/around the glass nav. See .header-scrim. -->
 <div class="header-scrim" aria-hidden="true"></div>
 
-<!-- One light plane clipped to the frosted-glass windows (see .sheen-plane). -->
-<div
-	class="sheen-plane"
-	aria-hidden="true"
-	{@attach (node) => {
-		sheen = createSheenSync(node);
-		return () => {
-			sheen?.destroy();
-			sheen = undefined;
-		};
-	}}
->
-	<div class="sheen-plane__beam"></div>
-</div>
+<!-- One light plane clipped to the frosted-glass windows (see .sheen-plane).
+     The `{#if}` is DAR-170's `nosheen` arm and is the reason this is a render gate rather than a CSS
+     one: not rendering the node means `createSheenSync` never attaches, so the arm removes the scroll
+     listener and the per-frame clip-path write as well as the beam. Hiding it in CSS would leave the
+     prime suspect running. `sheen` simply stays undefined — every call site already optional-chains. -->
+{#if !glassDiag.noSheen}
+	<div
+		class="sheen-plane"
+		aria-hidden="true"
+		{@attach (node) => {
+			sheen = createSheenSync(node);
+			return () => {
+				sheen?.destroy();
+				sheen = undefined;
+			};
+		}}
+	>
+		<div class="sheen-plane__beam"></div>
+	</div>
+{/if}
 
 <BackToTop />
 
