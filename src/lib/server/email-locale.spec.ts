@@ -97,6 +97,23 @@ const messageCallArgs = (text: string): string[] =>
 const messageCallCount = (text: string): number => (text.match(/\bm\.\w+\(/g) ?? []).length;
 
 /**
+ * How many times a message is NAMED, called or not.
+ *
+ * Held equal to the call count below, which closes the hole a call-site scan cannot see: a message
+ * function passed as a VALUE. `LinkEmailCopy.greeting` is `(args: { name: string }) => string` and a
+ * Paraglide message is `(inputs, options?) => string`, so `greeting: m.activation_email_greeting`
+ * type-checks — and it reads as a tidy-up of `greeting: (args) => m.activation_email_greeting(args, o)`,
+ * which is exactly why someone would write it. The locale option then has no call site at all and
+ * `buildLinkEmail` invokes it ambiently, i.e. in the request's locale.
+ *
+ * Deliberately a COUNT rather than the obvious `\bm\.\w+(?!\s*\()`. A negative lookahead after a
+ * greedy `\w+` backtracks into the identifier until the lookahead is satisfied, so it reports a
+ * prefix of every ordinary call (`m.waitlist_ack_subjec`) as a bare reference — measured, eleven
+ * phantom hits on a clean file. Two counts cannot have that failure mode.
+ */
+const messageRefCount = (text: string): number => (text.match(/\bm\.\w+/g) ?? []).length;
+
+/**
  * Strip braced groups, innermost first and repeatedly until nothing more goes.
  *
  * The loop is the point. A single `replace` pass removes only the INNERMOST braces, so
@@ -173,6 +190,16 @@ describe('email is never localized by whoever filled in the form', () => {
 		expect(calls.length).toBe(messageCallCount(text));
 		expect(calls.length).toBeGreaterThan(0);
 
+		// Every message NAMED here is also called here — see messageRefCount. A message handed on as a
+		// value (`greeting: m.activation_email_greeting`) has no call site to inspect, so the locale
+		// option cannot be checked for and whoever invokes it gets the ambient locale.
+		expect(
+			messageRefCount(text),
+			`${path} names a message it does not call — passing a message function as a value leaves ` +
+				`its locale to whoever invokes it, which is the ambient (request) locale. Wrap it: ` +
+				`(args) => m.the_key(args, o).`
+		).toBe(calls.length);
+
 		for (const args of calls) {
 			expect(
 				passesLocaleOption(args),
@@ -188,7 +215,8 @@ describe('email is never localized by whoever filled in the form', () => {
 	// nothing checks is a label. Asserting it is what stops `none` becoming the quiet way past the
 	// rule above — mark a new mailer `none`, and it must actually contain no message calls.
 	it.each(unlocalizedMailers())('renders no Paraglide copy in %s', (path) => {
-		expect(messageCallCount(sourceText(path))).toBe(0);
+		// Names one at all, not merely calls one — the same value-passing route as above.
+		expect(messageRefCount(sourceText(path))).toBe(0);
 	});
 
 	// Two-sided, so the rule cannot rot in either direction: the positive half fails if one of these
