@@ -86,6 +86,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           subjectPattern: ^(?![A-Z]).*[^.]$
-          subjectPatternError: |
+          # `>-`, not `|`: this string becomes a `::error::` annotation, and a literal block keeps the
+          # wrap, which GitHub renders as a two-line annotation (observed on this PR's first run).
+          # Folded joins it back into the one sentence it is.
+          subjectPatternError: >-
             The subject "{subject}" in "{title}" must start with a lower-case character and must not
             end with a period, or commitlint will reject the squashed subject on main after merge.
