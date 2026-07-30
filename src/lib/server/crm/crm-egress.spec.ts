@@ -136,8 +136,22 @@ describe('the CRM egress is one declared route', () => {
 	// Excludes the producer itself (it defines the entry, so it "names" it) and specs, which the scan
 	// already drops. Two-sided `toEqual`, so a removed call site fails too — an entry nobody calls is
 	// an allowlist rotting into names nobody checks.
+	//
+	// PER FILE, where `sends` above is per call site, and the asymmetry is deliberate. What this rule
+	// protects is which SUBSYSTEM may reach a producer, and a file is that unit here: every file
+	// holding a waitlist row (`waitlist.remote.ts`, `waitlist-steps.remote.ts`, `$lib/server/waitlist-*`,
+	// the admin routes) is a file not on this list, so a waitlist entry cannot reach `captureContactLead`
+	// without a NEW name appearing in `callers`. A second call from an already-declared file is a
+	// different and much smaller thing — another signal for a row that file already legitimately has.
 	it('lets only declared call sites invoke a producer', () => {
 		for (const [path, producer] of Object.entries(PRODUCERS)) {
+			// Non-vacuity: a producer nobody calls is dead code, and `calledBy: []` would let this whole
+			// assertion pass against a `moduleFor` that had stopped resolving to anything.
+			expect(
+				producer.calledBy.length,
+				`${path} declares no call site — is it still reachable?`
+			).toBeGreaterThan(0);
+
 			const callers = surface().filter(
 				(file) => file !== path && importedNames(file, moduleFor(path)).includes(producer.entry)
 			);

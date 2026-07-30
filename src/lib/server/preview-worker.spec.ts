@@ -153,13 +153,14 @@ describe('wrangler.jsonc agrees with the Worker names TypeScript uses', () => {
 	});
 
 	test('the preview Worker declares NO queue producer, so it cannot reach the contact graph', () => {
-		// `toBeUndefined` on `queues` alone would pass against a preview env that declared an empty
-		// `producers: []` and then grew an entry, so assert the binding is unreachable by NAME too —
-		// which is the thing `crm-egress.spec.ts` cannot see, since wrangler.jsonc is not source.
+		// NO `queues` KEY AT ALL, which is deliberately stricter than "no CRM_INGEST binding". There is
+		// no legitimate preview queue today, so anything appearing here is a decision that wants a human
+		// look rather than a predicate to be threaded past — and the strict form has no gap to argue
+		// about, where a by-name check would pass against a preview env that had grown some other
+		// producer and be one edit from growing this one.
+		//
+		// This is the half `crm-egress.spec.ts` cannot see: wrangler.jsonc is config, not source.
 		expect(wrangler.env?.preview?.queues).toBeUndefined();
-		expect(
-			wrangler.env?.preview?.queues?.producers?.some((p) => p.binding === 'CRM_INGEST') ?? false
-		).toBe(false);
 	});
 
 	test('trustedOrigins is exactly the four hosts, written out', () => {

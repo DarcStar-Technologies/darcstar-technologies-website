@@ -86,8 +86,9 @@ resolves the binding for itself imports nothing and is caught only by the bindin
 
 A guard on `postContactSignal` says nothing about who may reach the function that **calls** it, and a
 producer's whole job is to be callable. Measured, not reasoned about: a waitlist producer importing
-`captureContactLead` — touching neither the queue module nor the binding — passed **all 26**
-assertions here while sending waitlist entries to the CRM as `website_form` signals.
+`captureContactLead` — touching neither the queue module nor the binding — passed **every assertion
+in this file** (26 of them at the time) while sending waitlist entries to the CRM as `website_form`
+signals.
 
 It is also the _likely_ mistake rather than a contrived one. Whoever builds DAR-177 will read this
 producer first, and a waitlist row has an id and a `created_at`, so it satisfies `ContactLead` without
@@ -96,6 +97,12 @@ two-sided so a removed call site fails too.
 
 The rule for a new call site: declare it — and if what it hands over is not what that producer says it
 sends, write a new producer rather than widening an existing one.
+
+That second allowlist is **per file** where `sends` is per call site, which is deliberate rather than
+an oversight: what it protects is which _subsystem_ reaches a producer, and every file holding a
+waitlist row is a file not on the list, so a waitlist entry cannot get there without a new name
+appearing. A second call from an already-declared file is a much smaller thing — another signal for a
+row that file already legitimately has.
 
 ## What the version field does NOT cover
 

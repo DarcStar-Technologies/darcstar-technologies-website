@@ -61,24 +61,42 @@ export function buildContactLeadSignal(lead: ContactLead): ContactSignal {
  * submission still succeeded".
  */
 export function captureContactLead(platform: App.Platform | undefined, lead: ContactLead): void {
-	// No binding check here on purpose — `postContactSignal` owns the binding (it is the only file
-	// that may name it) and answers `'skipped'` when there is none. Duplicating the test would be a
-	// second place that has to know the preview Worker has no queue.
+	// The submission id, never the email: this goes to Workers Logs, and the row it names is enough to
+	// replay the signal by hand (the posture `contact-notify.ts` set — log by role, never by recipient).
+	const failed = (err: unknown) =>
+		console.error(`crm ingest produce failed for submission ${lead.submissionId}`, err);
+
+	// BUILDING THE SIGNAL IS INSIDE THE GUARD, not just the send, and that is the difference between
+	// "nothing here fails the submission" being structural and being a property of today's inputs.
+	// `buildContactLeadSignal` reads `lead.createdAt.toISOString()`, so a caller that handed over a row
+	// whose timestamp was not a `Date` would throw straight out of this function and into a submission
+	// whose row is already committed. A 500 on a lead we just saved successfully is the one outcome
+	// this whole path exists to prevent, so it must not be reachable by getting a caller wrong.
+	// (Measured: drizzle does hand back a real `Date` for the SQL-default `created_at`, so this guards
+	// a future caller rather than a live bug.)
 	//
-	// THE BUILD IS INSIDE THE PROMISE, not just the send, and that is the difference between "nothing
-	// here fails the submission" being structural and being a property of today's inputs.
-	// `buildContactLeadSignal` reads `lead.createdAt.toISOString()`, so a caller that handed over a
-	// row whose timestamp was not a `Date` would throw SYNCHRONOUSLY — straight out of this function,
-	// past the `.catch`, and into a submission whose row is already committed. A 500 on a lead we
-	// just saved successfully is the one outcome this whole path exists to prevent, so it must not be
-	// reachable by getting a caller wrong. (Measured: drizzle does hand back a real `Date` for the
-	// SQL-default `created_at`, so this guards a future caller rather than a live bug.)
-	const produce = Promise.resolve()
-		.then(() => postContactSignal(platform, buildContactLeadSignal(lead)))
-		.catch((err) =>
-			// The submission id, never the email: this line goes to Workers Logs, and the row it names
-			// is enough to replay the signal by hand.
-			console.error(`crm ingest produce failed for submission ${lead.submissionId}`, err)
-		);
-	platform?.ctx?.waitUntil(produce);
+	// A try/catch rather than wrapping in `Promise.resolve().then(...)`, deliberately: that wrapper
+	// would defer `postContactSignal`'s read of `platform.env` into a microtask, and grabbing
+	// request-scoped handles before any await is this flow's own stated rule — see the top of
+	// `contact.remote.ts`. Called synchronously, the binding resolves synchronously.
+	//
+	// No binding check here either — `postContactSignal` owns the binding (it is the only file that may
+	// name it) and answers `'skipped'` when there is none. Duplicating the test would be a second place
+	// that has to know the preview Worker has no queue.
+	let produce: Promise<unknown>;
+	try {
+		produce = postContactSignal(platform, buildContactLeadSignal(lead));
+	} catch (err) {
+		failed(err);
+		return;
+	}
+
+	// THE `.catch` IS ATTACHED BEFORE THE `waitUntil` CALL, AND THAT ORDER IS LOAD-BEARING. Written as
+	// `platform?.ctx?.waitUntil(produce.catch(failed))` the optional chain short-circuits when there is
+	// no `ctx` — and a short-circuited call never evaluates its ARGUMENT, so the handler is never
+	// attached and a rejecting queue becomes an unhandled rejection instead of a logged line. That is
+	// `vite dev`, where there is no ctx, and it is not hypothetical: the refactor to this try/catch
+	// introduced exactly that bug and the no-ctx test below is what caught it.
+	const guarded = produce.catch(failed);
+	platform?.ctx?.waitUntil(guarded);
 }

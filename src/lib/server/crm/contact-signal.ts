@@ -83,7 +83,16 @@ export interface ContactSignal {
 	company?: string;
 }
 
-/** Normalize an address the same way the consumer does, so an identity matches on both sides. */
+/**
+ * Normalize an address the same way the consumer does, so an identity matches on both sides.
+ *
+ * NOT A DRIFT HAZARD, which is worth stating because it looks like the worst kind — a copy of a
+ * normalizer diverging would silently resolve one person into two contacts, and `v` would not catch
+ * it. Measured against the real validator: `parseContactSignal` re-normalizes BOTH the email identity
+ * and its mirror with the CRM's own function on arrival, so the consumer's version is authoritative
+ * and this one is defence in depth. Don't add a caveat here saying otherwise; do keep the two in
+ * agreement anyway, since a signal that arrives already-correct is easier to read in the DLQ.
+ */
 export function normalizeEmail(email: string): string {
 	return email.trim().toLowerCase();
 }
