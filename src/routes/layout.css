@@ -238,18 +238,39 @@ html {
    every surface shows the same beam at its true screen position — one coherent light
    source (real geometry, not just synced timing). The band is transform-animated
    (compositor-only); the clip-path (union of rounded glass rects) is maintained by JS
-   (src/lib/glass-sheen.ts) on scroll + resize + modal open. It sits ABOVE every layer
-   (scrim 40 / header 50 / modal 60) so it can catch the nav and the modal too; being
-   clip-path'd to glass + pointer-events:none, it never draws on — or blocks — anything
-   else. While the modal is open the clip switches to the modal's glass only, so page
-   panels don't bleed sheen over the scrim. */
+   (src/lib/glass-sheen.ts). It sits ABOVE every layer (scrim 40 / header 50 / modal 60)
+   so it can catch the nav and the modal too; being clip-path'd to glass +
+   pointer-events:none, it never draws on — or blocks — anything else. While the modal is
+   open the clip switches to the modal's glass only, so page panels don't bleed sheen over
+   the scrim.
+
+   THE CLIP IS NOT REWRITTEN ON SCROLL (DAR-170) — that was the mobile ghosting bug, a
+   paint-property write racing compositor-thread scrolling. The plane now holds TWO clip
+   layers, one per anchoring regime, and scroll writes only transforms. The plane keeps
+   `overflow: hidden` so the translated page layer can't paint outside the viewport, and it
+   carries no clip of its own; each layer clips itself. Full rationale in glass-sheen.ts. */
 .sheen-plane {
 	position: fixed;
 	inset: 0;
 	z-index: 70;
 	pointer-events: none;
 	overflow: hidden;
-	clip-path: path('M0 0Z'); /* nothing until JS sets the glass windows */
+}
+/* Each clip surface. `path('M0 0Z')` shows nothing until JS sets the glass windows — the
+   no-JS and pre-hydration state is simply no sheen. The page layer is transform-shifted by
+   -scroll (its clip is in page coordinates); the viewport layer never is. */
+.sheen-plane__layer {
+	position: absolute;
+	inset: 0;
+	clip-path: path('M0 0Z');
+}
+/* Inside the page layer: shifted back by +scroll so the beam stays screen-anchored while the
+   layer around it moves with the page. `will-change: transform` on both this and the layer
+   would promote two more compositing layers on every page; the beam already declares it, and
+   translate3d is enough of a hint here. */
+.sheen-plane__anchor {
+	position: absolute;
+	inset: 0;
 }
 .sheen-plane__beam {
 	position: absolute;
