@@ -6,6 +6,11 @@
 	// Contribution select needs these strings too, and a second copy of the mapping there would be
 	// free to drift from the pill's (the ContactFields `fieldClass` convention).
 	//
+	// It stores `m.x`, NOT `m.x()`. This object is built once per module — which on the server means
+	// once per worker, shared by every request — so resolving the strings here would freeze whatever
+	// locale happened to be active at import time and serve it to everyone. Holding the function
+	// defers `getLocale()` to the call, where Paraglide's url strategy can answer per request.
+	//
 	// `Record<ContributionKind, …>` is the point of the shape: a kind added to CONTRIBUTION_KINDS
 	// without a label here is a COMPILE error, so the vocabulary and its labels cannot drift apart.
 	//

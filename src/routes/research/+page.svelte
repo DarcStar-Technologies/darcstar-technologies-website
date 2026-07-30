@@ -228,9 +228,10 @@
      desync the display). An unknown URL value (renamed slug, hand-edited URL) renders as a
      raw synthetic option rather than masquerading as "All".
 
-     `klass` is for grid placement only (the odd control out on the 2-column mobile grid spans both).
-     Nothing about the control itself is passed in — five call sites styling their own selects is how
-     a facet bar stops looking like one control repeated. -->
+     `klass` is GRID PLACEMENT ONLY — which cells a control occupies on the 2-column mobile grid.
+     Nothing about the control's own appearance goes through it, deliberately: a facet bar whose five
+     selects could each be restyled from their call site would stop reading as one control repeated,
+     which is exactly what it should read as. -->
 {#snippet filterSelect(
 	name: string,
 	label: string,
