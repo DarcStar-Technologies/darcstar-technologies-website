@@ -13,7 +13,11 @@ import { settleSends } from './email';
 const ok = () => Promise.resolve();
 
 describe('settleSends', () => {
-	afterEach(() => vi.unstubAllGlobals());
+	// restoreAllMocks, NOT unstubAllGlobals: nothing here stubs a global, and the console spy has to
+	// come back even when an assertion throws before the end of a test — a manual mockRestore() is
+	// skipped on failure, which leaves console.error mocked for every test after it and turns one
+	// red assertion into a file full of confusing ones.
+	afterEach(() => vi.restoreAllMocks());
 
 	it('runs every send and resolves when they all succeed', async () => {
 		const calls: string[] = [];
@@ -42,7 +46,6 @@ describe('settleSends', () => {
 		expect(errSpy).toHaveBeenCalledTimes(1);
 		// The label and the role, and nothing else — a recipient address here would be PII in a log.
 		expect(errSpy.mock.calls[0][0]).toBe('waitlist ack email failed');
-		errSpy.mockRestore();
 	});
 
 	// THE CASE THE THUNK SIGNATURE IS FOR, and the one no caller-level test can reach: a builder that
@@ -64,8 +67,8 @@ describe('settleSends', () => {
 		).resolves.toBeUndefined();
 
 		expect(leadRan, 'the lead must survive a builder throw in the ack').toBe(true);
+		expect(errSpy).toHaveBeenCalledTimes(1);
 		expect(errSpy.mock.calls[0][0]).toBe('contact ack email failed');
-		errSpy.mockRestore();
 	});
 
 	// Order in, order out: the log names the role that actually failed. `allSettled` preserves input
@@ -77,8 +80,8 @@ describe('settleSends', () => {
 			['lead', async () => Promise.reject(new Error('x'))],
 			['ack', ok]
 		]);
+		expect(errSpy).toHaveBeenCalledTimes(1);
 		expect(errSpy.mock.calls[0][0]).toBe('contact lead email failed');
-		errSpy.mockRestore();
 	});
 
 	it('logs one line per failure when everything fails', async () => {
@@ -93,6 +96,5 @@ describe('settleSends', () => {
 			'contact lead email failed',
 			'contact ack email failed'
 		]);
-		errSpy.mockRestore();
 	});
 });

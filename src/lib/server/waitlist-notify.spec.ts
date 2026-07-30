@@ -109,7 +109,12 @@ describe('buildWaitlistAckEmail', () => {
 // wrong label here is a new way to be wrong that nothing would have noticed. A misleading role line is
 // only a log defect, but logs are what somebody reads at 3am when the acks start bouncing.
 describe('sendWaitlistEmails', () => {
-	afterEach(() => vi.unstubAllGlobals());
+	// Both: unstubAllGlobals for the fetch stub, restoreAllMocks so the console spy returns even if
+	// an assertion throws first (a manual mockRestore is skipped on failure).
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
+	});
 
 	it('sends the lead even when the ack bounces, and logs that by role', async () => {
 		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -128,6 +133,5 @@ describe('sendWaitlistEmails', () => {
 		expect(errSpy).toHaveBeenCalledTimes(1);
 		// By role and under THIS fan-out's name — never the recipient address (no PII in logs).
 		expect(errSpy.mock.calls[0][0]).toBe('waitlist ack email failed');
-		errSpy.mockRestore();
 	});
 });
