@@ -16,8 +16,9 @@ import type { PageServerLoad } from './$types';
 // a POST); here it is the entire security property.
 //
 // The load verifies too, so a dead link says so before anyone presses anything. That costs one HMAC and
-// no database access — which is also why it stays correct in a hermetic e2e, where there is no secret
-// and every token therefore reads as invalid.
+// NO database access, which is the property worth noting: a GET here cannot tell a live lead from a
+// deleted one, so the page is not an existence oracle even for somebody holding a valid token. Only the
+// POST touches a row.
 //
 // Single `default` action ONLY — do NOT add a named action beside it (SvelteKit's
 // check_named_default_separate 500s every POST if a page mixes default + named; see #122).

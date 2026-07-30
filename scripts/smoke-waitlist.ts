@@ -577,6 +577,32 @@ ok(
 	'step 1 appended a submission under the existing lead, with step-1 columns and consent provenance'
 );
 
+// D2. The ticked box asked this address to confirm (DAR-139), and the timestamp is READ HERE rather
+//     than in step N with the rest of the gate. The reason is what makes step O's "nobody re-asked"
+//     mean anything: step L signs up again with the box ticked, so a timestamp sampled after it could
+//     be a RE-stamp, and comparing that to itself at the end of the run would pass against a claim
+//     that had lost its 24h predicate entirely — the vacuous-negative shape this file's header warns
+//     about. Observing before the second signup EXISTS removes the question instead of asserting an
+//     answer to it; an earlier cut compared this against the second submission's `created_at`, which
+//     was a real check and also a flake waiting for one slow `ctx.waitUntil` to misreport as "the
+//     second ticked box re-asked".
+//
+//     Fire-and-forget (the claim AND the send run inside ctx.waitUntil), so it polls rather than
+//     reading once.
+const askedLead = await eventually(
+	'updates ask',
+	leadRow,
+	(row) => row?.updatesConfirmSentAt != null,
+	() =>
+		'updates_confirm_sent_at was never stamped — the claim is fire-and-forget, so this means it failed, RESEND_API_KEY/ORIGIN are unset, or the worker is on another database'
+);
+const askedAt = askedLead!.updatesConfirmSentAt!.getTime();
+assertEqual('updates ask', waitlistUpdatesState(askedLead!), 'asked');
+// Asking is not permission. Asserted at the moment of asking, which is the moment it would be
+// tempting to treat a ticked box as consent.
+assertEqual('updates ask', mayReceiveUpdates(askedLead!), false);
+ok('a ticked box asked this address to confirm — and asking is not yet permission to send');
+
 // THE FORGED-FLOW PROBE (DAR-86), fired here rather than later so the honest step 2 below can be its
 // anchor — see `settled`. This is the threat the ticket names literally: before DAR-86 the step
 // endpoints reached the funnel insert with NO continuation token at all, so a bare POST carrying a
@@ -920,11 +946,16 @@ ok(`the whole walk recorded ${EXPECTED_EVENTS.length} events, one row each, unde
 // N. The updates sending gate (DAR-139), end to end against a real database.
 //
 //    THE COMPOSITION NEITHER SUITE REACHES, for the same reasons as everything else in this file. The
-//    unit specs round-trip mint → verify inside one module with the secret handed in; the hermetic e2e
-//    has no BETTER_AUTH_SECRET, so every token there resolves to `invalid` and the confirmed path is
-//    unreachable by construction. What is only observable here is the join: a token the MAILER minted
+//    unit specs round-trip mint → verify inside one module with the secret handed in; the e2e keeps every
+//    token it sends deliberately unsignable, because a test that minted one from a local `.env` would
+//    assert something different in CI than on a developer's machine (DAR-79/DAR-81), so the confirmed
+//    path is unreachable there by construction rather than by accident of environment. What is only
+//    observable here is the join: a token the MAILER minted
 //    being accepted by the ROUTE, against the running worker's own resolution of the signing secret
 //    (DAR-99's whole concern), and the conditional UPDATE behind it landing on a real row.
+//
+//    THE ASK ITSELF IS OBSERVED BACK AT STEP D2, not here — see the note there for why the timestamp
+//    has to be sampled before step L ticks the box a second time. This block picks up from the click.
 //
 //    IT MINTS, AND DELIBERATELY DOES NOT PARSE. The rule this script follows elsewhere is that a client
 //    which can take a signed value apart will eventually be tempted to put one together — so the funnel
@@ -940,37 +971,7 @@ if (!signingSecret) {
 	);
 }
 
-// N1. Step 1's ticked box asked for a confirmation. Fire-and-forget (the claim AND the send run inside
-//     ctx.waitUntil), so this polls rather than reading once.
-const askedLead = await eventually(
-	'updates ask',
-	leadRow,
-	(row) => row?.updatesConfirmSentAt != null,
-	() =>
-		'updates_confirm_sent_at was never stamped — the claim is fire-and-forget, so this means it failed, RESEND_API_KEY/ORIGIN are unset, or the worker is on another database'
-);
-const askedAt = askedLead!.updatesConfirmSentAt!.getTime();
-assertEqual('updates ask', waitlistUpdatesState(askedLead!), 'asked');
-assertEqual('updates ask', mayReceiveUpdates(askedLead!), false);
-
-// AND THE ASK IS STEP 1'S, not step L's — which is what makes step O's "nobody re-asked" mean anything.
-// This poll runs after the second signup (which also ticks the box), so on its own `askedAt` would
-// happily be a RE-stamp, and comparing it to itself at the end of the run would pass against a claim
-// that had lost its 24h predicate entirely. That is the vacuous-negative shape this script's header
-// warns about, one ticket later and in a new place.
-//
-// Ordering closes it without moving anything: the second submission's own row is written on the
-// response path, so if its claim had re-stamped, `updates_confirm_sent_at` would be at or after that
-// row's creation. Pinning the ask BEFORE it, plus step O's "still exactly this value" at the end,
-// together say the second signup never re-asked — whenever its fire-and-forget claim actually ran.
-if (askedAt >= appended.createdAt.getTime()) {
-	die(
-		`updates ask: the ask is stamped at or after the second signup's submission (${new Date(askedAt).toISOString()} vs ${appended.createdAt.toISOString()}) — the second ticked box re-asked, so the per-lead window is not holding`
-	);
-}
-ok('a ticked box asked this address to confirm — once, before the repeat signup ticked it again');
-
-// N2. The confirmation itself. The token is minted with the same function the email uses and the same
+// N1. The confirmation itself. The token is minted with the same function the email uses and the same
 //     secret the worker loaded, so a POST it accepts is the two ends agreeing across a real request.
 const confirmed = await updatesPost(
 	UPDATES_CONFIRM_PATH,
@@ -991,7 +992,7 @@ if (!audience.some((row) => row.id === SMOKE_LEAD_ID)) {
 }
 ok('the emailed link confirmed the address, and it is in the audience a sender may read');
 
-// N3. The login-free withdrawal /privacy promises. No session, no account — the token is the whole
+// N2. The login-free withdrawal /privacy promises. No session, no account — the token is the whole
 //     authorization.
 const unsubscribed = await updatesPost(
 	UPDATES_UNSUBSCRIBE_PATH,
@@ -1013,7 +1014,7 @@ if ((await readUpdatesAudience(appDb)).some((row) => row.id === SMOKE_LEAD_ID)) 
 }
 ok('the login-free link withdrew the address, keeping the confirmation as the audit trail');
 
-// N4. And the form cannot bring them back. The tick box is the one surface a stranger controls, so a
+// N3. And the form cannot bring them back. The tick box is the one surface a stranger controls, so a
 //     re-tick after a withdrawal must not restart the asks — otherwise unsubscribing stops one message
 //     instead of the relationship. Whether the claim was refused is checked in step O: it is a
 //     fire-and-forget write, so "it did not happen" needs a happens-after, and the rest of the run is
@@ -1042,7 +1043,7 @@ assertEqual('forged flow', (await forgedRows()).length, 0);
 // they are read here, where everything the run did afterwards is the wait, rather than immediately
 // after the submits that could have made them.
 //
-// One timestamp covers both, and only because step N1 pinned it to step 1's ask rather than to whatever
+// One timestamp covers both, and only because step D2 pinned it to step 1's ask rather than to whatever
 // the column happened to hold: `updates_confirm_sent_at` is still that value, so neither the second
 // signup (asked inside the 24h window) nor the fourth (asked after a withdrawal) re-stamped it. A
 // refused ask leaves the column alone, so hammering cannot walk the window forward.
