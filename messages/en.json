@@ -572,7 +572,7 @@
 	"admin_waitlist_consent_yes": "Yes (unverified)",
 	"admin_waitlist_consent_no": "No",
 	"admin_waitlist_internal_note": "Priority is an internal triage signal computed from the qualification answers. It is never shown to the signup and is not committed pipeline.",
-	"admin_waitlist_unverified_note": "Outreach permission, phone and marketing consent are unverified claims from an unauthenticated form. Confirm by replying to the signed-up address before acting on them. The Updates column is the exception — it records whether that mailbox itself answered a confirmation email, and only “Confirmed” permits a product or research update.",
+	"admin_waitlist_unverified_note": "Outreach permission, phone and marketing consent are unverified claims from an unauthenticated form. Confirm by replying to the signed-up address before acting on them. The Updates column is the exception — only “Confirmed” permits a product or research update, and it means that mailbox itself answered a confirmation email. “Opted out” may instead have been recorded by staff on request; the row detail says which.",
 	"admin_waitlist_col_access": "Access",
 	"admin_waitlist_invite_not_invited": "Not invited",
 	"admin_waitlist_invite_invited": "Invited",

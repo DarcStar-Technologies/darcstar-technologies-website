@@ -244,13 +244,8 @@ describe('/admin/waitlist', () => {
 		expect(page.getByText('Record opt-out', { exact: true }).elements()).toHaveLength(0);
 	});
 
-	// It carries the active filter like every other action here, or honoring one request would bounce
-	// the operator out of the band they were working through.
-	it('carries the active band filter on its action', async () => {
-		const { container } = mount({ filter: 'priority-a', leads: [ROW] });
-
-		expect(actionsOf(container, 'recordOptOut')).toEqual(['?/recordOptOut&class=priority-a']);
-	});
+	// (The active-filter guarantee is asserted with its siblings in "carries the active filter into
+	// every action" — that test's name is only true while every action is in it.)
 
 	// A NULL RECORDER WITH A TIMESTAMP IS NOT MISSING DATA — it is the recipient having pressed the
 	// emailed link, which is the strongest evidence we can hold. Rendering the usual em-dash there
@@ -334,6 +329,11 @@ describe('/admin/waitlist', () => {
 		expect(actionsOf(container, 'review')).toEqual([
 			'?/review&class=priority-a',
 			'?/review&class=priority-a'
+		]);
+		// Neither default fixture has withdrawn, so both rows offer it (DAR-140).
+		expect(actionsOf(container, 'recordOptOut')).toEqual([
+			'?/recordOptOut&class=priority-a',
+			'?/recordOptOut&class=priority-a'
 		]);
 	});
 
