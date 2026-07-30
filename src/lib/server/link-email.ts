@@ -1,6 +1,6 @@
-// The shared layout for a TRANSACTIONAL LINK EMAIL — "here is a one-time link, click it" — which is
-// the shape of every non-fan-out message this site sends: the password reset (self-service), the
-// sign-up verification (#96), and the early-access activation (DAR-67).
+// DAR-181. The shared layout for a TRANSACTIONAL LINK EMAIL — "here is a one-time link, click it"
+// — which is the shape of every non-fan-out message this site sends: the password reset
+// (self-service), the sign-up verification (#96), and the early-access activation (DAR-67).
 //
 // WHY THIS EXISTS. Those three modules were byte-identical apart from their message-key prefix and a
 // `*_FROM` constant: same text/plain assembly, same 35-line HTML body, same palette inlined three

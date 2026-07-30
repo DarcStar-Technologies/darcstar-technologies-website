@@ -73,7 +73,7 @@ footer legal bar (`Footer.svelte`).
   and build double opt-in"; that now exists, so it says instead that being declared there is not
   authorization, and names `readUpdatesAudience` as the only definition of who may receive one.
   A tripwire that tells you to build what is already there is one people learn to click past.
-- **That allowlist also constrains where mail code may be FACTORED**, which is not obvious until
+- **That allowlist also constrains where mail code may be FACTORED** (DAR-181), which is not obvious until
   someone tries to deduplicate the mailers. It is keyed on which file imports `postEmail`, with a
   per-call-site `sends` count, so a shared helper must never wrap the send: the three transactional
   link emails share a **layout** (`link-email.ts` — they were byte-identical apart from an eight-key
