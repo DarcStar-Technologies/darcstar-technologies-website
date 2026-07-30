@@ -48,17 +48,88 @@ export function previewVars(port) {
 }
 
 /**
- * The same vars as wrangler `--var NAME:VALUE` arguments.
+ * The database the E2E SUITE points the preview at: one that resolves without DNS and refuses
+ * instantly (DAR-85).
+ *
+ * NOT part of `previewVars`, and that separation is load-bearing rather than tidiness — see the
+ * paired spec. `pnpm preview` must keep reaching whatever database `.env` names, because
+ * `smoke:invite` and `smoke:waitlist` are hand-run AGAINST a preview and assert on rows in that
+ * database; both even diagnose "is the preview pointed at a different database than .env?", which is
+ * precisely the failure a var in `previewVars` would cause for every run of them. So this is a
+ * TEST-HARNESS override, applied by playwright.config.ts, and `pnpm preview` alone never sees it.
+ *
+ * WHY A DEAD ADDRESS AT ALL, given the suite was already hermetic in CI. It was hermetic in CI only:
+ * the placeholder was hand-written into a `.env` by the workflow (as ORIGIN once was — see above), so
+ * a local run used the developer's real dev database. Measured on the dev DB: 5,118
+ * `waitlist_funnel_event` rows against 0 leads and 0 submissions, i.e. a conversion readout computed
+ * entirely over automated traffic. Same defect as DAR-79/DAR-81, one env var over — one suite testing
+ * two different things, and the local half writing to shared data.
+ *
+ * WHY THIS SHAPE, and every column of this was measured rather than reasoned. Four probe requests
+ * (`/waitlist`, `/waitlist/__data.json`, `POST /forgot-password`, `POST /api/auth/sign-up/email`)
+ * against a real wrangler dev:
+ *
+ *   DATABASE_URL              DNS fail  Uncaught  workerd internal  our logs  sign-up  forgot-pw
+ *   libsql://…invalid  (was)         9         3                 9         2      400        200
+ *   libsql://127.0.0.1:1             0         0                 0         2      400        200
+ *   (absent)                         0         0                 0         0      500        500
+ *
+ * An unresolvable HOSTNAME is what produced the noise DAR-85 was filed about: workerd logs each
+ * failed DNS lookup itself, raises a `jsgInternalError` per attempt with a full native stack, and
+ * leaves one rejection per query unobserved — `Uncaught Error: internal error; reference = …`, which
+ * is indistinguishable from a real fault. An IP literal on a closed port fails at connect instead:
+ * same rejection for the query, none of the machinery.
+ *
+ * THE ABSENT COLUMN IS THE TRAP, and it is why "no database" is the wrong way to say "no database".
+ * `getDb()` throws when either var is missing, and `authOptions` calls it eagerly
+ * (`drizzleAdapter(getDb(), …)`), so `getAuth()` throws and every auth route answers 500 — including
+ * DAR-67's sign-up boundary, whose 400 EMAIL_PASSWORD_SIGN_UP_DISABLED becomes a 500 that
+ * `expect(res.ok()).toBe(false)` still passes. That is exactly DAR-81's two-gates-failing-closed-
+ * into-a-pass, reinstated. The requirement is therefore CONSTRUCTIBLE BUT UNREACHABLE: the client
+ * must build, and only the query may fail.
+ *
+ * `libsql://` rather than `http://` (both measured identically quiet) so the client takes the same
+ * hrana-over-HTTPS path a Turso URL takes in production; port 1 needs root to bind, so nothing can
+ * answer it by accident.
+ *
+ * @returns {Record<string, string>}
+ */
+export function hermeticDbVars() {
+	return {
+		DATABASE_URL: 'libsql://127.0.0.1:1',
+		DATABASE_AUTH_TOKEN: 'e2e-no-database'
+	};
+}
+
+/**
+ * `{NAME: VALUE}` → wrangler `--var NAME:VALUE` arguments.
  *
  * wrangler splits each pair on its FIRST colon, which is what lets ORIGIN carry a value that is
  * itself full of them (`http://localhost:4173`) without quoting.
+ *
+ * @param {Record<string, string>} vars
+ * @returns {string[]}
+ */
+const varArgs = (vars) =>
+	Object.entries(vars).flatMap(([name, value]) => ['--var', `${name}:${value}`]);
+
+/**
+ * The vars `pnpm preview` always bakes, as wrangler arguments.
  *
  * @param {number} port
  * @returns {string[]}
  */
 export function previewVarArgs(port) {
-	return Object.entries(previewVars(port)).flatMap(([name, value]) => [
-		'--var',
-		`${name}:${value}`
-	]);
+	return varArgs(previewVars(port));
+}
+
+/**
+ * The e2e suite's additional database override, as wrangler arguments. Appended AFTER
+ * `previewVarArgs` by playwright.config.ts, which is also after any `.env` entry — wrangler takes the
+ * last `--var` for a repeated name, and a `--var` beats `.env` (both measured, DAR-81).
+ *
+ * @returns {string[]}
+ */
+export function hermeticDbVarArgs() {
+	return varArgs(hermeticDbVars());
 }

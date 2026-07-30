@@ -142,8 +142,9 @@ is the obvious alternative trigger.
 - **The call site is not tested**, and two separate things stop a suite reaching it. No e2e submits
   the contact form at all — they open the modal and assert the dialog, because the happy-path submit
   has always been exercised by hand rather than in CI to avoid writing rows (see
-  [contact.md](contact.md) → Tests). And in CI it could not succeed anyway: `test.yml` writes
-  `DATABASE_URL=libsql://placeholder.invalid`, so the throttle `SELECT` throws long before the
+  [contact.md](contact.md) → Tests). And under the e2e suite it could not succeed anyway: the run's
+  `DATABASE_URL` is a dead loopback address ([commands.md](commands.md#the-database-the-e2e-suite-runs-against-dar-85)),
+  so the throttle `SELECT` throws long before the
   insert. So `contact.remote.ts` handing over the row's own id and `created_at` — rather than a fresh
   uuid or produce-time, which is what makes redelivery free — is pinned only one layer down, in
   `buildContactLeadSignal`'s spec, and the wiring itself is review territory.

@@ -1,5 +1,6 @@
 import { defineConfig } from '@playwright/test';
 import { portBusyMessage, portListenerReport, previewPort } from './scripts/preview-port.mjs';
+import { hermeticDbVarArgs } from './scripts/preview-vars.mjs';
 
 // The port is DERIVED per checkout (scripts/preview-port.mjs) and passed down to the preview script,
 // so this config and `pnpm preview` cannot disagree about it — they used to hardcode 4173 each.
@@ -14,6 +15,15 @@ const port = previewPort();
 // build answering the tests) is silent.
 const reuseExistingServer = Boolean(process.env.E2E_REUSE_SERVER);
 
+// DAR-85. The suite's server gets a database that resolves without DNS and refuses at connect, baked
+// as `--var`s so it does not depend on the developer's `.env` — the same reason ORIGIN moved here in
+// DAR-81. It replaces a `DATABASE_URL` the CI workflow hand-wrote, which made CI the only run that
+// was hermetic; a local run wrote to the real dev database and produced none of the noise CI did.
+//
+// The value belongs to the HARNESS, not to `pnpm preview` (see preview-vars.mjs): the smoke scripts
+// drive a preview and assert on rows in the `.env` database.
+const hermeticDb = hermeticDbVarArgs();
+
 // Everything below runs ONLY in the main process. Playwright re-imports this config in every test
 // worker, and by then our own webServer holds the port — so an ungated check fails the run against
 // its own server (one identical error per worker; it did, before this line). TEST_WORKER_INDEX is
@@ -22,7 +32,9 @@ if (process.env.TEST_WORKER_INDEX === undefined) {
 	if (reuseExistingServer) {
 		console.warn(
 			`⚠ E2E_REUSE_SERVER: if anything is already on :${port} it will be reused as-is, and these ` +
-				'results describe THAT build rather than the one this run would have made.'
+				'results describe THAT build rather than the one this run would have made — including its ' +
+				'DATABASE_URL, so a hand-started `pnpm preview` runs these specs against the database ' +
+				'in your .env.'
 		);
 	}
 	// Playwright checks the port itself and fails with a bare "already used" — true, but it leaves you
@@ -48,7 +60,7 @@ export default defineConfig({
 	// build first — a cold CI runner regularly needs longer, and a timeout here fails the whole run.
 	// stdout 'pipe' (default: ignore) surfaces the build/wrangler boot log when that timeout hits.
 	webServer: {
-		command: 'pnpm build && pnpm preview',
+		command: `pnpm build && pnpm preview ${hermeticDb.join(' ')}`,
 		port,
 		// Pins the child to the same port by construction rather than by both sides deriving it.
 		env: { PREVIEW_PORT: String(port) },

@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:net';
+import { createServer, isIP, isIPv4 } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -16,7 +16,8 @@ import {
 	reapStrayPortHolder,
 	worktreePort
 } from './preview-port.mjs';
-import { previewVarArgs, previewVars } from './preview-vars.mjs';
+import { importedNames, importsDynamically, importsNamespace } from '../src/lib/server/source-scan';
+import { hermeticDbVarArgs, hermeticDbVars, previewVarArgs, previewVars } from './preview-vars.mjs';
 
 // DAR-79. The preview port used to be the literal 4173 in `playwright.config.ts`, in the `preview`
 // script and in `smoke-signin.mjs`; with every checkout on the same port, Playwright's
@@ -366,5 +367,107 @@ describe('the vars the preview bakes', () => {
 		// fails by silently setting the var to `http`, which reads as a mismatched origin.
 		expect(args).toContain(`ORIGIN:http://localhost:${BASE_PORT}`);
 		expect(args.filter((arg) => arg === '--var')).toHaveLength(args.length / 2);
+	});
+});
+
+// DAR-85. A CI e2e log carried ~441 error lines per run — a workerd DNS-failure log and a native
+// `jsgInternalError` stack per attempt, plus one `Uncaught Error: internal error; reference = …` per
+// query that no code could observe — because `DATABASE_URL` named an unresolvable HOST. The lines are
+// indistinguishable from a real fault, which is the whole cost: the log a reviewer opens when a check
+// goes red was already full of them.
+//
+// Two properties fix it, and each has a failure mode the other cannot see, so both are asserted:
+// the address must not need DNS (that is what the noise was), and the client must still CONSTRUCT
+// (removing the vars silences everything by breaking `getAuth()`, which turns DAR-67's
+// `400 EMAIL_PASSWORD_SIGN_UP_DISABLED` into a 500 that `expect(res.ok()).toBe(false)` still passes —
+// DAR-81's two-gates-failing-closed-into-a-pass, reinstated).
+//
+// Stated as those properties rather than as the literal, per DAR-152: a spec that compares the
+// constant to itself passes against any address, including the unresolvable hostname this replaced.
+describe('the database the e2e suite bakes', () => {
+	it('sets both vars getDb() requires, so the client constructs', () => {
+		// getDb() throws when EITHER is missing, and authOptions calls it eagerly. Absent env is not a
+		// quieter version of a dead database — it is a 500 on every auth route.
+		expect(Object.keys(hermeticDbVars()).sort()).toEqual(['DATABASE_AUTH_TOKEN', 'DATABASE_URL']);
+	});
+
+	it('names an address that cannot trigger a DNS lookup', () => {
+		const { hostname } = new URL(hermeticDbVars().DATABASE_URL);
+		// An IP literal is the property. A hostname — however obviously fake, `.invalid` included — is
+		// resolved, and it is the resolution failure that workerd logs and half-reports.
+		expect(isIP(hostname)).toBeGreaterThan(0);
+		// Loopback too, so a run never emits a packet: a routable literal would merely move the failure
+		// from the resolver to somebody else's network.
+		expect(isIPv4(hostname) ? hostname.startsWith('127.') : hostname === '::1').toBe(true);
+	});
+
+	it('is still a URL the real libsql client accepts', async () => {
+		// The half a "no database" override fails. Constructed through the SAME module getDb() uses, so
+		// this tracks that client's own scheme validation rather than a guess about it — `createClient`
+		// throws URL_SCHEME_NOT_SUPPORTED for anything it cannot speak, and the query failing later is
+		// the point.
+		const { createClient } = await import('@libsql/client/web');
+		const { DATABASE_URL: url, DATABASE_AUTH_TOKEN: authToken } = hermeticDbVars();
+		expect(() => createClient({ url, authToken })).not.toThrow();
+	});
+
+	it('is not reachable from `pnpm preview` at all, by any import spelling', () => {
+		// The route the previous test does NOT cover, and the likelier of the two: `preview.mjs` is where
+		// the other vars are assembled, so "this belongs next to them" moves the call one file over and
+		// breaks both smoke scripts without touching `previewVars`. Checked through the repo's own
+		// import scanner rather than a substring, so the four DAR-102 walk-past routes (alias,
+		// namespace, re-export, relative specifier) and DAR-121's fifth (dynamic) are all covered, and
+		// so `preview.mjs` stays free to DISCUSS the separation in a comment — the scanner strips them.
+		const PREVIEW = 'scripts/preview.mjs';
+		const VARS = 'scripts/preview-vars.mjs';
+		expect(importedNames(PREVIEW, VARS)).toEqual(['previewVarArgs']);
+		expect(importsNamespace(PREVIEW, VARS)).toBe(false);
+		expect(importsDynamically(PREVIEW, VARS)).toBe(false);
+	});
+
+	it('is NOT among the vars `pnpm preview` bakes, because the smoke scripts need a real database', () => {
+		// `smoke:invite` and `smoke:waitlist` are hand-run against a preview and assert on rows in the
+		// `.env` database — they are the only coverage the invite path and the composed waitlist flow
+		// have (DAR-80, DAR-91, DAR-103). Folding these two vars into `previewVars` would break every
+		// run of both, and their own diagnostic ("is the preview pointed at a different database than
+		// .env?") would send the reader after an `.env` that is fine.
+		//
+		// Two-sided on purpose: this fails if the override moves INTO previewVars, and the disjointness
+		// check below fails if the two sets start overlapping either way.
+		const vars = previewVars(BASE_PORT);
+		expect(Object.keys(vars)).not.toContain('DATABASE_URL');
+		expect(Object.keys(vars)).not.toContain('DATABASE_AUTH_TOKEN');
+		const overlap = Object.keys(hermeticDbVars()).filter((name) => name in vars);
+		expect(overlap).toEqual([]);
+	});
+
+	it('is applied by the e2e harness, not merely available to it', async () => {
+		// The wiring is the half that fails silently: everything above passes against an unused export,
+		// and the suite would go on running against whatever `.env` names. Asserted through the config's
+		// actual `webServer.command`, so "imported but never appended" fails too.
+		//
+		// TEST_WORKER_INDEX first: the config's port-collision check is gated on it being undefined, and
+		// under vitest it is — so an ungated import would throw whenever a preview happens to be up on
+		// this checkout's port. Set before the dynamic import, which is why the import is not top-level.
+		const previous = process.env.TEST_WORKER_INDEX;
+		process.env.TEST_WORKER_INDEX = 'vitest';
+		try {
+			const config = (await import('../playwright.config')).default;
+			// `webServer` is legally a single config OR an array of them, so flatten rather than assume:
+			// the claim is "the suite starts no server without this override", which has to keep holding
+			// if a second one is ever added.
+			const servers = [config.webServer ?? []].flat();
+			expect(servers).not.toHaveLength(0);
+			// wrangler takes the LAST `--var` for a repeated name and preview.mjs appends forwarded
+			// arguments after its own, so landing in this command is what makes the override win.
+			for (const server of servers) {
+				for (const arg of hermeticDbVarArgs().filter((a) => a !== '--var')) {
+					expect(server.command).toContain(`--var ${arg}`);
+				}
+			}
+		} finally {
+			if (previous === undefined) delete process.env.TEST_WORKER_INDEX;
+			else process.env.TEST_WORKER_INDEX = previous;
+		}
 	});
 });

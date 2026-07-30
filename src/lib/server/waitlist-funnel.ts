@@ -10,7 +10,10 @@
 // await and nothing that throws.
 //
 // That also keeps the hermetic e2e green: with a placeholder DATABASE_URL the insert rejects at the
-// network, the rejection is caught here, and /waitlist renders and advances exactly as before.
+// network, the rejection is caught here, and /waitlist renders and advances exactly as before. That
+// is why a suite run logs ~82 `waitlist funnel capture failed` lines and they are all correct — the
+// noise DAR-85 removed was workerd's, from an address that needed DNS, not this path's; the
+// placeholder is now a loopback IP (scripts/preview-vars.mjs) and nothing here changed.
 import { count } from 'drizzle-orm';
 import { waitlistFunnelEvent } from './db/schema';
 import type { Db } from './db';
