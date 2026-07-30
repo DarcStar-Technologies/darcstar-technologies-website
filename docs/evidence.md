@@ -212,3 +212,16 @@ each replay a proven invariant` reports a leak and is perfectly publishable, the
   corpus trips nothing at a threshold of 40 or even 0, so that mutation looks decisive and is
   vacuous. The two that fire, one per route: widening `THEOREM_CONTEXT` to "attention" flags the
   FlashAttention papers, and pointing a safety pattern at `/\bthe\b/` flags 26 documents.
+- **The one false positive you will actually hit is `REALTIME_MULTIPLE` beside proof language, and
+  the answer is to reword (DAR-171).** A verification post naturally discusses both the proofs and
+  the performance claim, so "…is measured and the **13,000×** headroom is derived from it — neither
+  is a theorem" puts `13000` inside the window of both "corpus" and "theorem". Measured — it fired
+  on the first milestone post drafted after the scan existed, which is the useful part: this is the
+  moment the reflex fix (widen the band) looks reasonable, and taking it is what turned the previous
+  version of this guard into a no-op. Both tempting fixes are worse than the reword. Narrowing
+  "corpus" or "theorem" guts the detector generally to fix one sentence. Excusing "any integer equal
+  to a figure we publish" sounds principled and **opens the door this module exists to close**: a
+  catalog total added to `$lib/evidence.ts` would be excused by that list _and_ sail through the
+  constants scan, since a bare `346` in isolation carries no theorem context of its own. Dropping
+  the numerals costs nothing — the performance figures have their own claim card, and prose about
+  proofs does not need them.

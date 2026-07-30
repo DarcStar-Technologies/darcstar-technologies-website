@@ -27,6 +27,18 @@
 // If it demonstrably is not, the copy is fine and the fix belongs in the rule — narrow a context
 // term or make the sentence unambiguous. Never widen the band and never delete a route: those
 // are the two edits that turn this back into the guard it replaced.
+//
+// THE ONE COLLISION YOU WILL ACTUALLY HIT is `REALTIME_MULTIPLE` beside proof language (DAR-171).
+// A verification post naturally discusses both the proofs and the performance claim, and
+// "…is measured and the 13,000× headroom is derived from it — neither is a theorem" puts 13000
+// inside the window of both "corpus" and "theorem". Measured: it fires, on the first real post
+// drafted after this scan existed. **Reword the sentence; do not touch the rule.** The two
+// tempting fixes are both worse. Narrowing "corpus" or "theorem" guts the detector generally to
+// fix one sentence. Excusing "any integer equal to a figure we publish" sounds principled and
+// opens the exact door this module closes: a catalog total added to $lib/evidence.ts would be
+// excused by that list AND sail through the constants scan, since a bare `346` in isolation
+// carries no theorem context of its own. Dropping the numerals costs nothing — the performance
+// figures have their own claim card, and prose about proofs does not need them.
 
 /** Wording that marks a number as a claim about the proof corpus rather than a benchmark
  * figure, a version, or a page count. Deliberately broad: it only ever NARROWS a hit that
