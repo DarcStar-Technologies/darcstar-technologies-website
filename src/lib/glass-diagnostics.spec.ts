@@ -10,7 +10,7 @@ import { GLASS_DIAGNOSTIC_FLAGS, STATIC_CLIP_PATH, glassDiagnostics } from './gl
 const parse = (query: string) => glassDiagnostics(new URLSearchParams(query));
 
 describe('glassDiagnostics', () => {
-	const inert = { noSheen: false, noBlur: false, noClip: false, attr: undefined };
+	const inert = { noSheen: false, noBlur: false, noClip: false, fix2: false, attr: undefined };
 
 	it('is inert with no parameter — and emits no attribute at all', () => {
 		expect(parse('')).toEqual(inert);
@@ -28,6 +28,7 @@ describe('glassDiagnostics', () => {
 		expect(parse('glassdiag=nosheen')).toEqual({ ...inert, noSheen: true, attr: 'nosheen' });
 		expect(parse('glassdiag=noblur')).toEqual({ ...inert, noBlur: true, attr: 'noblur' });
 		expect(parse('glassdiag=noclip')).toEqual({ ...inert, noClip: true, attr: 'noclip' });
+		expect(parse('glassdiag=fix2')).toEqual({ ...inert, fix2: true, attr: 'fix2' });
 	});
 
 	it('composes arms, comma- or space-separated, in any case or order', () => {

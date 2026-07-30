@@ -516,3 +516,37 @@ select.glass-field {
 	-webkit-backdrop-filter: none;
 	backdrop-filter: none;
 }
+
+/* The `fix2` arm's two planes (see $lib/glass-sheen-v2.ts). Temporary alongside `.sheen-plane`:
+   whichever survives the device test keeps its name and the other goes with the ticket.
+
+   NEITHER may gain `overflow: hidden` (it would clip the fixed beams to the plane's own box —
+   nothing at all for the zero-height one) nor `transform` / `filter` / `contain` / `will-change`
+   (each creates a containing block for a fixed descendant, which would silently make the beams
+   scroll with the page). `clip-path` does not, which is what the whole design rests on. */
+.sheen-plane-v2 {
+	z-index: 70;
+	pointer-events: none;
+	clip-path: path('M0 0Z'); /* nothing until JS sets the glass windows */
+}
+/* In the document's scroll flow, so the browser moves it and its page-coordinate clip in step with
+   the panels. `height: 0` because an absolutely positioned element contributes to scrollable
+   overflow — sizing it to the document would grow the document, then the next measurement. Clip
+   coordinates are not limited to the border box, so zero height clips correctly regardless. */
+.sheen-plane-v2[data-sheen-plane='page'] {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 0;
+}
+/* Sticky/fixed glass — the nav and the dialog — whose viewport rects don't move with scroll. */
+.sheen-plane-v2[data-sheen-plane='viewport'] {
+	position: fixed;
+	inset: 0;
+}
+/* Fixed rather than absolute: viewport-anchored with no JS, and it must be fixed for the
+   zero-height page plane to light anything at all. */
+.sheen-plane-v2 .sheen-plane__beam {
+	position: fixed;
+}

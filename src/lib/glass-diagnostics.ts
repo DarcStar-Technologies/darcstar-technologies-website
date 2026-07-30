@@ -26,6 +26,9 @@
 //   S2  the plane's mere presence as a large fixed composited layer      → the feature can't work
 //                                                                          this way on mobile
 //
+//   ?glassdiag=fix2             ROUND 3 — the candidate fix itself (glass-sheen-v2.ts), opt-in so the
+//                               default keeps reproducing the artifact for comparison in one deploy.
+//
 //   ?glassdiag=noclip           ROUND 2. The plane and beam mount, but `createSheenSync` never
 //                               attaches (no scroll listener, no per-frame write) and the clip is
 //                               pinned to a STATIC path. Ghost returns → S2. Stays clean → S1.
@@ -49,7 +52,7 @@
 // here would unfrost the site or kill the sheen for everyone.
 
 /** The recognized arms. A token outside this list is ignored, never echoed. */
-export const GLASS_DIAGNOSTIC_FLAGS = ['nosheen', 'noblur', 'noclip'] as const;
+export const GLASS_DIAGNOSTIC_FLAGS = ['nosheen', 'noblur', 'noclip', 'fix2'] as const;
 export type GlassDiagnosticFlag = (typeof GLASS_DIAGNOSTIC_FLAGS)[number];
 
 /** The query parameter carrying them, comma- or space-separated. */
@@ -60,6 +63,12 @@ export interface GlassDiagnostics {
 	noSheen: boolean;
 	/** Drop every glass `backdrop-filter` to `none` (the CSS half lives in layout.css). */
 	noBlur: boolean;
+	/**
+	 * Swap the sheen for the DAR-170 candidate fix ($lib/glass-sheen-v2): two planes with static,
+	 * scroll-invariant clips and no scroll listener on the hot path. Opt-in while it is measured on a
+	 * device, so the default path stays exactly what production ships.
+	 */
+	fix2: boolean;
 	/**
 	 * Mount the plane and beam but never update the clip: no `createSheenSync`, so no scroll
 	 * listener and no per-frame write, with the clip pinned to `STATIC_CLIP_PATH`. Ignored when
@@ -77,7 +86,13 @@ export interface GlassDiagnostics {
 	attr: string | undefined;
 }
 
-const INERT: GlassDiagnostics = { noSheen: false, noBlur: false, noClip: false, attr: undefined };
+const INERT: GlassDiagnostics = {
+	noSheen: false,
+	noBlur: false,
+	noClip: false,
+	fix2: false,
+	attr: undefined
+};
 
 /**
  * The `noclip` arm's frozen clip. A `path()` like the real one (see the note up top — same property,
@@ -111,6 +126,7 @@ export function glassDiagnostics(params: URLSearchParams): GlassDiagnostics {
 		noSheen: active.includes('nosheen'),
 		noBlur: active.includes('noblur'),
 		noClip: active.includes('noclip'),
+		fix2: active.includes('fix2'),
 		attr: active.join(' ')
 	};
 }

@@ -9,6 +9,7 @@
 	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import { loginDialog } from '$lib/login-dialog.svelte';
 	import { createSheenSync } from '$lib/glass-sheen';
+	import { createSheenSyncV2 } from '$lib/glass-sheen-v2';
 	import { glassDiagnostics, STATIC_CLIP_PATH } from '$lib/glass-diagnostics';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
@@ -86,7 +87,34 @@
      one: not rendering the node means `createSheenSync` never attaches, so the arm removes the scroll
      listener and the per-frame clip-path write as well as the beam. Hiding it in CSS would leave the
      prime suspect running. `sheen` simply stays undefined — every call site already optional-chains. -->
-{#if !glassDiag.noSheen}
+{#if glassDiag.fix2}
+	<!-- DAR-170 candidate fix ($lib/glass-sheen-v2), opt-in. Two planes, each with a clip that does
+	     not depend on any JS-written value: the page plane sits in the document's scroll flow so the
+	     BROWSER moves it and its page-coordinate clip together with the panels, and the viewport plane
+	     is fixed for the sticky nav and the dialog, whose viewport rects don't move. Nothing runs per
+	     scroll frame. The beams are `position: fixed` — `clip-path` does not create a containing block
+	     (measured; transform/filter/contain/will-change all do), so they stay screen-anchored with no
+	     JS at all. Do not add any of those properties to these planes. -->
+	<div class="sheen-plane-v2" data-sheen-plane="page" aria-hidden="true">
+		<div class="sheen-plane__beam"></div>
+	</div>
+	<div
+		class="sheen-plane-v2"
+		data-sheen-plane="viewport"
+		aria-hidden="true"
+		{@attach (node) => {
+			const pagePlane = node.parentElement?.querySelector<HTMLElement>('[data-sheen-plane="page"]');
+			if (!pagePlane) return;
+			sheen = createSheenSyncV2(pagePlane, node);
+			return () => {
+				sheen?.destroy();
+				sheen = undefined;
+			};
+		}}
+	>
+		<div class="sheen-plane__beam"></div>
+	</div>
+{:else if !glassDiag.noSheen}
 	<div
 		class="sheen-plane"
 		aria-hidden="true"
