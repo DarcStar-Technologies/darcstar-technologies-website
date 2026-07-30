@@ -9,8 +9,6 @@
 	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import { loginDialog } from '$lib/login-dialog.svelte';
 	import { createSheenSync } from '$lib/glass-sheen';
-	import { createSheenSyncV2 } from '$lib/glass-sheen-v2';
-	import { glassDiagnostics, STATIC_CLIP_PATH } from '$lib/glass-diagnostics';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { jsonLdScript, organizationJsonLd } from '$lib/jsonld';
@@ -25,19 +23,10 @@
 	// — and must be the FLOOR, not `[]`, or that page would ship an empty social row.
 	const socialLinks = $derived(page.data.socialLinks ?? FALLBACK_SOCIAL_LINKS);
 
-	// TEMPORARY (DAR-170) — remove with the ticket, along with $lib/glass-diagnostics and the
-	// diagnostic block at the foot of layout.css. `?glassdiag=nosheen|noblur` isolates the two
-	// candidate causes of the mobile scroll ghosting so one deploy can answer the whole matrix on a
-	// real device. Derived from the URL, so it survives client-side navigation between pages (the
-	// artifact appears on all of them) and is already correct in the SSR'd HTML — no unfrosted flash
-	// on the `noblur` arm. Inert without the parameter: `attr` is then undefined and Svelte omits
-	// the attribute entirely.
-	const glassDiag = $derived(glassDiagnostics(page.url.searchParams));
-
-	// One coherent light source across all frosted glass (see `.sheen-plane`). The sync
-	// keeps the plane's clip-path tracking the glass windows; re-clip when a modal (contact or
-	// login) opens/closes so its panel joins the beam (and the page panels drop out behind the
-	// scrim while it's up).
+	// One coherent light source across all frosted glass (see `.sheen-plane`). The sync keeps each
+	// plane's clip-path tracking the glass windows; re-clip when a modal (contact or login)
+	// opens/closes so its panel joins the beam (and the page panels drop out behind the scrim while
+	// it's up).
 	let sheen: ReturnType<typeof createSheenSync> | undefined;
 	$effect(() => {
 		// Read both up front (not a short-circuiting `||`) so the effect tracks BOTH dialogs and
@@ -66,11 +55,7 @@
 	)}
 </svelte:head>
 
-<!-- `data-glass-diag` is DAR-170's diagnostic hook (absent in normal operation) and carries the
-     `noblur` arm to layout.css. It sits on this wrapper rather than <html>, which covers every
-     scroll-relevant glass surface — the nav, the cards, the buttons, the footer icons. The portalled
-     dialogs mount outside it and so keep their blur; they are not part of a scroll artifact. -->
-<div class="flex min-h-dvh flex-col" data-glass-diag={glassDiag.attr}>
+<div class="flex min-h-dvh flex-col">
 	<Header />
 	<main class="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-10">
 		{@render children()}
@@ -82,60 +67,35 @@
      void before it slides under/around the glass nav. See .header-scrim. -->
 <div class="header-scrim" aria-hidden="true"></div>
 
-<!-- One light plane clipped to the frosted-glass windows (see .sheen-plane).
-     The `{#if}` is DAR-170's `nosheen` arm and is the reason this is a render gate rather than a CSS
-     one: not rendering the node means `createSheenSync` never attaches, so the arm removes the scroll
-     listener and the per-frame clip-path write as well as the beam. Hiding it in CSS would leave the
-     prime suspect running. `sheen` simply stays undefined — every call site already optional-chains. -->
-{#if glassDiag.fix2}
-	<!-- DAR-170 candidate fix ($lib/glass-sheen-v2), opt-in. Two planes, each with a clip that does
-	     not depend on any JS-written value: the page plane sits in the document's scroll flow so the
-	     BROWSER moves it and its page-coordinate clip together with the panels, and the viewport plane
-	     is fixed for the sticky nav and the dialog, whose viewport rects don't move. Nothing runs per
-	     scroll frame. The beams are `position: fixed` — `clip-path` does not create a containing block
-	     (measured; transform/filter/contain/will-change all do), so they stay screen-anchored with no
-	     JS at all. Do not add any of those properties to these planes. -->
-	<div class="sheen-plane-v2" data-sheen-plane="page" aria-hidden="true">
-		<div class="sheen-plane__beam"></div>
-	</div>
-	<div
-		class="sheen-plane-v2"
-		data-sheen-plane="viewport"
-		aria-hidden="true"
-		{@attach (node) => {
-			const pagePlane = node.parentElement?.querySelector<HTMLElement>('[data-sheen-plane="page"]');
-			if (!pagePlane) return;
-			sheen = createSheenSyncV2(pagePlane, node);
-			return () => {
-				sheen?.destroy();
-				sheen = undefined;
-			};
-		}}
-	>
-		<div class="sheen-plane__beam"></div>
-	</div>
-{:else if !glassDiag.noSheen}
-	<div
-		class="sheen-plane"
-		aria-hidden="true"
-		style:clip-path={glassDiag.noClip ? STATIC_CLIP_PATH : undefined}
-		{@attach (node) => {
-			// DAR-170's `noclip` arm: the plane and beam mount, but nothing observes scroll, so the
-			// per-frame clip write is gone while the fixed animated layer stays. Separates "the clip
-			// updates lag" from "this layer cannot sit above the glass on mobile at all". The inline
-			// clip above replaces the plane's CSS default (which hides everything until JS runs) with
-			// a static path, so the beam is actually visible with no sync attached.
-			if (glassDiag.noClip) return;
-			sheen = createSheenSync(node);
-			return () => {
-				sheen?.destroy();
-				sheen = undefined;
-			};
-		}}
-	>
-		<div class="sheen-plane__beam"></div>
-	</div>
-{/if}
+<!-- Two light planes clipped to the frosted-glass windows (see .sheen-plane + glass-sheen.ts).
+     One per anchoring regime, because that is what lets both clips be scroll-invariant: the page
+     plane rides the document's scroll flow so the BROWSER moves it and its page-coordinate clip in
+     step with the panels, and the viewport plane is fixed for the sticky nav and the dialog, whose
+     viewport rects don't move. Nothing runs per scroll frame — rewriting the clip there is what
+     ghosted on mobile (DAR-170).
+
+     The beams are `position: fixed`, which keeps them screen-anchored with no JS: `clip-path` does
+     not create a containing block for a fixed descendant, while `transform`, `filter`, `contain` and
+     `will-change` all do. Do not add any of those to these planes. -->
+<div class="sheen-plane" data-sheen-plane="page" aria-hidden="true">
+	<div class="sheen-plane__beam"></div>
+</div>
+<div
+	class="sheen-plane"
+	data-sheen-plane="viewport"
+	aria-hidden="true"
+	{@attach (node) => {
+		const pagePlane = node.parentElement?.querySelector<HTMLElement>('[data-sheen-plane="page"]');
+		if (!pagePlane) return;
+		sheen = createSheenSync(pagePlane, node);
+		return () => {
+			sheen?.destroy();
+			sheen = undefined;
+		};
+	}}
+>
+	<div class="sheen-plane__beam"></div>
+</div>
 
 <BackToTop />
 

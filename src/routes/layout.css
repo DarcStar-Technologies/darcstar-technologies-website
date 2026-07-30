@@ -242,17 +242,45 @@ html {
    (scrim 40 / header 50 / modal 60) so it can catch the nav and the modal too; being
    clip-path'd to glass + pointer-events:none, it never draws on — or blocks — anything
    else. While the modal is open the clip switches to the modal's glass only, so page
-   panels don't bleed sheen over the scrim. */
+   panels don't bleed sheen over the scrim.
+
+   TWO planes, one per anchoring regime (DAR-170), which is what lets both clips be
+   scroll-invariant — rewriting a clip on every scroll frame is what ghosted on mobile.
+   NEITHER may gain `overflow: hidden` (it would clip the fixed beams to the plane's own
+   box — nothing at all for the zero-height one) nor `transform` / `filter` / `contain` /
+   `will-change`, each of which creates a containing block for a fixed descendant and would
+   silently make the beams scroll with the page. `clip-path` does not, which is what the
+   whole design rests on. */
 .sheen-plane {
+	pointer-events: none;
+	clip-path: path('M0 0Z'); /* nothing until JS sets the glass windows */
+}
+/* In the document's scroll flow, so the browser moves it and its page-coordinate clip in
+   step with the panels. `height: 0` because an absolutely positioned element contributes to
+   scrollable overflow — sizing it to the document would grow the document, then the next
+   measurement; clip coordinates aren't limited to the border box, so zero height clips
+   correctly regardless. z-30 puts it BELOW the scrim (40): a panel scrolled under the nav
+   still has a clip window there, and painting its sheen above the scrim revealed content the
+   scrim exists to dissolve. */
+.sheen-plane[data-sheen-plane='page'] {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 0;
+	z-index: 30;
+}
+/* Sticky/fixed glass — the nav and the dialog — whose viewport rects don't move with scroll.
+   Stays at 70, above the scrim/header/modal, so it can still light them. */
+.sheen-plane[data-sheen-plane='viewport'] {
 	position: fixed;
 	inset: 0;
 	z-index: 70;
-	pointer-events: none;
-	overflow: hidden;
-	clip-path: path('M0 0Z'); /* nothing until JS sets the glass windows */
 }
 .sheen-plane__beam {
-	position: absolute;
+	/* Fixed, not absolute: viewport-anchored with no JS, and it must be fixed for the
+	   zero-height page plane to light anything at all. */
+	position: fixed;
 	/* Oversized (2.2× viewport) with a matching ±24% sweep so the beam's EDGES always
 	   stay off-screen — otherwise an edge crosses the viewport near the top and the nav
 	   catches a hard-edged partial sheen (looks like a local flash) while the top of the
@@ -491,69 +519,4 @@ select.glass-field {
 	.sheen-plane__beam {
 		animation: none;
 	}
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────────────────────
-   TEMPORARY diagnostic (DAR-170) — DELETE WITH THE TICKET, along with $lib/glass-diagnostics
-   and its wiring in +layout.svelte.
-
-   The `noblur` arm of the mobile scroll-ghosting bisect: `?glassdiag=noblur` sets
-   `data-glass-diag` on the layout wrapper, and this strips every frosted surface's
-   backdrop-filter. If the ghosting survives with no blur anywhere, the cause is the sheen
-   plane's per-frame clip-path write; if it stops, the cause is backdrop-filter re-sampling
-   under compositor scroll. The `nosheen` arm is the complementary render gate in the layout.
-
-   Selection matches the sheen's own structural rule (`[class*="glass-"]`) rather than an
-   enumerated list, for exactly the reason #108 gives: a Tailwind `@utility` inlines styles but
-   never puts its own name on the element, so a class list here would silently miss the panels —
-   the one thing this arm must not do.
-
-   NO `!important`, and that is deliberate rather than lucky: `@utility glass` compiles into
-   Tailwind's `utilities` layer, while this block is unlayered, and unlayered rules beat layered
-   ones in the cascade regardless of specificity.
-   ───────────────────────────────────────────────────────────────────────────────────────────── */
-[data-glass-diag~='noblur'] [class*='glass-'] {
-	-webkit-backdrop-filter: none;
-	backdrop-filter: none;
-}
-
-/* The `fix2` arm's two planes (see $lib/glass-sheen-v2.ts). Temporary alongside `.sheen-plane`:
-   whichever survives the device test keeps its name and the other goes with the ticket.
-
-   NEITHER may gain `overflow: hidden` (it would clip the fixed beams to the plane's own box —
-   nothing at all for the zero-height one) nor `transform` / `filter` / `contain` / `will-change`
-   (each creates a containing block for a fixed descendant, which would silently make the beams
-   scroll with the page). `clip-path` does not, which is what the whole design rests on. */
-.sheen-plane-v2 {
-	z-index: 70;
-	pointer-events: none;
-	clip-path: path('M0 0Z'); /* nothing until JS sets the glass windows */
-}
-/* In the document's scroll flow, so the browser moves it and its page-coordinate clip in step with
-   the panels. `height: 0` because an absolutely positioned element contributes to scrollable
-   overflow — sizing it to the document would grow the document, then the next measurement. Clip
-   coordinates are not limited to the border box, so zero height clips correctly regardless. */
-.sheen-plane-v2[data-sheen-plane='page'] {
-	position: absolute;
-	top: 0;
-	left: 0;
-	width: 100%;
-	height: 0;
-	/* BELOW the scrim (40) and header (50), unlike the single plane it replaces. That plane sat at 70
-	   so it could light the nav and the modal as well as the page; splitting the two regimes means
-	   this one no longer has to, and being above the scrim was actively wrong: a panel scrolled UNDER
-	   the nav still has a clip window there, so its sheen painted over the scrim and the nav — a lit
-	   rectangle revealing content the scrim exists to dissolve. Reported as "too much transparency
-	   behind the navbar". Now the page sheen is occluded exactly like the panel it sits on. */
-	z-index: 30;
-}
-/* Sticky/fixed glass — the nav and the dialog — whose viewport rects don't move with scroll. */
-.sheen-plane-v2[data-sheen-plane='viewport'] {
-	position: fixed;
-	inset: 0;
-}
-/* Fixed rather than absolute: viewport-anchored with no JS, and it must be fixed for the
-   zero-height page plane to light anything at all. */
-.sheen-plane-v2 .sheen-plane__beam {
-	position: fixed;
 }
