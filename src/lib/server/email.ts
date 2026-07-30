@@ -70,11 +70,21 @@ export async function postEmail(apiKey: string, email: OutboundEmail): Promise<v
  * for the reasoning, which is how a subtle invariant ends up documented twice and drifting once.
  *
  * TAKES THUNKS, NOT EMAILS, and that is the load-bearing part: the caller builds INSIDE its thunk, so
- * a synchronous *builder* throw is captured per-email here too. Hand this built `OutboundEmail`s
- * instead and a throw in the ack builder happens before the fan-out starts and takes the lead down
- * with it — the exact invariant this exists to hold. It also keeps `postEmail` at the CALL SITE,
- * which `email-senders.spec.ts` counts per file (DAR-121); wrapping the send here would collapse
- * seven declared senders into one and blind that rule.
+ * a *builder* throw is contained per-email rather than only a send failure. Hand this built
+ * `OutboundEmail`s instead and a throw in the ack builder happens before the fan-out starts and takes
+ * the lead down with it — the exact invariant this exists to hold. It also keeps `postEmail` at the
+ * CALL SITE, which `email-senders.spec.ts` counts per file (DAR-121); wrapping the send here would
+ * collapse seven declared senders into one and blind that rule.
+ *
+ * THE `async` ON THE MAP IS NOT DECORATION. `() => Promise<void>` is satisfied by a plain function
+ * that returns a promise, so a thunk is free to throw SYNCHRONOUSLY — and a bare
+ * `senders.map(([, send]) => send())` lets that throw escape before `allSettled` is ever reached,
+ * taking the sibling send down with it and rejecting out of here. Measured, not theorised: the lead
+ * did not run. Both call sites happen to use `async` thunks, so nothing reachable does this today,
+ * which is exactly why it needs the wrapper — dropping `async` from `async () => postEmail(…)` reads
+ * as a no-op tidy-up and would silently reinstate the failure this function exists to prevent. The
+ * guarantee is now independent of how the caller writes the thunk. (Both hand-written copies this
+ * replaced had the same hole; the refactor is what turned it into a documented promise.)
  *
  * Logs by ROLE, never the recipient address — no PII in logs.
  */
@@ -82,7 +92,7 @@ export async function settleSends(
 	label: string,
 	senders: [role: string, send: () => Promise<void>][]
 ): Promise<void> {
-	const results = await Promise.allSettled(senders.map(([, send]) => send()));
+	const results = await Promise.allSettled(senders.map(async ([, send]) => send()));
 	results.forEach((result, i) => {
 		if (result.status === 'rejected') {
 			console.error(`${label} ${senders[i][0]} email failed`, result.reason);
