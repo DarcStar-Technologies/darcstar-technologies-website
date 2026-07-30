@@ -73,8 +73,8 @@ export async function postEmail(apiKey: string, email: OutboundEmail): Promise<v
  * a synchronous *builder* throw is captured per-email here too. Hand this built `OutboundEmail`s
  * instead and a throw in the ack builder happens before the fan-out starts and takes the lead down
  * with it — the exact invariant this exists to hold. It also keeps `postEmail` at the CALL SITE,
- * which `email-senders.spec.ts` counts per file (DAR-121); wrapping the send here would collapse six
- * declared senders into one and blind that rule.
+ * which `email-senders.spec.ts` counts per file (DAR-121); wrapping the send here would collapse
+ * seven declared senders into one and blind that rule.
  *
  * Logs by ROLE, never the recipient address — no PII in logs.
  */
