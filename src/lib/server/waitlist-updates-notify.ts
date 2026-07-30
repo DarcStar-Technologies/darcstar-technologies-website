@@ -20,16 +20,17 @@
 import type { Locale } from '$lib/paraglide/runtime';
 import type { Db } from './db';
 import type { WaitlistSigningSecret } from './waitlist-secret';
-import { CONTACT_EMAIL, SITE_NAME } from '$lib/site';
+import { CONTACT_EMAIL, EMAIL_FROM } from '$lib/site';
 import { m } from '$lib/paraglide/messages.js';
 import { type OutboundEmail, escapeHtml, postEmail } from './email';
 import { claimUpdatesConfirmSend } from './waitlist-store';
 import { mintUpdatesConfirmToken, mintUpdatesUnsubscribeToken } from './waitlist-updates-token';
 
-// Same verified role alias as the ack and the invitation, Reply-To the monitored info@ inbox — which
-// matters here for the same reason it does on an invitation: an unexpected "did you ask for this?" is
-// exactly the mail somebody wants to answer with a human question.
-const FROM = `${SITE_NAME} <${CONTACT_EMAIL}>`;
+// Same verified role alias as the ack and the invitation (`EMAIL_FROM`, site.ts — six mailers were
+// each building that string themselves), Reply-To the monitored info@ inbox, which matters here for
+// the same reason it does on an invitation: an unexpected "did you ask for this?" is exactly the mail
+// somebody wants to answer with a human question.
+const FROM = EMAIL_FROM;
 
 // RFC 3834 auto-reply headers, as on the waitlist ack: this is machine-generated and must not start a
 // loop with an out-of-office responder.

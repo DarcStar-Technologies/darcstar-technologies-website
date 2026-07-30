@@ -20,6 +20,12 @@ describe('buildUpdatesConfirmEmail', () => {
 		const mail = build();
 		expect(mail.to).toBe('ada@example.com');
 		expect(mail.subject).toBe(m.waitlist_updates_confirm_email_subject({}, { locale: 'en' }));
+		// The verified role alias, Reply-To a mailbox a human reads — this message invites an answer
+		// more than any other in the repo, so a `no-reply@` here would be a defect. Sourced from the
+		// shared `EMAIL_FROM`, asserted as the LITERAL, since a test reading the same constant the code
+		// reads would agree with whatever that constant became.
+		expect(mail.from).toBe('DarcStar Technologies <info@darcstar.tech>');
+		expect(mail.replyTo).toBe('info@darcstar.tech');
 	});
 
 	// BOTH LINKS, IN BOTH BODIES. The escape hatch is the only control that helps somebody whose

@@ -166,8 +166,10 @@ describe('sendContactEmails', () => {
 
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 		expect(errSpy).toHaveBeenCalledTimes(1);
-		// Logged by role, not by recipient address (no PII in logs).
-		expect(errSpy.mock.calls[0][0]).toContain('ack');
+		// Logged by role, not by recipient address (no PII in logs). The WHOLE line, matching the
+		// waitlist sibling: since `settleSends` made the label an argument, a substring match on 'ack'
+		// would pass just as happily with this fan-out logging under the other one's name.
+		expect(errSpy.mock.calls[0][0]).toBe('contact ack email failed');
 		errSpy.mockRestore();
 	});
 });

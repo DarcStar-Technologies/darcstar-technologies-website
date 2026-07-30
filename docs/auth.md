@@ -155,10 +155,13 @@ escalation to reach through it). No JS required; two-step `<details>` confirm, s
    below). **Not** `auth.api.requestPasswordReset`, for two reasons: it is
    capped at 3/hour/IP (right for a public trigger, wrong for a staff batch), and it _swallows send
    failures_ — `runInBackgroundOrAwait` logs and returns `{ status: true }` regardless.
-3. **Send it, awaited.** `sendActivationEmail` (`activation-email.ts`, Resend, mirrors
-   `password-reset-email.ts`). This is the **one outbound mail in the codebase that is awaited and
-   whose failure surfaces**: fire-and-forget is right when dropping a visitor's own submission would
-   be worse, but here the operator is the only person who can retry.
+3. **Send it, awaited.** `sendActivationEmail` (`activation-email.ts`, Resend). It shares its
+   **layout** with `password-reset-email.ts` + `verification-email.ts` (`link-email.ts` — the three
+   were byte-identical apart from their message prefix), but not its **failure policy**: this is the
+   **one outbound mail in the codebase that is awaited and whose failure surfaces**. Fire-and-forget
+   is right when dropping a visitor's own submission would be worse, but here the operator is the
+   only person who can retry — so the send stays in this module, which is also what
+   `email-senders.spec.ts` requires (see [legal](legal.md)).
 4. **Stamp, then log.** Only now does `markWaitlistInvited` set `invited_at`/`invited_by`, so the
    column means "a message was accepted by Resend", never "we tried" — a send failure leaves the row
    looking un-invited and the button still saying Invite, which is the correct next move. Retrying is
@@ -237,8 +240,9 @@ hammering a permanently-400ing endpoint for free.
 **Tests.** `auth.spec.ts` (the boundary + the surviving staff path + controls); `activation.spec.ts`
 (mint here, redeem through better-auth's own `resetPassword`, prove the new password signs in — this
 is the pin for the `reset-password:` prefix coupling, plus the no-password-account path production
-actually uses); `activation-email.spec.ts` (wire shape, escaping, and that it doesn't read as a
-password reset); `waitlist-invite.spec.ts` × 2 (the derivation, and the UPDATE predicates);
+actually uses); `activation-email.spec.ts` (that it is wired to its OWN copy family, that it doesn't
+read as a password reset, and the seven-day expiry — the shared layout's mechanics live in
+`link-email.spec.ts`); `waitlist-invite.spec.ts` × 2 (the derivation, and the UPDATE predicates);
 `admin/waitlist/page.svelte.spec.ts` (badges, Invite-vs-Resend, outcome banners);
 `signup/page.svelte.e2e.ts` (the notice renders, no form); and **`auth-api.e2e.ts`** — the boundary
 against the deployed worker, `POST /api/auth/sign-up/email` → 400 `EMAIL_PASSWORD_SIGN_UP_DISABLED`.
@@ -297,8 +301,9 @@ change** — the reset token lives in the existing `verification` table (identif
 config is behavioral only, so it stays out of `auth-cli.ts`.
 
 **Config** (`auth.ts`, augmenting the shared `emailAndPassword`): `sendResetPassword` renders + Resends
-the link (`password-reset-email.ts`, mirroring `verification-email.ts`; graceful dev skip logs the link
-when there's no Resend key), `resetPasswordTokenExpiresIn: 3600` (1 hour), and
+the link (`password-reset-email.ts`, sharing `link-email.ts` with the verification + activation mail;
+graceful dev skip logs the link when there's no Resend key), `resetPasswordTokenExpiresIn: 3600`
+(1 hour — the copy says so, and its spec pins that), and
 **`revokeSessionsOnPasswordReset: true`** — a reset signs out all the user's OTHER sessions, so
 recovering a compromised account doesn't leave the attacker signed in.
 

@@ -13,16 +13,16 @@
 import type { CleanedContact } from './contact';
 import type { Interest } from '$lib/contact-interests';
 import type { Locale } from '$lib/paraglide/runtime';
-import { CONTACT_EMAIL, SITE_NAME } from '$lib/site';
+import { CONTACT_EMAIL, EMAIL_FROM } from '$lib/site';
 import { m } from '$lib/paraglide/messages.js';
-import { type OutboundEmail, escapeHtml, postEmail } from './email';
+import { type OutboundEmail, escapeHtml, postEmail, settleSends } from './email';
 
 // Both messages send FROM the Resend-verified role alias (single-sourced from
 // site.ts). They differ in `to`/`replyTo`: the lead lands in info@ with Reply-To set
 // to the visitor (hit Reply → reach the lead); the ack goes to the visitor with
 // Reply-To back to info@ (a real, monitored mailbox — the ack invites a reply).
 const LEAD_FROM = `DarcStar Contact <${CONTACT_EMAIL}>`;
-const ACK_FROM = `${SITE_NAME} <${CONTACT_EMAIL}>`;
+const ACK_FROM = EMAIL_FROM;
 
 // Headers marking the ack as an automated reply, so a recipient's vacation-responder /
 // out-of-office doesn't reply back and open a mail loop: `Auto-Submitted: auto-replied`
@@ -177,17 +177,11 @@ export async function sendContactEmails(
 	locale: Locale
 ): Promise<void> {
 	// Build INSIDE each async thunk (not in the array literal) so a synchronous *builder*
-	// throw — not just a send failure — is captured per-email by allSettled. Otherwise a
-	// throw in buildAckEmail would abort before allSettled and take the lead down with it,
-	// breaking the "lead survives an ack failure" invariant above.
-	const senders: [role: string, send: () => Promise<void>][] = [
+	// throw — not just a send failure — is captured per-email by settleSends. Otherwise a
+	// throw in buildAckEmail would abort before the fan-out starts and take the lead down
+	// with it, breaking the "lead survives an ack failure" invariant above.
+	await settleSends('contact', [
 		['lead', async () => postEmail(apiKey, buildLeadEmail(sub))],
 		['ack', async () => postEmail(apiKey, buildAckEmail(sub, locale))]
-	];
-	const results = await Promise.allSettled(senders.map(([, send]) => send()));
-	results.forEach((r, i) => {
-		if (r.status === 'rejected') {
-			console.error(`contact ${senders[i][0]} email failed`, r.reason);
-		}
-	});
+	]);
 }
