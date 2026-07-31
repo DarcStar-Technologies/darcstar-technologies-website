@@ -422,9 +422,21 @@
 
 		// slotCy only shifts on layout changes, so re-measure on resize/scroll instead
 		// of every frame (on mobile, URL-bar reflow can surface as a scroll event).
+		//
+		// The redraw exists because under reduced motion there is no loop to repaint after the slot
+		// moves — but it must fire only when the slot ACTUALLY moved (DAR-197). It used to be
+		// unconditional, so the mode that exists to do less work repainted the whole canvas on every
+		// scroll event, which every frosted surface then re-blurred: measured at one full repaint per
+		// scroll event, versus zero now while the slot is stationary. `slotCy` is
+		// `rect.top + scrollY`, scroll-invariant by construction, so scrolling is merely the event
+		// that surfaces a URL-bar reflow rather than a reason to repaint. `slotH` is compared too —
+		// `helixGeom()` derives the braid's amplitude from it, so a height-only change still needs a
+		// repaint.
 		function onScroll() {
+			const previousCy = slotCy;
+			const previousH = slotH;
 			measureSlot();
-			if (reduce) draw(lastT);
+			if (reduce && (slotCy !== previousCy || slotH !== previousH)) draw(lastT);
 		}
 
 		resize();
