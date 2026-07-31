@@ -3,7 +3,12 @@
 	// Default blocks/lists/marks render the correct semantic tags; a `.prose` wrapper (Tailwind
 	// Typography, enabled in layout.css) styles them for the dark theme. We only override what the
 	// schema adds beyond plain rich text: custom `image`/`code` type blocks and the `link` mark.
-	import { PortableText, type InputValue, type PortableTextComponents } from '@portabletext/svelte';
+	import {
+		DefaultListItem,
+		PortableText,
+		type InputValue,
+		type PortableTextComponents
+	} from '@portabletext/svelte';
 	import type { RenderedBlockContent } from '$lib/sanity/block-content';
 	import PortableImage from './PortableImage.svelte';
 	import PortableCode from './PortableCode.svelte';
@@ -23,7 +28,25 @@
 			mathInline: PortableMath,
 			mathBlock: PortableMath
 		},
-		marks: { link: PortableLink }
+		marks: { link: PortableLink },
+		// NOT a map, and not ours to tidy back into one (DAR-208). @portabletext/svelte 3.0.1's
+		// RenderListItem looks the block's `style` up in a map keyed by `listItem` values, so a
+		// well-formed `<li>` misses every time and warns once per item — `Unknown list item style
+		// "normal"` — on every article on the site. Passing a COMPONENT is the library's own escape
+		// hatch (`mergeComponents` returns a function override verbatim, and RenderListItem
+		// short-circuits on it), which skips both the broken lookup and the warning.
+		//
+		// It silences no real signal: that warning reports a block style against a listItem-keyed map,
+		// so it cannot ever name a list type we failed to handle. The one that can — `Unknown list
+		// style "…"` from the sibling RenderList, which reads `node.listItem` correctly — still fires,
+		// and the spec pins that it does. Rendering is unchanged: every list item resolved to this
+		// same component before, via the map or via `unknownListItem`, and <ul> vs <ol> is RenderList's
+		// decision, not this one.
+		//
+		// Why it matters beyond tidiness: DAR-106 restored `onMissingComponent` to warn precisely so
+		// an unrendered content type announces itself. A permanent false warning on every article is
+		// how that channel stops being read. Drop this the day upstream fixes the lookup.
+		listItem: DefaultListItem
 	};
 </script>
 

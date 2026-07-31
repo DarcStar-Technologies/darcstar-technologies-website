@@ -49,6 +49,49 @@ const withMath = [
 	}
 ] as unknown as RenderedBlockContent;
 
+// Portable Text has no list node: a run of blocks sharing `listItem` and `level` is grouped into a
+// virtual one by the library. `style` stays 'normal' — it is the BLOCK style, orthogonal to the list
+// type — and conflating the two is exactly the upstream bug behind DAR-208.
+const list = (listItem: string, style = 'normal') =>
+	[
+		{
+			_type: 'block',
+			_key: 'l1',
+			style,
+			listItem,
+			level: 1,
+			markDefs: [],
+			children: [{ _type: 'span', _key: 's1', text: 'First item', marks: [] }]
+		},
+		{
+			_type: 'block',
+			_key: 'l2',
+			style,
+			listItem,
+			level: 1,
+			markDefs: [],
+			children: [{ _type: 'span', _key: 's2', text: 'Second item', marks: [] }]
+		}
+	] as unknown as RenderedBlockContent;
+
+// The library reports a missing component from an `$effect` rather than during render. Today that
+// still lands synchronously — `render()` mounts and flushes — so a spy read straight afterwards
+// already sees it: measured, and dropping this wait leaves the pre-fix cases failing exactly as they
+// should. It is kept as the cheap guard against that changing, because the failure would be silent
+// in the worst direction: every "without warning about anything" case below would start reading an
+// empty spy and pass vacuously, while its DOM assertion — synchronous either way — went on passing
+// and hid it.
+async function renderCapturingWarnings(value: RenderedBlockContent) {
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+	try {
+		const { container } = render(PortableBody, { value });
+		await vi.waitFor(() => expect(container.querySelector('li')).not.toBeNull());
+		return { container, warnings: warn.mock.calls.flat().join('\n') };
+	} finally {
+		warn.mockRestore();
+	}
+}
+
 describe('PortableBody', () => {
 	it('renders paragraph text and a heading block', async () => {
 		render(PortableBody, { value: blocks });
@@ -90,5 +133,37 @@ describe('PortableBody', () => {
 		} finally {
 			warn.mockRestore();
 		}
+	});
+
+	// DAR-208: every one of these warned once per item before `components.listItem` became a single
+	// component — `Unknown list item style "normal"`, on every article on the site — because 3.0.1
+	// looks the block's `style` up in a map keyed by `listItem` values.
+	//
+	// Each case also asserts what it RENDERED, so "no warnings" can't pass against a body that
+	// rendered nothing; the two `warns…` tests above and below are the positive controls proving the
+	// spy still catches a real one.
+	it.each([
+		['a bullet list', list('bullet'), 'ul'],
+		// <ul> vs <ol> is RenderList's decision, from `node.listItem` — the override replaces the
+		// per-item component, so this is the assertion that it didn't flatten the two into one.
+		['a numbered list', list('number'), 'ol'],
+		// The case that rules out the smaller patch. `listItem: { normal: DefaultListItem }` merges
+		// into the default map and silences the common case, but a list item carrying a block style
+		// warns under that style's own name — measured: `Unknown list item style "h2"` — so the map
+		// shape fixes the symptom for exactly the content that happens to be plain today.
+		['a list item with a heading style', list('bullet', 'h2'), 'ul']
+	])('renders %s without warning about anything', async (_label, value, tag) => {
+		const { container, warnings } = await renderCapturingWarnings(value);
+		expect(container.querySelectorAll(`${tag} > li`)).toHaveLength(2);
+		expect(warnings).toBe('');
+	});
+
+	it('still warns about a list type it has no component for', async () => {
+		// The signal the override must NOT cost us, and the reason silencing the other one is free:
+		// this warning comes from the sibling RenderList, which reads `node.listItem` correctly, so
+		// an unhandled list type still announces itself. The one DAR-208 removes could only ever
+		// report a block style against a listItem-keyed map — it never had a true thing to say.
+		const { warnings } = await renderCapturingWarnings(list('checkbox'));
+		expect(warnings).toContain('checkbox');
 	});
 });
