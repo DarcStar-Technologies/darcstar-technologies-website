@@ -28,15 +28,32 @@ export const fieldClass = 'glass-field w-full rounded-lg px-3.5 py-2.5 text-sm';
 export const submitButtonClass =
 	'glass-btn w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60';
 
-// The label-row treatment itself, without the spacing that separates it from its control. Split out
-// because a <legend> carries that margin on the legend rather than on the row inside it (below), so
-// the two differ by exactly `mb-1.5` — which is how GlassCheckboxGroup came to hold a fourth
-// hand-typed copy of this row that a superset scan cannot see (it is a SUBSET). Composing here is
-// what makes both forms one string.
-const fieldLabelRow = 'flex items-baseline gap-2 text-xs font-medium tracking-wide text-body';
+// The typographic treatment shared by EVERY field label, with no layout in it. Split out one level
+// further than DAR-218 left it (DAR-219): that refactor composed the flex row so the `<legend>`
+// subset could share it, and the subset it did not know about was larger than the one it fixed —
+// 17 sites across 7 files wearing this ink as a plain `block`, in files that imported `fieldClass`
+// and hand-typed the label beside it. A superset scan cannot see either, so the ink is the seam.
+const fieldLabelInk = 'text-xs font-medium tracking-wide text-body';
 
-/** A field's label row — the label text plus an optional muted badge ("optional") beside it. */
+// The row form, without the spacing that separates it from its control. A <legend> carries that
+// margin on the legend rather than on the row inside it (below), so the two differ by exactly
+// `mb-1.5`.
+const fieldLabelRow = `flex items-baseline gap-2 ${fieldLabelInk}`;
+
+/** A field's label row — the label text plus an optional muted badge ("optional") beside it.
+ *
+ * Use this when the label CAN carry a badge; `fieldLabelBlockClass` when it can't. The flex row
+ * exists for the badge, so a label with no badge shouldn't pay for it — every one of this class's
+ * call sites renders a `{#if}` badge, and every one of the block variant's renders bare text. */
 export const fieldLabelClass = `mb-1.5 ${fieldLabelRow}`;
+
+/** The same label, with no badge beside it — a plain block above its control.
+ *
+ * The majority form by a wide margin (17 sites to 6). Kept distinct rather than folded into
+ * `fieldLabelClass` because `flex` on a lone text node is not a no-op: it makes that text an
+ * anonymous flex item, which changes how whitespace between it and any sibling markup collapses.
+ * Two named variants of one ink is honest; one variant that quietly re-boxes 17 labels is not. */
+export const fieldLabelBlockClass = `mb-1.5 block ${fieldLabelInk}`;
 
 /** The same row inside a `<fieldset>`'s `<legend>`, where the spacing belongs to the legend: a
  * `<legend>` is laid out by the UA rather than in normal flow, so a bottom margin on the row inside

@@ -34,7 +34,7 @@
 	import AuthorSuggestions from '$lib/components/AuthorSuggestions.svelte';
 	import Pager from '$lib/components/Pager.svelte';
 	import { contentPath } from '$lib/content-path';
-	import { inlineLinkClass, mutedLinkClass } from '$lib/styles';
+	import { fieldLabelBlockClass, inlineLinkClass, mutedLinkClass } from '$lib/styles';
 	import { fieldClass } from '$lib/styles';
 	import {
 		authorSearchTerm,
@@ -241,7 +241,7 @@
 	klass?: string
 )}
 	<label class={['block', klass]}>
-		<span class="mb-1.5 block text-xs font-medium tracking-wide text-body">{label}</span>
+		<span class={fieldLabelBlockClass}>{label}</span>
 		<select {name} value={current ?? ''} class={fieldClass}>
 			<option value="">{emptyLabel}</option>
 			{#if current !== null && !options.some((o) => o.value === current)}
@@ -321,7 +321,7 @@
 				     (measured in both engines), so `luk` offered nothing while submitting it still
 				     returned the paper. AuthorSuggestions carries the fix. -->
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body">
+					<span class={fieldLabelBlockClass}>
 						{m.research_filter_author_label()}
 					</span>
 					<input

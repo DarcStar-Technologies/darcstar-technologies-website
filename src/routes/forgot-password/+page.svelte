@@ -8,7 +8,12 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
-	import { fieldClass, inlineLinkClass, submitButtonClass } from '$lib/styles';
+	import {
+		fieldClass,
+		fieldLabelBlockClass,
+		inlineLinkClass,
+		submitButtonClass
+	} from '$lib/styles';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 	import type { PageProps } from './$types';
@@ -49,7 +54,7 @@
 			<p class="mt-3 text-sm text-body">
 				{m.forgot_password_check_email_body({ email: form.email })}
 			</p>
-			<p class="mt-2 text-xs text-body/70">{m.forgot_password_check_email_hint()}</p>
+			<p class="mt-2 text-xs text-faint">{m.forgot_password_check_email_hint()}</p>
 			<p class="mt-6 text-sm text-body">
 				<a class={inlineLinkClass} href={localizeHref('/login')}
 					>{m.forgot_password_back_to_login()}</a
@@ -77,7 +82,7 @@
 				{/if}
 
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body">
+					<span class={fieldLabelBlockClass}>
 						{m.forgot_password_field_email_label()}
 					</span>
 					<input

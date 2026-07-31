@@ -11,7 +11,7 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { interestLabel } from '$lib/contact-interest-labels';
 	import type { Interest } from '$lib/contact-interests';
-	import { fieldClass, submitButtonClass } from '$lib/styles';
+	import { fieldClass, fieldLabelBlockClass, submitButtonClass } from '$lib/styles';
 	import type { PageData } from './$types';
 
 	type FormResult = { scope?: string; error?: string; ok?: boolean; name?: string } | null;
@@ -87,9 +87,7 @@
 		{#if okScope === 'profile'}{@render okBanner(m.account_profile_saved())}{/if}
 		<form method="post" action="?/updateName" class="space-y-4">
 			<label class="block">
-				<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-					>{m.account_field_name_label()}</span
-				>
+				<span class={fieldLabelBlockClass}>{m.account_field_name_label()}</span>
 				<input
 					type="text"
 					name="name"
@@ -110,9 +108,7 @@
 		{#if okScope === 'password'}{@render okBanner(m.account_password_done())}{/if}
 		<form method="post" action="?/changePassword" class="space-y-4">
 			<label class="block">
-				<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-					>{m.account_field_current_password_label()}</span
-				>
+				<span class={fieldLabelBlockClass}>{m.account_field_current_password_label()}</span>
 				<input
 					type="password"
 					name="currentPassword"
@@ -122,9 +118,7 @@
 				/>
 			</label>
 			<label class="block">
-				<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-					>{m.account_field_new_password_label()}</span
-				>
+				<span class={fieldLabelBlockClass}>{m.account_field_new_password_label()}</span>
 				<input
 					type="password"
 					name="newPassword"

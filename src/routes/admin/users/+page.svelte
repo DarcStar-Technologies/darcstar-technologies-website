@@ -7,7 +7,7 @@
 	import { enhance } from '$app/forms';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
-	import { fieldClass, submitButtonClass } from '$lib/styles';
+	import { fieldClass, fieldLabelBlockClass, submitButtonClass } from '$lib/styles';
 	import type { PageData } from './$types';
 
 	let { data, form }: { data: PageData; form?: FormResult } = $props();
@@ -69,9 +69,7 @@
 
 			<div class="grid gap-4 sm:grid-cols-2">
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-						>{m.admin_users_create_name_label()}</span
-					>
+					<span class={fieldLabelBlockClass}>{m.admin_users_create_name_label()}</span>
 					<input
 						type="text"
 						name="name"
@@ -82,9 +80,7 @@
 					/>
 				</label>
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-						>{m.admin_users_create_email_label()}</span
-					>
+					<span class={fieldLabelBlockClass}>{m.admin_users_create_email_label()}</span>
 					<input
 						type="email"
 						name="email"
@@ -95,9 +91,7 @@
 					/>
 				</label>
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-						>{m.admin_users_create_password_label()}</span
-					>
+					<span class={fieldLabelBlockClass}>{m.admin_users_create_password_label()}</span>
 					<input
 						type="password"
 						name="password"
@@ -109,9 +103,7 @@
 					<span class="mt-1 block text-xs text-faint">{m.admin_users_create_password_hint()}</span>
 				</label>
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-						>{m.admin_users_create_role_label()}</span
-					>
+					<span class={fieldLabelBlockClass}>{m.admin_users_create_role_label()}</span>
 					<select name="role" class={fieldClass}>
 						<option
 							value="user"

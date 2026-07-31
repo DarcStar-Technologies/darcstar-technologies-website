@@ -8,7 +8,12 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
-	import { fieldClass, inlineLinkClass, submitButtonClass } from '$lib/styles';
+	import {
+		fieldClass,
+		fieldLabelBlockClass,
+		inlineLinkClass,
+		submitButtonClass
+	} from '$lib/styles';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 	import type { PageProps } from './$types';
@@ -109,7 +114,7 @@
 				<input type="hidden" name="token" value={token} />
 
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body">
+					<span class={fieldLabelBlockClass}>
 						{invite
 							? m.reset_password_invite_field_password_label()
 							: m.reset_password_field_password_label()}
@@ -125,7 +130,7 @@
 							? m.reset_password_invite_field_password_placeholder()
 							: m.reset_password_field_password_placeholder()}
 					/>
-					<span class="mt-1.5 block text-xs text-body/70">{m.reset_password_password_hint()}</span>
+					<span class="mt-1.5 block text-xs text-faint">{m.reset_password_password_hint()}</span>
 				</label>
 
 				<button type="submit" disabled={submitting} class={submitButtonClass}>

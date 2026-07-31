@@ -8,7 +8,7 @@
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
-	import { fieldClass, submitButtonClass } from '$lib/styles';
+	import { fieldClass, fieldLabelBlockClass, submitButtonClass } from '$lib/styles';
 	import type { PageData } from './$types';
 
 	type FormResult = {
@@ -100,9 +100,7 @@
 		{#if okScope === 'details'}{@render okBanner(m.admin_users_detail_saved())}{/if}
 		<form method="post" action="?/updateDetails" class="space-y-4">
 			<label class="block">
-				<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-					>{m.admin_users_field_name_label()}</span
-				>
+				<span class={fieldLabelBlockClass}>{m.admin_users_field_name_label()}</span>
 				<input
 					type="text"
 					name="name"
@@ -113,9 +111,7 @@
 				/>
 			</label>
 			<label class="block">
-				<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-					>{m.admin_users_field_email_label()}</span
-				>
+				<span class={fieldLabelBlockClass}>{m.admin_users_field_email_label()}</span>
 				<input
 					type="email"
 					name="email"
@@ -139,9 +135,7 @@
 			{#if okScope === 'role'}{@render okBanner(m.admin_users_role_saved())}{/if}
 			<form method="post" action="?/setRole" class="flex flex-wrap items-end gap-3">
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-						>{m.admin_users_field_role_label()}</span
-					>
+					<span class={fieldLabelBlockClass}>{m.admin_users_field_role_label()}</span>
 					<select name="role" class={fieldClass}>
 						<option value="user" selected={target.role !== 'admin' && target.role !== 'operator'}
 							>{m.admin_users_role_user()}</option
@@ -169,9 +163,7 @@
 			{#if okScope === 'password'}{@render okBanner(m.admin_users_password_done())}{/if}
 			<form method="post" action="?/resetPassword" class="space-y-4">
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-						>{m.admin_users_password_label()}</span
-					>
+					<span class={fieldLabelBlockClass}>{m.admin_users_password_label()}</span>
 					<input
 						type="password"
 						name="newPassword"

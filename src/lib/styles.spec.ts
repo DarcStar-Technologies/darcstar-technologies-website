@@ -153,6 +153,83 @@ describe('shared class strings are imported, never re-typed', () => {
 		).toStrictEqual([]);
 	});
 
+	// --- The subset direction (DAR-219) ------------------------------------------------------------
+	//
+	// The superset rule above is blind to a variant that carries the treatment and differs in the
+	// LAYOUT around it, and that blindness was not hypothetical: DAR-218 shipped this file, documented
+	// the hole for the one case it fixed (`fieldLegendRowClass`, a subset of `fieldLabelClass`), and a
+	// SECOND subset sat beside it at 17 sites across 7 files — `mb-1.5 block …` instead of the flex
+	// row — in files that imported `fieldClass` and hand-typed the label next to it. Three times the
+	// re-typings the original ticket found, invisible to every assertion here.
+	//
+	// So the rule is derived rather than restated (DAR-99): where two exports overlap substantially,
+	// the overlap IS the idiom, and a literal carrying the whole overlap is wearing it — whether it
+	// adds tokens (caught above) or drops them (caught here). Deriving means a future export brings
+	// its own cores along, and no core can be forgotten because none is written down.
+	const MIN_CORE = 3;
+
+	/** Token groups shared by two or more exports — the drift-prone core of each idiom. */
+	const CORES = SHARED.flatMap(([aName, a], i) =>
+		SHARED.slice(i + 1).flatMap(([bName, b]) => {
+			const core = a.filter((t) => b.includes(t));
+			return core.length >= MIN_CORE ? [{ pair: `${aName} + ${bName}`, core }] : [];
+		})
+	);
+
+	const carriers = () =>
+		markupSourcePaths().flatMap((file) =>
+			classLiterals(file).flatMap((tokens) => {
+				const set = new Set(tokens);
+				return CORES.filter(({ core }) => core.every((t) => set.has(t))).map(
+					({ pair }) => `${file} hand-writes the core of ${pair}: class="${tokens.join(' ')}"`
+				);
+			})
+		);
+
+	// The derivation is the instrument, so it gets a positive control: an empty CORES list makes every
+	// assertion below pass while checking nothing (DAR-152's blind-scan shape).
+	it('derives the label ink as a shared core', () => {
+		expect(CORES.length).toBeGreaterThan(0);
+		expect(CORES.map(({ core }) => [...core].sort().join(' '))).toContain(
+			'font-medium text-body text-xs tracking-wide'
+		);
+	});
+
+	it('detects a variant that drops tokens from a shared string', () => {
+		// DAR-219's own shape — the ink, re-boxed — but NOT its string, which is now `fieldLabelBlock-
+		// Class` and so is visible to the superset rule again. That is the fix working, and it is also
+		// why this case has to be the NEXT variant rather than the one just closed: a test written
+		// against the historical string would assert that the export exists, not that the rule holds.
+		const variant = 'mb-1.5 inline-flex text-xs font-medium tracking-wide text-body'.split(/\s+/);
+		// Invisible to the superset rule: it is a superset of no export.
+		expect(matches(variant)).toStrictEqual([]);
+		// Visible to this one, because it carries the whole ink.
+		const set = new Set(variant);
+		expect(CORES.filter(({ core }) => core.every((t) => set.has(t))).length).toBeGreaterThan(0);
+	});
+
+	// `MIN_CORE` is a choice inside a MEASURED empty band, not a number tuned until the suite passed.
+	// Today's pairs overlap in 2 tokens (`w-full text-sm`, `mb-1.5 text-xs` — incidental collisions
+	// between unrelated idioms) or in 4+ (the label ink and its flex row). Nothing lands on 3, so the
+	// floor can sit anywhere in (2, 4] without changing a single result — and the two cases below
+	// bracket it, so a later move OUT of that band fails rather than silently widening or blinding it.
+	it('brackets the core floor against incidental overlap', () => {
+		const sizes = CORES.map(({ core }) => core.length);
+		expect(Math.min(...sizes)).toBeGreaterThanOrEqual(MIN_CORE);
+		// Below the band: two tokens two unrelated exports happen to share is not an idiom.
+		expect(MIN_CORE).toBeGreaterThan(2);
+		// Above it: a floor past the real ink (4 tokens) would stop seeing the defect this exists for.
+		expect(MIN_CORE).toBeLessThanOrEqual(4);
+	});
+
+	// No allowlist, deliberately, and the reason is that a carrier is always fixable by importing —
+	// unlike DAR-102's scans, where an exemption names a file that legitimately does the thing. If one
+	// ever turns out to be genuinely unfixable, add a list here with that ticket's polarity (an entry
+	// makes the rule stricter to delete) rather than raising MIN_CORE, which blinds it everywhere.
+	it('finds no hand-written variant of a shared string', () => {
+		expect(carriers()).toStrictEqual([]);
+	});
+
 	// The rot direction. An allowlist entry whose call site was fixed (or deleted) stops describing
 	// anything, and a list of names nobody checks is how an exception list becomes decoration.
 	it('has no stale allowlist entry', () => {
