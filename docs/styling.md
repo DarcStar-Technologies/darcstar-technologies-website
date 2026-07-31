@@ -104,8 +104,8 @@ Plus **`btn-danger`**, the destructive row action (delete a submission, delete a
 | Family  | Ticket  | Call sites | Distinct combinations found |
 | ------- | ------- | ---------- | --------------------------- |
 | eyebrow | DAR-218 | 22         | 3                           |
-| heading | DAR-219 | 57         | 21 → 5 tiers + 5 one-offs   |
-| pill    | DAR-219 | 14         | 3                           |
+| heading | DAR-222 | 57         | 21 → 5 tiers + 5 one-offs   |
+| pill    | DAR-222 | 14         | 3                           |
 
 Free variation that is never used as freedom is drift waiting to happen, and it happened: the `text-lg` heading tier had split into two spellings, one with `tracking-tight` and one without. That split was **not random** — every copy missing it was under `/admin/users` or `/account`, every copy keeping it under `/people`, `/research` or `/news` — which is the `/admin` opt-out (below) leaking past the surfaces it is scoped to. Unified; it moved eight headings by -0.025em.
 
@@ -169,9 +169,9 @@ Both geometry values are `:root` tokens in `layout.css` (`--helix-slot-h`, `--he
 
 New pages reuse `PageHero` — never a bare centered heading with no panel/helix.
 
-**Utility pages are a different family.** `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/updates/*`, `/contact` and `/waitlist` have no hero at all: they are a single card centred in the viewport, and that shell is the **`UtilityPanel`** component (DAR-219), which takes a `width` (`sm` by default, `lg` for a panel holding a real form) and an optional `below` slot for content that must sit inside the centred section but outside the card.
+**Utility pages are a different family.** `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/updates/*`, `/contact` and `/waitlist` have no hero at all: they are a single card centred in the viewport, and that shell is the **`UtilityPanel`** component (DAR-222), which takes a `width` (`sm` by default, `lg` for a panel holding a real form) and an optional `below` slot for content that must sit inside the centred section but outside the card.
 
-> Note: `glass-panel` exists as a `@utility` but **no markup uses it** — every raised surface on the site is `glass-card`, `glass-nav`, `glass-btn`, `glass-field` or `glass-menu`. Two source comments still named it and were corrected in DAR-219; the utility itself is left in place, since the sheen selects `glass-*` structurally and removing it is a separate decision.
+> Note: `glass-panel` exists as a `@utility` but **no markup uses it** — every raised surface on the site is `glass-card`, `glass-nav`, `glass-btn`, `glass-field` or `glass-menu`. Two source comments still named it and were corrected in DAR-222; the utility itself is left in place, since the sheen selects `glass-*` structurally and removing it is a separate decision.
 
 ### Glass sheen — one light source (`.sheen-plane`)
 

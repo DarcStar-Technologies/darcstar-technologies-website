@@ -153,7 +153,7 @@ describe('shared class strings are imported, never re-typed', () => {
 		).toStrictEqual([]);
 	});
 
-	// --- The subset direction (DAR-219) ------------------------------------------------------------
+	// --- The subset direction (DAR-222) ------------------------------------------------------------
 	//
 	// The superset rule above is blind to a variant that carries the treatment and differs in the
 	// LAYOUT around it, and that blindness was not hypothetical: DAR-218 shipped this file, documented
@@ -196,7 +196,7 @@ describe('shared class strings are imported, never re-typed', () => {
 	});
 
 	it('detects a variant that drops tokens from a shared string', () => {
-		// DAR-219's own shape — the ink, re-boxed — but NOT its string, which is now `fieldLabelBlock-
+		// DAR-222's own shape — the ink, re-boxed — but NOT its string, which is now `fieldLabelBlock-
 		// Class` and so is visible to the superset rule again. That is the fix working, and it is also
 		// why this case has to be the NEXT variant rather than the one just closed: a test written
 		// against the historical string would assert that the export exists, not that the rule holds.
@@ -292,7 +292,7 @@ describe('the record tables share one set of chrome tokens', () => {
 	// Unlike the three families below there is no base to keep out of markup — `datagrid` IS a
 	// call-site class. What matters here is the SET: six files carried this chrome verbatim, and one
 	// of them (/account) is the end-user portal rather than a staff surface, so the copy had crossed
-	// the boundary CLAUDE.md's `/admin` opt-out is scoped by (DAR-219).
+	// the boundary CLAUDE.md's `/admin` opt-out is scoped by (DAR-222).
 	const css = readFileSync('src/routes/layout.css', 'utf8');
 
 	it('uses only tokens that layout.css defines', () => {
@@ -361,7 +361,7 @@ describe('the record tables share one set of chrome tokens', () => {
 });
 
 describe('the heading base is a composition root, not a call-site class', () => {
-	// The third instance of the same shape (DAR-219, after `eyebrow` and `btn-pill`): 57 sites in 21
+	// The third instance of the same shape (DAR-222, after `eyebrow` and `btn-pill`): 57 sites in 21
 	// spellings of `font-medium tracking-tight text-white` plus a size, where only the size ever moved.
 	const css = readFileSync('src/routes/layout.css', 'utf8');
 	const TIERS = [
@@ -431,7 +431,7 @@ describe('the heading base is a composition root, not a call-site class', () => 
 });
 
 describe('the pill button base is a composition root, not a call-site class', () => {
-	// Same shape as the eyebrow above, and found the same way (DAR-219): `btn-pill` looked like one
+	// Same shape as the eyebrow above, and found the same way (DAR-222): `btn-pill` looked like one
 	// utility with two documented one-offs beside it, and measured out as three fixed size tiers —
 	// four buttons on one combination, two on another, none of them varying. The base holds shape and
 	// ink; a bare `btn-pill-base` renders a pill with no padding, which nothing means to do.

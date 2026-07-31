@@ -4,7 +4,7 @@
 	//
 	// These pages have no hero — they are a single card centred in the viewport, which is what makes
 	// them a family distinct from the `PageHero` surfaces (CLAUDE.md's one hero pattern). Eight files
-	// carried the same two elements verbatim, and DAR-219 found the drift you would predict from that:
+	// carried the same two elements verbatim, and DAR-222 found the drift you would predict from that:
 	// the lede under the heading is `mt-2` on /login and `mt-3` on the six others, a difference nobody
 	// chose. The wrapper is one component now; the type scale inside it is the `heading-*` tiers.
 	//

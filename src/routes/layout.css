@@ -476,7 +476,7 @@ select.glass-field {
    from the public site's conventions, and states its reason as "it is
    staff-only"; `/account` is the end-user portal, so it is on the other side
    of that line and had inherited the opt-out anyway, by being the page whose
-   table someone copied (DAR-219).
+   table someone copied (DAR-222).
 
    Only the invariant chrome lives here. A cell's ink (`text-body` /
    `text-faint` / `text-emphasis`) and its `whitespace-nowrap` stay at the call
@@ -506,7 +506,7 @@ select.glass-field {
 
 /* ---- Heading tiers ------------------------------------------------------
    `font-medium tracking-tight text-white` plus a size — and the size is the
-   only thing that ever varied. 57 sites in 21 spellings when DAR-219 counted
+   only thing that ever varied. 57 sites in 21 spellings when DAR-222 counted
    them: the eyebrow's story below at three times the scale.
 
    The scale has to live somewhere. Skeleton styles `.h1`–`.h6` and never the
@@ -606,7 +606,7 @@ select.glass-field {
 
    This used to be one utility whose comment named two deliberate one-offs —
    the hero CTA and the full-width submit, both still true and both still
-   explicit below. What it did NOT say, because nobody had counted (DAR-219),
+   explicit below. What it did NOT say, because nobody had counted (DAR-222),
    is that six more buttons were sitting on two OTHER fixed combinations, hand
    typed four and two times. Three tiers, same as the eyebrow: the freedom the
    single utility implied was never being used as freedom. */

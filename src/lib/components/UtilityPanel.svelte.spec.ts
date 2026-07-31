@@ -4,7 +4,7 @@ import { createRawSnippet } from 'svelte';
 import UtilityPanel from './UtilityPanel.svelte';
 import '../../routes/layout.css';
 
-// DAR-219. Eight pages carried this section-and-card verbatim. The component has two branches — a
+// DAR-222. Eight pages carried this section-and-card verbatim. The component has two branches — a
 // width and an optional `below` slot — and both encode a decision some page depends on, so each is
 // pinned rather than left to the one-off computed-style diff that justified the extraction.
 

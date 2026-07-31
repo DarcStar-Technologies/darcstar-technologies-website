@@ -29,7 +29,7 @@ export const submitButtonClass =
 	'glass-btn w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60';
 
 // The typographic treatment shared by EVERY field label, with no layout in it. Split out one level
-// further than DAR-218 left it (DAR-219): that refactor composed the flex row so the `<legend>`
+// further than DAR-218 left it (DAR-222): that refactor composed the flex row so the `<legend>`
 // subset could share it, and the subset it did not know about was larger than the one it fixed —
 // 17 sites across 7 files wearing this ink as a plain `block`, in files that imported `fieldClass`
 // and hand-typed the label beside it. A superset scan cannot see either, so the ink is the seam.
