@@ -1146,6 +1146,76 @@ the signed-up address before acting on it. What DAR-88 changed is that a strange
 its own submission, visible and comparable, instead of overwriting the real person's answer — but it
 is still a claim, and the process rule is still the control.
 
+### `loi_readiness` is a triage tag, not an LOI (DAR-112)
+
+Step 4A's last question — "if technical fit is confirmed, would your organization consider signing a
+nonbinding letter of intent for a paid evaluation?" — with three answers (`yes` ·
+`possibly-after-discussion` · `not-at-this-time`). Revealed with the contact block, on
+`isPositivePilotInterest`, and **nulled server-side on the same predicate**.
+
+**The answer is never a commitment, and every surface has to say so**, because this is the one
+qualification answer whose _name_ suggests otherwise:
+
+- The question calls the letter **nonbinding** and its help text says answering commits the
+  respondent to nothing. Both strings are pinned by the step-4A e2e, not left to the catalog.
+- `/privacy` enumerates the field **and** states what it is not.
+- `/admin/waitlist` labels the column **"Would consider an LOI"**, not "LOI readiness" — the value
+  has to read as the self-report it is, because a bare `Yes` under a bare `LOI` is one skim away from
+  being transcribed as a letter we hold. The unverified-claims note under the table says the same
+  thing in prose; the label says it where somebody copying a figure out is actually looking.
+- It is **absent from `WaitlistLeadSignals`**, so `classifyWaitlistLead` structurally cannot score on
+  it — DAR-65's money guardrail, for the same reason (judgement, not arithmetic) plus one of its own:
+  it largely duplicates the signal `pilot_interest` already carries, so scoring both would
+  double-count one intention. Revisit if the answer distribution ever justifies it.
+
+**Why the server gate is not defensive boilerplate, and why a `<select>` makes that easy to miss.**
+`contact_permission` needs its gate for an obvious reason: an unchecked box and a not-shown box are
+indistinguishable on the wire, so somebody has to decide. A select looks like it needs no such help —
+an absent field is absent, and `slugOrNull` already returns `null`. That reasoning is wrong, and the
+case it misses is the **ordinary no-JS visitor rather than an attacker**: the reveal is progressive
+enhancement, so without JS the whole block renders whatever the pilot answer is, and a visitor really
+can answer "yes, we'd consider signing" and then pick "Not currently" for the evaluation itself —
+both submit. Ungated, that one POST would store an intention to sign alongside a refusal to evaluate:
+a contradiction manufactured by our rendering rather than by the person. The no-JS e2e chain asserts
+the field is on screen while the pilot question is still unanswered, which is the observation the gate
+exists for.
+
+**What the gate guarantees, precisely — it is narrower than "that pair cannot exist".** A single
+submit cannot fabricate the pair; the pair is still _reachable_, and deliberately. Null means "never
+asked" rather than a decline, and the store keep-existings it, so a visitor who answered `yes` and
+then walked the pilot answer back keeps the earlier answer — leaving a row that holds `not-currently`
+beside a standing `yes`. That is history the person actually expressed, not a contradiction invented
+by our rendering, and it is the same call DAR-63 made for `contact_permission`: a walk-back is not a
+retraction. `waitlist-store.spec.ts` pins it in both directions.
+
+**Which fields the gate applies to, and why it is not all of them.** All five of step 4A's answers sit
+inside the revealed block; only two are gated. The line is whether the answer still **means anything
+beside a refusal to evaluate**: `contact_permission` is permission "about an evaluation or pilot" and
+`loi_readiness` is a willingness to sign **for** one, so each is scoped to a thing the visitor just
+declined and keeping it would attribute a position they did not take. The other three carry no such
+scope — a deployment description and a phone number are plain facts, and a preferred contact method
+says how this person would rather be reached, which presumes no evaluation (we contact leads for other
+reasons; DAR-67 invites them). Gating those would discard something the visitor did mean.
+
+**This is not an authorization boundary, in either direction**, and it would be easy to argue that it
+is. `contact_permission` authorizes no send: DAR-191 is explicit that nothing reads it but a human and
+DAR-65's classifier, and `mayContactLead` (`do_not_contact_at`, on the lead) is what actually
+suppresses outreach. These columns are read by **people**, so the property being protected is that an
+operator reading the row is not misled. `waitlist.spec.ts` pins both halves in one test, so a
+later tidy-up that gated the whole block fails.
+
+`pnpm smoke:waitlist` asserts the column against a **real database**, and that is the only place the
+hop from the form's field NAME through form-data to `data.loiReadiness` is exercised at all: the
+hermetic e2e reaches step 4A on a decoy token and writes nothing, and the unit specs hand the
+validator an object literal. A typo on either side of that hop drops the answer silently.
+
+Otherwise it behaves like every other step column: provided-wins (a walked-back answer lands, a
+not-shown submit preserves what stands) and in `WAITLIST_CONFLICT_FIELDS`, so two submissions
+disagreeing about it is flagged rather than resolved. **No new funnel event**, and the implication
+runs one way only: `pilot_interest_selected` fires for _any_ answered pilot question — `not-currently`
+included — and an LOI answer cannot exist without a positive one, so every flow that stores this is
+already inside the event's count.
+
 ### Append-only submissions (DAR-88)
 
 **Every submit inserts a `waitlist_submission`; a repeat email adds a row under the same
