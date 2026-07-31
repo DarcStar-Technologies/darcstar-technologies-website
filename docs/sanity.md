@@ -80,6 +80,50 @@ in a `.prose` container (Tailwind Typography). Default blocks/lists render stand
 only the schema's custom members: `PortableImage` (image block), `PortableCode` (code block),
 `PortableMath` (both LaTeX types), and the `link` mark (`PortableLink`).
 
+### `listItem` is a component, not a map — leave it that way (DAR-208)
+
+`@portabletext/svelte@3.0.1`'s `RenderListItem` looks the block's **`style`** up in `components.listItem`,
+which is keyed by **`listItem`** values. The default map is `{bullet, number}` and an ordinary list item
+is `style: "normal"`, so the lookup misses every time: `Unknown list item style "normal"`, once per
+`<li>`, on every article on `/news`, `/research` and `/people` (nine on one post). The sibling
+`RenderList` gets it right — `list[node.listItem]`. Our content is innocent; no `listItem` value other
+than `bullet` exists in the dataset, and no content edit can silence it.
+
+Passing a **component** instead of a map is the library's own escape hatch: `mergeComponents` returns a
+function override verbatim and `RenderListItem` short-circuits on `typeof components.listItem === 'function'`,
+skipping both the lookup and the `$effect` that warns. We pass the library's own exported
+`DefaultListItem`, so there is no local component to drift.
+
+Why it is worth a workaround rather than being cosmetic: **DAR-106 restored `onMissingComponent` to
+warn precisely so a content type that ships unrendered announces itself**, and a permanent false
+warning on every article is how that channel stops being read. The next unrendered block type would
+arrive as one more line nobody looks at.
+
+Three things measured rather than argued, all pinned in `PortableBody.svelte.spec.ts`:
+
+- **Rendering is unchanged** — all four `style` × `listItem` combinations render byte-identically
+  before and after. Every list item already resolved to this same component, via the map or via
+  `unknownListItem`; `<ul>` vs `<ol>` is `RenderList`'s decision and is untouched.
+- **No real signal is lost.** That warning reports a block style against a `listItem`-keyed map, so it
+  can never name a list type we failed to handle. The one that can — `Unknown list style "…"`, from
+  `RenderList` — still fires, and a spec case holds it. Over-applying the same trick to `components.list`
+  (which does **not** have the bug) would cost both that signal and the `<ol>`, and fails four tests.
+- **The smaller patch is partial.** `listItem: { normal: DefaultListItem }` merges into the default map
+  and silences today's content, but a list item carrying a block style warns under that style's own
+  name (measured: `Unknown list item style "h2"`), so it fixes the symptom only for prose that happens
+  to be plain. It is a spec case, so shrinking the fix to it fails.
+
+The strongest reason not to tidy it back, though, is that **in 3.0.1 the map form does not work at
+all**: measured, `listItem: { bullet: MyListItem }` — the shape the API documents, and the shape the
+library's own default map uses — renders `MyListItem` **never**. The lookup asks for `map['normal']`,
+misses, and falls through to `unknownListItem`, so a custom component is dropped in silence. Only the
+map keyed by block `style` resolves, which is the bug stated from the other side. Giving bullets and
+numbers different components is therefore impossible in this version by any route; if that is ever
+wanted before DAR-221 lands, branch inside one component on `portableText.value.listItem`.
+
+`3.0.1` is `latest` — there is no version to bump to. Drop the override the day upstream fixes the
+lookup (a one-word change, `style` → `node.listItem`); DAR-221 tracks that, and the upstream report.
+
 ### CMS prose is a published surface, checked by hand (DAR-171)
 
 Everything an editor types here is published copy, and it is the **one** surface the two copy guards
