@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { overwriteGetLocale, baseLocale } from '$lib/paraglide/runtime';
 import { m } from '$lib/paraglide/messages.js';
+import en from '../../messages/en.json';
 import {
 	CONTROLLER_LATENCY_P50,
 	CONTROLLER_LATENCY_P99,
@@ -209,6 +210,100 @@ describe('every published real-time margin names the percentile it came from (DA
 		const swapped = 'It clears the budget by roughly 100× at p50 and roughly 190× at p99.';
 		expect(attributedPercentile(swapped, '190×')).toBe('p99');
 		expect(attributedPercentile(swapped, '100×')).toBe('p50');
+	});
+});
+
+// "Independent" is a term of art in benchmarking: it means a SEPARATE PARTY ran or witnessed the
+// run, which is the whole reason a reader gives the word weight. /evidence/benchmarks headed its
+// cross-checking section "Independent re-runs" over two runs that are both ours — the aarch64 one
+// executes our own `bench-arm.yml` on a hosted runner, so the metal is rented and the run is not
+// (DAR-210). What those re-runs actually establish is that the figure survives a change of ISA,
+// compiler and machine, which is a real claim and a different one; the heading says "Cross-platform"
+// now. DAR-46's axis rather than DAR-117's: the word overstated what the evidence supports, the way
+// "ships" did on the org profile (DAR-128) and "guarantees" did before it.
+//
+// The rule is about the ADJECTIVE, and the adverb is deliberately left alone. Three live keys say
+// "independently" and all three are precise: two provers checking a theorem independently OF EACH
+// OTHER, and hardware "independently attributed" — the harness reads the CPU's own implementer and
+// part IDs instead of us asserting what we ran on, so it is the ATTRIBUTION that is independent. The
+// heading borrowed the adjective and dropped the noun that made it true.
+describe('no evidence claim calls our own runs independent (DAR-210)', () => {
+	// Blunt on purpose, like DAR-212's pattern below, and key-scoped for the same reason — except
+	// that here the scope was MEASURED rather than argued, and the measurement is decisive.
+	//
+	// SAFETY_LANGUAGE_RULES is the obvious home and is the wrong one: those rules are shared with
+	// `pnpm check:cms`, which reads CMS prose. Queried against the live dataset, "independent" is
+	// pervasive there and every use is correct — "near-independent" coordinates after a random
+	// rotation, "independently-normalized" softmax outputs (the whole subject of three posts), "six
+	// independent opportunities to get it wrong", the founder bio's "independent work on hard systems
+	// problems". Best of all, one post argues at length that its own reviewers are NOT independent
+	// ("The verifiers aren't independent witnesses… Their agreement lowers the noise; it isn't
+	// statistical independence") — copy this rule would flag while it says the very thing the rule
+	// exists to enforce. Every flagship engineering post, a paper commentary and the bio would fire,
+	// for zero real defects: DAR-152's failure mode exactly, where a guard that flags correct content
+	// gets loosened until it catches nothing.
+	//
+	// So: the evidence surface only, where a claim about how our evidence was produced actually
+	// lives, and where the word is a provenance claim rather than a description of prose.
+	const CLAIMS_A_SEPARATE_PARTY = /\bindependent\b/i;
+
+	const evidenceCopy = Object.entries(en as Record<string, unknown>).filter(
+		([key, value]) => key.startsWith('evidence_') && typeof value === 'string'
+	);
+
+	// "Nothing matched" and "the scan reached nothing" print identically (DAR-102), and this scan is
+	// prefix-derived, so a renamed key would silently leave the surface. The floor is far below
+	// today's count — it is a liveness check, not a pin on how much evidence copy exists.
+	it('reaches the evidence surface at all', () => {
+		expect(evidenceCopy.length).toBeGreaterThan(30);
+	});
+
+	it('never claims independence for a run we performed', () => {
+		const hits = evidenceCopy
+			.filter(([, value]) => CLAIMS_A_SEPARATE_PARTY.test(value as string))
+			.map(([key]) => key);
+		expect(
+			hits,
+			'"independent" asserts a separate party ran or witnessed it, and none has — say what the evidence shows (cross-platform, cross-prover, attributed) or commission the third-party run and allow the key here'
+		).toEqual([]);
+	});
+
+	// That assertion is "nothing matched", which passes just as happily against a pattern that
+	// answers nothing at all (DAR-152). These prove it answers — the retired heading verbatim, plus
+	// the two rewordings that would reintroduce the claim without reusing its words.
+	it.each([
+		['the heading this replaced', 'Independent re-runs'],
+		['a reworded claim', 'An independent benchmark of the reference kernel.'],
+		['the noun form', 'Independent verification on a second architecture.']
+	])('recognises %s', (_label, text) => {
+		expect(text).toMatch(CLAIMS_A_SEPARATE_PARTY);
+	});
+
+	// The adverb, which is the half that must NOT fire — and it is live copy, not a hypothetical, so
+	// a pattern widened to `independent\w*` fails here rather than silently retiring three true
+	// statements. Both senses, because they are different claims that happen to share a word.
+	it.each([
+		['machine-read attribution', m.evidence_cfc_method()],
+		['two provers agreeing', m.evidence_theorems_method()],
+		['the same claim on the proofs page', m.evidence_proofs_definition_body()]
+	])('leaves %s alone', (_label, text) => {
+		expect(text).toMatch(/\bindependently\b/i);
+		expect(text).not.toMatch(CLAIMS_A_SEPARATE_PARTY);
+	});
+
+	// What the key scope costs, asserted rather than claimed — DAR-212's move, and here the
+	// over-matched copy is live. `waitlist_evidence_benchmarks` offers "Independent performance
+	// benchmarks" as an answer to "What evidence would matter most before your organization could
+	// adopt GIDE?", beside "Third-party technical or security review". That is a BUYER naming what
+	// they would need from someone else — the opposite end of the conversation from a claim about
+	// our own runs — and rewriting it would narrow a stranger's stated requirement into something we
+	// already have. It is the reason this rule stops at the evidence surface instead of scanning the
+	// catalog, and the reason it must never be moved into SAFETY_LANGUAGE_RULES.
+	it('over-matches a buyer requirement outside the evidence surface, hence the key scope', () => {
+		expect(
+			m.waitlist_evidence_benchmarks(),
+			'this copy is correct and must keep firing the pattern — if it stopped, the key scope would look unnecessary'
+		).toMatch(CLAIMS_A_SEPARATE_PARTY);
 	});
 });
 

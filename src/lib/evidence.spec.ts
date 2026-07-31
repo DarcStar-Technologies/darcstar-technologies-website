@@ -120,7 +120,7 @@ describe('the published real-time margins (DAR-209)', () => {
 // duplicated. Every multiplier on the site is DERIVED — a quotient of two other published figures —
 // so each one belongs to the module that owns the division, and a hand-typed `190×` is a copy the
 // constants can no longer move. Measured latencies are deliberately NOT covered by this: the
-// per-run provenance figures (`0.75 µs mean`, `0.81 and 0.91 µs`) live only in the
+// per-run provenance figures (`0.75 µs mean`, the x86 sweep's `0.81 µs`) live only in the
 // `evidence_bench_*` messages by design, so a µs rule would fire on copy that is doing its job.
 //
 // On a hit, make it a constant — do not loosen this.
