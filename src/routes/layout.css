@@ -630,18 +630,125 @@ select.glass-field {
 	@apply btn-pill-base px-4 py-2 text-xs;
 }
 
-/* The destructive row action (delete a submission, delete a waitlist lead).
-   Distinct from `/admin/users/[id]`'s danger zone, whose outline and filled
-   outline pills encode a deliberate disable-then-delete escalation and are one
-   use each — that difference is the point, so they stay written out. This one
-   was identical at three sites in two files, which is not an escalation.
+/* ---- The /admin action + confirm control --------------------------------
+   Almost every consequential action in /admin is a two-part control: a
+   `<details>` whose `<summary>` is the ghost trigger, and a filled confirm
+   button inside it. Both are tonal, and the tone is the SEVERITY of the action
+   rather than decoration:
+
+     affirm  → invite / resend an invitation (sends mail)
+     caution → record an updates opt-out, record a do-not-contact request
+     danger  → delete a submission, delete a lead
+     quiet   → expand a detail row, lift a do-not-contact (admin-only reversal)
+
+   The pair always shares a tone, which is what makes the trigger's colour a
+   promise about the button underneath it.
+
+   DAR-222 named the danger CONFIRM (`btn-danger`) and left the other four
+   hand-written, which is arguably worse than naming none: the family then looks
+   like it has one member, so a reader cannot tell whether the siblings are
+   deliberate. DAR-223 names all eight and retires that one-off spelling.
 
    `/admin` carries its own `focus-visible:ring-*` rather than the site-wide
-   ring (CLAUDE.md), so that opt-out is baked in here rather than left to each
-   call site to remember. */
-@utility btn-danger {
-	@apply rounded bg-error-500/20 px-2 py-1 text-xs font-medium text-error-200 transition-colors;
-	@apply hover:bg-error-500/30 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none;
+   ring (CLAUDE.md), so that opt-out is baked into the bases rather than left to
+   each call site to remember. */
+@utility confirm-base {
+	@apply rounded px-2 py-1 text-xs font-medium transition-colors;
+	@apply focus-visible:ring-1 focus-visible:outline-none;
+}
+
+/* The ghost tier adds the disclosure chrome: it is usually a `<summary>`, so
+   the UA marker has to be suppressed in both spellings (`list-none` for most
+   engines, the `::-webkit-details-marker` pseudo for WebKit/older Blink).
+
+   `action-*` rather than `disclose-*`, and the difference is not cosmetic: one
+   site — /admin/waitlist's "Mark reviewed" — is a bare `<button>` with nothing
+   to disclose, sitting in the same row of controls and wanting the same ghost
+   treatment. The marker rules are inert on a `<button>`, so the tier works
+   there; a name promising disclosure would simply have been false. Pinned by a
+   spec, so the exception stays a decision rather than becoming the norm. */
+@utility action-base {
+	@apply inline-flex cursor-pointer list-none items-center confirm-base;
+	@apply [&::-webkit-details-marker]:hidden;
+}
+
+@utility action-affirm {
+	@apply action-base text-primary-500 hover:bg-primary-500/10 focus-visible:ring-primary-500;
+}
+
+@utility action-caution {
+	@apply action-base text-warning-300 hover:bg-warning-500/10 focus-visible:ring-warning-500;
+}
+
+@utility action-danger {
+	@apply action-base text-error-400 hover:bg-error-500/10 focus-visible:ring-error-500;
+}
+
+@utility action-quiet {
+	@apply action-base text-faint hover:bg-white/5 hover:text-white focus-visible:ring-primary-500;
+}
+
+@utility confirm-affirm {
+	@apply confirm-base bg-primary-500/20 text-primary-200 hover:bg-primary-500/30;
+	@apply focus-visible:ring-primary-500;
+}
+
+@utility confirm-caution {
+	@apply confirm-base bg-warning-500/20 text-warning-200 hover:bg-warning-500/30;
+	@apply focus-visible:ring-warning-500;
+}
+
+@utility confirm-danger {
+	@apply confirm-base bg-error-500/20 text-error-200 hover:bg-error-500/30;
+	@apply focus-visible:ring-error-500;
+}
+
+@utility confirm-quiet {
+	@apply confirm-base bg-white/10 text-body hover:bg-white/20 focus-visible:ring-primary-500;
+}
+
+/* ---- Badges -------------------------------------------------------------
+   Small rounded labels. Deliberately NOT one root with five variants: the only
+   token all five spellings share is `rounded-full`, and two of them are not
+   `inline-flex` (making them so would change layout on the `<li>` chips), so a
+   base that thin would be a configurable abstraction rather than a shared one.
+   Two families that genuinely compose, and two standalone tokens.
+
+   Every one of these takes its COLOUR from the call site — a status badge's
+   whole job is to differ by status — so only geometry and type live here. */
+@utility badge-base {
+	@apply inline-flex items-center rounded-full text-xs font-medium;
+}
+
+/* Solid status badge: the /admin/audit outcome, the waitlist lead class. */
+@utility badge {
+	@apply badge-base px-2 py-0.5;
+}
+
+/* Outlined chip — the paper meta rail (status, origin, contribution, topics).
+   Was `pillClass`, exported from `PaperStatus.svelte`'s `<script module>`, which
+   three components imported WITHOUT rendering that component (DAR-223).
+
+   Half a padding step wider than the solid badge, and that is not drift: the
+   1px border makes an outlined chip read narrower at equal padding. */
+@utility badge-outline {
+	@apply badge-base border px-2.5 py-0.5;
+}
+
+/* The larger content chip on the detail pages (a post's topics, a person's focus
+   areas). Deliberately lighter than `badge-outline` — no `font-medium` — because
+   it labels prose rather than annotating a record. Standalone: adding
+   `inline-flex` would change how the `<li>` form lays out. */
+@utility badge-tag {
+	@apply rounded-full border px-3 py-1 text-xs;
+}
+
+/* The /admin role chip. `text-[10px]` is part of that surface's deliberate
+   opt-out from the public type scale (CLAUDE.md). It had two spellings — `px-2`
+   in one file, `px-1.5` plus a baked-in `ml-1.5` in another — which is one chip
+   drifting, not two chips; the margin belongs to the call site. */
+@utility badge-micro {
+	@apply rounded-full px-2 py-0.5 text-[10px] tracking-wide;
 }
 
 /* Flowing R→B→G color-charge gradient for text (clipped). Colour order matches

@@ -154,13 +154,11 @@
 							<td class="datagrid-td text-emphasis">
 								{u.email}
 								{#if u.id === data.currentUserId}
-									<span
-										class="ml-1.5 rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] tracking-wide text-faint"
+									<span class="ml-1.5 badge-micro bg-white/10 text-faint"
 										>{m.admin_users_badge_you()}</span
 									>
 								{:else if data.ownerIds.includes(u.id)}
-									<span
-										class="ml-1.5 rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] tracking-wide text-faint"
+									<span class="ml-1.5 badge-micro bg-white/10 text-faint"
 										>{m.admin_users_badge_owner()}</span
 									>
 								{/if}

@@ -288,6 +288,232 @@ describe('the eyebrow base is a composition root, not a call-site class', () => 
 	});
 });
 
+// A Tailwind-ish class token: lowercase, digits, and the punctuation utilities use (`/` for an
+// alpha modifier, `[` `]` for an arbitrary value, `:` for a variant, `&` inside one).
+const CLASS_TOKEN = /^[a-z0-9[\]&:_./~*<>=-]+$/;
+
+/** Class-string consts exported from a `<script module>` block, given a component's SOURCE. */
+export const classStringExports = (source: string): string[] => {
+	const block = /<script[^>]*\bmodule\b[^>]*>([\s\S]*?)<\/script>/.exec(source);
+	if (!block) return [];
+	return [...block[1].matchAll(/export\s+const\s+(\w+)\s*=\s*(['"`])([^'"`]*)\2/g)]
+		.filter(([, , , value]) => {
+			const tokens = value.trim().split(/\s+/).filter(Boolean);
+			return tokens.length >= 2 && tokens.every((t) => CLASS_TOKEN.test(t));
+		})
+		.map(([, name]) => name);
+};
+
+describe('a shared class string never lives in a component', () => {
+	// CLAUDE.md's rule, stated since DAR-218: shared class strings live in `$lib/styles.ts` (or as a
+	// `@utility`), NEVER a component's `<script module>` — so a file that wants the string doesn't
+	// have to import a component to get it. `PaperStatus.svelte` exported `pillClass` anyway, and
+	// three components imported it while rendering `PaperStatus` NOWHERE (DAR-223).
+	//
+	// It matters more than a convention, and that is the reason this rule exists rather than a note:
+	// every other assertion in this file reads `$lib/styles` BY IMPORTING IT, so a second module of
+	// shared class strings is invisible to all of them. The superset rule, the derived core rule and
+	// the unused-export check all covered exactly one file, and nothing said so. DAR-102's lesson —
+	// a scan is only as wide as the set it scans — applied to the scan's own subject.
+
+	// The detector needs positive AND negative cases of its own: applied to a clean tree it can only
+	// report "nothing matched", which a classifier that answers nothing satisfies perfectly.
+	it('detects a class string exported from a script module', () => {
+		const src = `<script module lang="ts">
+			export const pillClass = 'inline-flex items-center rounded-full border px-2.5 py-0.5';
+		</script>`;
+		expect(classStringExports(src)).toStrictEqual(['pillClass']);
+	});
+
+	// The exports that are legitimately there must NOT trip it, or the rule gets loosened until it
+	// catches nothing (DAR-152). A label map, a type and a single-word string are all fine — the
+	// hazard is specifically a multi-token class list, which is the thing another file would want.
+	it('ignores exports that are not class strings', () => {
+		expect(
+			classStringExports(`<script module lang="ts">
+				export const contributionLabel = { theory: m.theory };
+				export type Option = { value: string };
+				export const SLUG = 'research';
+				export const sentence = 'Two words here.';
+			</script>`)
+		).toStrictEqual([]);
+	});
+
+	it('ignores a class string that is NOT exported', () => {
+		// A component-local const is not shared — `Header`'s nav-link strings, `Pager`'s step class,
+		// `admin/+layout`'s tab base. Export is what makes one reachable from another file, so export
+		// is what the rule watches.
+		expect(
+			classStringExports(`<script module lang="ts">
+				const desktopLinkClass = 'rounded px-3 py-2 text-sm font-medium';
+			</script>`)
+		).toStrictEqual([]);
+	});
+
+	it('finds none in the component tree', () => {
+		const offenders = markupSourcePaths().flatMap((file) =>
+			classStringExports(readFileSync(file, 'utf8')).map(
+				(name) =>
+					`${file} exports the class string \`${name}\` — move it to $lib/styles.ts or layout.css`
+			)
+		);
+		expect(offenders).toStrictEqual([]);
+	});
+
+	// Reach control: the scan above is "nothing matched", and a reader that finds no `<script module>`
+	// blocks satisfies it. Four components have one; the count is a floor so the tree can grow.
+	it('actually reads the script-module blocks', () => {
+		const withModule = markupSourcePaths().filter((file) =>
+			/<script[^>]*\bmodule\b/.test(readFileSync(file, 'utf8'))
+		);
+		expect(withModule.length).toBeGreaterThanOrEqual(3);
+		expect(withModule).toContain('src/lib/components/PaperContribution.svelte');
+	});
+});
+
+describe('the /admin disclose-then-confirm control is one family', () => {
+	// Both halves of the control and all four tones (DAR-223). DAR-222 named only the danger confirm,
+	// which left four siblings hand-written and the family looking like it had one member.
+	const css = readFileSync('src/routes/layout.css', 'utf8');
+	const TONES = ['affirm', 'caution', 'danger', 'quiet'];
+
+	it('defines every tone for both halves', () => {
+		const missing = TONES.flatMap((tone) =>
+			['action', 'confirm']
+				.map((half) => `${half}-${tone}`)
+				.filter((name) => !css.includes(`@utility ${name} {`))
+		);
+		expect(missing).toStrictEqual([]);
+	});
+
+	it('never uses a base bare in markup', () => {
+		const bare = markupSourcePaths().flatMap((file) =>
+			classLiterals(file)
+				.filter((t) => t.includes('confirm-base') || t.includes('action-base'))
+				.map((t) => `${file}: class="${t.join(' ')}"`)
+		);
+		expect(bare).toStrictEqual([]);
+	});
+
+	// The tone is a promise: a trigger's colour tells you what the button underneath will do, so a
+	// trigger may not sit above a confirm of another tone. Read structurally from the markup rather
+	// than from a list of call sites, so a sixth action inherits the rule.
+	//
+	// Segmented at each `<summary`, NOT bounded by `</details>`, and both halves of that are load-
+	// bearing. The first cut ran `action-(\w+)[\s\S]*?<\/details>` and reported a real-looking
+	// mismatch that was entirely the regex's own: `/admin/waitlist`'s "Mark reviewed" is a bare
+	// `<button class="action-quiet">` with no `<details>` at all, so the scan ran past it into the
+	// NEXT control and paired that button's tone against a different control's confirm. Segmenting
+	// also makes the rule nesting-agnostic, which a `</details>` bound is not — the submission delete
+	// is a `<details>` inside a `<details>`, where a non-greedy close matches the inner one.
+	const segments = (file: string) => markupText(file).split(/(?=<summary)/);
+
+	it('pairs each trigger with a confirm of the same tone', () => {
+		const mismatches = markupSourcePaths().flatMap((file) =>
+			segments(file).flatMap((seg) => {
+				const trigger = /<summary[^>]*\baction-(\w+)/.exec(seg);
+				if (!trigger) return [];
+				const wrong = [...seg.matchAll(/confirm-(\w+)/g)]
+					.map((m) => m[1])
+					.filter((tone) => tone !== trigger[1]);
+				return wrong.length
+					? [`${file}: action-${trigger[1]} above confirm-${[...new Set(wrong)].join(',')}`]
+					: [];
+			})
+		);
+		expect(mismatches).toStrictEqual([]);
+	});
+
+	// Reach control — a hand-written regex over markup, and if it paired nothing the rule above would
+	// pass against any pairing at all.
+	it('actually finds the paired controls', () => {
+		const paired = markupSourcePaths().flatMap((file) =>
+			segments(file).filter(
+				(seg) => /<summary[^>]*\baction-\w+/.test(seg) && /confirm-\w+/.test(seg)
+			)
+		);
+		expect(paired.length).toBeGreaterThanOrEqual(5);
+	});
+
+	// The one trigger that is NOT a disclosure, pinned so the tier's name stays honest: "Mark
+	// reviewed" is a single-press action with nothing to confirm, and it wears the ghost treatment
+	// because it sits in the same row of controls. This is why the tier is `action-*` rather than
+	// `disclose-*` — the `<summary>` chrome in the base is inert on a `<button>`, but a name claiming
+	// disclosure would be false at this site, and the first draft of this family made that claim.
+	it('allows a ghost trigger that opens nothing', () => {
+		const bare = markupSourcePaths().flatMap((file) =>
+			[...markupText(file).matchAll(/<button[\s\S]{0,200}?\baction-(\w+)/g)].map(
+				([, tone]) => `${file}: <button action-${tone}>`
+			)
+		);
+		expect(bare).toStrictEqual(['src/routes/admin/waitlist/+page.svelte: <button action-quiet>']);
+	});
+});
+
+describe('badges are named, and only where they genuinely compose', () => {
+	const css = readFileSync('src/routes/layout.css', 'utf8');
+
+	it('uses only badge tokens that layout.css defines', () => {
+		const used = [
+			...new Set(
+				markupSourcePaths().flatMap((file) =>
+					classLiterals(file)
+						.flat()
+						.filter((t) => t.startsWith('badge'))
+				)
+			)
+		].sort();
+		expect(used).toStrictEqual(['badge', 'badge-micro', 'badge-outline', 'badge-tag']);
+		expect(used.filter((t) => !css.includes(`@utility ${t} {`))).toStrictEqual([]);
+	});
+
+	it('never uses the badge base bare', () => {
+		const bare = markupSourcePaths().flatMap((file) =>
+			classLiterals(file)
+				.filter((t) => t.includes('badge-base'))
+				.map((t) => `${file}: class="${t.join(' ')}"`)
+		);
+		expect(bare).toStrictEqual([]);
+	});
+
+	// No hand-rolled pill survives. Scoped to `rounded-full` + a small type size + horizontal padding,
+	// which is the badge shape; the pill BUTTONS are excluded by name because they are a different
+	// family with their own tiers, and `glass-btn` surfaces (the icon buttons) by theirs.
+	it('leaves no hand-rolled badge', () => {
+		const handRolled = markupSourcePaths().flatMap((file) =>
+			classLiterals(file)
+				.filter(
+					(t) =>
+						t.includes('rounded-full') &&
+						(t.includes('text-xs') || t.includes('text-[10px]')) &&
+						t.some((c) => /^px-/.test(c)) &&
+						!t.some((c) => c.startsWith('badge') || c.startsWith('btn-') || c === 'glass-btn')
+				)
+				.map((t) => `${file}: class="${t.join(' ')}"`)
+		);
+		// Three survivors, each named with its reason. DAR-102's polarity: deleting an entry makes this
+		// STRICTER, so the list cannot rot into names nobody checks, and a fourth hand-rolled pill
+		// fails it from the other side.
+		const KEPT: Record<string, string> = {
+			'src/routes/admin/users/[id]/+page.svelte error-500/40':
+				"the danger zone's outline pill (disable an account) — one use",
+			'src/routes/admin/users/[id]/+page.svelte error-500/50':
+				'its filled sibling (delete an account) — one use, and the fill IS the escalation',
+			'src/lib/components/PaperLinks.svelte primary-500/40':
+				'an external-source LINK, not a badge: it carries hover/focus states and a gap for its ' +
+				'icon, so folding it into the static badge family would give every status chip an ' +
+				'interactive affordance it must not have'
+		};
+		const keyed = handRolled.map((s) => {
+			const [file] = s.split(':');
+			const tone = /(?:border-|bg-)((?:error|primary)-500\/\d+)/.exec(s);
+			return `${file} ${tone?.[1] ?? '?'}`;
+		});
+		expect(keyed.filter((k) => !(k in KEPT))).toStrictEqual([]);
+		expect(Object.keys(KEPT).filter((k) => !keyed.includes(k))).toStrictEqual([]);
+	});
+});
+
 describe('the record tables share one set of chrome tokens', () => {
 	// Unlike the three families below there is no base to keep out of markup — `datagrid` IS a
 	// call-site class. What matters here is the SET: six files carried this chrome verbatim, and one
@@ -464,13 +690,7 @@ describe('the pill button base is a composition root, not a call-site class', ()
 				)
 			)
 		].sort();
-		expect(used).toStrictEqual([
-			'btn-danger',
-			'btn-icon',
-			'btn-pill',
-			'btn-pill-sm',
-			'btn-pill-xs'
-		]);
+		expect(used).toStrictEqual(['btn-icon', 'btn-pill', 'btn-pill-sm', 'btn-pill-xs']);
 		expect(
 			used.filter((t) => !SKELETON_BUTTONS.includes(t) && !css.includes(`@utility ${t} {`))
 		).toStrictEqual([]);

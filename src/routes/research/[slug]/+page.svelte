@@ -8,7 +8,7 @@
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import Seo from '$lib/components/Seo.svelte';
 	import PageHero from '$lib/components/PageHero.svelte';
-	import PaperStatus, { pillClass } from '$lib/components/PaperStatus.svelte';
+	import PaperStatus from '$lib/components/PaperStatus.svelte';
 	import PaperContribution from '$lib/components/PaperContribution.svelte';
 	import PaperOrigin from '$lib/components/PaperOrigin.svelte';
 	import PaperVenueDate from '$lib/components/PaperVenueDate.svelte';
@@ -103,7 +103,7 @@
 			{#if paper.categories && paper.categories.length > 0}
 				<div class="flex flex-wrap gap-2">
 					{#each paper.categories as cat (cat._id)}
-						<span class="{pillClass} border-hairline text-body">{cat.title}</span>
+						<span class="badge-outline border-hairline text-body">{cat.title}</span>
 					{/each}
 				</div>
 			{/if}

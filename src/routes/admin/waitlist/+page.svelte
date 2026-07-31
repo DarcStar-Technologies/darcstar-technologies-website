@@ -204,8 +204,6 @@
 	const chipActive = 'bg-white/10 text-white';
 	const chipIdle = 'text-faint hover:text-white';
 	const tagBase = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium';
-	const summaryBase =
-		'inline-flex cursor-pointer list-none items-center rounded px-2 py-1 text-xs font-medium transition-colors [&::-webkit-details-marker]:hidden focus-visible:outline-none focus-visible:ring-1';
 </script>
 
 <Seo
@@ -634,8 +632,7 @@
 										</p>
 									{:else}
 										<details class="mb-1.5 inline-block text-right">
-											<summary
-												class="{summaryBase} text-primary-500 hover:bg-primary-500/10 focus-visible:ring-primary-500"
+											<summary class="action-affirm"
 												>{resend
 													? m.admin_waitlist_invite_resend()
 													: m.admin_waitlist_invite()}</summary
@@ -644,7 +641,7 @@
 												<input type="hidden" name="id" value={lead.id} />
 												<button
 													type="submit"
-													class="rounded bg-primary-500/20 px-2 py-1 text-xs font-medium text-primary-200 transition-colors hover:bg-primary-500/30 focus-visible:ring-1 focus-visible:ring-primary-500 focus-visible:outline-none"
+													class="confirm-affirm"
 													aria-label={resend
 														? m.admin_waitlist_invite_resend_sr({ email: lead.email })
 														: m.admin_waitlist_invite_sr({ email: lead.email })}
@@ -663,7 +660,7 @@
 										<input type="hidden" name="id" value={lead.id} />
 										<button
 											type="submit"
-											class="{summaryBase} text-faint hover:bg-white/5 hover:text-white focus-visible:ring-primary-500"
+											class="action-quiet"
 											aria-label={m.admin_waitlist_review_sr({ email: lead.email })}
 											>{m.admin_waitlist_review()}</button
 										>
@@ -680,15 +677,12 @@
 									     typed in has never been asked and wants never to be. -->
 									{#if lead.updatesState !== 'unsubscribed'}
 										<details class="mb-1.5 inline-block text-right">
-											<summary
-												class="{summaryBase} text-warning-300 hover:bg-warning-500/10 focus-visible:ring-warning-500"
-												>{m.admin_waitlist_updates_optout()}</summary
-											>
+											<summary class="action-caution">{m.admin_waitlist_updates_optout()}</summary>
 											<form method="post" action={optOutAction} class="mt-1.5">
 												<input type="hidden" name="id" value={lead.id} />
 												<button
 													type="submit"
-													class="rounded bg-warning-500/20 px-2 py-1 text-xs font-medium text-warning-200 transition-colors hover:bg-warning-500/30 focus-visible:ring-1 focus-visible:ring-warning-500 focus-visible:outline-none"
+													class="confirm-caution"
 													aria-label={m.admin_waitlist_updates_optout_sr({ email: lead.email })}
 													>{m.admin_waitlist_updates_optout_confirm()}</button
 												>
@@ -705,15 +699,12 @@
 									     thing somebody can say at any point, including before we ever wrote to them. -->
 									{#if mayContactLead(lead)}
 										<details class="mb-1.5 inline-block text-right">
-											<summary
-												class="{summaryBase} text-warning-300 hover:bg-warning-500/10 focus-visible:ring-warning-500"
-												>{m.admin_waitlist_donotcontact()}</summary
-											>
+											<summary class="action-caution">{m.admin_waitlist_donotcontact()}</summary>
 											<form method="post" action={doNotContactAction} class="mt-1.5">
 												<input type="hidden" name="id" value={lead.id} />
 												<button
 													type="submit"
-													class="rounded bg-warning-500/20 px-2 py-1 text-xs font-medium text-warning-200 transition-colors hover:bg-warning-500/30 focus-visible:ring-1 focus-visible:ring-warning-500 focus-visible:outline-none"
+													class="confirm-caution"
 													aria-label={m.admin_waitlist_donotcontact_sr({ email: lead.email })}
 													>{m.admin_waitlist_donotcontact_confirm()}</button
 												>
@@ -726,15 +717,12 @@
 										     form is not authorization. -->
 									{:else if data.isAdmin}
 										<details class="mb-1.5 inline-block text-right">
-											<summary
-												class="{summaryBase} text-faint hover:bg-white/5 hover:text-white focus-visible:ring-primary-500"
-												>{m.admin_waitlist_donotcontact_lift()}</summary
-											>
+											<summary class="action-quiet">{m.admin_waitlist_donotcontact_lift()}</summary>
 											<form method="post" action={liftDoNotContactAction} class="mt-1.5">
 												<input type="hidden" name="id" value={lead.id} />
 												<button
 													type="submit"
-													class="rounded bg-white/10 px-2 py-1 text-xs font-medium text-body transition-colors hover:bg-white/20 focus-visible:ring-1 focus-visible:ring-primary-500 focus-visible:outline-none"
+													class="confirm-quiet"
 													aria-label={m.admin_waitlist_donotcontact_lift_sr({ email: lead.email })}
 													>{m.admin_waitlist_donotcontact_lift_confirm()}</button
 												>
@@ -747,15 +735,12 @@
 									     one takes the whole person AND every submission (schema cascade), so the
 									     screen-reader label says so. -->
 									<details class="inline-block text-right">
-										<summary
-											class="{summaryBase} text-error-400 hover:bg-error-500/10 focus-visible:ring-error-500"
-											>{m.admin_delete()}</summary
-										>
+										<summary class="action-danger">{m.admin_delete()}</summary>
 										<form method="post" action={deleteAction} class="mt-1.5">
 											<input type="hidden" name="id" value={lead.id} />
 											<button
 												type="submit"
-												class="btn-danger"
+												class="confirm-danger"
 												aria-label={m.admin_waitlist_delete_sr({ email: lead.email })}
 												>{m.admin_delete_confirm()}</button
 											>
@@ -809,15 +794,14 @@
 													     a known address, so there has to be a way to delete a claim rather
 													     than a prospect. -->
 													<details class="text-right">
-														<summary
-															class="{summaryBase} text-error-400 hover:bg-error-500/10 focus-visible:ring-error-500"
+														<summary class="action-danger"
 															>{m.admin_waitlist_delete_submission()}</summary
 														>
 														<form method="post" action={deleteSubmissionAction} class="mt-1.5">
 															<input type="hidden" name="id" value={row.id} />
 															<button
 																type="submit"
-																class="btn-danger"
+																class="confirm-danger"
 																aria-label={m.admin_waitlist_delete_submission_sr({
 																	email: lead.email
 																})}>{m.admin_delete_confirm()}</button
