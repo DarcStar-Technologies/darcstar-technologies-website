@@ -16,15 +16,16 @@ array in `src/routes/evidence/+page.svelte`.
 Every figure was transcribed from the GIDE hub's own source-of-record documents (July 2026
 audit — this repo holds only the public prose, never the artifacts):
 
-| Card                                        | Source of record (in `../gide`)                                                                                                                                                                                                                                                                                                                                                          |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0.767 µs CfC inference                      | `docs/benchmarks/cfc-controller-performance.md` (mean of 10,000 calls / 1,000 warmup, Dec 2025) + `benchmarks/results/README.md` (attribution ledger: that run is UNATTRIBUTED; the ARM Neoverse-N2 log is the attributed cross-check at 0.75 µs)                                                                                                                                        |
-| 13,000× real time                           | Derived, never measured: 10 ms (100 Hz budget) ÷ 0.767 µs ≈ 13,000 (`docs/project-overview.md`). Computed in `$lib/evidence.ts` since DAR-209, not typed                                                                                                                                                                                                                                 |
-| ≈52 µs p50 / ≈99 µs p99 deployed controller | `benchmarks/results/quadrotor-cascade--run1.txt` (#3662, committed 2026-07-07): p50 **51.548**, p99 **98.654**, on a shared 4-vCPU x86 container under variable load. Its own headline COMMENT says "p99 ~= 94 us" and its data table contradicts it — **read the table**. Stated run-to-run swing ~44–52 µs p50 / ~77–95 µs p99, and this capture's p99 sits above even that            |
-| ≈190× p50 / ≈100× p99 margin                | Derived from the row above ÷ the same 10 ms budget, rounded down (DAR-209). Never separately measured, never typed into copy                                                                                                                                                                                                                                                             |
-| 260 theorems machine-checked                | `docs/theoretical-framework/THEOREM-CATALOG-0001.md` + `src/core/services/axiomatic/theorem_conformance.zig` (CI census gate keeps them consistent): 49 complete (dual-prover, zero local axioms) + 211 axiom-backed. **Measured against hub `main` on 2026-07-29**, cross-checked between the catalog's distribution table and the registry's `.met` count — see the vintage rule below |
-| Formal safety guarantees                    | The complete zero-axiom cluster: T026 (Nagumo forward invariance), T072 (CBF safe-control existence + minimally-invasive QP), T073 (robust Nagumo under learning), T090–T096 (latency margin, keep-out) in `proofs/Layer1/` — Lean 4 v4.30.0 + Isabelle2025-2/AFP 2026-06-01, SMT portfolio Z3 4.16.0 / CVC5 1.3.4 / Yices2 2.6.5 / dReal 4.21.06.2                                      |
-| 5 domains shipped                           | `src/domains/{cart_pole,quadrotor,fx,llm,self_dev}`; Self-Dev is explicitly pre-milestone ("approaching its first fully autonomous cycle") and the card says so                                                                                                                                                                                                                          |
+| Card                                        | Source of record (in `../gide`)                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.767 µs CfC inference                      | `docs/benchmarks/cfc-controller-performance.md` (mean of 10,000 calls / 1,000 warmup, Dec 2025) + `benchmarks/results/README.md` (attribution ledger: that run is UNATTRIBUTED; the ARM Neoverse-N2 log is the attributed cross-check at 0.75 µs)                                                                                                                                                                                                 |
+| Cross-platform re-runs (0.75 / 0.81 µs)     | `benchmarks/results/arm/cfc-arm.txt` — **ATTRIBUTED** aarch64 (Neoverse-N2, Clang 21.1.0): avg **0.75**, P99 **0.76** — and `benchmarks/results/full-bench-20251223.txt`: avg **0.81** at the same cell, which the ledger marks **UNATTRIBUTED — hardware unknown**. Those rows read `avg \| P50 \| P99 \| max \| jitter`, and the site published that row's **jitter** (0.91) as the top of a range of means until DAR-210 — **read the header** |
+| 13,000× real time                           | Derived, never measured: 10 ms (100 Hz budget) ÷ 0.767 µs ≈ 13,000 (`docs/project-overview.md`). Computed in `$lib/evidence.ts` since DAR-209, not typed                                                                                                                                                                                                                                                                                          |
+| ≈52 µs p50 / ≈99 µs p99 deployed controller | `benchmarks/results/quadrotor-cascade--run1.txt` (#3662, committed 2026-07-07): p50 **51.548**, p99 **98.654**, on a shared 4-vCPU x86 container under variable load. Its own headline COMMENT says "p99 ~= 94 us" and its data table contradicts it — **read the table**. Stated run-to-run swing ~44–52 µs p50 / ~77–95 µs p99, and this capture's p99 sits above even that                                                                     |
+| ≈190× p50 / ≈100× p99 margin                | Derived from the row above ÷ the same 10 ms budget, rounded down (DAR-209). Never separately measured, never typed into copy                                                                                                                                                                                                                                                                                                                      |
+| 260 theorems machine-checked                | `docs/theoretical-framework/THEOREM-CATALOG-0001.md` + `src/core/services/axiomatic/theorem_conformance.zig` (CI census gate keeps them consistent): 49 complete (dual-prover, zero local axioms) + 211 axiom-backed. **Measured against hub `main` on 2026-07-29**, cross-checked between the catalog's distribution table and the registry's `.met` count — see the vintage rule below                                                          |
+| Formal safety guarantees                    | The complete zero-axiom cluster: T026 (Nagumo forward invariance), T072 (CBF safe-control existence + minimally-invasive QP), T073 (robust Nagumo under learning), T090–T096 (latency margin, keep-out) in `proofs/Layer1/` — Lean 4 v4.30.0 + Isabelle2025-2/AFP 2026-06-01, SMT portfolio Z3 4.16.0 / CVC5 1.3.4 / Yices2 2.6.5 / dReal 4.21.06.2                                                                                               |
+| 5 domains shipped                           | `src/domains/{cart_pole,quadrotor,fx,llm,self_dev}`; Self-Dev is explicitly pre-milestone ("approaching its first fully autonomous cycle") and the card says so                                                                                                                                                                                                                                                                                   |
 
 ## Rules when editing
 
@@ -144,9 +145,9 @@ audit — this repo holds only the public prose, never the artifacts):
   before this rule landed and kept the retired verb until DAR-128 (at the end of this list).
 - **Scope 0.767 µs to the reference kernel.** The GIDE repo itself forbids citing it as "the
   controller latency" — the deployed controller is ≈52 µs p50 / ≈99 µs p99. Per-run
-  provenance detail (ARM 0.75 attributed; committed x86 re-runs 0.81–0.91) lives ONLY in the
-  `evidence_bench_*` messages on /evidence/benchmarks — keep the ARM/x86 attribution
-  straight, they are different machines.
+  provenance detail (ARM 0.75 attributed; the committed x86 sweep 0.81, unattributed) lives
+  ONLY in the `evidence_bench_*` messages on /evidence/benchmarks — keep the ARM/x86
+  attribution straight, they are different machines.
 - **A margin is a QUOTIENT, so it is derived in code and must name the latency it divided
   (DAR-209).** `evidence_bench_controller_body` published "≈52 µs p50 / ≈94 µs p99 … clears the
   10 ms budget by roughly 190×" — two latencies, one margin, no statement of which. It was the
@@ -182,6 +183,45 @@ audit — this repo holds only the public prose, never the artifacts):
   leaves `Inputs = {}`, which accepts any object literal, so the call site keeps compiling while
   the page silently loses its attribution (`pnpm check` stayed at 0 errors under exactly that
   mutation). The spec is the only thing that fails.
+- **"Independent" names a PARTY, not a platform — and the word is only publishable where a
+  third party ran or witnessed it (DAR-210).** `/evidence/benchmarks` headed its cross-checking
+  section "Independent re-runs" over two runs that are both ours: the aarch64 one executes our
+  own `bench-arm.yml`, so the metal is rented from a hosted runner and the run is not. In
+  benchmarking "independent" is a term of art meaning a separate party, which is exactly why a
+  reader gives it weight — so "independent of whom?" answered with "us, on a different CPU"
+  costs more trust than the word ever bought. What the re-runs establish is that the figure
+  survives a change of ISA, compiler and machine: a real claim, and a different one. DAR-46's
+  axis (the wording must match what the evidence supports), not DAR-117's. Five things worth
+  keeping: (1) **the adjective is banned on the evidence surface and the adverb is deliberately
+  not** — three live keys say "independently" and all three are precise: two provers checking a
+  theorem independently OF EACH OTHER, and hardware "independently attributed", where the
+  harness reads the CPU's own implementer and part IDs rather than us asserting what we ran on.
+  The heading borrowed the adjective and dropped the noun that made it true. (2) **The guard is
+  key-scoped to `evidence_*` and must never move into `SAFETY_LANGUAGE_RULES`, because that set
+  is shared with `pnpm check:cms`** — queried against the live dataset, "independent" is
+  pervasive in CMS prose and every use is correct ("near-independent" coordinates,
+  "independently-normalized" softmax outputs, "six independent opportunities to get it wrong",
+  the founder bio's "independent work on hard systems problems"), including a post arguing at
+  length that its own reviewers are NOT independent. Every flagship engineering post, a paper
+  commentary and the bio would fire for zero real defects — DAR-152's failure mode, measured
+  rather than predicted. (3) The cost of the key scope is **asserted on live copy, not claimed
+  in prose**: `waitlist_evidence_benchmarks` offers "Independent performance benchmarks" as an
+  answer to what a buyer would need before adopting, beside "Third-party technical or security
+  review" — the opposite end of the conversation, and rewriting it would narrow a stranger's
+  stated requirement into something we already have. (4) **The x86 figure beneath the heading
+  was wrong too, and only reading the artifact found it**: the copy said re-runs "land between
+  0.81 and 0.91 µs mean", but that row is `avg | P50 | P99 | max | jitter` — 0.91 is the
+  **jitter**, no committed x86 run has a 0.91 mean, and "re-runs" plural overstated a single
+  sweep. Same class as DAR-209's p99, and the e2e **pinned** the wrong string, which is how it
+  survived: a test asserting what the copy SAYS is silent on whether the copy is TRUE, the
+  general trap in pinning a transcribed figure. (5) Two residuals are stated in the spec rather
+  than papered over — the **adverb route stays open** ("independently verified by NCC Group"
+  passes, which is fine while it is true and review's job when it is not), and an honest
+  **disavowal fires** ("no independent party has re-run this" is exactly what a `*_not_covered`
+  field is for). Both resolve the same way: exempt the key by name, deliberately, the way
+  safety-language allows `evidence_safety_not_covered` to quote the phrase it disavows — never
+  loosen the pattern. If a third-party run is ever commissioned, that is where the word is
+  earned back, and the exemption should say who ran it.
 - The card headline values are **data, locale-invariant** (en-formatted), same convention as
   the homepage readouts; all prose is Paraglide messages.
 - **Two detail sub-pages carry the depth; the cards stay lean and link to them**

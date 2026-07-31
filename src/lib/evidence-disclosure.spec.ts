@@ -245,6 +245,22 @@ describe('no evidence claim calls our own runs independent (DAR-210)', () => {
 	//
 	// So: the evidence surface only, where a claim about how our evidence was produced actually
 	// lives, and where the word is a provenance claim rather than a description of prose.
+	//
+	// Two residuals, both stated rather than papered over:
+	//   · The adverb route stays open — "independently verified by NCC Group" passes. That is fine
+	//     while it is TRUE and is review's job when it is not; narrowing it would cost the three
+	//     live keys below, which is a worse trade than the hole.
+	//   · An honest DISAVOWAL fires. "No independent party has re-run this" is exactly the copy the
+	//     `*_not_covered` fields exist for, and it is the likeliest legitimate use of the word here
+	//     — so failing is correct only if the answer is deliberate: exempt that key by name, the way
+	//     safety-language allows `evidence_safety_not_covered` to quote the phrase it disavows.
+	//     There is no allowlist yet because no key needs one, and an empty one cannot be tested for
+	//     staleness (DAR-102's polarity — the entry that stops being load-bearing is the hazard).
+	//
+	// "third-party" is deliberately NOT in the pattern, and that is the same residual read forward:
+	// no `evidence_` key uses the phrase today, so it would guard a defect that has not happened,
+	// while the phrase's most likely arrival on this surface is a disavowal in a "not covered"
+	// field. Widening buys nothing and taxes the copy we most want written.
 	const CLAIMS_A_SEPARATE_PARTY = /\bindependent\b/i;
 
 	const evidenceCopy = Object.entries(en as Record<string, unknown>).filter(
@@ -264,7 +280,7 @@ describe('no evidence claim calls our own runs independent (DAR-210)', () => {
 			.map(([key]) => key);
 		expect(
 			hits,
-			'"independent" asserts a separate party ran or witnessed it, and none has — say what the evidence shows (cross-platform, cross-prover, attributed) or commission the third-party run and allow the key here'
+			'"independent" asserts a separate party ran or witnessed it, and none has. Say what the evidence shows instead (cross-platform, cross-prover, attributed). If the sentence DISAVOWS independence, or a third-party run really was commissioned, that is a deliberate exemption: allow the key by name here and say who ran it — never loosen the pattern'
 		).toEqual([]);
 	});
 
