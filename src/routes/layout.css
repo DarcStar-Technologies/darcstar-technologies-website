@@ -466,6 +466,100 @@ select.glass-field {
 	background-size: 1rem, auto;
 }
 
+/* ---- Record tables ------------------------------------------------------
+   The chrome of the staff and portal record tables: /admin, /admin/audit,
+   /admin/users, /admin/users/[id], /admin/waitlist and /account.
+
+   Six files carried it verbatim — the table, the head row, twenty-four `<th>`
+   and every `<td>` — and the SIXTH file is why this is a shared token rather
+   than an `/admin`-scoped one. CLAUDE.md records a deliberate `/admin` opt-out
+   from the public site's conventions, and states its reason as "it is
+   staff-only"; `/account` is the end-user portal, so it is on the other side
+   of that line and had inherited the opt-out anyway, by being the page whose
+   table someone copied (DAR-219).
+
+   Only the invariant chrome lives here. A cell's ink (`text-body` /
+   `text-faint` / `text-emphasis`) and its `whitespace-nowrap` stay at the call
+   site: those say what a COLUMN is, which is the one thing that differs
+   between a login-audit row and a waitlist lead. */
+@utility datagrid {
+	@apply w-full border-collapse text-left text-sm;
+}
+
+@utility datagrid-head {
+	@apply border-b border-hairline text-xs tracking-wide text-faint;
+}
+
+@utility datagrid-th {
+	@apply px-3 py-2 font-medium;
+}
+
+@utility datagrid-td {
+	@apply px-3 py-3;
+}
+
+/* The "no rows" cell — deliberately taller than a data row, so an empty table
+   reads as an answer rather than as a table that failed to render. */
+@utility datagrid-empty {
+	@apply px-2 py-12 text-center text-sm text-faint;
+}
+
+/* ---- Heading tiers ------------------------------------------------------
+   `font-medium tracking-tight text-white` plus a size — and the size is the
+   only thing that ever varied. 57 sites in 21 spellings when DAR-219 counted
+   them: the eyebrow's story below at three times the scale.
+
+   The scale has to live somewhere. Skeleton styles `.h1`–`.h6` and never the
+   bare elements, and this site writes bare `<h1>`–`<h6>` (see the base-layer
+   rule above, which gives them a font and nothing else), so there is no
+   inherited type ramp to fall back on.
+
+   `heading-base` is a composition root like `eyebrow`: never a call-site
+   class, because a heading with no size is not a tier — it is a decision
+   nobody made. */
+@utility heading-base {
+	@apply font-medium tracking-tight text-white;
+}
+
+/* A page's own title — the utility panels (/login, /reset-password,
+   /updates/*, the waitlist steps) and the homepage's mid-page titles. */
+@utility heading-page {
+	@apply text-3xl heading-base;
+}
+
+/* A top-level section of a content page. Grows with the viewport: these sit
+   in full-width prose columns, so they track the measure around them. */
+@utility heading-section {
+	@apply text-2xl heading-base sm:text-3xl;
+}
+
+/* A subsection under one of those — same responsive behaviour, one step down. */
+@utility heading-subsection {
+	@apply text-xl heading-base sm:text-2xl;
+}
+
+/* A dialog or grouped-panel title. FIXED rather than responsive, and that is
+   the whole distinction from `heading-subsection`, which lands on this exact
+   size at `sm`: a dialog is width-capped, so a title that kept growing with
+   the viewport would crowd the panel it names instead of tracking the page. */
+@utility heading-panel {
+	@apply text-2xl heading-base;
+}
+
+/* A card or list-item title — the smallest tier.
+
+   This is where the drift was worst and least random: eight of the fifteen
+   omitted `tracking-tight`, and the split was not scattered — every one of
+   them was under `/admin/users` or `/account`, every one that kept it was
+   under `/people`, `/research` or `/news`. CLAUDE.md does record a deliberate
+   `/admin` opt-out from the public site's conventions, but it enumerates what
+   that covers (bare `hover:`, `text-[10px]`, `bg-white/NN`) and the heading
+   treatment is not on the list, so this reads as the boundary leaking rather
+   than as a choice. Unified, which moves those eight by -0.025em. */
+@utility heading-card {
+	@apply text-lg heading-base;
+}
+
 /* Mono, uppercase, muted-ink eyebrow/kicker label (GIDE kicker, section kickers,
    footer nav heading, readout labels). Captures only the invariant part — the
    three TIERS below add size + tracking.

@@ -42,7 +42,7 @@
 		</ContactSuccess>
 	{:else}
 		<p class="eyebrow-panel">{m.contact_page_eyebrow()}</p>
-		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+		<h1 class="mt-3 heading-page">
 			{m.contact_dialog_title()}
 		</h1>
 		<p class="mt-2 text-sm text-body">{m.contact_dialog_description()}</p>

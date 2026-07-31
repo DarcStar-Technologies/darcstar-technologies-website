@@ -48,7 +48,7 @@
 	<p class="eyebrow-panel">{m.forgot_password_eyebrow()}</p>
 
 	{#if form?.ok}
-		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+		<h1 class="mt-3 heading-page">
 			{m.forgot_password_check_email_heading()}
 		</h1>
 		<p class="mt-3 text-sm text-body">
@@ -61,7 +61,7 @@
 			>
 		</p>
 	{:else}
-		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+		<h1 class="mt-3 heading-page">
 			{m.forgot_password_heading()}
 		</h1>
 		<p class="mt-2 text-sm text-body">{m.forgot_password_lead()}</p>

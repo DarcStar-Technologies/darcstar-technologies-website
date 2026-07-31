@@ -109,7 +109,7 @@
 {#snippet sectionHead(kicker: string, heading: string, sub?: string)}
 	<div class="p-8 text-center sm:p-10">
 		<p class="eyebrow-panel">{kicker}</p>
-		<h2 class="mx-auto mt-3 max-w-3xl text-3xl font-medium tracking-tight text-white">{heading}</h2>
+		<h2 class="mx-auto mt-3 max-w-3xl heading-page">{heading}</h2>
 		{#if sub}
 			<!-- Optional systems-stack caption (mono, one line). Reframes the polyglot
 			     stack as an engineering signal, not a line-count cost metric (issue #14). -->
@@ -233,7 +233,7 @@
 		</section>
 
 		<section class="glass-card p-10 text-center sm:p-16">
-			<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
+			<h2 class="heading-section">
 				{m.section_proven_heading()}
 			</h2>
 			<p class="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-body sm:text-base">

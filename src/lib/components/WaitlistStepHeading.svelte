@@ -8,5 +8,5 @@
 </script>
 
 <p class="eyebrow-panel">{m.waitlist_page_eyebrow()}</p>
-<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">{heading}</h1>
+<h1 class="mt-3 heading-page">{heading}</h1>
 <p class="mt-2 text-sm text-body">{lead}</p>

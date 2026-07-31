@@ -21,7 +21,7 @@
 
 <UtilityPanel>
 	<p class="eyebrow-panel">{m.login_eyebrow()}</p>
-	<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">{m.login_heading()}</h1>
+	<h1 class="mt-3 heading-page">{m.login_heading()}</h1>
 	<p class="mt-2 text-sm text-body">{m.login_lead()}</p>
 	<LoginForm {form} />
 	<!-- DAR-67: points at /waitlist, not /signup. Accounts are invite-only, so /signup is now just a

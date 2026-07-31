@@ -62,7 +62,7 @@
 	<p class="eyebrow-panel">{m.reset_password_eyebrow()}</p>
 
 	{#if form?.ok}
-		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+		<h1 class="mt-3 heading-page">
 			{m.reset_password_success_heading()}
 		</h1>
 		<p class="mt-3 text-sm text-body">
@@ -74,7 +74,7 @@
 			>
 		</p>
 	{:else if showInvalid}
-		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+		<h1 class="mt-3 heading-page">
 			{m.reset_password_invalid_heading()}
 		</h1>
 		<!-- The recovery link points at /forgot-password for an invitee too, and correctly: their
@@ -89,7 +89,7 @@
 			>
 		</p>
 	{:else}
-		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+		<h1 class="mt-3 heading-page">
 			{invite ? m.reset_password_invite_heading() : m.reset_password_heading()}
 		</h1>
 		<p class="mt-2 text-sm text-body">

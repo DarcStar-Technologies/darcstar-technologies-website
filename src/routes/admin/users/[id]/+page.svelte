@@ -74,7 +74,7 @@
 			class="text-xs text-faint transition-colors hover:text-white">{m.admin_users_detail_back()}</a
 		>
 		<div class="mt-2 flex flex-wrap items-center gap-2">
-			<h1 class="text-2xl font-medium tracking-tight break-all text-white">{target.email}</h1>
+			<h1 class="break-all heading-panel">{target.email}</h1>
 			{#if data.isSelf}
 				<span class="rounded-full bg-white/10 px-2 py-0.5 text-[10px] tracking-wide text-faint"
 					>{m.admin_users_badge_you()}</span
@@ -95,7 +95,7 @@
 
 	<!-- Details -->
 	<div class="glass-card space-y-4 p-4 sm:p-6">
-		<h2 class="text-lg font-medium text-white">{m.admin_users_detail_section_details()}</h2>
+		<h2 class="heading-card">{m.admin_users_detail_section_details()}</h2>
 		{#if errScope === 'details'}<ErrorBanner>{errorMessage(form?.error)}</ErrorBanner>{/if}
 		{#if okScope === 'details'}{@render okBanner(m.admin_users_detail_saved())}{/if}
 		<form method="post" action="?/updateDetails" class="space-y-4">
@@ -129,7 +129,7 @@
 	{#if data.manageable}
 		<!-- Role -->
 		<div class="glass-card space-y-4 p-4 sm:p-6">
-			<h2 class="text-lg font-medium text-white">{m.admin_users_detail_section_role()}</h2>
+			<h2 class="heading-card">{m.admin_users_detail_section_role()}</h2>
 			<p class="text-sm text-faint">{m.admin_users_role_hint()}</p>
 			{#if errScope === 'role'}<ErrorBanner>{errorMessage(form?.error)}</ErrorBanner>{/if}
 			{#if okScope === 'role'}{@render okBanner(m.admin_users_role_saved())}{/if}
@@ -154,7 +154,7 @@
 
 		<!-- Reset password -->
 		<div class="glass-card space-y-4 p-4 sm:p-6">
-			<h2 class="text-lg font-medium text-white">{m.admin_users_detail_section_password()}</h2>
+			<h2 class="heading-card">{m.admin_users_detail_section_password()}</h2>
 			{#if errScope === 'password'}<ErrorBanner>{errorMessage(form?.error)}</ErrorBanner>{/if}
 			{#if okScope === 'password'}{@render okBanner(m.admin_users_password_done())}{/if}
 			<form method="post" action="?/resetPassword" class="space-y-4">
@@ -183,7 +183,7 @@
 
 	<!-- Sessions -->
 	<div class="glass-card space-y-4 p-4 sm:p-6">
-		<h2 class="text-lg font-medium text-white">{m.admin_users_detail_section_sessions()}</h2>
+		<h2 class="heading-card">{m.admin_users_detail_section_sessions()}</h2>
 		{#if errScope === 'session'}<ErrorBanner>{errorMessage(form?.error)}</ErrorBanner>{/if}
 		{#if okScope === 'session'}{@render okBanner(m.admin_users_force_logout_done())}{/if}
 		{#if data.sessions.length === 0}
@@ -193,24 +193,24 @@
 				{m.admin_users_sessions_count({ count: data.sessions.length })}
 			</p>
 			<div class="overflow-x-auto">
-				<table class="w-full border-collapse text-left text-sm">
+				<table class="datagrid">
 					<thead>
-						<tr class="border-b border-hairline text-xs tracking-wide text-faint">
-							<th class="px-3 py-2 font-medium whitespace-nowrap"
+						<tr class="datagrid-head">
+							<th class="datagrid-th font-medium whitespace-nowrap"
 								>{m.admin_users_sessions_col_started()}</th
 							>
-							<th class="px-3 py-2 font-medium whitespace-nowrap"
+							<th class="datagrid-th font-medium whitespace-nowrap"
 								>{m.admin_users_sessions_col_expires()}</th
 							>
-							<th class="px-3 py-2 font-medium">{m.admin_users_sessions_col_ip()}</th>
+							<th class="datagrid-th font-medium">{m.admin_users_sessions_col_ip()}</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-hairline">
 						{#each data.sessions as s (s.id)}
 							<tr>
-								<td class="px-3 py-2 whitespace-nowrap text-body">{fmt.format(s.createdAt)}</td>
-								<td class="px-3 py-2 whitespace-nowrap text-faint">{fmt.format(s.expiresAt)}</td>
-								<td class="px-3 py-2 text-faint">{s.ipAddress ?? '—'}</td>
+								<td class="datagrid-th whitespace-nowrap text-body">{fmt.format(s.createdAt)}</td>
+								<td class="datagrid-th whitespace-nowrap text-faint">{fmt.format(s.expiresAt)}</td>
+								<td class="datagrid-th text-faint">{s.ipAddress ?? '—'}</td>
 							</tr>
 						{/each}
 					</tbody>

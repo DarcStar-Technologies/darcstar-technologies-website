@@ -36,12 +36,12 @@
 	<p class="eyebrow-panel">{m.updates_eyebrow()}</p>
 
 	{#if form?.result === 'unsubscribed'}
-		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+		<h1 class="mt-3 heading-page">
 			{m.updates_unsubscribe_done_heading()}
 		</h1>
 		<p class="mt-3 text-sm text-body">{m.updates_unsubscribe_done_body()}</p>
 	{:else if showInvalid}
-		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+		<h1 class="mt-3 heading-page">
 			{m.updates_invalid_heading()}
 		</h1>
 		<p class="mt-3 text-sm text-body">{m.updates_invalid_body()}</p>
@@ -49,7 +49,7 @@
 			<a class={inlineLinkClass} href={localizeHref('/contact')}>{m.updates_contact_link()}</a>
 		</p>
 	{:else}
-		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+		<h1 class="mt-3 heading-page">
 			{m.updates_unsubscribe_heading()}
 		</h1>
 		<p class="mt-2 text-sm text-body">{m.updates_unsubscribe_lead()}</p>

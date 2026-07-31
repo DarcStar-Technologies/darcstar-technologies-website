@@ -39,7 +39,7 @@
 	<p class="eyebrow-panel">{m.updates_eyebrow()}</p>
 
 	{#if form?.result === 'confirmed'}
-		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+		<h1 class="mt-3 heading-page">
 			{m.updates_confirm_done_heading()}
 		</h1>
 		<p class="mt-3 text-sm text-body">{m.updates_confirm_done_body()}</p>
@@ -47,7 +47,7 @@
 		<!-- A confirmation link found after unsubscribing. The store refuses to re-subscribe (the
 		     form is the surface a stranger controls, so a withdrawal has to outlast anything reachable
 		     from it), and this says so instead of pretending the press did nothing. -->
-		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+		<h1 class="mt-3 heading-page">
 			{m.updates_confirm_optedout_heading()}
 		</h1>
 		<p class="mt-3 text-sm text-body">{m.updates_confirm_optedout_body()}</p>
@@ -55,7 +55,7 @@
 			<a class={inlineLinkClass} href={localizeHref('/contact')}>{m.updates_contact_link()}</a>
 		</p>
 	{:else if showInvalid}
-		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+		<h1 class="mt-3 heading-page">
 			{m.updates_invalid_heading()}
 		</h1>
 		<p class="mt-3 text-sm text-body">{m.updates_invalid_body()}</p>
@@ -63,7 +63,7 @@
 			<a class={inlineLinkClass} href={localizeHref('/contact')}>{m.updates_contact_link()}</a>
 		</p>
 	{:else}
-		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+		<h1 class="mt-3 heading-page">
 			{m.updates_confirm_heading()}
 		</h1>
 		<p class="mt-2 text-sm text-body">{m.updates_confirm_lead()}</p>

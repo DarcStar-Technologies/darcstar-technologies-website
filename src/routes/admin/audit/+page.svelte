@@ -16,13 +16,13 @@
 
 <section class="space-y-8">
 	<header>
-		<h1 class="text-3xl font-medium tracking-tight text-white">{m.admin_audit_heading()}</h1>
+		<h1 class="heading-page">{m.admin_audit_heading()}</h1>
 		<p class="mt-2 text-sm text-body">{m.admin_audit_lead()}</p>
 	</header>
 
 	<div class="glass-card p-4 sm:p-6">
 		{#if data.attempts.length === 0}
-			<p class="px-2 py-12 text-center text-sm text-faint">{m.admin_audit_empty()}</p>
+			<p class="datagrid-empty">{m.admin_audit_empty()}</p>
 		{:else}
 			<div class="flex flex-wrap items-baseline justify-between gap-2 px-2 pb-4">
 				<span class="text-sm text-emphasis"
@@ -33,24 +33,24 @@
 				{/if}
 			</div>
 			<div class="overflow-x-auto">
-				<table class="w-full border-collapse text-left text-sm">
+				<table class="datagrid">
 					<thead>
-						<tr class="border-b border-hairline text-xs tracking-wide text-faint">
-							<th class="px-3 py-2 font-medium whitespace-nowrap">{m.admin_audit_col_time()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_audit_col_email()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_audit_col_outcome()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_audit_col_reason()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_audit_col_ip()}</th>
+						<tr class="datagrid-head">
+							<th class="datagrid-th font-medium whitespace-nowrap">{m.admin_audit_col_time()}</th>
+							<th class="datagrid-th font-medium">{m.admin_audit_col_email()}</th>
+							<th class="datagrid-th font-medium">{m.admin_audit_col_outcome()}</th>
+							<th class="datagrid-th font-medium">{m.admin_audit_col_reason()}</th>
+							<th class="datagrid-th font-medium">{m.admin_audit_col_ip()}</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-hairline">
 						{#each data.attempts as attempt (attempt.id)}
 							<tr class="align-top">
-								<td class="px-3 py-3 whitespace-nowrap text-faint"
+								<td class="datagrid-td whitespace-nowrap text-faint"
 									>{fmt.format(attempt.createdAt)}</td
 								>
-								<td class="px-3 py-3 text-emphasis">{attempt.email ?? '—'}</td>
-								<td class="px-3 py-3 whitespace-nowrap">
+								<td class="datagrid-td text-emphasis">{attempt.email ?? '—'}</td>
+								<td class="datagrid-td whitespace-nowrap">
 									{#if attempt.success}
 										<span
 											class="inline-flex items-center rounded-full bg-success-500/15 px-2 py-0.5 text-xs font-medium text-success-300"
@@ -63,9 +63,9 @@
 										>
 									{/if}
 								</td>
-								<td class="px-3 py-3 whitespace-nowrap text-body">{attempt.reason ?? '—'}</td>
+								<td class="datagrid-td whitespace-nowrap text-body">{attempt.reason ?? '—'}</td>
 								<td
-									class="px-3 py-3 font-mono text-xs whitespace-nowrap text-body"
+									class="datagrid-td font-mono text-xs whitespace-nowrap text-body"
 									title={attempt.userAgent ?? ''}>{attempt.ipAddress ?? '—'}</td
 								>
 							</tr>

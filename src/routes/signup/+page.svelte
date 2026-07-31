@@ -20,7 +20,7 @@
 
 <UtilityPanel>
 	<p class="eyebrow-panel">{m.signup_eyebrow()}</p>
-	<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">{m.signup_invite_heading()}</h1>
+	<h1 class="mt-3 heading-page">{m.signup_invite_heading()}</h1>
 	<p class="mt-3 text-sm text-body">{m.signup_invite_body()}</p>
 
 	<!-- The waitlist is the only route to an account now, so it gets the primary button rather than

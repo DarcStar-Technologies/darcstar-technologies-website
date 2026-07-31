@@ -211,7 +211,7 @@
      EVERY width (base text-2xl, no breakpoint) so the group heading always dominates its children. -->
 {#snippet paperSection(heading: string, note: string, papers: PageServerData['papers'])}
 	<section>
-		<h2 class="text-2xl font-medium tracking-tight text-white">{heading}</h2>
+		<h2 class="heading-panel">{heading}</h2>
 		<p class="mt-1 text-sm text-muted">{note}</p>
 		<ul class="mt-6 space-y-6">
 			{#each papers as paper (paper._id)}

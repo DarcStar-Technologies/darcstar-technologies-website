@@ -288,6 +288,148 @@ describe('the eyebrow base is a composition root, not a call-site class', () => 
 	});
 });
 
+describe('the record tables share one set of chrome tokens', () => {
+	// Unlike the three families below there is no base to keep out of markup — `datagrid` IS a
+	// call-site class. What matters here is the SET: six files carried this chrome verbatim, and one
+	// of them (/account) is the end-user portal rather than a staff surface, so the copy had crossed
+	// the boundary CLAUDE.md's `/admin` opt-out is scoped by (DAR-219).
+	const css = readFileSync('src/routes/layout.css', 'utf8');
+
+	it('uses only tokens that layout.css defines', () => {
+		const used = [
+			...new Set(
+				markupSourcePaths().flatMap((file) =>
+					classLiterals(file)
+						.flat()
+						.filter((t) => t.startsWith('datagrid'))
+				)
+			)
+		].sort();
+		expect(used).toStrictEqual([
+			'datagrid',
+			'datagrid-empty',
+			'datagrid-head',
+			'datagrid-td',
+			'datagrid-th'
+		]);
+		expect(used.filter((t) => !css.includes(`@utility ${t} {`))).toStrictEqual([]);
+	});
+
+	// Stated as "no CELL hand-writes padding" rather than "the literal is absent", because the second
+	// passes against a seventh table that spells the same padding some other way.
+	//
+	// It has to be element-aware, and the first cut was not: scanning every class literal for
+	// `px-3` + `py-2|py-3` fires on the GlassSelect menu item, ErrorBanner, the Pager buttons and both
+	// header nav links — five correct elements that simply share a common padding. A guard that fires
+	// on correct code is one that gets loosened until it catches nothing (DAR-152), so the rule reads
+	// the tag, not just the class.
+	const cellLiterals = (file: string) =>
+		[...markupText(file).matchAll(/<t[hd]\b[^>]*?\bclass=("|')([^"']*)\1/g)].map(([, , value]) =>
+			value
+				.replace(/\{[^}]*\}/g, ' ')
+				.split(/\s+/)
+				.filter(Boolean)
+		);
+
+	// One exemption, and it is not a data cell: /admin/waitlist's expansion row spans all ten columns
+	// and holds a `<details>`. Its padding is asymmetric ON PURPOSE — `pb-3` with no top padding, so
+	// the panel stays visually attached to the row it expands rather than floating between two rows.
+	// `datagrid-td` would put `py-3` back and break exactly that. Same polarity as every other list
+	// here: deleting the entry makes the rule stricter, and the paired check below fails if the cell
+	// it names stops matching.
+	const EXEMPT_CELLS = ['src/routes/admin/waitlist/+page.svelte: px-3 pb-3'];
+
+	it('leaves no hand-written padding on a table cell', () => {
+		const handWritten = markupSourcePaths().flatMap((file) =>
+			cellLiterals(file)
+				.filter((t) => t.some((c) => /^-?p[xytbrl]?-/.test(c)))
+				.map((t) => `${file}: ${t.join(' ')}`)
+		);
+		expect(handWritten.filter((c) => !EXEMPT_CELLS.includes(c))).toStrictEqual([]);
+		expect(EXEMPT_CELLS.filter((c) => !handWritten.includes(c))).toStrictEqual([]);
+	});
+
+	// The reach control. Every assertion above is "nothing matched", which a cell reader that finds no
+	// cells satisfies perfectly — and this one is easy to break silently, since it is a hand-written
+	// regex over tags rather than the shared `classLiterals` helper.
+	it('actually finds the cells it claims to check', () => {
+		const cells = markupSourcePaths().flatMap(cellLiterals);
+		expect(cells.length).toBeGreaterThan(50);
+		expect(cells.filter((t) => t.includes('datagrid-th')).length).toBeGreaterThan(20);
+		expect(cells.filter((t) => t.includes('datagrid-td')).length).toBeGreaterThan(20);
+	});
+});
+
+describe('the heading base is a composition root, not a call-site class', () => {
+	// The third instance of the same shape (DAR-219, after `eyebrow` and `btn-pill`): 57 sites in 21
+	// spellings of `font-medium tracking-tight text-white` plus a size, where only the size ever moved.
+	const css = readFileSync('src/routes/layout.css', 'utf8');
+	const TIERS = [
+		'heading-card',
+		'heading-page',
+		'heading-panel',
+		'heading-section',
+		'heading-subsection'
+	];
+
+	it('is never used bare in markup', () => {
+		const bare = markupSourcePaths().flatMap((file) =>
+			classLiterals(file)
+				.filter((tokens) => tokens.includes('heading-base'))
+				.map((tokens) => `${file}: class="${tokens.join(' ')}"`)
+		);
+		expect(bare).toStrictEqual([]);
+	});
+
+	it('uses only tiers that layout.css defines', () => {
+		const used = [
+			...new Set(
+				markupSourcePaths().flatMap((file) =>
+					classLiterals(file)
+						.flat()
+						.filter((t) => t.startsWith('heading-'))
+				)
+			)
+		].sort();
+		expect(used).toStrictEqual(TIERS);
+		expect(used.filter((tier) => !css.includes(`@utility ${tier} {`))).toStrictEqual([]);
+	});
+
+	// The survivors, each a genuine one-off, each named with its reason. DAR-102's polarity: deleting
+	// an entry makes this STRICTER (the heading it described now fails), so the list cannot rot into
+	// names nobody checks — and a 56th hand-rolled heading fails it in the other direction.
+	//
+	// Keyed by file plus its size tokens rather than by the whole class string, so re-wrapping a line
+	// or adding a margin is not a false failure while a changed SIZE — the thing a tier would fix — is.
+	const ONE_OFFS: Record<string, string> = {
+		'src/routes/+page.svelte sm:text-6xl+text-4xl':
+			'the homepage hero, the largest type on the site',
+		'src/routes/+page.svelte sm:text-4xl+text-3xl':
+			'the homepage GIDE section, one step under its hero and above every other section',
+		'src/lib/components/PageHero.svelte sm:text-5xl+text-4xl':
+			'the shared hero for every non-homepage page — deliberately smaller than the homepage hero',
+		'src/lib/components/TopicGuide.svelte text-xl':
+			'the topic-guide legend, sized against the disclosure it sits in rather than the page',
+		'src/routes/news/+page.svelte text-xl':
+			'a news card title, which carries a group-hover colour transition no tier should own'
+	};
+
+	it('leaves only the documented one-off headings', () => {
+		const BASE = ['font-medium', 'tracking-tight', 'text-white'];
+		const found = markupSourcePaths().flatMap((file) =>
+			classLiterals(file)
+				.filter((tokens) => BASE.every((t) => tokens.includes(t)))
+				.map((tokens) => {
+					const sizes = tokens.filter((t) => /^(sm:)?text-(xs|sm|base|[2-9]?xl)$/.test(t));
+					return `${file} ${[...sizes].sort().join('+')}`;
+				})
+		);
+		expect(found.filter((k) => !(k in ONE_OFFS))).toStrictEqual([]);
+		// The rot direction — an entry describing a heading that has since been tiered or deleted.
+		expect(Object.keys(ONE_OFFS).filter((k) => !found.includes(k))).toStrictEqual([]);
+	});
+});
+
 describe('the pill button base is a composition root, not a call-site class', () => {
 	// Same shape as the eyebrow above, and found the same way (DAR-219): `btn-pill` looked like one
 	// utility with two documented one-offs beside it, and measured out as three fixed size tiers —

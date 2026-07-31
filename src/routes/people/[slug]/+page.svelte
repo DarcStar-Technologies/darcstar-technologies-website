@@ -114,7 +114,7 @@
 
 		{#if person.focusAreas && person.focusAreas.length > 0}
 			<section class="glass-card p-8 sm:p-10">
-				<h2 class="text-lg font-medium tracking-tight text-white">{m.person_focus_heading()}</h2>
+				<h2 class="heading-card">{m.person_focus_heading()}</h2>
 				<!-- KEYED BY INDEX, deliberately. These are Sanity PRIMITIVE arrays, which carry no
 				     `_key`, and keying by the value itself makes a duplicate entry — an editor pasting the
 				     same focus area twice — throw `each_key_duplicate` and take the whole profile down
@@ -131,7 +131,7 @@
 
 		{#if person.responsibilities && person.responsibilities.length > 0}
 			<section class="glass-card p-8 sm:p-10">
-				<h2 class="text-lg font-medium tracking-tight text-white">
+				<h2 class="heading-card">
 					{m.person_responsibilities_heading()}
 				</h2>
 				<!-- Index-keyed for the same reason as the focus areas above. -->
@@ -145,7 +145,7 @@
 
 		{#if person.experience && person.experience.length > 0}
 			<section class="glass-card p-8 sm:p-10">
-				<h2 class="text-lg font-medium tracking-tight text-white">
+				<h2 class="heading-card">
 					{m.person_experience_heading()}
 				</h2>
 				<!-- Ordered: the Studio's array order is newest-first and carries meaning. -->
@@ -184,7 +184,7 @@
 
 		{#if person.education && person.education.length > 0}
 			<section class="glass-card p-8 sm:p-10">
-				<h2 class="text-lg font-medium tracking-tight text-white">
+				<h2 class="heading-card">
 					{m.person_education_heading()}
 				</h2>
 				<ul class="mt-4 space-y-3">

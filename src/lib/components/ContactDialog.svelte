@@ -61,7 +61,7 @@
 			{/snippet}
 		</ContactSuccess>
 	{:else}
-		<Dialog.Title class="text-2xl font-medium tracking-tight text-white">
+		<Dialog.Title class="heading-panel">
 			{m.contact_dialog_title()}
 		</Dialog.Title>
 		<Dialog.Description class="mt-2 text-sm text-body">
