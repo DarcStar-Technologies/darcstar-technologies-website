@@ -263,6 +263,72 @@ test('"Continue" with no answers selected forks to branch B and finishes', async
 	await expect(page).toHaveURL(/\/waitlist$/);
 });
 
+// The glass menu is operable with REAL key events (DAR-198). Its unit spec drives the Zag machine
+// with DISPATCHED events — deliberately, because a driver round trip there costs up to 19s under
+// suite load — and dispatched events cannot prove the one thing only a browser can do: deliver a
+// keypress to the element Zag chose to focus. That half of the contract lives here, on the hydrated
+// menu with the real stylesheet, where a trusted keypress is what Playwright sends anyway.
+//
+// The expected label is read from `aria-activedescendant` rather than hardcoded, so this asserts
+// exactly what the arrow key highlighted — a hardcoded option would pass even if ArrowDown moved
+// nowhere and Enter committed the default.
+test('a GlassSelect is operable by real keyboard input', async ({ page }) => {
+	await page.goto('/waitlist');
+	const main = page.getByRole('main');
+	await advanceToStep2(main);
+
+	const trigger = main.getByRole('combobox', { name: /Your role/ });
+	const listbox = main.getByRole('listbox');
+
+	// GlassSelect serves a native <select> until it hydrates, and a native <select> is ALSO
+	// role=combobox — so this locator can resolve to the pre-hydration control, at which point
+	// the keypress below goes nowhere and the menu never opens (measured: 2 failures in 6 runs).
+	// `chooseOption` never had to care because `click()` retries through actionability until the
+	// element is real; `keyboard.press` is fire-and-forget, so the gate has to be explicit.
+	await expect(trigger, 'wait for the Zag trigger, not the no-JS <select>').toHaveJSProperty(
+		'tagName',
+		'BUTTON'
+	);
+
+	await trigger.focus();
+	await page.keyboard.press('Enter');
+	await expect(listbox).toBeVisible();
+
+	// Deliberately NOT asserting that the arrow key moves the highlight. Measured, that assertion
+	// is itself flaky (1 failure in 8 runs): a key pressed between "the menu is visible" and "the
+	// machine has finished settling focus" is dropped, and the window widens on a cold worker. That
+	// this spec is robust to the drop is the point — a lost arrow leaves option 1 highlighted, and
+	// committing option 1 satisfies everything below. Arrow navigation is pinned in the unit spec
+	// instead, where it is deterministic and free.
+	await page.keyboard.press('ArrowDown');
+
+	// Re-press until it commits, and read the highlight INSIDE the loop, immediately before the
+	// press that commits it. Two measured reasons, not one: the machine drops a key while it is
+	// re-rendering (3 failures in 12 runs pressing once), and reading the highlight any earlier
+	// races the arrow key's own effect — holding option 1's label while Enter commits option 2
+	// would be a false failure, the one error direction worth engineering out.
+	//
+	// This still fails on a genuine break: if Enter never commits, the list never closes.
+	let committed: string | undefined;
+	await expect
+		.poll(
+			async () => {
+				if (await listbox.count()) {
+					const id = await listbox.getAttribute('aria-activedescendant');
+					// Zag's ids contain colons, so match on the attribute rather than an #id selector.
+					committed = id ? (await main.locator(`[id="${id}"]`).textContent())?.trim() : undefined;
+					await page.keyboard.press('Enter');
+				}
+				return listbox.count();
+			},
+			{ message: 'a real Enter must commit the highlighted option' }
+		)
+		.toBe(0);
+
+	expect(committed, 'the open list must mark a highlighted option').toBeTruthy();
+	await expect(trigger).toContainText(committed!);
+});
+
 // DAR-62's commercial path: an answered, non-excluded role routes step 2's Continue into step 3.
 test('a commercial use case continues from step 2 into the step-3 questions', async ({ page }) => {
 	const errors: string[] = [];
