@@ -146,12 +146,15 @@ describe('GlassSelect', () => {
 		typeKey('ArrowDown');
 		typeKey('Enter');
 
-		// Keyboard selection flows through the same onValueChange → bound value path,
-		// so a valid slug landing in the hidden input proves the wiring end-to-end.
-		await expect.poll(hiddenValue).not.toBe('');
-		const val = hiddenValue();
-		const chosen = OPTIONS.find((o) => o.value === val);
-		expect(chosen, `expected a real slug, got ${JSON.stringify(val)}`).toBeDefined();
-		await expect.element(trigger).toHaveTextContent(chosen!.label);
+		// Keyboard selection flows through the same onValueChange → bound value path, so a slug
+		// landing in the hidden input proves the wiring end-to-end.
+		//
+		// Naming the SECOND option is what pins arrow navigation: opening highlights the first,
+		// so one ArrowDown must land on the next one. Asserting merely "some valid slug" would
+		// pass just as happily against an ArrowDown that did nothing and an Enter that committed
+		// the default — and that is exactly the assertion the e2e twin cannot make, because there
+		// a dropped key is an accepted race rather than a defect.
+		await expect.poll(hiddenValue).toBe(OPTIONS[1].value);
+		await expect.element(trigger).toHaveTextContent(OPTIONS[1].label);
 	});
 });
