@@ -135,7 +135,37 @@ export const sourceText = (path: string): string =>
 export const markupSourcePaths = (): string[] => Object.keys(MARKUP);
 
 /**
+ * Strip every occurrence of `pattern`, REPEATEDLY, until the text stops changing.
+ *
+ * One pass is not enough, and it is the defect DAR-173 already found in its brace-stripper: removing
+ * a match can splice its neighbours into a NEW delimiter. Measured — `<scr<script>a</script>ipt>b</script>c`
+ * loses only the inner block on the first pass, leaving `<script>b</script>c`, i.e. real script body
+ * (`b`) sitting in what the caller is about to treat as markup. That is a scan reading a script's
+ * class-name mentions as if they were hand-written attributes: a FALSE FAILURE, the one direction a
+ * guard must never produce.
+ *
+ * (CodeQL flags the single-pass form as "incomplete multi-character sanitization". As a SECURITY
+ * finding that is a false positive — this is test support, reading files already committed to the
+ * repo, and its output reaches assertions rather than a DOM. The correctness point underneath is
+ * real and the repo had already paid for it once, which is why this is fixed rather than dismissed.)
+ */
+export const stripToFixedPoint = (text: string, pattern: RegExp): string => {
+	let previous: string;
+	let current = text;
+	do {
+		previous = current;
+		current = current.replace(pattern, '');
+	} while (current !== previous);
+	return current;
+};
+
+/**
  * One component's markup, with its `<script>` blocks and comments removed.
+ *
+ * The `<script>` pattern is case-INSENSITIVE and tolerates whitespace in the closing tag. Svelte
+ * accepts only a lowercase `<script>`, so `<SCRIPT>` is unreachable in a file that compiles — but a
+ * stripper exhaustive only for inputs it assumes well-formed is the shape DAR-102 warns about, and
+ * the flag costs nothing.
  *
  * The script has to go, not just the comments: a component that legitimately IMPORTS a shared class
  * string mentions that string's NAME, and several of them build local class expressions in script —
@@ -147,10 +177,10 @@ export const markupSourcePaths = (): string[] => Object.keys(MARKUP);
  * of them), so a raw scan would trip on the explanations rather than on the code.
  */
 export const markupText = (path: string): string =>
-	(MARKUP[path] ?? '')
-		.replace(/<script[\s\S]*?<\/script>/g, '')
-		.replace(/<!--[\s\S]*?-->/g, '')
-		.replace(/\/\*[\s\S]*?\*\//g, '');
+	[/<script[\s\S]*?<\/script\s*>/gi, /<!--[\s\S]*?-->/g, /\/\*[\s\S]*?\*\//g].reduce(
+		(text, pattern) => stripToFixedPoint(text, pattern),
+		MARKUP[path] ?? ''
+	);
 
 /**
  * Every literal `class="…"` value in a component's markup, as a token list.

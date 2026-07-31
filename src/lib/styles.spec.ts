@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import * as styles from './styles';
-import { classLiterals, markupSourcePaths, markupText } from './server/source-scan';
+import {
+	classLiterals,
+	markupSourcePaths,
+	markupText,
+	stripToFixedPoint
+} from './server/source-scan';
 
 // DAR-218. `$lib/styles.ts` exists so a form control that renders its own label can't drift from one
 // that delegates — and five of its strings had been re-typed verbatim at call sites anyway, four of
@@ -41,6 +46,53 @@ const violations = () =>
 			}));
 		})
 	);
+
+// The instrument this whole file rests on. Pinned separately because every assertion below is a
+// statement about what the scan FOUND, and all of them stay green if the reader silently hands back
+// the wrong text — a script body read as markup turns its class-name mentions into violations, which
+// is a false FAILURE, the one direction a guard must never produce.
+describe('the markup reader', () => {
+	// One `.replace()` pass can splice a match's neighbours into a NEW delimiter. Same defect DAR-173
+	// found in its brace-stripper, and what CodeQL calls "incomplete multi-character sanitization".
+	//
+	// Each case asserts the single-pass result TOO, because that is what makes the loop demonstrably
+	// load-bearing rather than merely present — and the first attempt at this test got the expected
+	// output wrong by reasoning instead of measuring (`<scr<script>x</script>ipt>` reconstructs a
+	// bare `<script>` with no closing tag, so it is a fixed point after one pass and proves nothing).
+	it('strips a delimiter reconstructed by its own removal', () => {
+		const script = /<script[\s\S]*?<\/script\s*>/gi;
+		// The consequence, not just the shape: one pass leaves `b` — real script body — sitting in
+		// what the caller will treat as markup.
+		expect('<scr<script>a</script>ipt>b</script>c'.replace(script, '')).toBe('<script>b</script>c');
+		expect(stripToFixedPoint('<scr<script>a</script>ipt>b</script>c', script)).toBe('c');
+
+		const comment = /<!--[\s\S]*?-->/g;
+		expect('<!-<!-- a -->- -->'.replace(comment, '')).toBe('<!-- -->');
+		expect(stripToFixedPoint('<!-<!-- a -->- -->', comment)).toBe('');
+	});
+
+	it('terminates when there is nothing to strip', () => {
+		expect(stripToFixedPoint('<p class="x">hi</p>', /<script[\s\S]*?<\/script\s*>/gi)).toBe(
+			'<p class="x">hi</p>'
+		);
+	});
+
+	// Svelte only accepts a lowercase `<script>`, so this is unreachable in a file that compiles —
+	// but a stripper exhaustive only for well-formed input is DAR-102's shape, and the flag is free.
+	it('strips a script block whatever its case or closing-tag spacing', () => {
+		const script = /<script[\s\S]*?<\/script\s*>/gi;
+		expect(stripToFixedPoint('a<SCRIPT>let c = "p-4";</SCRIPT>b', script)).toBe('ab');
+		expect(stripToFixedPoint('a<script>x</script  >b', script)).toBe('ab');
+	});
+
+	// The reason the script is stripped at all: a component that correctly IMPORTS a shared string
+	// names it, and reading that name as markup would report the fixed call site as a violation.
+	it('hides script-side mentions of a shared string from the scan', () => {
+		const text = markupText('src/routes/waitlist/+page.svelte');
+		expect(text).not.toContain('import');
+		expect(text).toContain('class=');
+	});
+});
 
 describe('shared class strings are imported, never re-typed', () => {
 	// The scan is only worth what its reach is, and "nothing matched" reads identically to "the
