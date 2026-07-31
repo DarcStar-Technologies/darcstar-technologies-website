@@ -119,7 +119,7 @@
 
 			<!-- Secondary nav -->
 			<nav aria-label={m.footer_nav_label()}>
-				<h2 class="eyebrow text-xs tracking-widest">
+				<h2 class="eyebrow-label">
 					{m.footer_nav_heading()}
 				</h2>
 				<ul class="mt-4 space-y-2.5">

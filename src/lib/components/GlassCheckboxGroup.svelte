@@ -14,6 +14,7 @@
 	// form-data conversion throws on a repeated plain `foo`, and only the `[]` suffix yields an array.
 	import type { RemoteFormField } from '@sveltejs/kit';
 	import type { Option } from './GlassSelect.svelte';
+	import { checkboxClass, fieldBadgeClass, fieldLegendRowClass } from '$lib/styles';
 
 	let {
 		legend,
@@ -52,9 +53,9 @@
 
 <fieldset aria-describedby={helpId}>
 	<legend class="mb-1.5">
-		<span class="flex items-baseline gap-2 text-xs font-medium tracking-wide text-body">
+		<span class={fieldLegendRowClass}>
 			{legend}
-			{#if badge}<span class="font-normal text-faint">{badge}</span>{/if}
+			{#if badge}<span class={fieldBadgeClass}>{badge}</span>{/if}
 		</span>
 	</legend>
 	{#if help}<p id={helpId} class="mb-2 text-xs leading-relaxed text-faint">{help}</p>{/if}
@@ -67,7 +68,7 @@
 				<input
 					{...field.as('checkbox', opt.value)}
 					disabled={capped && !selected.includes(opt.value)}
-					class="mt-0.5 size-4 shrink-0 accent-primary-500"
+					class={checkboxClass}
 				/>
 				<span>{opt.label}</span>
 			</label>

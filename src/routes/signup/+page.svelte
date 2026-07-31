@@ -19,7 +19,7 @@
 
 <section class="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:py-16">
 	<div class="glass-card mx-auto w-full max-w-sm p-6 text-left sm:p-8">
-		<p class="eyebrow text-xs tracking-[0.25em]">{m.signup_eyebrow()}</p>
+		<p class="eyebrow-panel">{m.signup_eyebrow()}</p>
 		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">{m.signup_invite_heading()}</h1>
 		<p class="mt-3 text-sm text-body">{m.signup_invite_body()}</p>
 

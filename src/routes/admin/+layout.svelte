@@ -28,7 +28,7 @@
 
 <div class="mb-8 flex flex-wrap items-center justify-between gap-4">
 	<div class="flex flex-wrap items-center gap-4">
-		<p class="eyebrow text-xs tracking-[0.25em]">{m.admin_eyebrow()}</p>
+		<p class="eyebrow-panel">{m.admin_eyebrow()}</p>
 		<nav class="flex items-center gap-1" aria-label={m.admin_nav_label()}>
 			<a
 				href={localizeHref('/admin')}

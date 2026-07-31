@@ -14,6 +14,7 @@
 	// fits.
 	import type { RemoteFormField } from '@sveltejs/kit';
 	import { m } from '$lib/paraglide/messages.js';
+	import { submitButtonClass } from '$lib/styles';
 
 	let {
 		form
@@ -26,7 +27,7 @@
 	<button
 		{...form.fields.intent.as('submit', 'continue')}
 		disabled={!!form.pending}
-		class="glass-btn order-1 w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 sm:order-2 sm:w-auto"
+		class="{submitButtonClass} order-1 sm:order-2 sm:w-auto"
 	>
 		{m.waitlist_flow_continue()}
 	</button>

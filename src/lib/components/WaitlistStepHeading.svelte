@@ -7,6 +7,6 @@
 	let { heading, lead }: { heading: string; lead: string } = $props();
 </script>
 
-<p class="eyebrow text-xs tracking-[0.25em]">{m.waitlist_page_eyebrow()}</p>
+<p class="eyebrow-panel">{m.waitlist_page_eyebrow()}</p>
 <h1 class="mt-3 text-3xl font-medium tracking-tight text-white">{heading}</h1>
 <p class="mt-2 text-sm text-body">{lead}</p>

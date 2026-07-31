@@ -72,6 +72,15 @@ const SOURCES: Record<string, string> = {
 	...read('scripts', ['.ts', '.mjs'])
 };
 
+// Markup is read into a set of its OWN rather than folded into `SOURCES`, for the same reason the
+// three sets above are separate. Every rule that reads `SOURCES` asks a question about MODULES — who
+// imports the ungated capture, who resolves the signing secret, who may reach the mail provider — and
+// `.svelte` files would answer all three with noise while widening `waitlistSourcePaths()`, which
+// filters by basename, and `appSourcePaths()`, which two rules use as "the deployed worker". The
+// question markup answers is a different one (DAR-218: does a `class` attribute re-type a string that
+// `$lib/styles.ts` already exports), so it gets a set instead of a flag on an existing one.
+const MARKUP: Record<string, string> = read('src', ['.svelte']);
+
 /**
  * Every non-spec source file under `src`, repo-relative. Vitest runs from the project root.
  *
@@ -121,6 +130,94 @@ export const waitlistSourcePaths = (): string[] =>
  */
 export const sourceText = (path: string): string =>
 	(SOURCES[path] ?? '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+/** Every `.svelte` file under `src`, repo-relative. See `MARKUP` for why this is its own set. */
+export const markupSourcePaths = (): string[] => Object.keys(MARKUP);
+
+/**
+ * Strip every occurrence of `pattern`, REPEATEDLY, until the text stops changing.
+ *
+ * One pass is not enough, and it is the defect DAR-173 already found in its brace-stripper: removing
+ * a match can splice its neighbours into a NEW delimiter. Measured — `<scr<script>a</script>ipt>b</script>c`
+ * loses only the inner block on the first pass, leaving `<script>b</script>c`, i.e. real script body
+ * (`b`) sitting in what the caller is about to treat as markup. That is a scan reading a script's
+ * class-name mentions as if they were hand-written attributes: a FALSE FAILURE, the one direction a
+ * guard must never produce.
+ *
+ * (CodeQL flags the single-pass form as "incomplete multi-character sanitization". As a SECURITY
+ * finding that is a false positive — this is test support, reading files already committed to the
+ * repo, and its output reaches assertions rather than a DOM. The correctness point underneath is
+ * real and the repo had already paid for it once, which is why this is fixed rather than dismissed.)
+ */
+export const stripToFixedPoint = (text: string, pattern: RegExp): string => {
+	let previous: string;
+	let current = text;
+	do {
+		previous = current;
+		current = current.replace(pattern, '');
+	} while (current !== previous);
+	return current;
+};
+
+/**
+ * One component's markup, with its `<script>` blocks and comments removed.
+ *
+ * The `<script>` pattern is case-INSENSITIVE and tolerates whitespace in the closing tag. Svelte
+ * accepts only a lowercase `<script>`, so `<SCRIPT>` is unreachable in a file that compiles — but a
+ * stripper exhaustive only for inputs it assumes well-formed is the shape DAR-102 warns about, and
+ * the flag costs nothing.
+ *
+ * The script has to go, not just the comments: a component that legitimately IMPORTS a shared class
+ * string mentions that string's NAME, and several of them build local class expressions in script —
+ * so a scan of the whole file would read the module's own consumers as if they were re-typing it.
+ * What is left is the part where a `class` attribute can be hand-written.
+ *
+ * Both comment syntaxes go, because markup carries `<!-- -->` and the removed script carried `//`;
+ * the ones in this repo discuss class names constantly (this file's own rule is discussed in three
+ * of them), so a raw scan would trip on the explanations rather than on the code.
+ */
+/**
+ * What `markupText` removes, in order. Exported so a spec can assert the patterns THEMSELVES.
+ *
+ * That indirection is not ceremony — it was mutation-measured. With these inlined, dropping the `i`
+ * flag left all 17 tests green, because the case test handed `stripToFixedPoint` its own regex and
+ * so pinned the helper while saying nothing about what the caller passes it. A test that reads as
+ * coverage while proving nothing is worse than no test (DAR-171).
+ *
+ * Sharing module-level `/g` regexes across calls is safe here: `String.replace` resets `lastIndex`.
+ */
+export const MARKUP_STRIP_PATTERNS = [
+	// The closing tag accepts trailing junk — `</script bar>` really does close a script, because an
+	// HTML end tag's attributes are a parse error the parser then ignores rather than a reason not to
+	// close. `\s*>` misses it and would leave the whole block in the text. Unreachable through Svelte,
+	// which rejects it, but "exhaustive only for input I assume is well-formed" is what DAR-102 is
+	// about, and CodeQL's `js/bad-tag-filter` names this exact case.
+	/<script[\s\S]*?<\/script(?:\s[^>]*)?>/gi,
+	/<!--[\s\S]*?-->/g,
+	/\/\*[\s\S]*?\*\//g
+];
+
+export const markupText = (path: string): string =>
+	MARKUP_STRIP_PATTERNS.reduce(
+		(text, pattern) => stripToFixedPoint(text, pattern),
+		MARKUP[path] ?? ''
+	);
+
+/**
+ * Every literal `class="…"` value in a component's markup, as a token list.
+ *
+ * LITERALS ONLY, deliberately: `class={fieldLabelClass}` is the correct form this rule exists to
+ * push people toward, so reading it would report every fixed call site as a violation. A mixed
+ * `class="{submitButtonClass} order-1"` yields its literal tokens with the `{…}` holes dropped,
+ * which is right — the shared part is already shared, and what is left is the delta being added.
+ */
+export const classLiterals = (path: string): string[][] =>
+	[...markupText(path).matchAll(/\bclass=("|')([^"']*)\1/g)].map(([, , value]) =>
+		value
+			.replace(/\{[^}]*\}/g, ' ')
+			.split(/\s+/)
+			.filter(Boolean)
+	);
 
 /**
  * Does the specifier `spec`, written inside the file `from`, refer to `module`?

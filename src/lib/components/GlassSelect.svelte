@@ -26,7 +26,7 @@
 	import { mergeProps, normalizeProps, useMachine } from '@zag-js/svelte';
 	import { onMount } from 'svelte';
 	import type { RemoteFormField } from '@sveltejs/kit';
-	import { fieldClass, fieldLabelClass, fieldHelpClass } from '$lib/styles';
+	import { fieldBadgeClass, fieldClass, fieldLabelClass, fieldHelpClass } from '$lib/styles';
 	import Icon from './Icon.svelte';
 	import IconCheck from './IconCheck.svelte';
 
@@ -103,7 +103,7 @@
 	<div>
 		<label for={id} class={fieldLabelClass}>
 			{label}
-			{#if badge}<span class="font-normal text-faint">{badge}</span>{/if}
+			{#if badge}<span class={fieldBadgeClass}>{badge}</span>{/if}
 		</label>
 		{#if help}<p id={helpId} class={fieldHelpClass}>{help}</p>{/if}
 		<select {...asSelect} {id} aria-describedby={helpId} class={fieldClass}>
@@ -117,7 +117,7 @@
 	<div {...api.getRootProps()}>
 		<label {...api.getLabelProps()} class={fieldLabelClass}>
 			{label}
-			{#if badge}<span class="font-normal text-faint">{badge}</span>{/if}
+			{#if badge}<span class={fieldBadgeClass}>{badge}</span>{/if}
 		</label>
 		{#if help}<p id={helpId} class={fieldHelpClass}>{help}</p>{/if}
 

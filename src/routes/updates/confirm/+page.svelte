@@ -36,7 +36,7 @@
 
 <section class="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:py-16">
 	<div class="glass-card mx-auto w-full max-w-sm p-6 text-left sm:p-8">
-		<p class="eyebrow text-xs tracking-[0.25em]">{m.updates_eyebrow()}</p>
+		<p class="eyebrow-panel">{m.updates_eyebrow()}</p>
 
 		{#if form?.result === 'confirmed'}
 			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">

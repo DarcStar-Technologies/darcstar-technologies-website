@@ -174,6 +174,21 @@ html {
 	   and the .header-scrim gradient stops below. Change these and both track. */
 	--header-bar-h: 6rem; /* nav bar height */
 	--header-gap-top: 0.75rem; /* gap above the bar */
+	/* Hero helix geometry — the single source for the two values every hero shares.
+	   These were hand-typed at five sites (PageHero, /about, the homepage) and their
+	   coupling lived only in a CLAUDE.md sentence, which is a poor place for it because
+	   BOTH are load-bearing and neither fails loudly:
+
+	     --helix-slot-h   the #helix-slot's height. CosmicBackdrop MEASURES this element
+	                      and caps the helix amplitude at 42% of it, so shrinking the slot
+	                      silently shrinks the helix rather than clipping it.
+	     --helix-pull     how far the frosted panel rises onto the helix's lower arcs on
+	                      content pages. Deliberately a hair LESS than the slot height, so
+	                      the panel can never over-pull past the eyebrow above it; the
+	                      homepage omits the pull entirely and keeps its panel below the
+	                      helix, which is why this is a separate token and not a formula. */
+	--helix-slot-h: min(25vw, 19rem);
+	--helix-pull: min(23vw, 17.5rem);
 	--charge-r: var(--color-tertiary-500); /* rose      */
 	--charge-g: var(--color-secondary-500); /* green     */
 	--charge-b: var(--color-primary-500); /* cyan-blue */
@@ -452,11 +467,41 @@ select.glass-field {
 }
 
 /* Mono, uppercase, muted-ink eyebrow/kicker label (GIDE kicker, section kickers,
-   footer nav heading, readout labels). Captures only the invariant part; consumers
-   add their own size + tracking (deliberately varied — small labels are text-xs
-   tracking-widest, the hero kicker is larger/looser). */
+   footer nav heading, readout labels). Captures only the invariant part — the
+   three TIERS below add size + tracking.
+
+   This used to say consumers add their own size and tracking, "deliberately
+   varied". Measured (DAR-218), they were not varied: 22 call sites collapsed
+   into exactly three fixed combinations, two of them arbitrary bracket values
+   hand-typed 11 and 3 times. Three discrete tiers wearing the costume of free
+   variation — so they are named, and the freedom the comment claimed is gone
+   on purpose. A surface that genuinely needs a fourth size should add a fourth
+   tier here rather than re-open the bracket. */
 @utility eyebrow {
 	@apply font-mono text-muted uppercase;
+}
+
+/* The page-hero kicker — the one above the helix, on the three hero surfaces
+   (PageHero, /about, the homepage). Largest and loosest. */
+@utility eyebrow-hero {
+	@apply eyebrow text-sm tracking-[0.3em];
+}
+
+/* The card/panel kicker — above a heading inside a glass-card (login, signup,
+   contact, waitlist steps, admin, account, updates, reset, forgot, and the
+   homepage's section kickers). The most-used tier by a wide margin.
+
+   0.25em rather than Tailwind's `tracking-widest` (0.1em), which is why this
+   needs to be a token at all: it is off-scale, so every call site was a bracket. */
+@utility eyebrow-panel {
+	@apply eyebrow text-xs tracking-[0.25em];
+}
+
+/* The small-label tier — a definition-list term, a readout caption, an evidence
+   claim field, the footer's nav heading. Tightest of the three, and the only one
+   already on the Tailwind scale. */
+@utility eyebrow-label {
+	@apply eyebrow text-xs tracking-widest;
 }
 
 /* Default pill CTA — pairs with the `glass-btn` surface (`glass-btn btn-pill`).
