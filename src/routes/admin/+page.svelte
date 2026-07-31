@@ -26,7 +26,7 @@
 
 <section class="space-y-8">
 	<header>
-		<h1 class="text-3xl font-medium tracking-tight text-white">{m.admin_heading()}</h1>
+		<h1 class="heading-page">{m.admin_heading()}</h1>
 		<p class="mt-2 text-sm text-body">{m.admin_lead()}</p>
 	</header>
 
@@ -36,7 +36,7 @@
 
 	<div class="glass-card p-4 sm:p-6">
 		{#if data.submissions.length === 0}
-			<p class="px-2 py-12 text-center text-sm text-faint">{m.admin_empty()}</p>
+			<p class="datagrid-empty">{m.admin_empty()}</p>
 		{:else}
 			<div class="flex flex-wrap items-baseline justify-between gap-2 px-2 pb-4">
 				<span class="text-sm text-emphasis"
@@ -47,16 +47,16 @@
 				{/if}
 			</div>
 			<div class="overflow-x-auto">
-				<table class="w-full border-collapse text-left text-sm">
+				<table class="datagrid">
 					<thead>
-						<tr class="border-b border-hairline text-xs tracking-wide text-faint">
-							<th class="px-3 py-2 font-medium whitespace-nowrap">{m.admin_col_received()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_col_name()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_col_email()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_col_company()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_col_interest()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_col_message()}</th>
-							<th class="px-3 py-2 text-right font-medium">
+						<tr class="datagrid-head">
+							<th class="datagrid-th font-medium whitespace-nowrap">{m.admin_col_received()}</th>
+							<th class="datagrid-th font-medium">{m.admin_col_name()}</th>
+							<th class="datagrid-th font-medium">{m.admin_col_email()}</th>
+							<th class="datagrid-th font-medium">{m.admin_col_company()}</th>
+							<th class="datagrid-th font-medium">{m.admin_col_interest()}</th>
+							<th class="datagrid-th font-medium">{m.admin_col_message()}</th>
+							<th class="datagrid-th text-right font-medium">
 								<span class="sr-only">{m.admin_col_actions()}</span>
 							</th>
 						</tr>
@@ -64,20 +64,21 @@
 					<tbody class="divide-y divide-hairline">
 						{#each data.submissions as sub (sub.id)}
 							<tr class="align-top">
-								<td class="px-3 py-3 whitespace-nowrap text-faint">{fmt.format(sub.createdAt)}</td>
-								<td class="px-3 py-3 text-emphasis">{sub.name}</td>
-								<td class="px-3 py-3">
+								<td class="datagrid-td whitespace-nowrap text-faint">{fmt.format(sub.createdAt)}</td
+								>
+								<td class="datagrid-td text-emphasis">{sub.name}</td>
+								<td class="datagrid-td">
 									<a
 										href={`mailto:${sub.email}`}
 										class="text-body transition-colors hover:text-primary-500">{sub.email}</a
 									>
 								</td>
-								<td class="px-3 py-3 text-body">{sub.company ?? '—'}</td>
-								<td class="px-3 py-3 whitespace-nowrap text-body">{labelFor(sub.interest)}</td>
-								<td class="max-w-sm px-3 py-3 text-body">
+								<td class="datagrid-td text-body">{sub.company ?? '—'}</td>
+								<td class="datagrid-td whitespace-nowrap text-body">{labelFor(sub.interest)}</td>
+								<td class="datagrid-td max-w-sm text-body">
 									<span class="block break-words whitespace-pre-wrap">{sub.message}</span>
 								</td>
-								<td class="px-3 py-3 text-right align-top">
+								<td class="datagrid-td text-right align-top">
 									<!-- Two-step confirm, no JS: the <summary> reveals the actual delete button; clicking
 									     the summary again cancels. Avoids a one-click misclick without needing confirm(). -->
 									<details class="inline-block text-right">
@@ -89,7 +90,7 @@
 											<input type="hidden" name="id" value={sub.id} />
 											<button
 												type="submit"
-												class="rounded bg-error-500/20 px-2 py-1 text-xs font-medium text-error-200 transition-colors hover:bg-error-500/30 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none"
+												class="btn-danger"
 												aria-label={m.admin_delete_sr({ name: sub.name })}
 												>{m.admin_delete_confirm()}</button
 											>

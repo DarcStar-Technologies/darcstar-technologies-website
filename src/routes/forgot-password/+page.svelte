@@ -6,9 +6,15 @@
 	// account exists…") so the page can't be used to tell which emails are registered.
 	import { enhance, applyAction } from '$app/forms';
 	import Seo from '$lib/components/Seo.svelte';
+	import UtilityPanel from '$lib/components/UtilityPanel.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
-	import { fieldClass, inlineLinkClass, submitButtonClass } from '$lib/styles';
+	import {
+		fieldClass,
+		fieldLabelBlockClass,
+		inlineLinkClass,
+		submitButtonClass
+	} from '$lib/styles';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
 	import type { PageProps } from './$types';
@@ -38,69 +44,67 @@
 
 <CosmicBackdrop />
 
-<section class="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:py-16">
-	<div class="glass-card mx-auto w-full max-w-sm p-6 text-left sm:p-8">
-		<p class="eyebrow-panel">{m.forgot_password_eyebrow()}</p>
+<UtilityPanel>
+	<p class="eyebrow-panel">{m.forgot_password_eyebrow()}</p>
 
-		{#if form?.ok}
-			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
-				{m.forgot_password_check_email_heading()}
-			</h1>
-			<p class="mt-3 text-sm text-body">
-				{m.forgot_password_check_email_body({ email: form.email })}
-			</p>
-			<p class="mt-2 text-xs text-body/70">{m.forgot_password_check_email_hint()}</p>
-			<p class="mt-6 text-sm text-body">
-				<a class={inlineLinkClass} href={localizeHref('/login')}
-					>{m.forgot_password_back_to_login()}</a
-				>
-			</p>
-		{:else}
-			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
-				{m.forgot_password_heading()}
-			</h1>
-			<p class="mt-2 text-sm text-body">{m.forgot_password_lead()}</p>
-
-			<form
-				method="post"
-				class="mt-6 space-y-4"
-				use:enhance={() => {
-					submitting = true;
-					return async ({ result }) => {
-						submitting = false;
-						await applyAction(result);
-					};
-				}}
+	{#if form?.ok}
+		<h1 class="mt-3 heading-page">
+			{m.forgot_password_check_email_heading()}
+		</h1>
+		<p class="mt-3 text-sm text-body">
+			{m.forgot_password_check_email_body({ email: form.email })}
+		</p>
+		<p class="mt-2 text-xs text-faint">{m.forgot_password_check_email_hint()}</p>
+		<p class="mt-6 text-sm text-body">
+			<a class={inlineLinkClass} href={localizeHref('/login')}
+				>{m.forgot_password_back_to_login()}</a
 			>
-				{#if error}
-					<ErrorBanner>{errorMessage(error)}</ErrorBanner>
-				{/if}
+		</p>
+	{:else}
+		<h1 class="mt-3 heading-page">
+			{m.forgot_password_heading()}
+		</h1>
+		<p class="mt-2 text-sm text-body">{m.forgot_password_lead()}</p>
 
-				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body">
-						{m.forgot_password_field_email_label()}
-					</span>
-					<input
-						type="email"
-						name="email"
-						value={form?.email ?? ''}
-						required
-						autocomplete="username"
-						class={fieldClass}
-						placeholder={m.forgot_password_field_email_placeholder()}
-					/>
-				</label>
+		<form
+			method="post"
+			class="mt-6 space-y-4"
+			use:enhance={() => {
+				submitting = true;
+				return async ({ result }) => {
+					submitting = false;
+					await applyAction(result);
+				};
+			}}
+		>
+			{#if error}
+				<ErrorBanner>{errorMessage(error)}</ErrorBanner>
+			{/if}
 
-				<button type="submit" disabled={submitting} class={submitButtonClass}>
-					{submitting ? m.forgot_password_submitting() : m.forgot_password_submit()}
-				</button>
-			</form>
+			<label class="block">
+				<span class={fieldLabelBlockClass}>
+					{m.forgot_password_field_email_label()}
+				</span>
+				<input
+					type="email"
+					name="email"
+					value={form?.email ?? ''}
+					required
+					autocomplete="username"
+					class={fieldClass}
+					placeholder={m.forgot_password_field_email_placeholder()}
+				/>
+			</label>
 
-			<p class="mt-6 text-sm text-body">
-				<a class={inlineLinkClass} href={localizeHref('/login')}
-					>{m.forgot_password_back_to_login()}</a
-				>
-			</p>
-		{/if}
-	</div>
-</section>
+			<button type="submit" disabled={submitting} class={submitButtonClass}>
+				{submitting ? m.forgot_password_submitting() : m.forgot_password_submit()}
+			</button>
+		</form>
+
+		<p class="mt-6 text-sm text-body">
+			<a class={inlineLinkClass} href={localizeHref('/login')}
+				>{m.forgot_password_back_to_login()}</a
+			>
+		</p>
+	{/if}
+</UtilityPanel>

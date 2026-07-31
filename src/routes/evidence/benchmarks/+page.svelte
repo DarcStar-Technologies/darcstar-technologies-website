@@ -71,7 +71,7 @@
 		</section>
 
 		<section class="glass-card p-8 sm:p-10">
-			<h2 class="text-xl font-medium tracking-tight text-white sm:text-2xl">
+			<h2 class="heading-subsection">
 				{m.evidence_bench_reruns_heading()}
 			</h2>
 			<div class="mt-6 space-y-5">
@@ -81,14 +81,14 @@
 		</section>
 
 		<section class="glass-card p-8 sm:p-10">
-			<h2 class="text-xl font-medium tracking-tight text-white sm:text-2xl">
+			<h2 class="heading-subsection">
 				{m.evidence_bench_controller_heading()}
 			</h2>
 			<p class="mt-4 text-sm leading-relaxed text-body">{m.evidence_bench_controller_body()}</p>
 		</section>
 
 		<section class="glass-card p-8 sm:p-10">
-			<h2 class="text-xl font-medium tracking-tight text-white sm:text-2xl">
+			<h2 class="heading-subsection">
 				{m.evidence_bench_artifacts_heading()}
 			</h2>
 			<p class="mt-4 text-sm leading-relaxed text-body">{m.evidence_cfc_artifacts()}</p>

@@ -1,6 +1,6 @@
 <script lang="ts">
 	// The one hero pattern every page uses (see CLAUDE.md): eyebrow → #helix-slot (CosmicBackdrop
-	// centres the RGB helix there) → heading + optional lede inside a frosted glass-panel. Extracted
+	// centres the RGB helix there) → heading + optional lede inside a frosted `glass-card`. Extracted
 	// so the /news, /research, /people surfaces (and their detail pages) never drift from the
 	// homepage/about hero. Copy comes in as already-resolved strings (Paraglide `m.*()` or CMS data),
 	// so this component holds no literal copy of its own.

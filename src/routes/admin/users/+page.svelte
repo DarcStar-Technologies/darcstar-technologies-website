@@ -7,7 +7,7 @@
 	import { enhance } from '$app/forms';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
-	import { fieldClass, submitButtonClass } from '$lib/styles';
+	import { fieldClass, fieldLabelBlockClass, submitButtonClass } from '$lib/styles';
 	import type { PageData } from './$types';
 
 	let { data, form }: { data: PageData; form?: FormResult } = $props();
@@ -42,13 +42,13 @@
 
 <section class="space-y-8">
 	<header>
-		<h1 class="text-3xl font-medium tracking-tight text-white">{m.admin_users_heading()}</h1>
+		<h1 class="heading-page">{m.admin_users_heading()}</h1>
 		<p class="mt-2 text-sm text-body">{m.admin_users_lead()}</p>
 	</header>
 
 	<!-- Create user -->
 	<div class="glass-card p-4 sm:p-6">
-		<h2 class="text-lg font-medium text-white">{m.admin_users_create_heading()}</h2>
+		<h2 class="heading-card">{m.admin_users_create_heading()}</h2>
 		<p class="mt-1 text-sm text-faint">{m.admin_users_create_lead()}</p>
 
 		<form
@@ -69,9 +69,7 @@
 
 			<div class="grid gap-4 sm:grid-cols-2">
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-						>{m.admin_users_create_name_label()}</span
-					>
+					<span class={fieldLabelBlockClass}>{m.admin_users_create_name_label()}</span>
 					<input
 						type="text"
 						name="name"
@@ -82,9 +80,7 @@
 					/>
 				</label>
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-						>{m.admin_users_create_email_label()}</span
-					>
+					<span class={fieldLabelBlockClass}>{m.admin_users_create_email_label()}</span>
 					<input
 						type="email"
 						name="email"
@@ -95,9 +91,7 @@
 					/>
 				</label>
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-						>{m.admin_users_create_password_label()}</span
-					>
+					<span class={fieldLabelBlockClass}>{m.admin_users_create_password_label()}</span>
 					<input
 						type="password"
 						name="password"
@@ -109,9 +103,7 @@
 					<span class="mt-1 block text-xs text-faint">{m.admin_users_create_password_hint()}</span>
 				</label>
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-						>{m.admin_users_create_role_label()}</span
-					>
+					<span class={fieldLabelBlockClass}>{m.admin_users_create_role_label()}</span>
 					<select name="role" class={fieldClass}>
 						<option
 							value="user"
@@ -143,15 +135,15 @@
 			{/if}
 		</div>
 		<div class="overflow-x-auto">
-			<table class="w-full border-collapse text-left text-sm">
+			<table class="datagrid">
 				<thead>
-					<tr class="border-b border-hairline text-xs tracking-wide text-faint">
-						<th class="px-3 py-2 font-medium">{m.admin_users_col_email()}</th>
-						<th class="px-3 py-2 font-medium">{m.admin_users_col_name()}</th>
-						<th class="px-3 py-2 font-medium">{m.admin_users_col_role()}</th>
-						<th class="px-3 py-2 font-medium">{m.admin_users_col_status()}</th>
-						<th class="px-3 py-2 font-medium whitespace-nowrap">{m.admin_users_col_created()}</th>
-						<th class="px-3 py-2 font-medium"
+					<tr class="datagrid-head">
+						<th class="datagrid-th font-medium">{m.admin_users_col_email()}</th>
+						<th class="datagrid-th font-medium">{m.admin_users_col_name()}</th>
+						<th class="datagrid-th font-medium">{m.admin_users_col_role()}</th>
+						<th class="datagrid-th font-medium">{m.admin_users_col_status()}</th>
+						<th class="datagrid-th font-medium whitespace-nowrap">{m.admin_users_col_created()}</th>
+						<th class="datagrid-th font-medium"
 							><span class="sr-only">{m.admin_users_col_manage()}</span></th
 						>
 					</tr>
@@ -159,7 +151,7 @@
 				<tbody class="divide-y divide-hairline">
 					{#each data.users as u (u.id)}
 						<tr class="align-top">
-							<td class="px-3 py-3 text-emphasis">
+							<td class="datagrid-td text-emphasis">
 								{u.email}
 								{#if u.id === data.currentUserId}
 									<span
@@ -173,17 +165,17 @@
 									>
 								{/if}
 							</td>
-							<td class="px-3 py-3 text-body">{u.name}</td>
-							<td class="px-3 py-3 whitespace-nowrap text-body">{roleLabel(u.role)}</td>
-							<td class="px-3 py-3 whitespace-nowrap">
+							<td class="datagrid-td text-body">{u.name}</td>
+							<td class="datagrid-td whitespace-nowrap text-body">{roleLabel(u.role)}</td>
+							<td class="datagrid-td whitespace-nowrap">
 								{#if u.banned}
 									<span class="text-error-400">{m.admin_users_status_disabled()}</span>
 								{:else}
 									<span class="text-body">{m.admin_users_status_active()}</span>
 								{/if}
 							</td>
-							<td class="px-3 py-3 whitespace-nowrap text-faint">{fmt.format(u.createdAt)}</td>
-							<td class="px-3 py-3 text-right whitespace-nowrap">
+							<td class="datagrid-td whitespace-nowrap text-faint">{fmt.format(u.createdAt)}</td>
+							<td class="datagrid-td text-right whitespace-nowrap">
 								<a
 									href={localizeHref(`/admin/users/${u.id}`)}
 									class="text-primary-400 transition-colors hover:text-primary-300"

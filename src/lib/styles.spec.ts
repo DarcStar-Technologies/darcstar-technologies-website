@@ -153,6 +153,83 @@ describe('shared class strings are imported, never re-typed', () => {
 		).toStrictEqual([]);
 	});
 
+	// --- The subset direction (DAR-222) ------------------------------------------------------------
+	//
+	// The superset rule above is blind to a variant that carries the treatment and differs in the
+	// LAYOUT around it, and that blindness was not hypothetical: DAR-218 shipped this file, documented
+	// the hole for the one case it fixed (`fieldLegendRowClass`, a subset of `fieldLabelClass`), and a
+	// SECOND subset sat beside it at 17 sites across 7 files — `mb-1.5 block …` instead of the flex
+	// row — in files that imported `fieldClass` and hand-typed the label next to it. Three times the
+	// re-typings the original ticket found, invisible to every assertion here.
+	//
+	// So the rule is derived rather than restated (DAR-99): where two exports overlap substantially,
+	// the overlap IS the idiom, and a literal carrying the whole overlap is wearing it — whether it
+	// adds tokens (caught above) or drops them (caught here). Deriving means a future export brings
+	// its own cores along, and no core can be forgotten because none is written down.
+	const MIN_CORE = 3;
+
+	/** Token groups shared by two or more exports — the drift-prone core of each idiom. */
+	const CORES = SHARED.flatMap(([aName, a], i) =>
+		SHARED.slice(i + 1).flatMap(([bName, b]) => {
+			const core = a.filter((t) => b.includes(t));
+			return core.length >= MIN_CORE ? [{ pair: `${aName} + ${bName}`, core }] : [];
+		})
+	);
+
+	const carriers = () =>
+		markupSourcePaths().flatMap((file) =>
+			classLiterals(file).flatMap((tokens) => {
+				const set = new Set(tokens);
+				return CORES.filter(({ core }) => core.every((t) => set.has(t))).map(
+					({ pair }) => `${file} hand-writes the core of ${pair}: class="${tokens.join(' ')}"`
+				);
+			})
+		);
+
+	// The derivation is the instrument, so it gets a positive control: an empty CORES list makes every
+	// assertion below pass while checking nothing (DAR-152's blind-scan shape).
+	it('derives the label ink as a shared core', () => {
+		expect(CORES.length).toBeGreaterThan(0);
+		expect(CORES.map(({ core }) => [...core].sort().join(' '))).toContain(
+			'font-medium text-body text-xs tracking-wide'
+		);
+	});
+
+	it('detects a variant that drops tokens from a shared string', () => {
+		// DAR-222's own shape — the ink, re-boxed — but NOT its string, which is now `fieldLabelBlock-
+		// Class` and so is visible to the superset rule again. That is the fix working, and it is also
+		// why this case has to be the NEXT variant rather than the one just closed: a test written
+		// against the historical string would assert that the export exists, not that the rule holds.
+		const variant = 'mb-1.5 inline-flex text-xs font-medium tracking-wide text-body'.split(/\s+/);
+		// Invisible to the superset rule: it is a superset of no export.
+		expect(matches(variant)).toStrictEqual([]);
+		// Visible to this one, because it carries the whole ink.
+		const set = new Set(variant);
+		expect(CORES.filter(({ core }) => core.every((t) => set.has(t))).length).toBeGreaterThan(0);
+	});
+
+	// `MIN_CORE` is a choice inside a MEASURED empty band, not a number tuned until the suite passed.
+	// Today's pairs overlap in 2 tokens (`w-full text-sm`, `mb-1.5 text-xs` — incidental collisions
+	// between unrelated idioms) or in 4+ (the label ink and its flex row). Nothing lands on 3, so the
+	// floor can sit anywhere in (2, 4] without changing a single result — and the two cases below
+	// bracket it, so a later move OUT of that band fails rather than silently widening or blinding it.
+	it('brackets the core floor against incidental overlap', () => {
+		const sizes = CORES.map(({ core }) => core.length);
+		expect(Math.min(...sizes)).toBeGreaterThanOrEqual(MIN_CORE);
+		// Below the band: two tokens two unrelated exports happen to share is not an idiom.
+		expect(MIN_CORE).toBeGreaterThan(2);
+		// Above it: a floor past the real ink (4 tokens) would stop seeing the defect this exists for.
+		expect(MIN_CORE).toBeLessThanOrEqual(4);
+	});
+
+	// No allowlist, deliberately, and the reason is that a carrier is always fixable by importing —
+	// unlike DAR-102's scans, where an exemption names a file that legitimately does the thing. If one
+	// ever turns out to be genuinely unfixable, add a list here with that ticket's polarity (an entry
+	// makes the rule stricter to delete) rather than raising MIN_CORE, which blinds it everywhere.
+	it('finds no hand-written variant of a shared string', () => {
+		expect(carriers()).toStrictEqual([]);
+	});
+
 	// The rot direction. An allowlist entry whose call site was fixed (or deleted) stops describing
 	// anything, and a list of names nobody checks is how an exception list becomes decoration.
 	it('has no stale allowlist entry', () => {
@@ -208,6 +285,216 @@ describe('the eyebrow base is a composition root, not a call-site class', () => 
 		].sort();
 		expect(used).toStrictEqual(['eyebrow-hero', 'eyebrow-label', 'eyebrow-panel']);
 		expect(used.filter((tier) => !css.includes(`@utility ${tier} {`))).toStrictEqual([]);
+	});
+});
+
+describe('the record tables share one set of chrome tokens', () => {
+	// Unlike the three families below there is no base to keep out of markup — `datagrid` IS a
+	// call-site class. What matters here is the SET: six files carried this chrome verbatim, and one
+	// of them (/account) is the end-user portal rather than a staff surface, so the copy had crossed
+	// the boundary CLAUDE.md's `/admin` opt-out is scoped by (DAR-222).
+	const css = readFileSync('src/routes/layout.css', 'utf8');
+
+	it('uses only tokens that layout.css defines', () => {
+		const used = [
+			...new Set(
+				markupSourcePaths().flatMap((file) =>
+					classLiterals(file)
+						.flat()
+						.filter((t) => t.startsWith('datagrid'))
+				)
+			)
+		].sort();
+		expect(used).toStrictEqual([
+			'datagrid',
+			'datagrid-empty',
+			'datagrid-head',
+			'datagrid-td',
+			'datagrid-th'
+		]);
+		expect(used.filter((t) => !css.includes(`@utility ${t} {`))).toStrictEqual([]);
+	});
+
+	// Stated as "no CELL hand-writes padding" rather than "the literal is absent", because the second
+	// passes against a seventh table that spells the same padding some other way.
+	//
+	// It has to be element-aware, and the first cut was not: scanning every class literal for
+	// `px-3` + `py-2|py-3` fires on the GlassSelect menu item, ErrorBanner, the Pager buttons and both
+	// header nav links — five correct elements that simply share a common padding. A guard that fires
+	// on correct code is one that gets loosened until it catches nothing (DAR-152), so the rule reads
+	// the tag, not just the class.
+	const cellLiterals = (file: string) =>
+		[...markupText(file).matchAll(/<t[hd]\b[^>]*?\bclass=("|')([^"']*)\1/g)].map(([, , value]) =>
+			value
+				.replace(/\{[^}]*\}/g, ' ')
+				.split(/\s+/)
+				.filter(Boolean)
+		);
+
+	// One exemption, and it is not a data cell: /admin/waitlist's expansion row spans all ten columns
+	// and holds a `<details>`. Its padding is asymmetric ON PURPOSE — `pb-3` with no top padding, so
+	// the panel stays visually attached to the row it expands rather than floating between two rows.
+	// `datagrid-td` would put `py-3` back and break exactly that. Same polarity as every other list
+	// here: deleting the entry makes the rule stricter, and the paired check below fails if the cell
+	// it names stops matching.
+	const EXEMPT_CELLS = ['src/routes/admin/waitlist/+page.svelte: px-3 pb-3'];
+
+	it('leaves no hand-written padding on a table cell', () => {
+		const handWritten = markupSourcePaths().flatMap((file) =>
+			cellLiterals(file)
+				.filter((t) => t.some((c) => /^-?p[xytbrl]?-/.test(c)))
+				.map((t) => `${file}: ${t.join(' ')}`)
+		);
+		expect(handWritten.filter((c) => !EXEMPT_CELLS.includes(c))).toStrictEqual([]);
+		expect(EXEMPT_CELLS.filter((c) => !handWritten.includes(c))).toStrictEqual([]);
+	});
+
+	// The reach control. Every assertion above is "nothing matched", which a cell reader that finds no
+	// cells satisfies perfectly — and this one is easy to break silently, since it is a hand-written
+	// regex over tags rather than the shared `classLiterals` helper.
+	it('actually finds the cells it claims to check', () => {
+		const cells = markupSourcePaths().flatMap(cellLiterals);
+		expect(cells.length).toBeGreaterThan(50);
+		expect(cells.filter((t) => t.includes('datagrid-th')).length).toBeGreaterThan(20);
+		expect(cells.filter((t) => t.includes('datagrid-td')).length).toBeGreaterThan(20);
+	});
+});
+
+describe('the heading base is a composition root, not a call-site class', () => {
+	// The third instance of the same shape (DAR-222, after `eyebrow` and `btn-pill`): 57 sites in 21
+	// spellings of `font-medium tracking-tight text-white` plus a size, where only the size ever moved.
+	const css = readFileSync('src/routes/layout.css', 'utf8');
+	const TIERS = [
+		'heading-card',
+		'heading-page',
+		'heading-panel',
+		'heading-section',
+		'heading-subsection'
+	];
+
+	it('is never used bare in markup', () => {
+		const bare = markupSourcePaths().flatMap((file) =>
+			classLiterals(file)
+				.filter((tokens) => tokens.includes('heading-base'))
+				.map((tokens) => `${file}: class="${tokens.join(' ')}"`)
+		);
+		expect(bare).toStrictEqual([]);
+	});
+
+	it('uses only tiers that layout.css defines', () => {
+		const used = [
+			...new Set(
+				markupSourcePaths().flatMap((file) =>
+					classLiterals(file)
+						.flat()
+						.filter((t) => t.startsWith('heading-'))
+				)
+			)
+		].sort();
+		expect(used).toStrictEqual(TIERS);
+		expect(used.filter((tier) => !css.includes(`@utility ${tier} {`))).toStrictEqual([]);
+	});
+
+	// The survivors, each a genuine one-off, each named with its reason. DAR-102's polarity: deleting
+	// an entry makes this STRICTER (the heading it described now fails), so the list cannot rot into
+	// names nobody checks — and a 56th hand-rolled heading fails it in the other direction.
+	//
+	// Keyed by file plus its size tokens rather than by the whole class string, so re-wrapping a line
+	// or adding a margin is not a false failure while a changed SIZE — the thing a tier would fix — is.
+	const ONE_OFFS: Record<string, string> = {
+		'src/routes/+page.svelte sm:text-6xl+text-4xl':
+			'the homepage hero, the largest type on the site',
+		'src/routes/+page.svelte sm:text-4xl+text-3xl':
+			'the homepage GIDE section, one step under its hero and above every other section',
+		'src/lib/components/PageHero.svelte sm:text-5xl+text-4xl':
+			'the shared hero for every non-homepage page — deliberately smaller than the homepage hero',
+		'src/lib/components/TopicGuide.svelte text-xl':
+			'the topic-guide legend, sized against the disclosure it sits in rather than the page',
+		'src/routes/news/+page.svelte text-xl':
+			'a news card title, which carries a group-hover colour transition no tier should own'
+	};
+
+	it('leaves only the documented one-off headings', () => {
+		const BASE = ['font-medium', 'tracking-tight', 'text-white'];
+		const found = markupSourcePaths().flatMap((file) =>
+			classLiterals(file)
+				.filter((tokens) => BASE.every((t) => tokens.includes(t)))
+				.map((tokens) => {
+					const sizes = tokens.filter((t) => /^(sm:)?text-(xs|sm|base|[2-9]?xl)$/.test(t));
+					return `${file} ${[...sizes].sort().join('+')}`;
+				})
+		);
+		expect(found.filter((k) => !(k in ONE_OFFS))).toStrictEqual([]);
+		// The rot direction — an entry describing a heading that has since been tiered or deleted.
+		expect(Object.keys(ONE_OFFS).filter((k) => !found.includes(k))).toStrictEqual([]);
+	});
+});
+
+describe('the pill button base is a composition root, not a call-site class', () => {
+	// Same shape as the eyebrow above, and found the same way (DAR-222): `btn-pill` looked like one
+	// utility with two documented one-offs beside it, and measured out as three fixed size tiers —
+	// four buttons on one combination, two on another, none of them varying. The base holds shape and
+	// ink; a bare `btn-pill-base` renders a pill with no padding, which nothing means to do.
+	const css = readFileSync('src/routes/layout.css', 'utf8');
+
+	it('is never used bare in markup', () => {
+		const bare = markupSourcePaths().flatMap((file) =>
+			classLiterals(file)
+				.filter((tokens) => tokens.includes('btn-pill-base'))
+				.map((tokens) => `${file}: class="${tokens.join(' ')}"`)
+		);
+		expect(bare).toStrictEqual([]);
+	});
+
+	// Skeleton ships its own `btn-*` component classes, so the namespace is shared and "every btn- in
+	// markup is ours" would be false. Naming the one we borrow is what keeps that distinction visible:
+	// a NEW Skeleton button class appearing in markup should be a decision someone makes on purpose,
+	// not something that slips in beside our tiers because both start with `btn-`.
+	const SKELETON_BUTTONS = ['btn-icon'];
+
+	// The definition half is what set-equality alone would miss — a tier renamed in BOTH markup and
+	// this list still passes while resolving to no CSS at all, since an unknown class renders silently.
+	it('uses only tiers that layout.css defines', () => {
+		const used = [
+			...new Set(
+				markupSourcePaths().flatMap((file) =>
+					classLiterals(file)
+						.flat()
+						.filter((t) => t.startsWith('btn-'))
+				)
+			)
+		].sort();
+		expect(used).toStrictEqual([
+			'btn-danger',
+			'btn-icon',
+			'btn-pill',
+			'btn-pill-sm',
+			'btn-pill-xs'
+		]);
+		expect(
+			used.filter((t) => !SKELETON_BUTTONS.includes(t) && !css.includes(`@utility ${t} {`))
+		).toStrictEqual([]);
+		// And the borrowed ones really are borrowed — if `btn-icon` ever gains a local definition, this
+		// list has stopped describing what it claims to.
+		expect(SKELETON_BUTTONS.filter((t) => css.includes(`@utility ${t} {`))).toStrictEqual([]);
+	});
+
+	// Every white pill must take its shape from a tier. Stated over the MARKUP rather than as "the
+	// literal is gone", because that passes against a seventh button that spells the same pill with
+	// `rounded-[9999px]` — the drift this family exists to stop, one synonym further out.
+	it('leaves no hand-rolled pill beside the tiers', () => {
+		const handRolled = markupSourcePaths().flatMap((file) =>
+			classLiterals(file)
+				.filter(
+					(t) => t.includes('rounded-full') && t.includes('font-medium') && t.includes('px-4')
+				)
+				.map((t) => `${file}: class="${t.join(' ')}"`)
+		);
+		// The two survivors are `/admin/users/[id]`'s danger zone — an outline pill and a filled
+		// outline pill, one use each, whose difference IS the disable-then-delete escalation. Naming
+		// them would collapse a severity distinction into a shared token.
+		expect(handRolled).toHaveLength(2);
+		expect(handRolled.filter((s) => !s.includes('error-500'))).toStrictEqual([]);
 	});
 });
 

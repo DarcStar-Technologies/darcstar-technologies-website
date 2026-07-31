@@ -34,7 +34,7 @@
 	import AuthorSuggestions from '$lib/components/AuthorSuggestions.svelte';
 	import Pager from '$lib/components/Pager.svelte';
 	import { contentPath } from '$lib/content-path';
-	import { inlineLinkClass, mutedLinkClass } from '$lib/styles';
+	import { fieldLabelBlockClass, inlineLinkClass, mutedLinkClass } from '$lib/styles';
 	import { fieldClass } from '$lib/styles';
 	import {
 		authorSearchTerm,
@@ -211,7 +211,7 @@
      EVERY width (base text-2xl, no breakpoint) so the group heading always dominates its children. -->
 {#snippet paperSection(heading: string, note: string, papers: PageServerData['papers'])}
 	<section>
-		<h2 class="text-2xl font-medium tracking-tight text-white">{heading}</h2>
+		<h2 class="heading-panel">{heading}</h2>
 		<p class="mt-1 text-sm text-muted">{note}</p>
 		<ul class="mt-6 space-y-6">
 			{#each papers as paper (paper._id)}
@@ -241,7 +241,7 @@
 	klass?: string
 )}
 	<label class={['block', klass]}>
-		<span class="mb-1.5 block text-xs font-medium tracking-wide text-body">{label}</span>
+		<span class={fieldLabelBlockClass}>{label}</span>
 		<select {name} value={current ?? ''} class={fieldClass}>
 			<option value="">{emptyLabel}</option>
 			{#if current !== null && !options.some((o) => o.value === current)}
@@ -321,7 +321,7 @@
 				     (measured in both engines), so `luk` offered nothing while submitting it still
 				     returned the paper. AuthorSuggestions carries the fix. -->
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium tracking-wide text-body">
+					<span class={fieldLabelBlockClass}>
 						{m.research_filter_author_label()}
 					</span>
 					<input

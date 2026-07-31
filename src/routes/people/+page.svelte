@@ -57,7 +57,7 @@
 								class="size-24 rounded-full border border-hairline object-cover"
 							/>
 						{/if}
-						<h2 class="mt-4 text-lg font-medium tracking-tight text-white">
+						<h2 class="mt-4 heading-card">
 							<!-- Linked only when the person has a routable slug — the SAME predicate the
 							     JSON-LD `@id` above asks, since the link and the identifier are one claim
 							     about one person. TypeGen types `slug` as non-null because the Studio marks

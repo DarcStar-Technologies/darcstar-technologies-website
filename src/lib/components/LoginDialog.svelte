@@ -18,7 +18,7 @@
 	closeLabel={m.login_close()}
 	maxWidth="sm"
 >
-	<Dialog.Title class="text-2xl font-medium tracking-tight text-white">
+	<Dialog.Title class="heading-panel">
 		{m.login_heading()}
 	</Dialog.Title>
 	<Dialog.Description class="mt-2 text-sm text-body">{m.login_lead()}</Dialog.Description>

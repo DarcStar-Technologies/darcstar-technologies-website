@@ -10,7 +10,12 @@
 	import { goto } from '$app/navigation';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
-	import { fieldClass, inlineLinkClass, submitButtonClass } from '$lib/styles';
+	import {
+		fieldClass,
+		fieldLabelBlockClass,
+		inlineLinkClass,
+		submitButtonClass
+	} from '$lib/styles';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 
 	// `form` is the /login action result — present when the page re-renders after a no-JS submit,
@@ -80,7 +85,7 @@
 	{/if}
 
 	<label class="block">
-		<span class="mb-1.5 block text-xs font-medium tracking-wide text-body">
+		<span class={fieldLabelBlockClass}>
 			{m.login_field_email_label()}
 		</span>
 		<input
@@ -95,7 +100,7 @@
 	</label>
 
 	<label class="block">
-		<span class="mb-1.5 block text-xs font-medium tracking-wide text-body">
+		<span class={fieldLabelBlockClass}>
 			{m.login_field_password_label()}
 		</span>
 		<input

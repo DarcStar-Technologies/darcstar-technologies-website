@@ -145,7 +145,7 @@
 
 		{#if paper.abstract}
 			<section class="glass-card p-8 sm:p-10">
-				<h2 class="text-lg font-medium tracking-tight text-white">
+				<h2 class="heading-card">
 					{m.research_abstract_heading()}
 				</h2>
 				<p class="mt-4 text-sm leading-relaxed whitespace-pre-line text-body">{paper.abstract}</p>
@@ -156,7 +156,7 @@
 			<!-- `id` is the caveat link's target above; `scroll-mt-*` keeps the heading clear of the
 			     fixed header when it lands. -->
 			<section id="commentary" class="glass-card scroll-mt-24 p-8 sm:p-10">
-				<h2 class="text-lg font-medium tracking-tight text-white">
+				<h2 class="heading-card">
 					{m.research_commentary_heading()}
 				</h2>
 				<!-- The note's "our take on this work" framing fits annotated THIRD-PARTY papers; a

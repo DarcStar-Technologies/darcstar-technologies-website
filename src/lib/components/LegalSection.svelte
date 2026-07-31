@@ -10,7 +10,7 @@
 </script>
 
 <section class="px-8 py-7 sm:px-10">
-	<h2 class="text-xl font-medium tracking-tight text-white sm:text-2xl">{heading}</h2>
+	<h2 class="heading-subsection">{heading}</h2>
 	{#if body}
 		<p class="mt-3 text-sm leading-relaxed text-body">{body}</p>
 	{/if}

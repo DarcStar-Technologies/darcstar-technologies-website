@@ -108,7 +108,7 @@
 
 		{#if relatedPapers.length > 0}
 			<section class="glass-card p-8 sm:p-10">
-				<h2 class="text-lg font-medium tracking-tight text-white">{m.news_related_heading()}</h2>
+				<h2 class="heading-card">{m.news_related_heading()}</h2>
 				<ul class="mt-4 space-y-2">
 					{#each relatedPapers as { paper, path } (paper._id)}
 						<li class="flex flex-wrap items-center gap-x-3 gap-y-1.5">

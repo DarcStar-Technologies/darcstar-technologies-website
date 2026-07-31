@@ -466,6 +466,100 @@ select.glass-field {
 	background-size: 1rem, auto;
 }
 
+/* ---- Record tables ------------------------------------------------------
+   The chrome of the staff and portal record tables: /admin, /admin/audit,
+   /admin/users, /admin/users/[id], /admin/waitlist and /account.
+
+   Six files carried it verbatim — the table, the head row, twenty-four `<th>`
+   and every `<td>` — and the SIXTH file is why this is a shared token rather
+   than an `/admin`-scoped one. CLAUDE.md records a deliberate `/admin` opt-out
+   from the public site's conventions, and states its reason as "it is
+   staff-only"; `/account` is the end-user portal, so it is on the other side
+   of that line and had inherited the opt-out anyway, by being the page whose
+   table someone copied (DAR-222).
+
+   Only the invariant chrome lives here. A cell's ink (`text-body` /
+   `text-faint` / `text-emphasis`) and its `whitespace-nowrap` stay at the call
+   site: those say what a COLUMN is, which is the one thing that differs
+   between a login-audit row and a waitlist lead. */
+@utility datagrid {
+	@apply w-full border-collapse text-left text-sm;
+}
+
+@utility datagrid-head {
+	@apply border-b border-hairline text-xs tracking-wide text-faint;
+}
+
+@utility datagrid-th {
+	@apply px-3 py-2 font-medium;
+}
+
+@utility datagrid-td {
+	@apply px-3 py-3;
+}
+
+/* The "no rows" cell — deliberately taller than a data row, so an empty table
+   reads as an answer rather than as a table that failed to render. */
+@utility datagrid-empty {
+	@apply px-2 py-12 text-center text-sm text-faint;
+}
+
+/* ---- Heading tiers ------------------------------------------------------
+   `font-medium tracking-tight text-white` plus a size — and the size is the
+   only thing that ever varied. 57 sites in 21 spellings when DAR-222 counted
+   them: the eyebrow's story below at three times the scale.
+
+   The scale has to live somewhere. Skeleton styles `.h1`–`.h6` and never the
+   bare elements, and this site writes bare `<h1>`–`<h6>` (see the base-layer
+   rule above, which gives them a font and nothing else), so there is no
+   inherited type ramp to fall back on.
+
+   `heading-base` is a composition root like `eyebrow`: never a call-site
+   class, because a heading with no size is not a tier — it is a decision
+   nobody made. */
+@utility heading-base {
+	@apply font-medium tracking-tight text-white;
+}
+
+/* A page's own title — the utility panels (/login, /reset-password,
+   /updates/*, the waitlist steps) and the homepage's mid-page titles. */
+@utility heading-page {
+	@apply text-3xl heading-base;
+}
+
+/* A top-level section of a content page. Grows with the viewport: these sit
+   in full-width prose columns, so they track the measure around them. */
+@utility heading-section {
+	@apply text-2xl heading-base sm:text-3xl;
+}
+
+/* A subsection under one of those — same responsive behaviour, one step down. */
+@utility heading-subsection {
+	@apply text-xl heading-base sm:text-2xl;
+}
+
+/* A dialog or grouped-panel title. FIXED rather than responsive, and that is
+   the whole distinction from `heading-subsection`, which lands on this exact
+   size at `sm`: a dialog is width-capped, so a title that kept growing with
+   the viewport would crowd the panel it names instead of tracking the page. */
+@utility heading-panel {
+	@apply text-2xl heading-base;
+}
+
+/* A card or list-item title — the smallest tier.
+
+   This is where the drift was worst and least random: eight of the fifteen
+   omitted `tracking-tight`, and the split was not scattered — every one of
+   them was under `/admin/users` or `/account`, every one that kept it was
+   under `/people`, `/research` or `/news`. CLAUDE.md does record a deliberate
+   `/admin` opt-out from the public site's conventions, but it enumerates what
+   that covers (bare `hover:`, `text-[10px]`, `bg-white/NN`) and the heading
+   treatment is not on the list, so this reads as the boundary leaking rather
+   than as a choice. Unified, which moves those eight by -0.025em. */
+@utility heading-card {
+	@apply text-lg heading-base;
+}
+
 /* Mono, uppercase, muted-ink eyebrow/kicker label (GIDE kicker, section kickers,
    footer nav heading, readout labels). Captures only the invariant part — the
    three TIERS below add size + tracking.
@@ -504,11 +598,50 @@ select.glass-field {
 	@apply eyebrow text-xs tracking-widest;
 }
 
-/* Default pill CTA — pairs with the `glass-btn` surface (`glass-btn btn-pill`).
-   The larger hero CTA and the full-width submit are deliberate one-offs and keep
-   their explicit sizing rather than overriding this. */
+/* Pill CTA — pairs with the `glass-btn` surface (`glass-btn btn-pill`).
+
+   The invariant is shape and ink; only padding and size vary. A composition
+   root like `eyebrow` above: `btn-pill-base` is never a call-site class, since
+   a pill with no padding is not a button anyone means to render.
+
+   This used to be one utility whose comment named two deliberate one-offs —
+   the hero CTA and the full-width submit, both still true and both still
+   explicit below. What it did NOT say, because nobody had counted (DAR-222),
+   is that six more buttons were sitting on two OTHER fixed combinations, hand
+   typed four and two times. Three tiers, same as the eyebrow: the freedom the
+   single utility implied was never being used as freedom. */
+@utility btn-pill-base {
+	@apply rounded-full font-medium text-white;
+}
+
+/* The public site's CTA — hero, contact, evidence, waitlist confirmation. */
 @utility btn-pill {
-	@apply rounded-full px-6 py-2.5 text-sm font-medium text-white;
+	@apply btn-pill-base px-6 py-2.5 text-sm;
+}
+
+/* The staff-surface action button: same height, tighter sides, because it sits
+   in a row beside other controls rather than alone under a paragraph. */
+@utility btn-pill-sm {
+	@apply btn-pill-base px-4 py-2.5 text-sm;
+}
+
+/* The compact tier — a nav-bar sign-out, a table-row action. */
+@utility btn-pill-xs {
+	@apply btn-pill-base px-4 py-2 text-xs;
+}
+
+/* The destructive row action (delete a submission, delete a waitlist lead).
+   Distinct from `/admin/users/[id]`'s danger zone, whose outline and filled
+   outline pills encode a deliberate disable-then-delete escalation and are one
+   use each — that difference is the point, so they stay written out. This one
+   was identical at three sites in two files, which is not an escalation.
+
+   `/admin` carries its own `focus-visible:ring-*` rather than the site-wide
+   ring (CLAUDE.md), so that opt-out is baked in here rather than left to each
+   call site to remember. */
+@utility btn-danger {
+	@apply rounded bg-error-500/20 px-2 py-1 text-xs font-medium text-error-200 transition-colors;
+	@apply hover:bg-error-500/30 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none;
 }
 
 /* Flowing R→B→G color-charge gradient for text (clipped). Colour order matches

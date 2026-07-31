@@ -16,7 +16,7 @@
 	{#if value}
 		<span class="font-mono text-2xl text-white">{value}</span>
 	{/if}
-	<h2 class="text-xl font-medium tracking-tight text-white sm:text-2xl">{title}</h2>
+	<h2 class="heading-subsection">{title}</h2>
 </div>
 <p class="mt-1.5 font-mono text-xs tracking-wide text-muted">{dated}</p>
 <p class="mt-4 text-sm leading-relaxed text-body">{claim}</p>

@@ -23,10 +23,10 @@
 		<IconCheck />
 	</div>
 	{#if dialog}
-		<Dialog.Title class="mt-4 text-2xl font-medium tracking-tight text-white">{title}</Dialog.Title>
+		<Dialog.Title class="mt-4 heading-panel">{title}</Dialog.Title>
 		<Dialog.Description class="mx-auto mt-2 max-w-sm text-sm text-body">{body}</Dialog.Description>
 	{:else}
-		<h1 class="mt-4 text-2xl font-medium tracking-tight text-white">{title}</h1>
+		<h1 class="mt-4 heading-panel">{title}</h1>
 		<p class="mx-auto mt-2 max-w-sm text-sm text-body">{body}</p>
 	{/if}
 	{@render action()}

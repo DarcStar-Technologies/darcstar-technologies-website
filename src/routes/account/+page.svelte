@@ -11,7 +11,7 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { interestLabel } from '$lib/contact-interest-labels';
 	import type { Interest } from '$lib/contact-interests';
-	import { fieldClass, submitButtonClass } from '$lib/styles';
+	import { fieldClass, fieldLabelBlockClass, submitButtonClass } from '$lib/styles';
 	import type { PageData } from './$types';
 
 	type FormResult = { scope?: string; error?: string; ok?: boolean; name?: string } | null;
@@ -75,21 +75,19 @@
 	{#if showWelcome}{@render okBanner(m.account_welcome_verified())}{/if}
 
 	<header>
-		<h1 class="text-3xl font-medium tracking-tight text-white">{m.account_heading()}</h1>
+		<h1 class="heading-page">{m.account_heading()}</h1>
 		<p class="mt-2 text-sm text-body">{m.account_lead()}</p>
 	</header>
 
 	<!-- Profile: display name -->
 	<div class="glass-card space-y-4 p-4 sm:p-6">
-		<h2 class="text-lg font-medium text-white">{m.account_section_profile()}</h2>
+		<h2 class="heading-card">{m.account_section_profile()}</h2>
 		<p class="text-sm text-faint">{m.account_email_locked({ email: data.email })}</p>
 		{#if errScope === 'profile'}<ErrorBanner>{errorMessage(form?.error)}</ErrorBanner>{/if}
 		{#if okScope === 'profile'}{@render okBanner(m.account_profile_saved())}{/if}
 		<form method="post" action="?/updateName" class="space-y-4">
 			<label class="block">
-				<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-					>{m.account_field_name_label()}</span
-				>
+				<span class={fieldLabelBlockClass}>{m.account_field_name_label()}</span>
 				<input
 					type="text"
 					name="name"
@@ -105,14 +103,12 @@
 
 	<!-- Change password -->
 	<div class="glass-card space-y-4 p-4 sm:p-6">
-		<h2 class="text-lg font-medium text-white">{m.account_section_password()}</h2>
+		<h2 class="heading-card">{m.account_section_password()}</h2>
 		{#if errScope === 'password'}<ErrorBanner>{errorMessage(form?.error)}</ErrorBanner>{/if}
 		{#if okScope === 'password'}{@render okBanner(m.account_password_done())}{/if}
 		<form method="post" action="?/changePassword" class="space-y-4">
 			<label class="block">
-				<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-					>{m.account_field_current_password_label()}</span
-				>
+				<span class={fieldLabelBlockClass}>{m.account_field_current_password_label()}</span>
 				<input
 					type="password"
 					name="currentPassword"
@@ -122,9 +118,7 @@
 				/>
 			</label>
 			<label class="block">
-				<span class="mb-1.5 block text-xs font-medium tracking-wide text-body"
-					>{m.account_field_new_password_label()}</span
-				>
+				<span class={fieldLabelBlockClass}>{m.account_field_new_password_label()}</span>
 				<input
 					type="password"
 					name="newPassword"
@@ -141,7 +135,7 @@
 
 	<!-- Your messages (read-only) -->
 	<div class="glass-card space-y-4 p-4 sm:p-6">
-		<h2 class="text-lg font-medium text-white">{m.account_section_messages()}</h2>
+		<h2 class="heading-card">{m.account_section_messages()}</h2>
 		{#if data.messages.length === 0}
 			<p class="px-2 py-8 text-center text-sm text-faint">{m.account_messages_empty()}</p>
 		{:else}
@@ -149,22 +143,23 @@
 				{m.account_messages_count({ count: data.messages.length })}
 			</p>
 			<div class="overflow-x-auto">
-				<table class="w-full border-collapse text-left text-sm">
+				<table class="datagrid">
 					<thead>
-						<tr class="border-b border-hairline text-xs tracking-wide text-faint">
-							<th class="px-3 py-2 font-medium whitespace-nowrap"
+						<tr class="datagrid-head">
+							<th class="datagrid-th font-medium whitespace-nowrap"
 								>{m.account_messages_col_sent()}</th
 							>
-							<th class="px-3 py-2 font-medium">{m.account_messages_col_interest()}</th>
-							<th class="px-3 py-2 font-medium">{m.account_messages_col_message()}</th>
+							<th class="datagrid-th font-medium">{m.account_messages_col_interest()}</th>
+							<th class="datagrid-th font-medium">{m.account_messages_col_message()}</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-hairline">
 						{#each data.messages as msg (msg.id)}
 							<tr class="align-top">
-								<td class="px-3 py-3 whitespace-nowrap text-faint">{fmt.format(msg.createdAt)}</td>
-								<td class="px-3 py-3 whitespace-nowrap text-body">{labelFor(msg.interest)}</td>
-								<td class="max-w-md px-3 py-3 text-body">
+								<td class="datagrid-td whitespace-nowrap text-faint">{fmt.format(msg.createdAt)}</td
+								>
+								<td class="datagrid-td whitespace-nowrap text-body">{labelFor(msg.interest)}</td>
+								<td class="datagrid-td max-w-md text-body">
 									<span class="block break-words whitespace-pre-wrap">{msg.message}</span>
 								</td>
 							</tr>

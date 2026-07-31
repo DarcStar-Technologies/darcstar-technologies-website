@@ -47,7 +47,7 @@
 	<div class="mx-auto max-w-3xl space-y-14">
 		<!-- Mission -->
 		<section class="glass-card p-8 sm:p-10">
-			<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
+			<h2 class="heading-section">
 				{m.about_mission_heading()}
 			</h2>
 			<p class="mt-4 text-sm leading-relaxed text-body sm:text-base">{m.about_mission_body_1()}</p>
@@ -57,7 +57,7 @@
 		<!-- Principles -->
 		<section class="glass-card overflow-hidden">
 			<div class="p-8 sm:p-10">
-				<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
+				<h2 class="heading-section">
 					{m.about_principles_heading()}
 				</h2>
 			</div>
@@ -73,7 +73,7 @@
 
 		<!-- At a glance -->
 		<section class="glass-card p-8 sm:p-10">
-			<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
+			<h2 class="heading-section">
 				{m.about_facts_heading()}
 			</h2>
 			<dl class="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-[10rem_1fr]">
@@ -95,7 +95,7 @@
 
 		<!-- CTA -->
 		<section class="glass-card px-8 py-12 text-center">
-			<h2 class="text-2xl font-medium tracking-tight text-white sm:text-3xl">
+			<h2 class="heading-section">
 				{m.about_cta_heading()}
 			</h2>
 			<p class="mx-auto mt-4 max-w-md text-sm text-body">{m.about_cta_body()}</p>

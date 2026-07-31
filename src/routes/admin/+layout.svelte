@@ -57,7 +57,7 @@
 	<div class="flex items-center gap-3">
 		<span class="text-xs text-faint">{m.admin_signed_in_as({ email: data.user.email })}</span>
 		<form method="post" action={localizeHref('/logout')}>
-			<button type="submit" class="glass-btn rounded-full px-4 py-2 text-xs font-medium text-white">
+			<button type="submit" class="glass-btn btn-pill-xs">
 				{m.admin_signout()}
 			</button>
 		</form>

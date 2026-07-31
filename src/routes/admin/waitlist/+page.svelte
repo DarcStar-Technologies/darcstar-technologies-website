@@ -338,7 +338,7 @@
 
 <section class="space-y-8">
 	<header>
-		<h1 class="text-3xl font-medium tracking-tight text-white">{m.admin_waitlist_heading()}</h1>
+		<h1 class="heading-page">{m.admin_waitlist_heading()}</h1>
 		<p class="mt-2 text-sm text-body">{m.admin_waitlist_lead()}</p>
 	</header>
 
@@ -466,9 +466,9 @@
 
 	<div class="glass-card p-4 sm:p-6">
 		{#if data.total === 0}
-			<p class="px-2 py-12 text-center text-sm text-faint">{m.admin_waitlist_empty()}</p>
+			<p class="datagrid-empty">{m.admin_waitlist_empty()}</p>
 		{:else if data.leads.length === 0}
-			<p class="px-2 py-12 text-center text-sm text-faint">{m.admin_waitlist_filter_empty()}</p>
+			<p class="datagrid-empty">{m.admin_waitlist_filter_empty()}</p>
 		{:else}
 			<div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-2 pb-4">
 				<p class="text-sm text-emphasis">
@@ -484,22 +484,23 @@
 				{/if}
 			</div>
 			<div class="overflow-x-auto">
-				<table class="w-full border-collapse text-left text-sm">
+				<table class="datagrid">
 					<thead>
-						<tr class="border-b border-hairline text-xs tracking-wide text-faint">
-							<th class="px-3 py-2 font-medium whitespace-nowrap">{m.admin_waitlist_col_class()}</th
+						<tr class="datagrid-head">
+							<th class="datagrid-th font-medium whitespace-nowrap"
+								>{m.admin_waitlist_col_class()}</th
 							>
-							<th class="px-3 py-2 font-medium whitespace-nowrap"
+							<th class="datagrid-th font-medium whitespace-nowrap"
 								>{m.admin_waitlist_col_latest()}</th
 							>
-							<th class="px-3 py-2 font-medium">{m.admin_col_email()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_col_name()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_col_company()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_role()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_outreach()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_updates()}</th>
-							<th class="px-3 py-2 font-medium">{m.admin_waitlist_col_access()}</th>
-							<th class="px-3 py-2 text-right font-medium">
+							<th class="datagrid-th font-medium">{m.admin_col_email()}</th>
+							<th class="datagrid-th font-medium">{m.admin_col_name()}</th>
+							<th class="datagrid-th font-medium">{m.admin_col_company()}</th>
+							<th class="datagrid-th font-medium">{m.admin_waitlist_col_role()}</th>
+							<th class="datagrid-th font-medium">{m.admin_waitlist_col_outreach()}</th>
+							<th class="datagrid-th font-medium">{m.admin_waitlist_col_updates()}</th>
+							<th class="datagrid-th font-medium">{m.admin_waitlist_col_access()}</th>
+							<th class="datagrid-th text-right font-medium">
 								<span class="sr-only">{m.admin_col_actions()}</span>
 							</th>
 						</tr>
@@ -513,11 +514,11 @@
 						{@const latest = latestOf(lead)}
 						<tbody class="border-b border-hairline">
 							<tr class="align-top">
-								<td class="px-3 py-3"><WaitlistLeadClassBadge leadClass={lead.leadClass} /></td>
-								<td class="px-3 py-3 whitespace-nowrap text-faint"
+								<td class="datagrid-td"><WaitlistLeadClassBadge leadClass={lead.leadClass} /></td>
+								<td class="datagrid-td whitespace-nowrap text-faint"
 									>{lead.latestAt ? fmt.format(lead.latestAt) : DASH}</td
 								>
-								<td class="px-3 py-3">
+								<td class="datagrid-td">
 									<a
 										href={`mailto:${lead.email}`}
 										class="text-body transition-colors hover:text-primary-500">{lead.email}</a
@@ -546,12 +547,12 @@
 										{/if}
 									</div>
 								</td>
-								<td class="px-3 py-3 text-emphasis">{orDash(latest?.name ?? null)}</td>
-								<td class="px-3 py-3 text-body">{orDash(latest?.company ?? null)}</td>
-								<td class="px-3 py-3 whitespace-nowrap text-body"
+								<td class="datagrid-td text-emphasis">{orDash(latest?.name ?? null)}</td>
+								<td class="datagrid-td text-body">{orDash(latest?.company ?? null)}</td>
+								<td class="datagrid-td whitespace-nowrap text-body"
 									>{roleFor(latest?.role ?? null)}</td
 								>
-								<td class="px-3 py-3 whitespace-nowrap">
+								<td class="datagrid-td whitespace-nowrap">
 									<!-- THE LEAD-LEVEL TRUTH WINS THIS CELL (DAR-191). Below it is a tri-state read
 									     off the newest SUBMISSION — an answer somebody typed into an unauthenticated
 									     form, which under append-only need not be the person whose address it is.
@@ -578,7 +579,7 @@
 										<span class="text-xs text-faint">{m.admin_waitlist_outreach_unasked()}</span>
 									{/if}
 								</td>
-								<td class="px-3 py-3 whitespace-nowrap">
+								<td class="datagrid-td whitespace-nowrap">
 									<!-- Where this address stands on product-and-research updates (DAR-139), derived
 									     from the LEAD — deliberately BESIDE the per-submission "Marketing consent"
 									     row in the detail panel rather than replacing it. Those say what each
@@ -600,7 +601,7 @@
 										<span class="text-xs text-faint">{m.admin_waitlist_updates_none()}</span>
 									{/if}
 								</td>
-								<td class="px-3 py-3 whitespace-nowrap">
+								<td class="datagrid-td whitespace-nowrap">
 									<!-- Invite state (DAR-67), derived server-side from the LEAD's
 									     invited_at/activated_at. Three states, and only the last is self-evidently
 									     good news: "invited" means an email went out, not that anyone acted on it. -->
@@ -616,7 +617,7 @@
 										<span class="text-xs text-faint">{m.admin_waitlist_invite_not_invited()}</span>
 									{/if}
 								</td>
-								<td class="px-3 py-3 text-right align-top">
+								<td class="datagrid-td text-right align-top">
 									<!-- Invite / resend. Same two-step <details> confirm as delete below, and for the
 									     same reason rather than for symmetry: one click here puts a real email in a
 									     prospect's inbox. A lead that has already been invited says "Resend" — DAR-67
@@ -754,7 +755,7 @@
 											<input type="hidden" name="id" value={lead.id} />
 											<button
 												type="submit"
-												class="rounded bg-error-500/20 px-2 py-1 text-xs font-medium text-error-200 transition-colors hover:bg-error-500/30 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none"
+												class="btn-danger"
 												aria-label={m.admin_waitlist_delete_sr({ email: lead.email })}
 												>{m.admin_delete_confirm()}</button
 											>
@@ -816,7 +817,7 @@
 															<input type="hidden" name="id" value={row.id} />
 															<button
 																type="submit"
-																class="rounded bg-error-500/20 px-2 py-1 text-xs font-medium text-error-200 transition-colors hover:bg-error-500/30 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none"
+																class="btn-danger"
 																aria-label={m.admin_waitlist_delete_submission_sr({
 																	email: lead.email
 																})}>{m.admin_delete_confirm()}</button
