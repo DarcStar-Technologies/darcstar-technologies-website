@@ -29,7 +29,10 @@
 	     and SIZE it (its height caps the helix amplitude), so keep the height even though the panel
 	     below overlaps it — on content pages the panel rises onto the helix's lower arcs (negative
 	     margin) instead of sitting fully below, reclaiming vertical space while the upper arcs stay
-	     visible above the panel. The homepage/about keep the full below-the-helix hero. -->
+	     visible above the panel. Only the HOMEPAGE keeps the full below-the-helix hero, which is why
+	     it composes its own instead of using this — there the helix is the centrepiece. (This read
+	     "the homepage/about" until DAR-218. /about has always pulled up, so the line was wrong before
+	     it was misleading; adopting this component there is what surfaced it.) -->
 	<div id="helix-slot" class="h-6 min-[360px]:h-[var(--helix-slot-h)]"></div>
 
 	<div
