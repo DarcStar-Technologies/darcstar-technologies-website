@@ -45,11 +45,22 @@
 			                  heading rather than preceded by it. Binding them would make "Provable
 			                  safety" one unbreakable 15-character run, which at text-4xl overflows
 			                  the card on a 360px screen instead of wrapping.
-			     An expression renders a space that survives the trim; `{' '}` is not a text node. -->
+			     An expression renders a space that survives the trim, and it is the ONLY thing that does:
+			     `&#32;` looks like the tidy answer and is not — Svelte decodes the entity to a plain
+			     space and then trims it exactly as if it had been typed (measured; the spec below goes
+			     red). `&nbsp;` survives only because U+00A0 is not ASCII whitespace, which is the very
+			     property that makes it wrong here. Hence the rule exemption rather than a rewrite: the
+			     mustache is load-bearing, and `svelte/no-useless-mustaches` cannot see that. -->
+			<!-- A block disable rather than `disable-next-line`: prettier wraps this single logical line
+			     across four physical ones and chooses where, so a line-scoped exemption silently drifts
+			     off the mustache it was placed for. Re-enabled immediately below, so the exemption
+			     covers the heading and nothing after it. -->
+			<!-- eslint-disable svelte/no-useless-mustaches -->
 			{#if emphasis && emphasisPosition === 'leading'}<span class="charge-flow">{emphasis}</span
 				>{' '}{/if}{heading}{#if emphasis && emphasisPosition === 'trailing'}&nbsp;<span
 					class="charge-flow">{emphasis}</span
 				>{/if}
+			<!-- eslint-enable svelte/no-useless-mustaches -->
 		</h1>
 		{#if lead}
 			<p class="mx-auto mt-6 max-w-2xl text-base text-body sm:text-lg">{lead}</p>

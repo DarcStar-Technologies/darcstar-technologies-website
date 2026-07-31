@@ -72,6 +72,15 @@ const SOURCES: Record<string, string> = {
 	...read('scripts', ['.ts', '.mjs'])
 };
 
+// Markup is read into a set of its OWN rather than folded into `SOURCES`, for the same reason the
+// three sets above are separate. Every rule that reads `SOURCES` asks a question about MODULES — who
+// imports the ungated capture, who resolves the signing secret, who may reach the mail provider — and
+// `.svelte` files would answer all three with noise while widening `waitlistSourcePaths()`, which
+// filters by basename, and `appSourcePaths()`, which two rules use as "the deployed worker". The
+// question markup answers is a different one (DAR-218: does a `class` attribute re-type a string that
+// `$lib/styles.ts` already exports), so it gets a set instead of a flag on an existing one.
+const MARKUP: Record<string, string> = read('src', ['.svelte']);
+
 /**
  * Every non-spec source file under `src`, repo-relative. Vitest runs from the project root.
  *
@@ -121,6 +130,43 @@ export const waitlistSourcePaths = (): string[] =>
  */
 export const sourceText = (path: string): string =>
 	(SOURCES[path] ?? '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+/** Every `.svelte` file under `src`, repo-relative. See `MARKUP` for why this is its own set. */
+export const markupSourcePaths = (): string[] => Object.keys(MARKUP);
+
+/**
+ * One component's markup, with its `<script>` blocks and comments removed.
+ *
+ * The script has to go, not just the comments: a component that legitimately IMPORTS a shared class
+ * string mentions that string's NAME, and several of them build local class expressions in script —
+ * so a scan of the whole file would read the module's own consumers as if they were re-typing it.
+ * What is left is the part where a `class` attribute can be hand-written.
+ *
+ * Both comment syntaxes go, because markup carries `<!-- -->` and the removed script carried `//`;
+ * the ones in this repo discuss class names constantly (this file's own rule is discussed in three
+ * of them), so a raw scan would trip on the explanations rather than on the code.
+ */
+export const markupText = (path: string): string =>
+	(MARKUP[path] ?? '')
+		.replace(/<script[\s\S]*?<\/script>/g, '')
+		.replace(/<!--[\s\S]*?-->/g, '')
+		.replace(/\/\*[\s\S]*?\*\//g, '');
+
+/**
+ * Every literal `class="…"` value in a component's markup, as a token list.
+ *
+ * LITERALS ONLY, deliberately: `class={fieldLabelClass}` is the correct form this rule exists to
+ * push people toward, so reading it would report every fixed call site as a violation. A mixed
+ * `class="{submitButtonClass} order-1"` yields its literal tokens with the `{…}` holes dropped,
+ * which is right — the shared part is already shared, and what is left is the delta being added.
+ */
+export const classLiterals = (path: string): string[][] =>
+	[...markupText(path).matchAll(/\bclass=("|')([^"']*)\1/g)].map(([, , value]) =>
+		value
+			.replace(/\{[^}]*\}/g, ' ')
+			.split(/\s+/)
+			.filter(Boolean)
+	);
 
 /**
  * Does the specifier `spec`, written inside the file `from`, refer to `module`?
