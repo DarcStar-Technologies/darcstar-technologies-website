@@ -35,10 +35,10 @@
 		     amplitude), so keep the height; the panel below rises onto the helix's lower arcs
 		     (negative margin) instead of sitting fully below it, reclaiming vertical space while the
 		     upper arcs stay visible. Mirrors PageHero (/news · /research · /people). -->
-		<div id="helix-slot" class="h-6 min-[360px]:h-[min(25vw,19rem)]"></div>
+		<div id="helix-slot" class="h-6 min-[360px]:h-[var(--helix-slot-h)]"></div>
 
 		<div
-			class="glass-card mx-auto w-full max-w-3xl px-8 py-10 text-center min-[360px]:-mt-[min(23vw,17.5rem)] sm:px-10 sm:py-12"
+			class="glass-card mx-auto w-full max-w-3xl px-8 py-10 text-center min-[360px]:-mt-[var(--helix-pull)] sm:px-10 sm:py-12"
 		>
 			<h1 class="text-4xl font-medium tracking-tight text-balance text-white sm:text-5xl">
 				<span class="charge-flow">{m.about_heading_emphasis()}</span>

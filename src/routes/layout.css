@@ -174,6 +174,21 @@ html {
 	   and the .header-scrim gradient stops below. Change these and both track. */
 	--header-bar-h: 6rem; /* nav bar height */
 	--header-gap-top: 0.75rem; /* gap above the bar */
+	/* Hero helix geometry — the single source for the two values every hero shares.
+	   These were hand-typed at five sites (PageHero, /about, the homepage) and their
+	   coupling lived only in a CLAUDE.md sentence, which is a poor place for it because
+	   BOTH are load-bearing and neither fails loudly:
+
+	     --helix-slot-h   the #helix-slot's height. CosmicBackdrop MEASURES this element
+	                      and caps the helix amplitude at 42% of it, so shrinking the slot
+	                      silently shrinks the helix rather than clipping it.
+	     --helix-pull     how far the frosted panel rises onto the helix's lower arcs on
+	                      content pages. Deliberately a hair LESS than the slot height, so
+	                      the panel can never over-pull past the eyebrow above it; the
+	                      homepage omits the pull entirely and keeps its panel below the
+	                      helix, which is why this is a separate token and not a formula. */
+	--helix-slot-h: min(25vw, 19rem);
+	--helix-pull: min(23vw, 17.5rem);
 	--charge-r: var(--color-tertiary-500); /* rose      */
 	--charge-g: var(--color-secondary-500); /* green     */
 	--charge-b: var(--color-primary-500); /* cyan-blue */
