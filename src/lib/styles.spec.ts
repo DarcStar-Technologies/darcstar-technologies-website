@@ -5,6 +5,7 @@ import {
 	classLiterals,
 	markupSourcePaths,
 	markupText,
+	MARKUP_STRIP_PATTERNS,
 	stripToFixedPoint
 } from './server/source-scan';
 
@@ -79,8 +80,12 @@ describe('the markup reader', () => {
 
 	// Svelte only accepts a lowercase `<script>`, so this is unreachable in a file that compiles —
 	// but a stripper exhaustive only for well-formed input is DAR-102's shape, and the flag is free.
+	//
+	// It reads the pattern `markupText` ACTUALLY uses rather than a local copy, and that is
+	// mutation-measured: with a copy here, deleting the `i` flag from the real one left all 17 tests
+	// green, since this test then pinned the helper and said nothing about its caller.
 	it('strips a script block whatever its case or closing-tag spacing', () => {
-		const script = /<script[\s\S]*?<\/script\s*>/gi;
+		const [script] = MARKUP_STRIP_PATTERNS;
 		expect(stripToFixedPoint('a<SCRIPT>let c = "p-4";</SCRIPT>b', script)).toBe('ab');
 		expect(stripToFixedPoint('a<script>x</script  >b', script)).toBe('ab');
 	});

@@ -176,8 +176,24 @@ export const stripToFixedPoint = (text: string, pattern: RegExp): string => {
  * the ones in this repo discuss class names constantly (this file's own rule is discussed in three
  * of them), so a raw scan would trip on the explanations rather than on the code.
  */
+/**
+ * What `markupText` removes, in order. Exported so a spec can assert the patterns THEMSELVES.
+ *
+ * That indirection is not ceremony — it was mutation-measured. With these inlined, dropping the `i`
+ * flag left all 17 tests green, because the case test handed `stripToFixedPoint` its own regex and
+ * so pinned the helper while saying nothing about what the caller passes it. A test that reads as
+ * coverage while proving nothing is worse than no test (DAR-171).
+ *
+ * Sharing module-level `/g` regexes across calls is safe here: `String.replace` resets `lastIndex`.
+ */
+export const MARKUP_STRIP_PATTERNS = [
+	/<script[\s\S]*?<\/script\s*>/gi,
+	/<!--[\s\S]*?-->/g,
+	/\/\*[\s\S]*?\*\//g
+];
+
 export const markupText = (path: string): string =>
-	[/<script[\s\S]*?<\/script\s*>/gi, /<!--[\s\S]*?-->/g, /\/\*[\s\S]*?\*\//g].reduce(
+	MARKUP_STRIP_PATTERNS.reduce(
 		(text, pattern) => stripToFixedPoint(text, pattern),
 		MARKUP[path] ?? ''
 	);
