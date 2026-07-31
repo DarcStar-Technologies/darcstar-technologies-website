@@ -342,6 +342,11 @@ export async function applyWaitlistStep(
 		case '4a':
 			set = {
 				pilotInterest: keepExisting(data.pilotInterest, 'pilot_interest'),
+				// Same null-means-NOT-ASKED reasoning as contact_permission below, though the shape differs:
+				// this is a nullable slug rather than a tri-state boolean, because `not-at-this-time` is
+				// already the explicit decline and null has only the one job (DAR-112). Keep whatever this
+				// submitter answered while the question was on screen.
+				loiReadiness: keepExisting(data.loiReadiness, 'loi_readiness'),
 				deploymentScale: keepExisting(data.deploymentScale, 'deployment_scale'),
 				// Tri-state: null = the question wasn't on screen (the pilot answer wasn't positive), so
 				// keep what stands rather than recording a decline nobody made.
@@ -774,6 +779,7 @@ export async function readWaitlistTriageWindow(
 			budgetRange: waitlistSubmission.budgetRange,
 			adoptionEvidence: waitlistSubmission.adoptionEvidence,
 			pilotInterest: waitlistSubmission.pilotInterest,
+			loiReadiness: waitlistSubmission.loiReadiness,
 			deploymentScale: waitlistSubmission.deploymentScale,
 			contactPermission: waitlistSubmission.contactPermission,
 			contactMethod: waitlistSubmission.contactMethod,

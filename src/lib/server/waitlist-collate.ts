@@ -43,6 +43,7 @@ export interface WaitlistAnswers {
 	budgetRange: string | null;
 	adoptionEvidence: string[] | null;
 	pilotInterest: string | null;
+	loiReadiness: string | null;
 	deploymentScale: string | null;
 	contactPermission: boolean | null;
 	contactMethod: string | null;
@@ -72,6 +73,11 @@ export const WAITLIST_CONFLICT_FIELDS = [
 	'budgetRange',
 	'adoptionEvidence',
 	'pilotInterest',
+	// Worth flagging as loudly as any other disagreement (DAR-112): two submissions under one address
+	// giving different letter-of-intent answers is exactly the "correction, or a stranger?" question
+	// this list exists to put in front of a human, and it is the answer with the most to lose from a
+	// wrong guess.
+	'loiReadiness',
 	'deploymentScale',
 	'contactPermission',
 	'contactMethod',

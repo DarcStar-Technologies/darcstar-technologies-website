@@ -58,6 +58,7 @@ const SUBMISSION: Submission = {
 	budgetRange: '25k-50k',
 	adoptionEvidence: ['evaluation-pilot', 'formal-proof-artifacts'],
 	pilotInterest: 'yes-within-3-months',
+	loiReadiness: 'possibly-after-discussion',
 	deploymentScale: 'Two inspection cells',
 	contactPermission: true,
 	contactMethod: 'phone-video',
@@ -108,6 +109,10 @@ const RESEARCHER: Lead = {
 			primaryApplication: 'research-education',
 			pilotInterest: null,
 			contactPermission: null,
+			// Branch B is never ASKED about a letter of intent (DAR-63 keeps money and pilots off the
+			// research path), so a research lead carrying an answer would be a state the flow cannot
+			// produce — and it would make the assertion below pass against a page rendering the wrong row.
+			loiReadiness: null,
 			deploymentScale: null,
 			researchPreferences: ['technical-reports'],
 			leadClass: 'research'
@@ -192,6 +197,23 @@ describe('/admin/waitlist', () => {
 		mount();
 		await expect.element(page.getByText('Authorized', { exact: true })).toBeVisible();
 		await expect.element(page.getByText('Not asked', { exact: true })).toBeVisible();
+	});
+
+	// DAR-112. The answer is a triage tag, so what the page must never do is present it as a document
+	// we hold: the label is the self-report ("Would consider an LOI"), and the value resolves to its
+	// own label rather than the raw `possibly-after-discussion` slug. Both halves are asserted, because
+	// a label map that was wired to the wrong slug set would still render SOMETHING.
+	it('renders the LOI answer as a self-report, with the slug resolved', async () => {
+		mount();
+		// `.first()` — both leads render the label (every submission shows the full answer grid); only
+		// one of them answered, which is what makes the value assertion below name a specific row.
+		await expect.element(page.getByText('Would consider an LOI').first()).toBeInTheDocument();
+		await expect
+			.element(page.getByText('Possibly, after a discussion', { exact: true }))
+			.toBeInTheDocument();
+		// Never the stored slug — the operator reads this column, and a raw slug is how a value gets
+		// mis-transcribed into something that sounds firmer than it is.
+		expect(page.getByText('possibly-after-discussion').elements()).toHaveLength(0);
 	});
 
 	// DAR-139. The per-submission "Marketing consent" row says what a submitter typed into an

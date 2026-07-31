@@ -7,7 +7,10 @@ import {
 	validateWaitlistStep4A,
 	validateWaitlistStep4B
 } from './waitlist';
-import { WAITLIST_ANNUAL_BUDGETS } from '$lib/waitlist-qualification';
+import {
+	WAITLIST_ANNUAL_BUDGETS,
+	WAITLIST_POSITIVE_PILOT_INTERESTS
+} from '$lib/waitlist-qualification';
 
 describe('validateWaitlist', () => {
 	it('accepts a name + email signup and normalizes the email to lowercase', () => {
@@ -212,16 +215,72 @@ describe('validateWaitlistStep4A', () => {
 	it('cleans the pilot answers and caps the deployment-scale free text at 500', () => {
 		const cleaned = validateWaitlistStep4A({
 			pilotInterest: 'yes-within-3-months',
+			loiReadiness: 'possibly-after-discussion',
 			deploymentScale: '  x'.repeat(600),
 			contactPermission: 'on',
 			contactMethod: 'phone-video',
 			phone: '+1 555 0100'
 		});
 		expect(cleaned.pilotInterest).toBe('yes-within-3-months');
+		expect(cleaned.loiReadiness).toBe('possibly-after-discussion');
 		expect(cleaned.deploymentScale?.length).toBe(500);
 		expect(cleaned.contactPermission).toBe(true);
 		expect(cleaned.contactMethod).toBe('phone-video');
 		expect(cleaned.phone).toBe('+1 555 0100');
+	});
+
+	// DAR-112. The LOI question shares contact_permission's gate, and the case that makes the gate
+	// necessary is the NO-JS one rather than a crafted POST: without JS the whole block renders whatever
+	// the pilot answer is, so a visitor really can submit "yes, we'd consider signing" together with
+	// "not currently" for the evaluation itself. Storing both would manufacture a contradiction the
+	// person never expressed, and leave an operator reconciling a disagreement created by our rendering.
+	it('drops an LOI answer when the pilot answer is not positive (the no-JS submit)', () => {
+		expect(
+			validateWaitlistStep4A({ pilotInterest: 'not-currently', loiReadiness: 'yes' }).loiReadiness
+		).toBeNull();
+		// Unanswered pilot question, same rule — the block was never earned.
+		expect(validateWaitlistStep4A({ loiReadiness: 'yes' }).loiReadiness).toBeNull();
+	});
+
+	it('keeps an LOI answer for every positive pilot answer', () => {
+		// Pinned across the whole positive set rather than one sample: the two lists are separate
+		// constants, so a slug promoted into WAITLIST_POSITIVE_PILOT_INTERESTS must carry this question
+		// with it. A single-value test would pass while a newly-positive answer silently dropped it.
+		for (const pilotInterest of WAITLIST_POSITIVE_PILOT_INTERESTS) {
+			expect(validateWaitlistStep4A({ pilotInterest, loiReadiness: 'yes' }).loiReadiness).toBe(
+				'yes'
+			);
+		}
+	});
+
+	// The gate is SCOPED, not blanket, and this is the assertion that says so: all five of step 4A's
+	// fields live inside the block DAR-63 reveals, and only the two whose meaning depends on wanting an
+	// evaluation are dropped. A deployment description, a contact method and a phone number stay true
+	// whatever the pilot answer is, so gating them would discard something the visitor did mean — which
+	// is exactly what a later "tidy-up" that gated the whole block would do.
+	it('keeps the standalone answers when the pilot answer is not positive', () => {
+		const cleaned = validateWaitlistStep4A({
+			pilotInterest: 'not-currently',
+			loiReadiness: 'yes',
+			deploymentScale: 'Two inspection cells',
+			contactPermission: 'on',
+			contactMethod: 'phone-video',
+			phone: '+1 555 0100'
+		});
+		// Scoped to an evaluation they just declined → never asked.
+		expect(cleaned.loiReadiness).toBeNull();
+		expect(cleaned.contactPermission).toBeNull();
+		// Standalone facts → kept.
+		expect(cleaned.deploymentScale).toBe('Two inspection cells');
+		expect(cleaned.contactMethod).toBe('phone-video');
+		expect(cleaned.phone).toBe('+1 555 0100');
+	});
+
+	it('coerces an unknown LOI slug to null even on the positive path', () => {
+		expect(
+			validateWaitlistStep4A({ pilotInterest: 'yes-within-3-months', loiReadiness: 'signed' })
+				.loiReadiness
+		).toBeNull();
 	});
 
 	// contact_permission is TRI-STATE, gated on a positive pilot answer (the only case where DAR-63
@@ -245,6 +304,7 @@ describe('validateWaitlistStep4A', () => {
 	it('defaults everything absent to null', () => {
 		expect(validateWaitlistStep4A({})).toEqual({
 			pilotInterest: null,
+			loiReadiness: null,
 			deploymentScale: null,
 			contactPermission: null,
 			contactMethod: null,
@@ -295,6 +355,7 @@ describe('hasAnyAnswer', () => {
 		}),
 		validateWaitlistStep4A({
 			pilotInterest: 'yes-within-3-months',
+			loiReadiness: 'yes',
 			deploymentScale: 'two cells',
 			contactPermission: 'on',
 			contactMethod: 'phone-video',

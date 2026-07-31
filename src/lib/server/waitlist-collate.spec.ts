@@ -28,6 +28,7 @@ const noAnswers: WaitlistAnswers = {
 	budgetRange: null,
 	adoptionEvidence: null,
 	pilotInterest: null,
+	loiReadiness: null,
 	deploymentScale: null,
 	contactPermission: null,
 	contactMethod: null,

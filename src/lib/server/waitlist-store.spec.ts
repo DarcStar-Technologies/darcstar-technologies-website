@@ -80,7 +80,8 @@ beforeAll(async () => {
 			consent_updates_at integer,
 			primary_application text, evaluation_timeline text,
 			current_approach text, economic_impact text, budget_range text, adoption_evidence text,
-			pilot_interest text, deployment_scale text, contact_permission integer, contact_method text,
+			pilot_interest text, loi_readiness text,
+			deployment_scale text, contact_permission integer, contact_method text,
 			research_preferences text,
 			qualification_step integer,
 			step_write_count integer, step_write_window_at integer,
@@ -311,6 +312,7 @@ describe('applyWaitlistStep', () => {
 		await applyWaitlistStep(db, theirs.id, {
 			step: '4a',
 			pilotInterest: 'yes-within-3-months',
+			loiReadiness: null,
 			deploymentScale: null,
 			contactPermission: true,
 			contactMethod: 'phone-video',
@@ -353,6 +355,7 @@ describe('applyWaitlistStep', () => {
 		await applyWaitlistStep(db, id, {
 			step: '4a',
 			pilotInterest: 'yes-within-6-months',
+			loiReadiness: 'possibly-after-discussion',
 			deploymentScale: 'Two quadrotor cells, ~40 units',
 			contactPermission: true,
 			contactMethod: 'email',
@@ -373,6 +376,7 @@ describe('applyWaitlistStep', () => {
 		await applyWaitlistStep(db, id, {
 			step: '4a',
 			pilotInterest: null,
+			loiReadiness: null,
 			deploymentScale: null,
 			contactPermission: null,
 			contactMethod: null,
@@ -383,6 +387,10 @@ describe('applyWaitlistStep', () => {
 		expect(row?.evaluationTimeline).toBe('within-3-months');
 		expect(row?.contactPermission).toBe(true);
 		expect(row?.pilotInterest).toBe('yes-within-6-months');
+		// DAR-112 rides the same rule and needs it just as much: the validator nulls loi_readiness
+		// whenever the pilot answer isn't positive, so a later step-4A submit that walks the pilot answer
+		// back would ERASE this if the column were written unconditionally.
+		expect(row?.loiReadiness).toBe('possibly-after-discussion');
 
 		// An explicit decline (false — validator saw a positive pilot + unchecked box) writes. So would
 		// a later grant: this row belongs to one submitter, and someone changing their own mind is the
@@ -391,6 +399,7 @@ describe('applyWaitlistStep', () => {
 		await applyWaitlistStep(db, id, {
 			step: '4a',
 			pilotInterest: 'possibly-contact-me',
+			loiReadiness: 'not-at-this-time',
 			deploymentScale: null,
 			contactPermission: false,
 			contactMethod: null,
@@ -398,10 +407,14 @@ describe('applyWaitlistStep', () => {
 		});
 		row = await rowById(id);
 		expect(row?.contactPermission).toBe(false);
+		// Provided-wins the other way too: the same submitter walking their own LOI answer BACK has to
+		// land, or "keep existing" would quietly become "first answer is final".
+		expect(row?.loiReadiness).toBe('not-at-this-time');
 
 		await applyWaitlistStep(db, id, {
 			step: '4a',
 			pilotInterest: null,
+			loiReadiness: null,
 			deploymentScale: null,
 			contactPermission: true,
 			contactMethod: null,
@@ -419,6 +432,7 @@ describe('applyWaitlistStep', () => {
 		await applyWaitlistStep(db, id, {
 			step: '4a',
 			pilotInterest: 'yes-within-3-months',
+			loiReadiness: null,
 			deploymentScale: null,
 			contactPermission: null,
 			contactMethod: null,
@@ -468,6 +482,7 @@ describe('applyWaitlistStep', () => {
 		const { outcome } = await applyWaitlistStep(db, id, {
 			step: '4a',
 			pilotInterest: 'yes-within-3-months',
+			loiReadiness: null,
 			deploymentScale: null,
 			contactPermission: null,
 			contactMethod: null,
@@ -698,6 +713,7 @@ describe('applyWaitlistStep step-write budget', () => {
 			return applyWaitlistStep(db, id, {
 				step: '4a',
 				pilotInterest: 'yes-interested',
+				loiReadiness: null,
 				deploymentScale: null,
 				contactPermission: null,
 				contactMethod: null,

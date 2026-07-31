@@ -4,10 +4,10 @@
 	// decided server-side from their evaluation timeline and carried here as a signed claim (see
 	// waitlist-flow.ts) — nothing on this page chooses it.
 	//
-	// One question is always asked (would you consider a paid evaluation?); the follow-ups —
-	// deployment scale, contact permission, preferred method, phone — are REVEALED only for a
+	// One question is always asked (would you consider a paid evaluation?); the follow-ups — letter of
+	// intent, deployment scale, contact permission, preferred method, phone — are REVEALED only for a
 	// positive answer, on the same `isPositivePilotInterest` predicate the server gates
-	// `contact_permission` on, so the two can't drift.
+	// `contact_permission` and `loi_readiness` on, so the two can't drift.
 	//
 	// THE REVEAL IS PROGRESSIVE ENHANCEMENT, NOT A GATE. `mounted` is false during SSR and until
 	// hydration, so a no-JS visitor gets every field rendered (all optional, as the spec asks) and can
@@ -22,6 +22,7 @@
 	import { submitWaitlistStep4A } from '$lib/waitlist-steps.remote';
 	import {
 		WAITLIST_PILOT_INTERESTS,
+		WAITLIST_LOI_READINESS,
 		WAITLIST_CONTACT_METHODS,
 		WAITLIST_DEPLOYMENT_SCALE_MAX,
 		isPositivePilotInterest
@@ -29,6 +30,7 @@
 	import {
 		toOptions,
 		waitlistPilotInterestLabel,
+		waitlistLoiReadinessLabel,
 		waitlistContactMethodLabel
 	} from '$lib/waitlist-labels';
 	import { m } from '$lib/paraglide/messages.js';
@@ -41,6 +43,7 @@
 	// Slug → {value,label} options. `$derived` so labels re-resolve on locale change (the label
 	// accessors are $state-backed Paraglide messages).
 	const pilotOptions = $derived(toOptions(WAITLIST_PILOT_INTERESTS, waitlistPilotInterestLabel));
+	const loiOptions = $derived(toOptions(WAITLIST_LOI_READINESS, waitlistLoiReadinessLabel));
 	const contactMethodOptions = $derived(
 		toOptions(WAITLIST_CONTACT_METHODS, waitlistContactMethodLabel)
 	);
@@ -88,6 +91,21 @@
 
 	{#if showContactBlock}
 		<div class="space-y-5">
+			<!-- DAR-112. First in the block because it is the second half of the question above it — the
+			     rest (scale, permission, method, phone) is logistics — so someone who stops partway has
+			     still answered the one that matters most for triage. A TAG, NOT AN LOI: the help text says
+			     the letter would be nonbinding AND that answering commits them to nothing, and the server
+			     nulls this whenever the pilot answer isn't positive. -->
+			<GlassSelect
+				id="waitlist-loi"
+				label={m.waitlist_field_loi_label()}
+				help={m.waitlist_field_loi_help()}
+				badge={m.waitlist_optional()}
+				placeholder={m.waitlist_select_placeholder()}
+				options={loiOptions}
+				field={submitWaitlistStep4A.fields.loiReadiness}
+			/>
+
 			<div>
 				<label for="waitlist-scale" class={fieldLabelClass}>
 					{m.waitlist_field_scale_label()}

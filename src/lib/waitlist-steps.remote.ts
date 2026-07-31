@@ -428,6 +428,8 @@ type WaitlistStep4AInput = {
 	/** Signed funnel handle (DAR-66/86) — anonymous, carried through the flow, never stored on the row. */
 	flowId: string;
 	pilotInterest: string;
+	/** DAR-112 — revealed with the contact block, and nulled server-side on the same predicate. */
+	loiReadiness: string;
 	deploymentScale: string;
 	contactPermission: boolean; // typed boolean so the markup can use `.as('checkbox')`
 	contactMethod: string;

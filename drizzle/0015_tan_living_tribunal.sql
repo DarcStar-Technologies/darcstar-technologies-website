@@ -1,0 +1,1 @@
+ALTER TABLE `waitlist_submission` ADD `loi_readiness` text;
