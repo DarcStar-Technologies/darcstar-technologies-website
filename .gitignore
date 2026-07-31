@@ -5,7 +5,14 @@ node_modules
 .vercel
 .netlify
 .wrangler
-/.svelte-kit
+# Unrooted, where `sv create` ships `/.svelte-kit`. A NESTED `src/.svelte-kit` turns up during
+# local test runs; being untracked and unignored, its generated files then fail `pnpm lint` on
+# formatting until they are deleted by hand. CI never sees it (it lints a fresh checkout, and
+# nothing in the workflow generates it), which is why it went unnoticed. The trigger was not
+# reproducible — twelve candidate commands were probed individually, including `svelte-kit sync`,
+# each vitest project, `pnpm build`, `pnpm check` and all three lint tools, and every one left the
+# tree clean — so this matches at any depth rather than naming `src/`.
+.svelte-kit
 /build
 
 # OS
