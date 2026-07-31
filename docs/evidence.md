@@ -99,6 +99,36 @@ audit — this repo holds only the public prose, never the artifacts):
   phrasing across both locale catalogs, with one allowlisted key —
   `evidence_safety_not_covered` quotes "proven microsecond safety" in order to disavow it, and
   a second assertion fails if that key stops quoting it (a stale allowlist is a silent hole).
+- **We NARROW the model-to-deployment gap; we never close it (DAR-212).** /about is the only
+  page that states the gap in its absolute form — testing "can never show that it will never
+  violate a safety constraint" — and `about_mission_body_2` answered "We **close** that gap",
+  which nothing else on the site supports (proofs over the mathematical model, a numerically
+  checked float bridge, framework assumptions at every proof status, local axioms still to
+  discharge). It passed DAR-46's rule and every guard, because the body DOES name the
+  assumptions and the scope — in its **second** sentence, while the first asserted the gap was
+  gone. Overstating in one clause and qualifying in the next is DAR-117's **disclosure** axis,
+  so the guard is in `evidence-disclosure.spec.ts` and deliberately NOT a
+  `SAFETY_LANGUAGE_RULES` entry: those are shared with `pnpm check:cms`, and the pattern is blunt
+  enough that a catalog-wide version would fire on honest copy — `evidence_theorems_not_covered`
+  already says of this same boundary that _"closing it formally is open, tracked work"_, which is
+  one word from tripping it, and the pressure would be to loosen it until it caught nothing
+  (DAR-152). Key-scoping is what makes the bluntness free, and the over-match has a test of its
+  own so that reasoning is checkable rather than asserted. Two assertions, two different
+  drifts: the positive one requires the answer to say a **boundary remains** (so a rewrite
+  asserting the gap is gone has to delete the clause that contradicts it first), the negative
+  one retires the claim the way "proven safe" is retired — as proximity in both word orders,
+  singular and plural, since the phrase form is walked past by an adjective ("close that
+  _verification_ gap") or by reversing it ("that gap is closed"). A synonym _plus_ the boundary
+  sentence passes both — that contradiction is review's job, stated rather than papered over.
+  Base locale only, like the rest of that file, and safety-language scanning both catalogs is
+  no counter-example — its patterns are English too, so what that buys is English text sitting
+  in the Spanish file (already a failure in `message-catalogs.spec.ts` when it is a verbatim
+  copy), never a Spanish violation. A real `es` rendering needs a Spanish twin of the rule; the
+  file holds no messages today. Neither half sees the **page**, either — delete the paragraph
+  from `+page.svelte` and every assertion stays green (measured: 1344/1344). Priced and left as
+  a residual because the defect would be a deleted paragraph rather than DAR-117's one-token
+  swap into a page that still looked right. The stronger position is the honest one anyway: we
+  know precisely what is proved and what is not.
 - **Say what the domain count means wherever it appears.** The review read "five domains
   shipped" as possibly meaning pilots or customer deployments. Each surface now defines the term
   _it actually uses_: the homepage readout is labelled `domains running end-to-end` and
