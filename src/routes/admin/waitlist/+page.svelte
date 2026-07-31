@@ -38,6 +38,7 @@
 	import { WAITLIST_LEAD_CLASSES } from '$lib/waitlist-qualification';
 	import { WAITLIST_FUNNEL_EVENTS } from '$lib/waitlist-funnel';
 	import { isWaitlistResend } from '$lib/waitlist-invite';
+	import { mayContactLead } from '$lib/waitlist-outreach';
 	import type { WaitlistRole } from '$lib/waitlist-roles';
 	import type { WaitlistV2Role } from '$lib/waitlist-qualification';
 	import type { PageData, ActionData } from './$types';
@@ -130,6 +131,11 @@
 			case 'email_failed':
 			case 'email_unconfigured':
 				return m.admin_waitlist_invite_error_email();
+			// Reachable even though the button is hidden for a flagged lead (DAR-191): a form action is a
+			// public POST, and a stale page rendered before the flag was recorded still carries the button.
+			// Its own copy, because the next move is not "try again" but "was that request withdrawn?".
+			case 'do_not_contact':
+				return m.admin_waitlist_invite_error_donotcontact();
 			default:
 				return m.admin_waitlist_invite_error();
 		}
@@ -155,6 +161,28 @@
 			? DASH
 			: (lead.updatesUnsubscribedBy ?? m.admin_waitlist_updates_optout_self());
 
+	// Do-not-contact outcome (DAR-191). One namespace shared by the record and the lift actions, since
+	// an operator only ever sees one of them at a time and the success line names which happened.
+	const doNotContact = $derived(form && 'doNotContact' in form ? form.doNotContact : null);
+	const doNotContactOk = $derived(doNotContact && 'ok' in doNotContact ? doNotContact : null);
+	const doNotContactError = $derived(
+		doNotContact && 'error' in doNotContact ? doNotContact.error : null
+	);
+	const doNotContactErrorMessage = (code: string): string =>
+		code === 'not_found'
+			? m.admin_waitlist_donotcontact_error_gone()
+			: m.admin_waitlist_donotcontact_error();
+
+	// NOT `optOutRecordedBy`'s rule, and the difference is which meanings a null actually HAS. There a
+	// null recorder is the recipient having pressed the emailed link — our strongest record, so an
+	// em-dash would report it as an absence. Here no code path produces one: this axis has no
+	// self-service link, so every recorded request carries the staff id that recorded it. A null beside
+	// a timestamp is therefore an anomaly (a direct write), and the honest rendering of "we do not know
+	// who recorded this" is the dash. Naming a party we cannot identify would be a fabrication in the
+	// one column an operator consults to answer "who did this, and on whose word?".
+	// If a self-service route is ever added, this is where DAR-140's vocabulary comes back — and it
+	// should come back with it, not before.
+
 	const basePath = $derived(localizeHref('/admin/waitlist'));
 	// SvelteKit reads the action name from the `?/name` key, so extra params ride alongside it. A bare
 	// `?/delete` would resolve to /admin/waitlist?/delete and drop `class=`, bouncing the operator out
@@ -166,6 +194,8 @@
 	const inviteAction = $derived(withFilter('invite'));
 	const reviewAction = $derived(withFilter('review'));
 	const optOutAction = $derived(withFilter('recordOptOut'));
+	const doNotContactAction = $derived(withFilter('recordDoNotContact'));
+	const liftDoNotContactAction = $derived(withFilter('liftDoNotContact'));
 
 	const chipBase =
 		'rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500';
@@ -326,6 +356,22 @@
 		</p>
 	{:else if optOutError}
 		<p class="text-sm text-error-400" role="alert">{optOutErrorMessage(optOutError)}</p>
+	{/if}
+
+	<!-- Do-not-contact (DAR-191), at the top for the same reason, and naming the address for a sharper
+	     one: the record is durable and only an admin can undo it, so an operator who hit the row above
+	     the one they meant has to be able to see that immediately. Record and lift share the namespace,
+	     so the success line distinguishes them rather than the surrounding markup. -->
+	{#if doNotContactOk}
+		<p class="text-sm text-success-400" role="status">
+			{'lifted' in doNotContactOk
+				? m.admin_waitlist_donotcontact_lifted({ email: doNotContactOk.email })
+				: m.admin_waitlist_donotcontact_done({ email: doNotContactOk.email })}
+		</p>
+	{:else if doNotContactError}
+		<p class="text-sm text-error-400" role="alert">
+			{doNotContactErrorMessage(doNotContactError)}
+		</p>
 	{/if}
 
 	<!-- Funnel readout (DAR-66). Distinct anonymous flows per stage, in funnel order, so the drop-off
@@ -495,12 +541,23 @@
 									>{roleFor(latest?.role ?? null)}</td
 								>
 								<td class="px-3 py-3 whitespace-nowrap">
-									<!-- Tri-state, from the NEWEST submission: null = never asked (the pilot answer
+									<!-- THE LEAD-LEVEL TRUTH WINS THIS CELL (DAR-191). Below it is a tri-state read
+									     off the newest SUBMISSION — an answer somebody typed into an unauthenticated
+									     form, which under append-only need not be the person whose address it is.
+									     "Do not contact" is where that person themselves now stands, so it replaces
+									     the claim rather than sitting beside it; the per-submission answers are all
+									     still in the detail panel, where they can be read as the claims they are.
+									     Exactly how the Updates column already treats `consent_updates`. -->
+									{#if !mayContactLead(lead)}
+										<span class="{tagBase} bg-warning-500/15 text-warning-300"
+											>{m.admin_waitlist_donotcontact_badge()}</span
+										>
+										<!-- Tri-state, from the NEWEST submission: null = never asked (the pilot answer
 									     wasn't positive), false = asked and declined, true = granted. A grant is the
 									     one worth spotting — and a grant this lead's submissions disagree about
 									     carries the conflict chip above, which is the honest reading of "someone
 									     said yes and someone said no under this address". -->
-									{#if latest?.contactPermission === true}
+									{:else if latest?.contactPermission === true}
 										<span class="{tagBase} bg-success-500/15 text-success-300"
 											>{m.admin_waitlist_outreach_granted()}</span
 										>
@@ -552,28 +609,40 @@
 									<!-- Invite / resend. Same two-step <details> confirm as delete below, and for the
 									     same reason rather than for symmetry: one click here puts a real email in a
 									     prospect's inbox. A lead that has already been invited says "Resend" — DAR-67
-									     requires a re-invite to be an explicit act, never an accidental duplicate. -->
-									<details class="mb-1.5 inline-block text-right">
-										<summary
-											class="{summaryBase} text-primary-500 hover:bg-primary-500/10 focus-visible:ring-primary-500"
-											>{resend
-												? m.admin_waitlist_invite_resend()
-												: m.admin_waitlist_invite()}</summary
-										>
-										<form method="post" action={inviteAction} class="mt-1.5">
-											<input type="hidden" name="id" value={lead.id} />
-											<button
-												type="submit"
-												class="rounded bg-primary-500/20 px-2 py-1 text-xs font-medium text-primary-200 transition-colors hover:bg-primary-500/30 focus-visible:ring-1 focus-visible:ring-primary-500 focus-visible:outline-none"
-												aria-label={resend
-													? m.admin_waitlist_invite_resend_sr({ email: lead.email })
-													: m.admin_waitlist_invite_sr({ email: lead.email })}
+									     requires a re-invite to be an explicit act, never an accidental duplicate.
+
+									     GONE ENTIRELY for a do-not-contact lead (DAR-191), replaced by a line saying
+									     why — never left in place to be refused on click, which would read as a bug
+									     rather than as a decision. This is cosmetic all the same: the action itself
+									     refuses, because a form action is a public POST and a page rendered before the
+									     flag was recorded still carries the button. -->
+									{#if !mayContactLead(lead)}
+										<p class="mb-1.5 text-xs text-faint">
+											{m.admin_waitlist_donotcontact_no_invite()}
+										</p>
+									{:else}
+										<details class="mb-1.5 inline-block text-right">
+											<summary
+												class="{summaryBase} text-primary-500 hover:bg-primary-500/10 focus-visible:ring-primary-500"
 												>{resend
-													? m.admin_waitlist_invite_resend_confirm()
-													: m.admin_waitlist_invite_confirm()}</button
+													? m.admin_waitlist_invite_resend()
+													: m.admin_waitlist_invite()}</summary
 											>
-										</form>
-									</details>
+											<form method="post" action={inviteAction} class="mt-1.5">
+												<input type="hidden" name="id" value={lead.id} />
+												<button
+													type="submit"
+													class="rounded bg-primary-500/20 px-2 py-1 text-xs font-medium text-primary-200 transition-colors hover:bg-primary-500/30 focus-visible:ring-1 focus-visible:ring-primary-500 focus-visible:outline-none"
+													aria-label={resend
+														? m.admin_waitlist_invite_resend_sr({ email: lead.email })
+														: m.admin_waitlist_invite_sr({ email: lead.email })}
+													>{resend
+														? m.admin_waitlist_invite_resend_confirm()
+														: m.admin_waitlist_invite_confirm()}</button
+												>
+											</form>
+										</details>
+									{/if}
 
 									<!-- "I have reconciled this person's submissions" (DAR-88). One click, no confirm
 									     step: it writes a timestamp and nothing else, and a new submission re-opens
@@ -610,6 +679,52 @@
 													class="rounded bg-warning-500/20 px-2 py-1 text-xs font-medium text-warning-200 transition-colors hover:bg-warning-500/30 focus-visible:ring-1 focus-visible:ring-warning-500 focus-visible:outline-none"
 													aria-label={m.admin_waitlist_updates_optout_sr({ email: lead.email })}
 													>{m.admin_waitlist_updates_optout_confirm()}</button
+												>
+											</form>
+										</details>
+									{/if}
+
+									<!-- Record "don't contact me" (DAR-191) — the OTHER consent axis, deliberately its
+									     own control rather than a second effect of the one above. They answer different
+									     requests: that one stops a mailing list this mailbox joined, this one stops us
+									     reaching out. Same two-step confirm, and for a sharper version of the same
+									     reason: this one an operator cannot undo at all.
+									     Shown for every un-flagged lead, invited or not — "stop contacting me" is a
+									     thing somebody can say at any point, including before we ever wrote to them. -->
+									{#if mayContactLead(lead)}
+										<details class="mb-1.5 inline-block text-right">
+											<summary
+												class="{summaryBase} text-warning-300 hover:bg-warning-500/10 focus-visible:ring-warning-500"
+												>{m.admin_waitlist_donotcontact()}</summary
+											>
+											<form method="post" action={doNotContactAction} class="mt-1.5">
+												<input type="hidden" name="id" value={lead.id} />
+												<button
+													type="submit"
+													class="rounded bg-warning-500/20 px-2 py-1 text-xs font-medium text-warning-200 transition-colors hover:bg-warning-500/30 focus-visible:ring-1 focus-visible:ring-warning-500 focus-visible:outline-none"
+													aria-label={m.admin_waitlist_donotcontact_sr({ email: lead.email })}
+													>{m.admin_waitlist_donotcontact_confirm()}</button
+												>
+											</form>
+										</details>
+										<!-- Lifting it is ADMIN ONLY, which is why this is the one control on the page
+										     gated on anything but `isStaff`. An operator who wants to invite a flagged
+										     lead must go and ask, rather than clicking past the request; `data.isAdmin`
+										     comes from the /admin layout and the action re-checks it, since hiding a
+										     form is not authorization. -->
+									{:else if data.isAdmin}
+										<details class="mb-1.5 inline-block text-right">
+											<summary
+												class="{summaryBase} text-faint hover:bg-white/5 hover:text-white focus-visible:ring-primary-500"
+												>{m.admin_waitlist_donotcontact_lift()}</summary
+											>
+											<form method="post" action={liftDoNotContactAction} class="mt-1.5">
+												<input type="hidden" name="id" value={lead.id} />
+												<button
+													type="submit"
+													class="rounded bg-white/10 px-2 py-1 text-xs font-medium text-body transition-colors hover:bg-white/20 focus-visible:ring-1 focus-visible:ring-primary-500 focus-visible:outline-none"
+													aria-label={m.admin_waitlist_donotcontact_lift_sr({ email: lead.email })}
+													>{m.admin_waitlist_donotcontact_lift_confirm()}</button
 												>
 											</form>
 										</details>
@@ -745,6 +860,20 @@
 												m.admin_waitlist_field_updates_optout_by(),
 												optOutRecordedBy(lead)
 											)}
+											<!-- The outreach axis (DAR-191). Beside the updates trail rather than folded into
+											     it, because they answer different questions — and the column badge is a
+											     yes/no, while what somebody asking about their own record wants is when it
+											     was recorded and by whom. Cleared outright by a lift, so a blank pair here
+											     means "nothing recorded", never "recorded and then withdrawn": that history
+											     is the [outreach] Workers Logs line. -->
+											{@render detail(
+												m.admin_waitlist_field_donotcontact(),
+												lead.doNotContactAt ? fmt.format(lead.doNotContactAt) : DASH
+											)}
+											{@render detail(
+												m.admin_waitlist_field_donotcontact_by(),
+												orDash(lead.doNotContactBy)
+											)}
 										</dl>
 									</details>
 								</td>
@@ -762,6 +891,11 @@
 			<p class="mt-1.5 px-2 text-xs text-faint">{m.admin_waitlist_conflict_note()}</p>
 			<p class="mt-1.5 px-2 text-xs text-faint">{m.admin_waitlist_appendonly_note()}</p>
 			<p class="mt-1.5 px-2 text-xs text-faint">{m.admin_waitlist_updates_optout_note()}</p>
+			<!-- The one caveat here that is about a choice rather than about the data: two consent axes
+			     exist and neither implies the other, so an operator honoring "stop everything" has to press
+			     two buttons. Stated in the copy rather than solved in code on purpose — making one control
+			     do both would silently cancel a subscription the recipient confirmed themselves. -->
+			<p class="mt-1.5 px-2 text-xs text-faint">{m.admin_waitlist_donotcontact_note()}</p>
 		{/if}
 	</div>
 </section>

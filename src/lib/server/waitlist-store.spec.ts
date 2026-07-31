@@ -10,14 +10,18 @@ import {
 	claimUpdatesConfirmSend,
 	confirmUpdates,
 	insertWaitlistSubmission,
+	liftDoNotContact,
 	readUpdatesAudience,
 	readWaitlistTriageWindow,
+	recordDoNotContact,
 	unsubscribeUpdates,
 	WAITLIST_STEP_WRITE_MAX,
 	WAITLIST_STEP_WRITE_WINDOW_MS,
 	WAITLIST_UPDATES_CONFIRM_WINDOW_MS
 } from './waitlist-store';
 import { mayReceiveUpdates, waitlistUpdatesState } from '$lib/waitlist-updates';
+import { mayContactLead } from '$lib/waitlist-outreach';
+import { findWaitlistInviteTarget } from './waitlist-invite';
 import type { CleanedWaitlist } from './waitlist';
 
 // Real DB integration test — the append-only insert + the `isNew` gate are the security-critical
@@ -57,6 +61,7 @@ beforeAll(async () => {
 			priority_a_notified_at integer,
 			updates_confirm_sent_at integer, updates_confirmed_at integer, updates_unsubscribed_at integer,
 			updates_unsubscribed_by text,
+			do_not_contact_at integer, do_not_contact_by text,
 			reviewed_at integer, reviewed_by text,
 			created_at integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 		)`
@@ -1035,6 +1040,162 @@ describe('the updates sending gate', () => {
 			// Non-vacuous in both directions: some leads are in and some are out.
 			expect(query).toEqual(['confirmed@example.com']);
 			expect(await leads()).toHaveLength(cases.length);
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------------------------
+// "Don't contact me" (DAR-191)
+//
+// The second consent axis. What has to be true of it is mostly NEGATIVE — three writes elsewhere stop
+// happening — and negative claims about SQL are exactly what a pure spec cannot make, so this runs
+// against the same real engine as the gate above.
+// ---------------------------------------------------------------------------------------------
+describe('the outreach do-not-contact flag', () => {
+	const signup = async (over: Partial<CleanedWaitlist> = {}) =>
+		(await insertWaitlistSubmission(db, { ...base, ...over }, 'h', null)).leadId;
+
+	const lead = async () => (await leads())[0];
+
+	describe('recordDoNotContact', () => {
+		it('stamps the request and the operator who recorded it', async () => {
+			const leadId = await signup();
+
+			const row = await recordDoNotContact(db, leadId, 'staff-1');
+
+			expect(row?.email).toBe('ada@example.com');
+			expect(row?.doNotContactAt).toBeInstanceOf(Date);
+			expect((await lead()).doNotContactBy).toBe('staff-1');
+		});
+
+		// MONOTONIC, and the actor moves with the timestamp rather than on its own. `unsubscribeUpdates`
+		// had this exact bug found by mutation: `coalesce(do_not_contact_by, <staff id>)` type-checks,
+		// passes a naive test, and overwrites a null that MEANS something — here, reserved for a mailbox
+		// acting for itself. Asserted in both directions, because a single direction passes against an
+		// unguarded write that simply happens to be called once.
+		it('keeps the first recorder, whoever presses afterwards', async () => {
+			const leadId = await signup();
+			await recordDoNotContact(db, leadId, 'staff-1');
+			const first = (await lead()).doNotContactAt;
+
+			await recordDoNotContact(db, leadId, 'staff-2');
+
+			const after = await lead();
+			expect(after.doNotContactBy).toBe('staff-1');
+			expect(after.doNotContactAt).toEqual(first);
+		});
+
+		// THE DIRECTION THAT CATCHES THE `coalesce` BUG, and the only one that does — mutation-measured:
+		// `coalesce(do_not_contact_by, <staff id>)` returns 'staff-1' for a pre-existing 'staff-1', so
+		// the test above passes against it. It is a null recorder that exposes the difference, because
+		// `coalesce` reads the ACTOR to decide whether to write the actor while the `case` reads the
+		// timestamp. A row carrying a request with no known recorder must not silently acquire the name
+		// of whoever presses the button next.
+		it('leaves an unknown recorder unknown rather than filling it in', async () => {
+			const leadId = await signup();
+			await recordDoNotContact(db, leadId, null);
+
+			await recordDoNotContact(db, leadId, 'staff-1');
+
+			expect((await lead()).doNotContactBy).toBeNull();
+		});
+
+		it('reports a lead that is already gone', async () => {
+			expect(await recordDoNotContact(db, 'nope', 'staff-1')).toBeNull();
+		});
+	});
+
+	// THE POINT OF THE COLUMN — three writes that stop happening. Each is a `WHERE` predicate on a
+	// statement that was already being issued, so what is under test is the SQL rather than a branch,
+	// and each pairs its refusal with the unflagged control: "the claim returned false" is vacuously
+	// satisfiable by a claim that never works at all.
+	describe('what it suppresses', () => {
+		it('refuses the Priority-A notification, which exists to prompt an invitation', async () => {
+			const flagged = await signup();
+			const ordinary = await signup({ email: 'grace@example.com' });
+			await recordDoNotContact(db, flagged, 'staff-1');
+
+			expect(await claimPriorityLeadNotification(db, flagged)).toBe(false);
+			expect(await claimPriorityLeadNotification(db, ordinary)).toBe(true);
+		});
+
+		// DAR-83's uniformity rule. This ask is the one piece of mail a STRANGER can cause us to send to
+		// an address that has confirmed nothing, so leaving it open would let somebody re-type the
+		// address of the very person who asked us to stop and put us back in their inbox.
+		it('refuses the updates confirmation request', async () => {
+			const flagged = await signup({ consentUpdates: true });
+			const ordinary = await signup({ email: 'grace@example.com', consentUpdates: true });
+			await recordDoNotContact(db, flagged, 'staff-1');
+
+			expect(await claimUpdatesConfirmSend(db, flagged)).toBe(false);
+			expect(await claimUpdatesConfirmSend(db, ordinary)).toBe(true);
+		});
+
+		// The invite's refusal is a branch in the action, but the FIELD it branches on comes from here —
+		// and the action cannot refuse what the query never returned.
+		it('rides along on the invite lookup', async () => {
+			const leadId = await signup();
+			expect((await findWaitlistInviteTarget(db, leadId))?.doNotContactAt).toBeNull();
+
+			await recordDoNotContact(db, leadId, 'staff-1');
+
+			const target = await findWaitlistInviteTarget(db, leadId);
+			expect(target?.doNotContactAt).toBeInstanceOf(Date);
+			expect(mayContactLead(target!)).toBe(false);
+		});
+
+		// THE OTHER HALF, and it is a decision rather than an omission. A confirmed subscription is a
+		// grant this mailbox made and can revoke from any message; "don't contact me about a pilot" is
+		// not "cancel my newsletter", so conflating them would silently destroy the strongest consent
+		// signal we hold. Someone who asked for both gets both recorded.
+		it('leaves a confirmed updates subscription alone', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			await claimUpdatesConfirmSend(db, leadId);
+			await confirmUpdates(db, leadId);
+
+			await recordDoNotContact(db, leadId, 'staff-1');
+
+			expect(mayReceiveUpdates(await lead())).toBe(true);
+			expect((await readUpdatesAudience(db)).map((r) => r.email)).toEqual(['ada@example.com']);
+		});
+	});
+
+	describe('liftDoNotContact', () => {
+		// Admin-only at the call site — see the action. What matters here is that lifting genuinely
+		// restores every suppressed write, not merely the badge: a lift that cleared the column while
+		// something stayed refused would be worse than no lift, since the operator would have no way to
+		// see why.
+		it('restores every write the flag suppressed', async () => {
+			const leadId = await signup({ consentUpdates: true });
+			await recordDoNotContact(db, leadId, 'staff-1');
+
+			const row = await liftDoNotContact(db, leadId);
+
+			expect(row?.email).toBe('ada@example.com');
+			const after = await lead();
+			expect(after.doNotContactAt).toBeNull();
+			// Cleared TOGETHER: a stale recorder beside a null timestamp would read as a live request in
+			// the detail panel while every gate had reopened.
+			expect(after.doNotContactBy).toBeNull();
+			expect(mayContactLead(after)).toBe(true);
+			expect(await claimUpdatesConfirmSend(db, leadId)).toBe(true);
+			expect(await claimPriorityLeadNotification(db, leadId)).toBe(true);
+		});
+
+		it('lets a lifted lead be recorded again, with the new recorder', async () => {
+			const leadId = await signup();
+			await recordDoNotContact(db, leadId, 'staff-1');
+			await liftDoNotContact(db, leadId);
+
+			await recordDoNotContact(db, leadId, 'staff-2');
+
+			// First-writer-wins is scoped to a LIVE request, not to the row's whole history — otherwise a
+			// lift would leave the flag un-re-recordable, which is the opposite of what it is for.
+			expect((await lead()).doNotContactBy).toBe('staff-2');
+		});
+
+		it('reports a lead that is already gone', async () => {
+			expect(await liftDoNotContact(db, 'nope')).toBeNull();
 		});
 	});
 });

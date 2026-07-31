@@ -74,13 +74,17 @@ export async function findAccountByEmail(
  * given always won — without needing a stored copy of it.
  *
  * Returns null when the lead is gone (deleted between render and click).
+ *
+ * `doNotContactAt` rides along (DAR-191) so the invite's refusal costs no second lookup — the action
+ * checks it before anything is created or minted. Returned as the raw column rather than a boolean, so
+ * the one place that decides what it MEANS is `mayContactLead`.
  */
 export async function findWaitlistInviteTarget(
 	db: Db,
 	leadId: string
-): Promise<{ email: string; name: string | null } | null> {
+): Promise<{ email: string; name: string | null; doNotContactAt: Date | null } | null> {
 	const [lead] = await db
-		.select({ email: waitlistLead.email })
+		.select({ email: waitlistLead.email, doNotContactAt: waitlistLead.doNotContactAt })
 		.from(waitlistLead)
 		.where(eq(waitlistLead.id, leadId))
 		.limit(1);
@@ -93,7 +97,7 @@ export async function findWaitlistInviteTarget(
 		.orderBy(waitlistSubmission.createdAt)
 		.limit(1);
 
-	return { email: lead.email, name: named?.name ?? null };
+	return { email: lead.email, name: named?.name ?? null, doNotContactAt: lead.doNotContactAt };
 }
 
 /**

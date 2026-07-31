@@ -3,9 +3,15 @@ import { fail, type Actions } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
 import { getAuth } from '$lib/server/auth';
 import { waitlistLead, waitlistSubmission } from '$lib/server/db/schema';
-import { isStaff } from '$lib/server/admin-access';
+import { isRosterAdmin, isStaff } from '$lib/server/admin-access';
 import { collateWaitlistLeads } from '$lib/server/waitlist-collate';
-import { readWaitlistTriageWindow, unsubscribeUpdates } from '$lib/server/waitlist-store';
+import {
+	liftDoNotContact,
+	readWaitlistTriageWindow,
+	recordDoNotContact,
+	unsubscribeUpdates
+} from '$lib/server/waitlist-store';
+import { mayContactLead } from '$lib/waitlist-outreach';
 import { readWaitlistFunnelCounts, signupConversionRate } from '$lib/server/waitlist-funnel';
 import {
 	findAccountByEmail,
@@ -191,6 +197,76 @@ export const actions: Actions = {
 		return { optOut: { ok: true as const, email: row.email } };
 	},
 
+	// Record "don't contact me" (DAR-191) — the outreach axis, sibling of `recordOptOut` above and
+	// deliberately NOT the same button. They are different requests: one stops a mailing list the
+	// mailbox itself joined, the other stops US reaching out. Someone who asked for both gets both
+	// recorded, which is why the page says so under the table.
+	//
+	// This is where DAR-140's original question landed: it asked whether an updates opt-out should also
+	// clear `contact_permission`, and the answer was no, because clearing an answer on an append-only
+	// submission stops nothing (no code sends from it), leaves a state indistinguishable from never
+	// having been asked, and edits a row the whole model treats as immutable. So the request gets a
+	// column of its own rather than an edit to somebody's answer.
+	recordDoNotContact: async ({ request, locals }) => {
+		if (!isStaff(locals.user, readEnv('ADMIN_USER_IDS'))) {
+			return fail(403, { doNotContact: { error: 'forbidden' as const } });
+		}
+		const db = getDb();
+		const actorId = locals.user!.id;
+		const data = await request.formData();
+		const id = String(data.get('id') ?? '');
+		if (!id) return fail(400, { doNotContact: { error: 'missing' as const } });
+
+		// Reported rather than swallowed, like `recordOptOut` and unlike `delete`: an operator who
+		// pressed this has to learn the row went away between render and click.
+		const row = await recordDoNotContact(db, id, actorId);
+		if (!row) return fail(404, { doNotContact: { error: 'not_found' as const } });
+
+		// The durable history — `do_not_contact_by` holds the FIRST recorder and is cleared outright by a
+		// lift, so a repeat press, and the record of anything that was there before, live here or nowhere.
+		console.info(
+			'[outreach] donotcontact.recorded',
+			JSON.stringify({ leadId: id, email: row.email, recordedBy: actorId })
+		);
+
+		return { doNotContact: { ok: true as const, email: row.email } };
+	},
+
+	// Lift a recorded do-not-contact — ADMIN ONLY, and the asymmetry with the action above is the whole
+	// point rather than a permissions detail. Recording somebody's request is ordinary staff work;
+	// un-recording it is not, and a control an operator can press sits one click from the Invite button
+	// it suppresses, which would turn a durable request into a speed bump. What it buys back is that a
+	// mis-press on the wrong row, and a prospect who later says "actually, let's talk", stay recoverable
+	// without deleting their submissions.
+	//
+	// `isRosterAdmin` IS THE BOUNDARY HERE, which is new. Everywhere else in the repo it is a UX gate
+	// with a Better Auth endpoint re-checking behind it — its own docstring says so, and /admin's layout
+	// repeats it. A form action has nothing behind it: SvelteKit runs the layout guard only on the
+	// re-render, so this line is the entire authorization check, exactly as `isStaff` is for its
+	// siblings. That is why it has a test of its own.
+	liftDoNotContact: async ({ request, locals }) => {
+		if (!isRosterAdmin(locals.user, readEnv('ADMIN_USER_IDS'))) {
+			return fail(403, { doNotContact: { error: 'forbidden' as const } });
+		}
+		const db = getDb();
+		const actorId = locals.user!.id;
+		const data = await request.formData();
+		const id = String(data.get('id') ?? '');
+		if (!id) return fail(400, { doNotContact: { error: 'missing' as const } });
+
+		const row = await liftDoNotContact(db, id);
+		if (!row) return fail(404, { doNotContact: { error: 'not_found' as const } });
+
+		// THE ONLY RECORD THAT SURVIVES. The lift clears both columns, so without this line there would
+		// be no trace that a request was ever recorded or by whom it was undone.
+		console.info(
+			'[outreach] donotcontact.lifted',
+			JSON.stringify({ leadId: id, email: row.email, liftedBy: actorId })
+		);
+
+		return { doNotContact: { ok: true as const, email: row.email, lifted: true as const } };
+	},
+
 	// Mark a lead's submissions as reconciled by a human (DAR-88). A STAMP, not a merge — nothing is
 	// copied from a submission onto the lead, because a canonical-answers column set is the overwrite
 	// problem rebuilt with a friendlier interface. What it records is that someone looked; the outcome
@@ -248,6 +324,13 @@ export const actions: Actions = {
 		const row = await findWaitlistInviteTarget(db, id);
 		// Deleted from under the operator between render and click.
 		if (!row) return fail(404, { invite: { error: 'not_found' as const } });
+
+		// "Don't contact me" (DAR-191). CHECKED HERE, before `findAccountByEmail` and before anything is
+		// created or minted, so a refused invite leaves no account, no activation token and no mail —
+		// the position matters as much as the check, which is why the test asserts the lookup below was
+		// never reached. The button is hidden for a flagged lead, but hiding it is cosmetic: a form
+		// action is a public POST endpoint and this line is the actual control.
+		if (!mayContactLead(row)) return fail(400, { invite: { error: 'do_not_contact' as const } });
 
 		const existing = await findAccountByEmail(db, row.email, adminIds);
 

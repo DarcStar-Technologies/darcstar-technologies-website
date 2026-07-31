@@ -1066,6 +1066,73 @@ That script **mints** the two links with the same exported functions the mailer 
 version of its no-parsing rule: it may call what the server calls, and may not reimplement or
 decompose the format.
 
+### Outreach: "don't contact me" (DAR-191)
+
+The **second consent axis**, and it stands to `contact_permission` exactly as the sending gate above
+stands to `consent_updates`:
+
+| axis     | per-submission CLAIM (immutable) | lead-level TRUTH                                   |
+| -------- | -------------------------------- | -------------------------------------------------- |
+| updates  | `consent_updates`                | `updates_confirmed_at` / `updates_unsubscribed_at` |
+| outreach | `contact_permission`             | `do_not_contact_at` / `do_not_contact_by`          |
+
+You do not edit a claim, you record the truth beside it. That is why DAR-140 refused the "clear
+`contact_permission`" version of this: clearing an answer stops nothing (no code sends from it),
+leaves a state indistinguishable from never having been asked, and edits an append-only row. On the
+lead for the sending gate's **forced** reason — a decision about a person cannot be recorded across N
+immutable submissions.
+
+**What it means: we do not initiate contact.** It suppresses three things, each as a predicate on a
+statement that was already being issued rather than as a new query:
+
+- **`?/invite`** (DAR-67) — refused after `findWaitlistInviteTarget` and **before**
+  `findAccountByEmail`, so a refused invite creates no account, mints no activation token and sends no
+  mail. The flag rides along on that lookup, so the refusal costs no second round trip.
+- **`claimPriorityLeadNotification`** (DAR-82) — that email's call to action is literally "invite
+  them", so firing it would be us prompting ourselves toward something the code now refuses.
+- **`claimUpdatesConfirmSend`** (DAR-139) — DAR-83's uniformity rule. This ask is the one piece of
+  mail a **stranger** can cause us to send to an address that has confirmed nothing, so leaving it
+  open would let somebody re-type the address of the very person who asked us to stop.
+
+**What it deliberately does NOT mean: unsubscribed.** `mayReceiveUpdates` never reads this column. A
+confirmed subscription is a verified grant from that mailbox, revocable in one click from every
+message; "don't contact me about a pilot" is not "cancel my newsletter", and conflating them would
+silently destroy the strongest consent signal we hold. Someone who asked for both gets **both**
+recorded — the page says so under the table, because copy is the whole mechanism there and a single
+control doing both is exactly the tidy-up to refuse.
+
+**Lifting it is admin-only**, and that asymmetry is the design rather than a permissions detail.
+Recording somebody's request is ordinary staff work; un-recording it is not, and a control an operator
+could press sits one click from the Invite button it suppresses — which turns a durable request into a
+speed bump. What it buys back is that a mis-press on the wrong row, and a prospect who later says
+"actually, let's talk", stay recoverable without deleting their submissions.
+
+This is the **first place in the repo where `isRosterAdmin` is the whole authorization boundary**.
+Everywhere else it is a UX gate with a Better Auth endpoint re-checking behind it — its own docstring
+says so, and `/admin/+layout.server.ts` repeats it. A form action has nothing behind it, so the line
+is the entire check, which is why `page.server.spec.ts` asserts the pair: an **operator may record and
+may not lift**. Nothing else in that file can tell the two predicates apart, since every other gate
+test uses an end-user or an anonymous caller and both fail either one.
+
+The lift **clears both columns** rather than stamping a third "lifted" pair, so the durable history is
+the `[outreach] donotcontact.lifted` Workers Logs line — the posture `invited_at` already has. A
+lifted-at column would turn `mayContactLead` into a comparison of two timestamps for a state nobody
+queries historically.
+
+**DAR-65's classifier does not see it.** The band measures how strong a commercial signal a
+submission carried, which is a fact about what they told us rather than about permission. Making it
+read the flag would be a second encoding of one rule, would hide a lead an operator may legitimately
+need to see, and would widen `WaitlistLeadSignals` — the four-field interface that structurally keeps
+money out of the rubric. A flagged lead still sorts by band, with "Do not contact" in the Outreach
+column right beside it.
+
+**`mayContactLead`** (`$lib/waitlist-outreach.ts`) is the one definition; three `WHERE` clauses are
+the same rule in SQL and cannot be single-sourced with it, so `waitlist-store.spec.ts` pins them
+against each other against a real engine. Honest residual: nothing forces a future outreach surface to
+call it — **DAR-177's waitlist → CRM producer is the next one that will have to** — which is the same
+residual `readUpdatesAudience` shipped with, and for the same reason: the rule gets a home before that
+author writes it.
+
 ### `contact_permission` is tri-state
 
 `null` = the question wasn't shown (pilot interest not positive), `false` = shown and declined,
@@ -1184,16 +1251,24 @@ submissions under their lead, classifies each one, and **flags** the fields they
   The lead detail carries the whole trail (asked / confirmed / opted out / **recorded by**), where a
   null recorder beside a timestamp renders as "the recipient, via the unsubscribe link" and not as a
   dash: it is our strongest record, not an absence. See [the sending gate](#honoring-a-request-that-arrives-another-way-dar-140).
+- **`?/recordDoNotContact`** / **`?/liftDoNotContact`** (DAR-191) — the outreach axis, deliberately
+  separate controls from the opt-out above because they answer different requests. Recording is
+  `isStaff` and hides the invite control; **lifting is `isRosterAdmin`**, the only action on the page
+  gated on anything but staff. See [the outreach section](#outreach-dont-contact-me-dar-191).
 - **Filter chips** are plain links over a `?class=` GET, so filtering works without JS and every view
   is bookmarkable. Counts are over the whole window, not the filtered slice, so the shape of the list
   stays visible while a filter is on. An unrecognized `?class=` is "no filter", never an error.
 - **Summary columns** read the **newest** submission — the most recent thing this person told us —
   rather than an aggregate, because an aggregate would have to choose. Where the choice would have
   mattered, the conflict chip says so and the detail shows every value.
-- **Outreach column** — `contact_permission` rendered as the tri-state it is: `null` = never asked
-  (the pilot answer wasn't positive), `false` = asked and declined, `true` = granted (the only one
-  with a filled badge). A grant and a decline under one address is a flagged conflict, which is the
-  honest reading of it.
+- **Outreach column** — the **lead-level truth wins the cell**: a recorded do-not-contact (DAR-191)
+  replaces the claim rather than sitting beside it, because the claim is an answer somebody typed into
+  an unauthenticated form and the flag is where that person now stands. Otherwise
+  `contact_permission` as the tri-state it is: `null` = never asked (the pilot answer wasn't
+  positive), `false` = asked and declined, `true` = granted (the only one with a filled badge). A
+  grant and a decline under one address is a flagged conflict, which is the honest reading of it. The
+  per-submission answers stay in the row detail either way, where they can be read as the claims they
+  are.
 - **Row detail** — a no-JS `<details>` per lead listing **every submission**, newest first, each with
   its own timestamp, priority band, delete control, and a complete answer grid (region, consent +
   when, application, timeline, approach, impact, budget, adoption evidence, pilot interest, deployment
