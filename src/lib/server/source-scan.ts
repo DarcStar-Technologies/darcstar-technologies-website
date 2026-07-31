@@ -187,7 +187,12 @@ export const stripToFixedPoint = (text: string, pattern: RegExp): string => {
  * Sharing module-level `/g` regexes across calls is safe here: `String.replace` resets `lastIndex`.
  */
 export const MARKUP_STRIP_PATTERNS = [
-	/<script[\s\S]*?<\/script\s*>/gi,
+	// The closing tag accepts trailing junk — `</script bar>` really does close a script, because an
+	// HTML end tag's attributes are a parse error the parser then ignores rather than a reason not to
+	// close. `\s*>` misses it and would leave the whole block in the text. Unreachable through Svelte,
+	// which rejects it, but "exhaustive only for input I assume is well-formed" is what DAR-102 is
+	// about, and CodeQL's `js/bad-tag-filter` names this exact case.
+	/<script[\s\S]*?<\/script(?:\s[^>]*)?>/gi,
 	/<!--[\s\S]*?-->/g,
 	/\/\*[\s\S]*?\*\//g
 ];

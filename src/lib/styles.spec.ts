@@ -53,41 +53,47 @@ const violations = () =>
 // the wrong text — a script body read as markup turns its class-name mentions into violations, which
 // is a false FAILURE, the one direction a guard must never produce.
 describe('the markup reader', () => {
-	// One `.replace()` pass can splice a match's neighbours into a NEW delimiter. Same defect DAR-173
-	// found in its brace-stripper, and what CodeQL calls "incomplete multi-character sanitization".
+	// The fixed-point property, stated WITHOUT HTML. It is not an HTML property: it holds for any
+	// pattern whose removal can splice the surrounding text into a fresh match, and `ab` inside `aabb`
+	// is the smallest thing that shows it. Same defect DAR-173 found in its brace-stripper.
 	//
-	// Each case asserts the single-pass result TOO, because that is what makes the loop demonstrably
-	// load-bearing rather than merely present — and the first attempt at this test got the expected
-	// output wrong by reasoning instead of measuring (`<scr<script>x</script>ipt>` reconstructs a
-	// bare `<script>` with no closing tag, so it is a fixed point after one pass and proves nothing).
+	// Writing it this way is also what keeps CodeQL's `js/incomplete-multi-character-sanitization` off
+	// a file whose whole job is to demonstrate that very defect — a faithful HTML demonstration has to
+	// CONTAIN the vulnerable call, so the alert was unavoidable and the suppression would have been
+	// permanent. The abstract form proves the same thing and has nothing to suppress.
 	it('strips a delimiter reconstructed by its own removal', () => {
-		const script = /<script[\s\S]*?<\/script\s*>/gi;
-		// The consequence, not just the shape: one pass leaves `b` — real script body — sitting in
-		// what the caller will treat as markup.
-		expect('<scr<script>a</script>ipt>b</script>c'.replace(script, '')).toBe('<script>b</script>c');
-		expect(stripToFixedPoint('<scr<script>a</script>ipt>b</script>c', script)).toBe('c');
-
-		const comment = /<!--[\s\S]*?-->/g;
-		expect('<!-<!-- a -->- -->'.replace(comment, '')).toBe('<!-- -->');
-		expect(stripToFixedPoint('<!-<!-- a -->- -->', comment)).toBe('');
+		// One pass leaves a match that only exists BECAUSE of the removal.
+		expect('aabb'.replace(/ab/g, '')).toBe('ab');
+		expect(stripToFixedPoint('aabb', /ab/g)).toBe('');
+		// Asserting the single-pass result is what makes the loop demonstrably load-bearing rather
+		// than merely present. A first cut of this test got its expected output wrong by reasoning
+		// instead of measuring, which is the other reason the case is now this small.
 	});
 
 	it('terminates when there is nothing to strip', () => {
-		expect(stripToFixedPoint('<p class="x">hi</p>', /<script[\s\S]*?<\/script\s*>/gi)).toBe(
-			'<p class="x">hi</p>'
-		);
+		expect(stripToFixedPoint('nothing to see', /ab/g)).toBe('nothing to see');
 	});
 
-	// Svelte only accepts a lowercase `<script>`, so this is unreachable in a file that compiles —
-	// but a stripper exhaustive only for well-formed input is DAR-102's shape, and the flag is free.
+	// The HTML cases go through the REAL pattern rather than a copy, which is mutation-measured: with
+	// a local copy here, deleting the `i` flag from the shipped one left all 17 tests green, because
+	// this test then pinned the helper and said nothing about its caller (DAR-171).
 	//
-	// It reads the pattern `markupText` ACTUALLY uses rather than a local copy, and that is
-	// mutation-measured: with a copy here, deleting the `i` flag from the real one left all 17 tests
-	// green, since this test then pinned the helper and said nothing about its caller.
-	it('strips a script block whatever its case or closing-tag spacing', () => {
+	// `<SCRIPT>` is unreachable via Svelte, which rejects it, and so is `</script bar>` — but a
+	// stripper exhaustive only for input it assumes well-formed is DAR-102's shape. The end-tag case
+	// is the one CodeQL's `js/bad-tag-filter` names, and it is real HTML: an end tag's attributes are
+	// a parse error the parser ignores, not a reason to leave the element open.
+	it('strips a script block whatever its case, spacing or end-tag junk', () => {
 		const [script] = MARKUP_STRIP_PATTERNS;
 		expect(stripToFixedPoint('a<SCRIPT>let c = "p-4";</SCRIPT>b', script)).toBe('ab');
 		expect(stripToFixedPoint('a<script>x</script  >b', script)).toBe('ab');
+		expect(stripToFixedPoint('a<script>x</script bar>b', script)).toBe('ab');
+	});
+
+	// The reconstruction hazard in the shape that actually reaches this repo, through the real
+	// pattern: one pass would leave `b` — genuine script body — in what the caller treats as markup.
+	it('removes a script block that its own removal reconstructs', () => {
+		const [script] = MARKUP_STRIP_PATTERNS;
+		expect(stripToFixedPoint('<scr<script>a</script>ipt>b</script>c', script)).toBe('c');
 	});
 
 	// The reason the script is stripped at all: a component that correctly IMPORTS a shared string
