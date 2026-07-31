@@ -28,10 +28,39 @@ export const fieldClass = 'glass-field w-full rounded-lg px-3.5 py-2.5 text-sm';
 export const submitButtonClass =
 	'glass-btn w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60';
 
+// The label-row treatment itself, without the spacing that separates it from its control. Split out
+// because a <legend> carries that margin on the legend rather than on the row inside it (below), so
+// the two differ by exactly `mb-1.5` — which is how GlassCheckboxGroup came to hold a fourth
+// hand-typed copy of this row that a superset scan cannot see (it is a SUBSET). Composing here is
+// what makes both forms one string.
+const fieldLabelRow = 'flex items-baseline gap-2 text-xs font-medium tracking-wide text-body';
+
 /** A field's label row — the label text plus an optional muted badge ("optional") beside it. */
-export const fieldLabelClass =
-	'mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-body';
+export const fieldLabelClass = `mb-1.5 ${fieldLabelRow}`;
+
+/** The same row inside a `<fieldset>`'s `<legend>`, where the spacing belongs to the legend: a
+ * `<legend>` is laid out by the UA rather than in normal flow, so a bottom margin on the row inside
+ * it is unreliable across browsers. Same treatment, one level of nesting further in. */
+export const fieldLegendRowClass = fieldLabelRow;
+
+/** The muted badge that sits inside a label row beside the label text ("optional").
+ *
+ * Exported because `fieldLabelClass` above has always DESCRIBED this badge as part of the pattern
+ * while exporting only the row — so the badge was hand-typed at all seven sites that render one
+ * (DAR-218), under four different prop names. A label row is a two-part idiom; shipping one part is
+ * what let the other drift. `font-normal` is load-bearing: it cancels the row's `font-medium`, so
+ * the badge reads as secondary to the label it annotates rather than as a second label. */
+export const fieldBadgeClass = 'font-normal text-faint';
 
 /** The supporting line under a label: the survey question a short label can't carry. Wired as
  * `aria-describedby`, so it's a description rather than part of the control's accessible name. */
 export const fieldHelpClass = 'mb-1.5 text-xs leading-relaxed text-faint';
+
+/** A checkbox drawn into a label row — the consent tick, the pilot-contact permission, and every
+ * option in a `GlassCheckboxGroup`.
+ *
+ * Native rather than a custom control on purpose (it works with no JS and keeps the platform's own
+ * focus/checked semantics), so `accent-*` is the only colour lever the UA gives us and the sizing
+ * has to be stated. `mt-0.5` optically centres a `size-4` box against the first line of a label
+ * that may wrap; `shrink-0` keeps it square when that label wraps in a flex row. */
+export const checkboxClass = 'mt-0.5 size-4 shrink-0 accent-primary-500';

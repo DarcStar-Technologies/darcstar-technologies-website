@@ -18,7 +18,13 @@
 	import GlassSelect from './GlassSelect.svelte';
 	import WaitlistStepActions from './WaitlistStepActions.svelte';
 	import WaitlistStepHeading from './WaitlistStepHeading.svelte';
-	import { fieldClass, fieldLabelClass, fieldHelpClass } from '$lib/styles';
+	import {
+		checkboxClass,
+		fieldBadgeClass,
+		fieldClass,
+		fieldLabelClass,
+		fieldHelpClass
+	} from '$lib/styles';
 	import { submitWaitlistStep4A } from '$lib/waitlist-steps.remote';
 	import {
 		WAITLIST_PILOT_INTERESTS,
@@ -109,7 +115,7 @@
 			<div>
 				<label for="waitlist-scale" class={fieldLabelClass}>
 					{m.waitlist_field_scale_label()}
-					<span class="font-normal text-faint">{m.waitlist_optional()}</span>
+					<span class={fieldBadgeClass}>{m.waitlist_optional()}</span>
 				</label>
 				<p id="waitlist-scale-help" class={fieldHelpClass}>{m.waitlist_field_scale_help()}</p>
 				<!-- maxlength is the browser-side courtesy; the validator truncates to the same constant. -->
@@ -128,7 +134,7 @@
 			<label class="flex cursor-pointer items-start gap-3 text-sm text-body">
 				<input
 					{...submitWaitlistStep4A.fields.contactPermission.as('checkbox')}
-					class="mt-0.5 size-4 shrink-0 accent-primary-500"
+					class={checkboxClass}
 				/>
 				<span>{m.waitlist_contact_permission_label()}</span>
 			</label>
@@ -147,7 +153,7 @@
 				<div>
 					<label for="waitlist-phone" class={fieldLabelClass}>
 						{m.waitlist_field_phone_label()}
-						<span class="font-normal text-faint">{m.waitlist_optional()}</span>
+						<span class={fieldBadgeClass}>{m.waitlist_optional()}</span>
 					</label>
 					<input
 						{...submitWaitlistStep4A.fields.phone.as('tel')}

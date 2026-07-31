@@ -22,7 +22,7 @@
 	// control (a native <select>, since the modal's GlassSelect is JS-only). `fieldClass`
 	// ($lib/styles) is what makes that <select> match the fields exactly.
 	import ContactFields from '$lib/components/ContactFields.svelte';
-	import { fieldClass } from '$lib/styles';
+	import { fieldClass, fieldLabelClass } from '$lib/styles';
 	import ContactSuccess from '$lib/components/ContactSuccess.svelte';
 </script>
 
@@ -53,9 +53,7 @@
 				<ContactFields form={submitContact}>
 					{#snippet interest()}
 						<label class="block">
-							<span
-								class="mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-body"
-							>
+							<span class={fieldLabelClass}>
 								{m.contact_field_interest_label()}
 							</span>
 							<!-- The dropdown chevron is a CSS-only affordance (`select.glass-field` in

@@ -13,7 +13,7 @@
 	// - `error`  — optional block rendered just above the submit button (the modal's
 	//   catch-all "something went wrong"; the page has none).
 	import type { Snippet } from 'svelte';
-	import { fieldClass, submitButtonClass } from '$lib/styles';
+	import { fieldBadgeClass, fieldClass, fieldLabelClass, submitButtonClass } from '$lib/styles';
 	import { submitContact } from '$lib/contact.remote';
 	import { contactDialog } from '$lib/contact-dialog.svelte';
 	import { m } from '$lib/paraglide/messages.js';
@@ -50,9 +50,9 @@
 	}
 )}
 	<label class="block">
-		<span class="mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-body">
+		<span class={fieldLabelClass}>
 			{labelText}
-			{#if opts.optional}<span class="font-normal text-faint">{opts.optional}</span>{/if}
+			{#if opts.optional}<span class={fieldBadgeClass}>{opts.optional}</span>{/if}
 		</span>
 		{#if opts.multiline}
 			<textarea

@@ -29,7 +29,15 @@
 	import WaitlistStep4A from '$lib/components/WaitlistStep4A.svelte';
 	import WaitlistStep4B from '$lib/components/WaitlistStep4B.svelte';
 	import WaitlistConfirmation from '$lib/components/WaitlistConfirmation.svelte';
-	import { fieldClass, fieldHelpClass, mutedLinkClass } from '$lib/styles';
+	import {
+		checkboxClass,
+		fieldBadgeClass,
+		fieldClass,
+		fieldHelpClass,
+		fieldLabelClass,
+		mutedLinkClass,
+		submitButtonClass
+	} from '$lib/styles';
 	import { joinWaitlist, restartWaitlist } from '$lib/waitlist.remote';
 	import {
 		submitWaitlistStep2,
@@ -154,9 +162,9 @@
 	}
 )}
 	<label class="block">
-		<span class="mb-1.5 flex items-baseline gap-2 text-xs font-medium tracking-wide text-body">
+		<span class={fieldLabelClass}>
 			{labelText}
-			{#if opts.optional}<span class="font-normal text-faint">{m.waitlist_optional()}</span>{/if}
+			{#if opts.optional}<span class={fieldBadgeClass}>{m.waitlist_optional()}</span>{/if}
 		</span>
 		<input
 			{...remoteField.as(opts.type ?? 'text')}
@@ -256,10 +264,7 @@
 				     so before it happens — and the sentence is also the honest description of the gate,
 				     since nothing is sent unless that email is answered. -->
 				<label class="flex cursor-pointer items-start gap-3 text-sm text-body">
-					<input
-						{...joinWaitlist.fields.consentUpdates.as('checkbox')}
-						class="mt-0.5 size-4 shrink-0 accent-primary-500"
-					/>
+					<input {...joinWaitlist.fields.consentUpdates.as('checkbox')} class={checkboxClass} />
 					<span>{m.waitlist_consent_label()}</span>
 				</label>
 				<!-- `-mt-2 ps-7` rather than the bare help class: this one sits BELOW its control instead of
@@ -276,11 +281,7 @@
 					linkLabel={m.waitlist_privacy_link()}
 				/>
 
-				<button
-					type="submit"
-					disabled={!!joinWaitlist.pending}
-					class="glass-btn w-full rounded-full px-6 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-				>
+				<button type="submit" disabled={!!joinWaitlist.pending} class={submitButtonClass}>
 					{joinWaitlist.pending ? m.waitlist_submitting() : m.waitlist_submit()}
 				</button>
 			</form>
