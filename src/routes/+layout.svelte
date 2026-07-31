@@ -23,10 +23,10 @@
 	// — and must be the FLOOR, not `[]`, or that page would ship an empty social row.
 	const socialLinks = $derived(page.data.socialLinks ?? FALLBACK_SOCIAL_LINKS);
 
-	// One coherent light source across all frosted glass (see `.sheen-plane`). The sync
-	// keeps the plane's clip-path tracking the glass windows; re-clip when a modal (contact or
-	// login) opens/closes so its panel joins the beam (and the page panels drop out behind the
-	// scrim while it's up).
+	// One coherent light source across all frosted glass (see `.sheen-plane`). The sync keeps each
+	// plane's clip-path tracking the glass windows; re-clip when a modal (contact or login)
+	// opens/closes so its panel joins the beam (and the page panels drop out behind the scrim while
+	// it's up).
 	let sheen: ReturnType<typeof createSheenSync> | undefined;
 	$effect(() => {
 		// Read both up front (not a short-circuiting `||`) so the effect tracks BOTH dialogs and
@@ -67,12 +67,27 @@
      void before it slides under/around the glass nav. See .header-scrim. -->
 <div class="header-scrim" aria-hidden="true"></div>
 
-<!-- One light plane clipped to the frosted-glass windows (see .sheen-plane). -->
+<!-- Two light planes clipped to the frosted-glass windows (see .sheen-plane + glass-sheen.ts).
+     One per anchoring regime, because that is what lets both clips be scroll-invariant: the page
+     plane rides the document's scroll flow so the BROWSER moves it and its page-coordinate clip in
+     step with the panels, and the viewport plane is fixed for the sticky nav and the dialog, whose
+     viewport rects don't move. Nothing runs per scroll frame — rewriting the clip there is what
+     ghosted on mobile (DAR-170).
+
+     The beams are `position: fixed`, which keeps them screen-anchored with no JS: `clip-path` does
+     not create a containing block for a fixed descendant, while `transform`, `filter`, `contain` and
+     `will-change` all do. Do not add any of those to these planes. -->
+<div class="sheen-plane" data-sheen-plane="page" aria-hidden="true">
+	<div class="sheen-plane__beam"></div>
+</div>
 <div
 	class="sheen-plane"
+	data-sheen-plane="viewport"
 	aria-hidden="true"
 	{@attach (node) => {
-		sheen = createSheenSync(node);
+		const pagePlane = node.parentElement?.querySelector<HTMLElement>('[data-sheen-plane="page"]');
+		if (!pagePlane) return;
+		sheen = createSheenSync(pagePlane, node);
 		return () => {
 			sheen?.destroy();
 			sheen = undefined;

@@ -67,18 +67,23 @@ test('header About link navigates to the about page', async ({ page }) => {
 	);
 });
 
-// Regression: the glass sheen light-plane lives in the persistent layout, so its clip-path
+// Regression: the glass sheen light-planes live in the persistent layout, so their clip-path
 // (the union of the CURRENT route's glass panels) must be rebuilt on client-side navigation.
 // Before the afterNavigate re-clip, the beam stayed pinned to the previous page's panels — a
 // ghost that only realigned after a scroll or refresh. Here the clip must change to the about
 // page's (fewer, differently-placed) panels with NO scroll (the user's old workaround).
+//
+// Read the PAGE plane specifically: it holds the route's own panels, so it is what a navigation
+// changes. The viewport plane holds the sticky nav, which every route shares (DAR-170).
 test('the glass sheen clip-path is rebuilt on navigation (no ghost of the prior page)', async ({
 	page
 }) => {
 	await page.goto('/');
 
 	const clipPath = () =>
-		page.evaluate(() => document.querySelector<HTMLElement>('.sheen-plane')?.style.clipPath ?? '');
+		page.evaluate(
+			() => document.querySelector<HTMLElement>('[data-sheen-plane="page"]')?.style.clipPath ?? ''
+		);
 
 	// The clip is applied an rAF after load; wait for it, then capture the homepage geometry.
 	await expect.poll(clipPath).not.toBe('');
