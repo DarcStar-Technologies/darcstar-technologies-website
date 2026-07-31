@@ -288,6 +288,74 @@ describe('the eyebrow base is a composition root, not a call-site class', () => 
 	});
 });
 
+describe('the pill button base is a composition root, not a call-site class', () => {
+	// Same shape as the eyebrow above, and found the same way (DAR-219): `btn-pill` looked like one
+	// utility with two documented one-offs beside it, and measured out as three fixed size tiers —
+	// four buttons on one combination, two on another, none of them varying. The base holds shape and
+	// ink; a bare `btn-pill-base` renders a pill with no padding, which nothing means to do.
+	const css = readFileSync('src/routes/layout.css', 'utf8');
+
+	it('is never used bare in markup', () => {
+		const bare = markupSourcePaths().flatMap((file) =>
+			classLiterals(file)
+				.filter((tokens) => tokens.includes('btn-pill-base'))
+				.map((tokens) => `${file}: class="${tokens.join(' ')}"`)
+		);
+		expect(bare).toStrictEqual([]);
+	});
+
+	// Skeleton ships its own `btn-*` component classes, so the namespace is shared and "every btn- in
+	// markup is ours" would be false. Naming the one we borrow is what keeps that distinction visible:
+	// a NEW Skeleton button class appearing in markup should be a decision someone makes on purpose,
+	// not something that slips in beside our tiers because both start with `btn-`.
+	const SKELETON_BUTTONS = ['btn-icon'];
+
+	// The definition half is what set-equality alone would miss — a tier renamed in BOTH markup and
+	// this list still passes while resolving to no CSS at all, since an unknown class renders silently.
+	it('uses only tiers that layout.css defines', () => {
+		const used = [
+			...new Set(
+				markupSourcePaths().flatMap((file) =>
+					classLiterals(file)
+						.flat()
+						.filter((t) => t.startsWith('btn-'))
+				)
+			)
+		].sort();
+		expect(used).toStrictEqual([
+			'btn-danger',
+			'btn-icon',
+			'btn-pill',
+			'btn-pill-sm',
+			'btn-pill-xs'
+		]);
+		expect(
+			used.filter((t) => !SKELETON_BUTTONS.includes(t) && !css.includes(`@utility ${t} {`))
+		).toStrictEqual([]);
+		// And the borrowed ones really are borrowed — if `btn-icon` ever gains a local definition, this
+		// list has stopped describing what it claims to.
+		expect(SKELETON_BUTTONS.filter((t) => css.includes(`@utility ${t} {`))).toStrictEqual([]);
+	});
+
+	// Every white pill must take its shape from a tier. Stated over the MARKUP rather than as "the
+	// literal is gone", because that passes against a seventh button that spells the same pill with
+	// `rounded-[9999px]` — the drift this family exists to stop, one synonym further out.
+	it('leaves no hand-rolled pill beside the tiers', () => {
+		const handRolled = markupSourcePaths().flatMap((file) =>
+			classLiterals(file)
+				.filter(
+					(t) => t.includes('rounded-full') && t.includes('font-medium') && t.includes('px-4')
+				)
+				.map((t) => `${file}: class="${t.join(' ')}"`)
+		);
+		// The two survivors are `/admin/users/[id]`'s danger zone — an outline pill and a filled
+		// outline pill, one use each, whose difference IS the disable-then-delete escalation. Naming
+		// them would collapse a severity distinction into a shared token.
+		expect(handRolled).toHaveLength(2);
+		expect(handRolled.filter((s) => !s.includes('error-500'))).toStrictEqual([]);
+	});
+});
+
 describe('the hero helix geometry has one source', () => {
 	// CosmicBackdrop MEASURES `#helix-slot` and caps the helix amplitude at 42% of its height, so a
 	// re-typed slot height does not clip the helix — it silently shrinks it, which is the kind of

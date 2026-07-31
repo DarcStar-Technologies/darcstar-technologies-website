@@ -754,7 +754,7 @@
 											<input type="hidden" name="id" value={lead.id} />
 											<button
 												type="submit"
-												class="rounded bg-error-500/20 px-2 py-1 text-xs font-medium text-error-200 transition-colors hover:bg-error-500/30 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none"
+												class="btn-danger"
 												aria-label={m.admin_waitlist_delete_sr({ email: lead.email })}
 												>{m.admin_delete_confirm()}</button
 											>
@@ -816,7 +816,7 @@
 															<input type="hidden" name="id" value={row.id} />
 															<button
 																type="submit"
-																class="rounded bg-error-500/20 px-2 py-1 text-xs font-medium text-error-200 transition-colors hover:bg-error-500/30 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none"
+																class="btn-danger"
 																aria-label={m.admin_waitlist_delete_submission_sr({
 																	email: lead.email
 																})}>{m.admin_delete_confirm()}</button

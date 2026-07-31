@@ -148,11 +148,7 @@
 						>
 					</select>
 				</label>
-				<button
-					type="submit"
-					class="glass-btn rounded-full px-4 py-2.5 text-sm font-medium text-white"
-					>{m.admin_users_role_save()}</button
-				>
+				<button type="submit" class="glass-btn btn-pill-sm">{m.admin_users_role_save()}</button>
 			</form>
 		</div>
 
@@ -174,9 +170,7 @@
 					/>
 					<span class="mt-1 block text-xs text-faint">{m.admin_users_password_hint()}</span>
 				</label>
-				<button
-					type="submit"
-					class="glass-btn rounded-full px-4 py-2.5 text-sm font-medium text-white"
+				<button type="submit" class="glass-btn btn-pill-sm"
 					>{m.admin_users_password_submit()}</button
 				>
 			</form>
@@ -225,11 +219,7 @@
 		{/if}
 		{#if data.manageable && data.sessions.length > 0}
 			<form method="post" action="?/forceLogout">
-				<button
-					type="submit"
-					class="glass-btn rounded-full px-4 py-2 text-xs font-medium text-white"
-					>{m.admin_users_force_logout()}</button
-				>
+				<button type="submit" class="glass-btn btn-pill-xs">{m.admin_users_force_logout()}</button>
 			</form>
 		{/if}
 	</div>
@@ -248,11 +238,7 @@
 				</p>
 				{#if target.banned}
 					<form method="post" action="?/enable">
-						<button
-							type="submit"
-							class="glass-btn rounded-full px-4 py-2 text-xs font-medium text-white"
-							>{m.admin_users_enable()}</button
-						>
+						<button type="submit" class="glass-btn btn-pill-xs">{m.admin_users_enable()}</button>
 					</form>
 				{:else}
 					<form method="post" action="?/disable">

@@ -504,11 +504,50 @@ select.glass-field {
 	@apply eyebrow text-xs tracking-widest;
 }
 
-/* Default pill CTA — pairs with the `glass-btn` surface (`glass-btn btn-pill`).
-   The larger hero CTA and the full-width submit are deliberate one-offs and keep
-   their explicit sizing rather than overriding this. */
+/* Pill CTA — pairs with the `glass-btn` surface (`glass-btn btn-pill`).
+
+   The invariant is shape and ink; only padding and size vary. A composition
+   root like `eyebrow` above: `btn-pill-base` is never a call-site class, since
+   a pill with no padding is not a button anyone means to render.
+
+   This used to be one utility whose comment named two deliberate one-offs —
+   the hero CTA and the full-width submit, both still true and both still
+   explicit below. What it did NOT say, because nobody had counted (DAR-219),
+   is that six more buttons were sitting on two OTHER fixed combinations, hand
+   typed four and two times. Three tiers, same as the eyebrow: the freedom the
+   single utility implied was never being used as freedom. */
+@utility btn-pill-base {
+	@apply rounded-full font-medium text-white;
+}
+
+/* The public site's CTA — hero, contact, evidence, waitlist confirmation. */
 @utility btn-pill {
-	@apply rounded-full px-6 py-2.5 text-sm font-medium text-white;
+	@apply btn-pill-base px-6 py-2.5 text-sm;
+}
+
+/* The staff-surface action button: same height, tighter sides, because it sits
+   in a row beside other controls rather than alone under a paragraph. */
+@utility btn-pill-sm {
+	@apply btn-pill-base px-4 py-2.5 text-sm;
+}
+
+/* The compact tier — a nav-bar sign-out, a table-row action. */
+@utility btn-pill-xs {
+	@apply btn-pill-base px-4 py-2 text-xs;
+}
+
+/* The destructive row action (delete a submission, delete a waitlist lead).
+   Distinct from `/admin/users/[id]`'s danger zone, whose outline and filled
+   outline pills encode a deliberate disable-then-delete escalation and are one
+   use each — that difference is the point, so they stay written out. This one
+   was identical at three sites in two files, which is not an escalation.
+
+   `/admin` carries its own `focus-visible:ring-*` rather than the site-wide
+   ring (CLAUDE.md), so that opt-out is baked in here rather than left to each
+   call site to remember. */
+@utility btn-danger {
+	@apply rounded bg-error-500/20 px-2 py-1 text-xs font-medium text-error-200 transition-colors;
+	@apply hover:bg-error-500/30 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none;
 }
 
 /* Flowing R→B→G color-charge gradient for text (clipped). Colour order matches
