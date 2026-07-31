@@ -5,6 +5,7 @@
 	// settled public details (trade name, "United States", GitHub + email) — nothing invented.
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ContactLinks from '$lib/components/ContactLinks.svelte';
+	import PageHero from '$lib/components/PageHero.svelte';
 	import Seo from '$lib/components/Seo.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { contactDialog } from '$lib/contact-dialog.svelte';
@@ -26,27 +27,22 @@
 <CosmicBackdrop />
 
 <div class="space-y-20">
-	<!-- Hero — matches the homepage standard (the pattern for every page's hero): kicker,
-	     then the twisting triple helix, then the heading + lead inside a frosted glass-panel. -->
-	<section class="-mt-10 flex flex-col items-center px-6 pt-6 pb-16 text-center sm:pt-8">
-		<p class="eyebrow-hero">{m.about_eyebrow()}</p>
-
-		<!-- CosmicBackdrop measures #helix-slot to place + SIZE the helix (its height caps the
-		     amplitude), so keep the height; the panel below rises onto the helix's lower arcs
-		     (negative margin) instead of sitting fully below it, reclaiming vertical space while the
-		     upper arcs stay visible. Mirrors PageHero (/news · /research · /people). -->
-		<div id="helix-slot" class="h-6 min-[360px]:h-[var(--helix-slot-h)]"></div>
-
-		<div
-			class="glass-card mx-auto w-full max-w-3xl px-8 py-10 text-center min-[360px]:-mt-[var(--helix-pull)] sm:px-10 sm:py-12"
-		>
-			<h1 class="text-4xl font-medium tracking-tight text-balance text-white sm:text-5xl">
-				<span class="charge-flow">{m.about_heading_emphasis()}</span>
-				{m.about_heading_tail()}
-			</h1>
-			<p class="mx-auto mt-6 max-w-2xl text-base text-body sm:text-lg">{m.about_lead()}</p>
-		</div>
-	</section>
+	<!-- The shared hero, with the emphasis LEADING ("Provable safety for …") rather than trailing.
+	     This page used to carry a byte-identical copy of PageHero's markup, kept only because the
+	     component's emphasis was trailing-only (DAR-218).
+	     The extra bottom space is this page's own concern, not the hero's: /about runs a roomier
+	     rhythm than the PageHero routes (space-y-20 against their space-y-14), and its 2rem here on
+	     top of the hero's own 2rem is what keeps the gap under the hero proportional to that —
+	     preserving the spacing exactly, without giving the shared component a padding knob. -->
+	<div class="pb-8">
+		<PageHero
+			eyebrow={m.about_eyebrow()}
+			heading={m.about_heading_tail()}
+			emphasis={m.about_heading_emphasis()}
+			emphasisPosition="leading"
+			lead={m.about_lead()}
+		/>
+	</div>
 
 	<div class="mx-auto max-w-3xl space-y-14">
 		<!-- Mission -->
