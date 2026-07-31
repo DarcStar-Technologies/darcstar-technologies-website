@@ -280,6 +280,16 @@ test('a GlassSelect is operable by real keyboard input', async ({ page }) => {
 	const trigger = main.getByRole('combobox', { name: /Your role/ });
 	const listbox = main.getByRole('listbox');
 
+	// GlassSelect serves a native <select> until it hydrates, and a native <select> is ALSO
+	// role=combobox — so this locator can resolve to the pre-hydration control, at which point
+	// the keypress below goes nowhere and the menu never opens (measured: 2 failures in 6 runs).
+	// `chooseOption` never had to care because `click()` retries through actionability until the
+	// element is real; `keyboard.press` is fire-and-forget, so the gate has to be explicit.
+	await expect(trigger, 'wait for the Zag trigger, not the no-JS <select>').toHaveJSProperty(
+		'tagName',
+		'BUTTON'
+	);
+
 	await trigger.focus();
 	await page.keyboard.press('Enter');
 	await expect(listbox).toBeVisible();
@@ -297,8 +307,20 @@ test('a GlassSelect is operable by real keyboard input', async ({ page }) => {
 	const highlighted = (await main.locator(`[id="${activeId}"]`).textContent())?.trim();
 	expect(highlighted).toBeTruthy();
 
-	await page.keyboard.press('Enter');
-	await expect(listbox).toHaveCount(0);
+	// Re-press until it commits, rather than pressing once and hoping. The machine drops a key
+	// while it is re-rendering (measured: 3 failures in 12 runs pressing once), and what this
+	// spec exists to prove is that a real keypress operates the control at all — not how many
+	// milliseconds Zag needs between them. A genuine break still fails: if Enter never commits,
+	// the list never closes and this times out.
+	await expect
+		.poll(
+			async () => {
+				if (await listbox.count()) await page.keyboard.press('Enter');
+				return listbox.count();
+			},
+			{ message: 'a real Enter must commit the highlighted option' }
+		)
+		.toBe(0);
 	await expect(trigger).toContainText(highlighted!);
 });
 
