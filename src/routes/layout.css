@@ -721,7 +721,7 @@ select.glass-field {
 }
 
 /* Solid status badge: the /admin/audit outcome, the waitlist lead class. */
-@utility badge {
+@utility badge-solid {
 	@apply badge-base px-2 py-0.5;
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import * as styles from './styles';
 import {
 	classLiterals,
@@ -304,6 +304,61 @@ export const classStringExports = (source: string): string[] => {
 		.map(([, name]) => name);
 };
 
+describe('our utilities do not collide with Skeleton’s', () => {
+	// Skeleton is a design SYSTEM, not just a component library: it defines ~230 `@utility` names of
+	// its own, and this site imports all of them. Naming one of ours the same does not shadow it and
+	// does not error — both rules are emitted, they merge, and the cascade decides per property.
+	//
+	// Found by measurement, not by review (DAR-223). A `@utility badge` looked obviously safe; the
+	// built stylesheet's `.badge` came back with `border-radius: var(--radius-base)` and
+	// `padding-inline: calc(var(--spacing) * 3)` — Skeleton's badge, not ours — so the waitlist lead
+	// chips and the audit outcome chips would have shipped with the wrong geometry. Nothing in the
+	// build says a word about it. Renamed to `badge-solid`.
+	//
+	// The names Skeleton owns are exactly the ones you would reach for: `badge`, `chip`, `card`,
+	// `table`, `btn`, `input`, `label`, `select`, `textarea`, `checkbox`, `radio`, `h1`–`h6`.
+	/** Every `@utility` name Skeleton declares, read from the package it ships. */
+	const skeletonNames = (): Set<string> => {
+		const dir = 'node_modules/@skeletonlabs/skeleton/src';
+		const names = new Set<string>();
+		const walk = (d: string) => {
+			for (const entry of readdirSync(d, { withFileTypes: true })) {
+				const path = `${d}/${entry.name}`;
+				if (entry.isDirectory()) walk(path);
+				else if (entry.name.endsWith('.css'))
+					for (const [, name] of readFileSync(path, 'utf8').matchAll(/@utility\s+([\w-]+)/g))
+						names.add(name);
+			}
+		};
+		walk(dir);
+		return names;
+	};
+
+	/** Every `@utility` name WE declare. */
+	const ourNames = (): string[] =>
+		[...readFileSync('src/routes/layout.css', 'utf8').matchAll(/@utility\s+([\w-]+)/g)].map(
+			([, name]) => name
+		);
+
+	// Reach controls first: both readers are "nothing matched"-shaped, and an empty set on either side
+	// makes the disjointness assertion below pass while proving nothing (DAR-152).
+	it('reads both vocabularies', () => {
+		const theirs = skeletonNames();
+		expect(theirs.size).toBeGreaterThan(100);
+		// Spot-check the names most likely to be reached for, so a reader that finds the files but
+		// parses nothing useful still fails.
+		for (const n of ['badge', 'chip', 'card', 'table', 'btn', 'input', 'label'])
+			expect(theirs.has(n)).toBe(true);
+		expect(ourNames().length).toBeGreaterThan(20);
+		expect(ourNames()).toContain('glass-card');
+	});
+
+	it('shares no utility name with Skeleton', () => {
+		const theirs = skeletonNames();
+		expect(ourNames().filter((n) => theirs.has(n))).toStrictEqual([]);
+	});
+});
+
 describe('a shared class string never lives in a component', () => {
 	// CLAUDE.md's rule, stated since DAR-218: shared class strings live in `$lib/styles.ts` (or as a
 	// `@utility`), NEVER a component's `<script module>` — so a file that wants the string doesn't
@@ -463,7 +518,7 @@ describe('badges are named, and only where they genuinely compose', () => {
 				)
 			)
 		].sort();
-		expect(used).toStrictEqual(['badge', 'badge-micro', 'badge-outline', 'badge-tag']);
+		expect(used).toStrictEqual(['badge-micro', 'badge-outline', 'badge-solid', 'badge-tag']);
 		expect(used.filter((t) => !css.includes(`@utility ${t} {`))).toStrictEqual([]);
 	});
 

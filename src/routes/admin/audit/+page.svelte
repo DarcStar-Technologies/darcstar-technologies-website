@@ -52,11 +52,11 @@
 								<td class="datagrid-td text-emphasis">{attempt.email ?? '—'}</td>
 								<td class="datagrid-td whitespace-nowrap">
 									{#if attempt.success}
-										<span class="badge bg-success-500/15 text-success-300"
+										<span class="badge-solid bg-success-500/15 text-success-300"
 											>{m.admin_audit_outcome_success()}</span
 										>
 									{:else}
-										<span class="badge bg-error-500/15 text-error-300"
+										<span class="badge-solid bg-error-500/15 text-error-300"
 											>{m.admin_audit_outcome_failure()}</span
 										>
 									{/if}

@@ -23,4 +23,4 @@
 	const label = $derived(waitlistLeadClassLabel[leadClass]());
 </script>
 
-<span class="badge whitespace-nowrap {TONE[leadClass]}">{label}</span>
+<span class="badge-solid whitespace-nowrap {TONE[leadClass]}">{label}</span>
