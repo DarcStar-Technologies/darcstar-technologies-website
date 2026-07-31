@@ -452,11 +452,41 @@ select.glass-field {
 }
 
 /* Mono, uppercase, muted-ink eyebrow/kicker label (GIDE kicker, section kickers,
-   footer nav heading, readout labels). Captures only the invariant part; consumers
-   add their own size + tracking (deliberately varied — small labels are text-xs
-   tracking-widest, the hero kicker is larger/looser). */
+   footer nav heading, readout labels). Captures only the invariant part — the
+   three TIERS below add size + tracking.
+
+   This used to say consumers add their own size and tracking, "deliberately
+   varied". Measured (DAR-218), they were not varied: 22 call sites collapsed
+   into exactly three fixed combinations, two of them arbitrary bracket values
+   hand-typed 11 and 3 times. Three discrete tiers wearing the costume of free
+   variation — so they are named, and the freedom the comment claimed is gone
+   on purpose. A surface that genuinely needs a fourth size should add a fourth
+   tier here rather than re-open the bracket. */
 @utility eyebrow {
 	@apply font-mono text-muted uppercase;
+}
+
+/* The page-hero kicker — the one above the helix, on the three hero surfaces
+   (PageHero, /about, the homepage). Largest and loosest. */
+@utility eyebrow-hero {
+	@apply eyebrow text-sm tracking-[0.3em];
+}
+
+/* The card/panel kicker — above a heading inside a glass-card (login, signup,
+   contact, waitlist steps, admin, account, updates, reset, forgot, and the
+   homepage's section kickers). The most-used tier by a wide margin.
+
+   0.25em rather than Tailwind's `tracking-widest` (0.1em), which is why this
+   needs to be a token at all: it is off-scale, so every call site was a bracket. */
+@utility eyebrow-panel {
+	@apply eyebrow text-xs tracking-[0.25em];
+}
+
+/* The small-label tier — a definition-list term, a readout caption, an evidence
+   claim field, the footer's nav heading. Tightest of the three, and the only one
+   already on the Tailwind scale. */
+@utility eyebrow-label {
+	@apply eyebrow text-xs tracking-widest;
 }
 
 /* Default pill CTA — pairs with the `glass-btn` surface (`glass-btn btn-pill`).

@@ -143,7 +143,7 @@
 				<div class="mt-6 space-y-5">
 					{#each card.fields as field, i (i)}
 						<div>
-							<h3 class="eyebrow text-xs tracking-widest">{field.label}</h3>
+							<h3 class="eyebrow-label">{field.label}</h3>
 							<p class="mt-1.5 text-sm leading-relaxed text-body">{field.body}</p>
 						</div>
 					{/each}

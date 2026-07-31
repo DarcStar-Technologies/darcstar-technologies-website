@@ -29,7 +29,7 @@
 	<!-- Hero — matches the homepage standard (the pattern for every page's hero): kicker,
 	     then the twisting triple helix, then the heading + lead inside a frosted glass-panel. -->
 	<section class="-mt-10 flex flex-col items-center px-6 pt-6 pb-16 text-center sm:pt-8">
-		<p class="eyebrow text-sm tracking-[0.3em]">{m.about_eyebrow()}</p>
+		<p class="eyebrow-hero">{m.about_eyebrow()}</p>
 
 		<!-- CosmicBackdrop measures #helix-slot to place + SIZE the helix (its height caps the
 		     amplitude), so keep the height; the panel below rises onto the helix's lower arcs
@@ -81,16 +81,16 @@
 				{m.about_facts_heading()}
 			</h2>
 			<dl class="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-[10rem_1fr]">
-				<dt class="eyebrow text-xs tracking-widest">{m.about_facts_company_label()}</dt>
+				<dt class="eyebrow-label">{m.about_facts_company_label()}</dt>
 				<dd class="text-sm text-emphasis">{SITE_NAME}</dd>
 
-				<dt class="eyebrow text-xs tracking-widest">{m.about_facts_location_label()}</dt>
+				<dt class="eyebrow-label">{m.about_facts_location_label()}</dt>
 				<dd class="text-sm text-emphasis">{m.footer_location()}</dd>
 
-				<dt class="eyebrow text-xs tracking-widest">{m.about_facts_focus_label()}</dt>
+				<dt class="eyebrow-label">{m.about_facts_focus_label()}</dt>
 				<dd class="text-sm text-emphasis">{m.about_facts_focus_value()}</dd>
 
-				<dt class="eyebrow text-xs tracking-widest">{m.about_facts_contact_label()}</dt>
+				<dt class="eyebrow-label">{m.about_facts_contact_label()}</dt>
 				<dd class="flex flex-col gap-1.5 text-sm">
 					<ContactLinks />
 				</dd>

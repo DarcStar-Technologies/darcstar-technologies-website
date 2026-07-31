@@ -14,7 +14,7 @@
 <CosmicBackdrop />
 
 <div class="mb-8 flex flex-wrap items-center justify-between gap-4">
-	<p class="eyebrow text-xs tracking-[0.25em]">{m.account_eyebrow()}</p>
+	<p class="eyebrow-panel">{m.account_eyebrow()}</p>
 	<div class="flex items-center gap-3">
 		<span class="text-xs text-faint">{m.account_signed_in_as({ email: data.email })}</span>
 		<form method="post" action={localizeHref('/logout')}>

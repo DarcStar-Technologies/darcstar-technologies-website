@@ -108,7 +108,7 @@
 
 {#snippet sectionHead(kicker: string, heading: string, sub?: string)}
 	<div class="p-8 text-center sm:p-10">
-		<p class="eyebrow text-xs tracking-[0.25em]">{kicker}</p>
+		<p class="eyebrow-panel">{kicker}</p>
 		<h2 class="mx-auto mt-3 max-w-3xl text-3xl font-medium tracking-tight text-white">{heading}</h2>
 		{#if sub}
 			<!-- Optional systems-stack caption (mono, one line). Reframes the polyglot
@@ -124,7 +124,7 @@
 
 <div class="space-y-24">
 	<section class="-mt-10 flex flex-col items-center px-6 pt-6 pb-16 text-center sm:pt-8">
-		<p class="eyebrow text-sm tracking-[0.3em]">
+		<p class="eyebrow-hero">
 			{m.hero_kicker()}
 		</p>
 
@@ -175,7 +175,7 @@
 			{#each readouts as ro (ro.l)}
 				<div>
 					<div class="font-mono text-lg text-white sm:text-xl">{ro.v}</div>
-					<div class="mt-0.5 eyebrow text-xs tracking-widest">
+					<div class="mt-0.5 eyebrow-label">
 						{ro.l}
 					</div>
 				</div>

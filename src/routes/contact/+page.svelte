@@ -41,7 +41,7 @@
 				{/snippet}
 			</ContactSuccess>
 		{:else}
-			<p class="eyebrow text-xs tracking-[0.25em]">{m.contact_page_eyebrow()}</p>
+			<p class="eyebrow-panel">{m.contact_page_eyebrow()}</p>
 			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
 				{m.contact_dialog_title()}
 			</h1>

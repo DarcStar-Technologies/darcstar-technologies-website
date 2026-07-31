@@ -31,7 +31,7 @@
 <!-- One labeled field row (the /evidence card-field shape — eyebrow label + body). -->
 {#snippet field(label: string, body: string)}
 	<div>
-		<h3 class="eyebrow text-xs tracking-widest">{label}</h3>
+		<h3 class="eyebrow-label">{label}</h3>
 		<p class="mt-1.5 text-sm leading-relaxed text-body">{body}</p>
 	</div>
 {/snippet}

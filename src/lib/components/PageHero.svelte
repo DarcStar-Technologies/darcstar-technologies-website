@@ -16,7 +16,7 @@
 </script>
 
 <section class="-mt-10 flex flex-col items-center px-6 pt-6 pb-8 text-center sm:pt-8">
-	<p class="eyebrow text-sm tracking-[0.3em]">{eyebrow}</p>
+	<p class="eyebrow-hero">{eyebrow}</p>
 
 	<!-- The twisting triple helix centres in this gap; CosmicBackdrop measures #helix-slot to place
 	     and SIZE it (its height caps the helix amplitude), so keep the height even though the panel
