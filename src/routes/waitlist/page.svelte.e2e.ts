@@ -263,6 +263,39 @@ test('"Continue" with no answers selected forks to branch B and finishes', async
 	await expect(page).toHaveURL(/\/waitlist$/);
 });
 
+// The glass menu is operable with REAL key events (DAR-198). Its unit spec drives the Zag machine
+// with DISPATCHED events — deliberately, because a driver round trip there costs up to 19s under
+// suite load — and dispatched events cannot prove the one thing only a browser can do: deliver a
+// keypress to the element Zag chose to focus. That half of the contract lives here, on the hydrated
+// menu with the real stylesheet, where a trusted keypress is what Playwright sends anyway.
+//
+// The expected label is read from `aria-activedescendant` rather than hardcoded, so this asserts
+// exactly what the arrow key highlighted — a hardcoded option would pass even if ArrowDown moved
+// nowhere and Enter committed the default.
+test('a GlassSelect is operable by real keyboard input', async ({ page }) => {
+	await page.goto('/waitlist');
+	const main = page.getByRole('main');
+	await advanceToStep2(main);
+
+	const trigger = main.getByRole('combobox', { name: /Your role/ });
+	const listbox = main.getByRole('listbox');
+
+	await trigger.focus();
+	await page.keyboard.press('Enter');
+	await expect(listbox).toBeVisible();
+
+	await page.keyboard.press('ArrowDown');
+	const activeId = await listbox.getAttribute('aria-activedescendant');
+	expect(activeId, 'the open list must mark a highlighted option').toBeTruthy();
+	// Zag's ids contain colons, so match on the attribute rather than an #id selector.
+	const highlighted = (await main.locator(`[id="${activeId}"]`).textContent())?.trim();
+	expect(highlighted).toBeTruthy();
+
+	await page.keyboard.press('Enter');
+	await expect(listbox).toHaveCount(0);
+	await expect(trigger).toContainText(highlighted!);
+});
+
 // DAR-62's commercial path: an answered, non-excluded role routes step 2's Continue into step 3.
 test('a commercial use case continues from step 2 into the step-3 questions', async ({ page }) => {
 	const errors: string[] = [];
