@@ -24,6 +24,7 @@ import type {
 	WaitlistAnnualBudget,
 	WaitlistEvidence,
 	WaitlistPilotInterest,
+	WaitlistLoiReadiness,
 	WaitlistContactMethod,
 	WaitlistResearchPreference,
 	WaitlistCta,
@@ -175,6 +176,20 @@ export const waitlistPilotInterestLabel: Record<WaitlistPilotInterest, () => str
 	'yes-within-12-months': m.waitlist_pilot_yes_12m,
 	'possibly-contact-me': m.waitlist_pilot_possibly,
 	'not-currently': m.waitlist_pilot_not_currently
+};
+
+/**
+ * LOI readiness (DAR-112) — revealed alongside the contact block, on the same positive-pilot predicate.
+ *
+ * The copy these keys resolve to carries the load-bearing part: the question names the letter as
+ * NONBINDING and the help text says answering commits the respondent to nothing. That is not a
+ * courtesy — the answer is a triage tag, and copy that let it read as an undertaking would make the
+ * stored value mean something it does not.
+ */
+export const waitlistLoiReadinessLabel: Record<WaitlistLoiReadiness, () => string> = {
+	yes: m.waitlist_loi_yes,
+	'possibly-after-discussion': m.waitlist_loi_possibly,
+	'not-at-this-time': m.waitlist_loi_not_now
 };
 
 /** Choosing `phone-video` is what reveals the phone field. */

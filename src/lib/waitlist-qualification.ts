@@ -165,6 +165,28 @@ export const WAITLIST_POSITIVE_PILOT_INTERESTS = [
 export const isPositivePilotInterest = (v: string | null): boolean =>
 	v !== null && (WAITLIST_POSITIVE_PILOT_INTERESTS as readonly string[]).includes(v);
 
+/**
+ * Step 4A — would they consider signing a nonbinding letter of intent for a paid evaluation (DAR-112)?
+ *
+ * A TRIAGE TAG, NOT AN LOI. This is the whole rule and it governs every downstream use: the answer is
+ * a self-reported intention from an unauthenticated, unverified form, so it must never be described,
+ * exported or counted as a commitment — not in an export, not in a deck, not in a status update. What
+ * it earns a respondent is a place further up a human's reading order, which is what every other
+ * qualification answer earns too.
+ *
+ * Kept OUT of `WaitlistLeadSignals` deliberately (DAR-65's rubric interface), so the classifier
+ * structurally cannot score on it — the same guardrail the money answers get, for the same reason:
+ * this is judgement material for a person, not an input to arithmetic that fires an email. It also
+ * largely duplicates the signal `pilot_interest` already carries, so scoring both would double-count
+ * one intention. Revisit once there is real answer distribution.
+ */
+export const WAITLIST_LOI_READINESS = [
+	'yes',
+	'possibly-after-discussion',
+	'not-at-this-time'
+] as const;
+export type WaitlistLoiReadiness = (typeof WAITLIST_LOI_READINESS)[number];
+
 /** Step 4A — preferred contact method. */
 export const WAITLIST_CONTACT_METHODS = ['email', 'phone-video'] as const;
 export type WaitlistContactMethod = (typeof WAITLIST_CONTACT_METHODS)[number];

@@ -30,6 +30,7 @@
 		waitlistBudgetLabel,
 		waitlistEvidenceLabel,
 		waitlistPilotInterestLabel,
+		waitlistLoiReadinessLabel,
 		waitlistContactMethodLabel,
 		waitlistResearchPreferenceLabel,
 		waitlistLeadClassLabel,
@@ -102,6 +103,7 @@
 		budgetRange: m.admin_waitlist_field_budget,
 		adoptionEvidence: m.admin_waitlist_field_evidence,
 		pilotInterest: m.admin_waitlist_field_pilot,
+		loiReadiness: m.admin_waitlist_field_loi,
 		deploymentScale: m.admin_waitlist_field_deployment,
 		contactPermission: m.admin_waitlist_col_outreach,
 		contactMethod: m.admin_waitlist_field_contact_method,
@@ -277,6 +279,15 @@
 			m.admin_waitlist_field_pilot(),
 			labelled(row.pilotInterest, waitlistPilotInterestLabel),
 			conflicts.includes('pilotInterest')
+		)}
+		<!-- DAR-112. Labelled "Would consider an LOI" rather than "LOI readiness" so the VALUE reads as
+		     the self-report it is: a bare "Yes" under a bare "LOI" is one skim away from being read as a
+		     letter we hold. The note under the table says the same thing in prose; this says it in the
+		     one place someone copying a figure out is actually looking. -->
+		{@render detail(
+			m.admin_waitlist_field_loi(),
+			labelled(row.loiReadiness, waitlistLoiReadinessLabel),
+			conflicts.includes('loiReadiness')
 		)}
 		{@render detail(
 			m.admin_waitlist_field_deployment(),

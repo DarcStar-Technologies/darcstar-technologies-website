@@ -373,6 +373,12 @@ export const waitlistSubmission = sqliteTable(
 		adoptionEvidence: text('adoption_evidence', { mode: 'json' }).$type<string[]>(),
 		// --- v2 step 4A (DAR-63) ---
 		pilotInterest: text('pilot_interest'),
+		// Would they consider signing a nonbinding letter of intent (DAR-112)? A TRIAGE TAG, NOT AN LOI —
+		// nothing here is an agreement, an obligation or pipeline, and it must never be exported or
+		// reported as one. Nullable for the same reason as `contact_permission` below: null means the
+		// question was never on screen (the pilot answer wasn't positive), which is not the same as
+		// declining it.
+		loiReadiness: text('loi_readiness'),
 		deploymentScale: text('deployment_scale'),
 		// Nullable on purpose: null = never shown the question; false = shown and declined.
 		contactPermission: integer('contact_permission', { mode: 'boolean' }),

@@ -20,6 +20,7 @@ import {
 	WAITLIST_EVIDENCE,
 	WAITLIST_EVIDENCE_MAX,
 	WAITLIST_PILOT_INTERESTS,
+	WAITLIST_LOI_READINESS,
 	WAITLIST_CONTACT_METHODS,
 	WAITLIST_RESEARCH_PREFERENCES,
 	WAITLIST_DEPLOYMENT_SCALE_MAX,
@@ -220,6 +221,11 @@ export function validateWaitlistStep3(data: {
 
 export interface CleanedWaitlistStep4A {
 	pilotInterest: string | null;
+	/**
+	 * LOI readiness (DAR-112) — null on the same predicate as `contactPermission`, and for a REASON
+	 * rather than for symmetry. See the validator.
+	 */
+	loiReadiness: string | null;
 	deploymentScale: string | null;
 	// TRI-STATE, matching schema.ts's contact_permission: null = the question wasn't shown (pilot
 	// interest not positive), false = shown and declined, true = granted. The store keep-existings a
@@ -231,21 +237,37 @@ export interface CleanedWaitlistStep4A {
 
 export function validateWaitlistStep4A(data: {
 	pilotInterest?: unknown;
+	loiReadiness?: unknown;
 	deploymentScale?: unknown;
 	contactPermission?: unknown;
 	contactMethod?: unknown;
 	phone?: unknown;
 }): CleanedWaitlistStep4A {
 	const pilotInterest = slugOrNull(data.pilotInterest, WAITLIST_PILOT_INTERESTS);
-	// The contact block only exists for a positive pilot answer (DAR-63 renders it on the same
-	// predicate). Outside that, contact_permission is "never asked" (null) — NOT a decline — so a
-	// negative/absent-pilot submit preserves any standing grant instead of silently revoking it.
+
+	// GATED ON THE PILOT ANSWER: `loi_readiness` and `contact_permission` — not the rest of the block
+	// DAR-63 reveals. The line is whether an answer still means anything beside a refusal to evaluate:
+	// permission "about an evaluation or pilot" and a willingness to sign FOR one are both scoped to
+	// the thing just declined, while a deployment description, a phone number and a contact preference
+	// carry no such scope, and gating those would discard something the visitor did mean. NOT an
+	// authorization boundary either way — `contact_permission` authorizes no send (DAR-191:
+	// `mayContactLead` on the lead's `do_not_contact_at` is the real gate), so what this protects is an
+	// operator reading the row.
+	//
+	// The case it exists for is the NO-JS visitor, not a crafted POST: without JS every field renders
+	// whatever the pilot answer is, so "yes, we'd consider an LOI" and "Not currently" can arrive in
+	// ONE submit. That is exactly what it guarantees — a single submit cannot fabricate the pair — and
+	// the pair stays reachable, deliberately: null is "never asked", the store keep-existings it
+	// (waitlist-store.spec.ts pins it), so a walk-back keeps the earlier answer, which is history the
+	// person expressed rather than something our rendering invented. DAR-63's call, unchanged.
+	// Full reasoning: docs/waitlist.md, "loi_readiness is a triage tag, not an LOI".
+	const asked = isPositivePilotInterest(pilotInterest);
+
 	return {
 		pilotInterest,
+		loiReadiness: asked ? slugOrNull(data.loiReadiness, WAITLIST_LOI_READINESS) : null,
 		deploymentScale: optionalText(data.deploymentScale, WAITLIST_DEPLOYMENT_SCALE_MAX),
-		contactPermission: isPositivePilotInterest(pilotInterest)
-			? checkbox(data.contactPermission)
-			: null,
+		contactPermission: asked ? checkbox(data.contactPermission) : null,
 		contactMethod: slugOrNull(data.contactMethod, WAITLIST_CONTACT_METHODS),
 		phone: optionalText(data.phone, PHONE_MAX)
 	};

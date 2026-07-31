@@ -18,5 +18,10 @@
 // recorded and enforced, and the copy now says the thing a reader could not previously tell: that
 // being left alone does not require having your record deleted. Third change to land on the 30th, so
 // the constant again does not move; check the clock at MERGE time, not at edit time.
-export const PRIVACY_UPDATED = '2026-07-30';
+// 2026-07-31: DAR-112 added the step-4A letter-of-intent question, so `privacy_collect_waitlist_body`
+// enumerates it and now also promises what it ISN'T — answering creates no agreement or obligation.
+// This one DOES move, and only because the DAR-136 entry above says to check: the work was done on the
+// evening of the 30th local, which was already the 31st in UTC. Every other date in this file is a
+// UTC one, so "today" as the author experiences it is the wrong clock to read.
+export const PRIVACY_UPDATED = '2026-07-31';
 export const TERMS_UPDATED = '2026-07-23';

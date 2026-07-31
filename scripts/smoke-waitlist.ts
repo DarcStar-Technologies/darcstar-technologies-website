@@ -180,6 +180,7 @@ const STEP3 = {
 } as const;
 const STEP4A = {
 	pilotInterest: 'yes-within-3-months',
+	loiReadiness: 'possibly-after-discussion',
 	deploymentScale: 'Roughly 20 autonomous ground units across two sites',
 	contactMethod: 'email',
 	phone: '+1 555 010 0103'
@@ -731,6 +732,7 @@ const donePage = await submit(step4aAction, {
 	flowId: requiredHidden(step4Page, 'flowId', 'step 3'),
 	intent: 'continue',
 	pilotInterest: STEP4A.pilotInterest,
+	loiReadiness: STEP4A.loiReadiness,
 	deploymentScale: STEP4A.deploymentScale,
 	'b:contactPermission': 'on',
 	contactMethod: STEP4A.contactMethod,
@@ -757,6 +759,11 @@ if (donePage.html.includes(STEP4A.deploymentScale)) {
 
 const [afterStep4a] = await submissionsForLead();
 assertEqual('step 4A', afterStep4a.pilotInterest, STEP4A.pilotInterest);
+// DAR-112. The only end-to-end proof this column has: the hermetic e2e reaches step 4A on a DECOY
+// token and writes nothing, and the unit specs hand the validator an object literal — so the hop from
+// the form's field NAME through form-data to `data.loiReadiness` is exercised nowhere else. A typo on
+// either side of it would drop the answer silently, which is the failure this line exists to catch.
+assertEqual('step 4A', afterStep4a.loiReadiness, STEP4A.loiReadiness);
 assertEqual('step 4A', afterStep4a.deploymentScale, STEP4A.deploymentScale);
 assertEqual('step 4A', afterStep4a.contactPermission, true);
 assertEqual('step 4A', afterStep4a.contactMethod, STEP4A.contactMethod);

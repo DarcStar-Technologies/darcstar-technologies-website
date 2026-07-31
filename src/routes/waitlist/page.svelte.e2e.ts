@@ -170,6 +170,11 @@ async function expectConfirmation(main: Locator, cta: string, href: RegExp) {
 	await expect(main.getByText(/\$/)).toHaveCount(0);
 	await expect(main.getByText(/economic impact/i)).toHaveCount(0);
 	await expect(main.getByText(/deployment scale/i)).toHaveCount(0);
+	// DAR-112, and the one with the most to lose from a leak: this screen must not tell somebody we
+	// have recorded that they would sign anything. The regexp is deliberately wider than the field
+	// label ("Letter of intent") — a summary phrased as "you said you'd consider an LOI" carries no
+	// label at all, and is exactly the friendly-sounding recap that would get written.
+	await expect(main.getByText(/letter of intent|\bLOI\b/i)).toHaveCount(0);
 }
 
 // Signup → step 2 → answer with a commercial role AND a near-term timeline → step 3. The role is what
@@ -243,9 +248,13 @@ test('"Continue" with no answers selected forks to branch B and finishes', async
 		main.getByRole('heading', { name: 'Help us understand the opportunity' })
 	).toHaveCount(0);
 
-	// Branch B asks nothing about money or pilots.
+	// Branch B asks nothing about money or pilots — and since DAR-112, nothing about a letter of
+	// intent either. Structural rather than conditional (WaitlistStep4B has no such field), but it is
+	// an acceptance criterion in its own right: the research branch must never be asked to signal
+	// commercial commitment, so it is asserted rather than left to the component's shape.
 	await expect(main.getByText('Evaluation budget')).toHaveCount(0);
 	await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toHaveCount(0);
+	await expect(main.getByText(/letter of intent|\bLOI\b/i)).toHaveCount(0);
 
 	// Nothing was classifiable, so the confirmation offers the least-committal CTA — not the evidence
 	// or publications link, and certainly not a conversation.
@@ -373,8 +382,16 @@ test('step 4A reveals the contact block only while the pilot answer is positive'
 	await expect(main.getByText('Evaluation interest')).toBeVisible();
 	await expect(main.getByLabel(/Deployment scale/)).toHaveCount(0);
 	await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toHaveCount(0);
+	// DAR-112 rides the same reveal, so it is absent here too.
+	await expect(main.getByRole('combobox', { name: /Letter of intent/ })).toHaveCount(0);
 
 	await chooseOption(main, /Evaluation interest/, /within 3 months/);
+	await expect(main.getByRole('combobox', { name: /Letter of intent/ })).toBeVisible();
+	// The question must SAY it is nonbinding and that answering commits them to nothing. That copy is
+	// the only thing standing between a triage tag and a respondent who thinks they signed something,
+	// so it is pinned here rather than left to the message catalog.
+	await expect(main.getByText(/nonbinding letter of intent/i)).toBeVisible();
+	await expect(main.getByText(/commits you to nothing/i)).toBeVisible();
 	await expect(main.getByLabel(/Deployment scale/)).toBeVisible();
 	await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toBeVisible();
 	await expect(main.getByRole('combobox', { name: /Preferred contact method/ })).toBeVisible();
@@ -385,7 +402,13 @@ test('step 4A reveals the contact block only while the pilot answer is positive'
 	await expect(main.getByLabel(/Phone/)).toBeVisible();
 	await main.getByLabel(/Phone/).fill('+1 555 000 1234');
 
-	// Answering the whole branch terminates the flow.
+	// Answering the whole branch terminates the flow. The LOI answer is given a real value here — the
+	// confirmation's "nothing is echoed back" check is only worth anything against a flow that
+	// actually answered the question.
+	// `/^Yes$/`, not `'Yes'`: getByRole's `name` defaults to a case-insensitive SUBSTRING match, and
+	// the pilot select offers three options beginning "Yes — within…". Anchored so this can never
+	// silently pick one of those if a closed Zag menu ever stays mounted.
+	await chooseOption(main, /Letter of intent/, /^Yes$/);
 	await main.getByRole('checkbox', { name: /contact me directly/ }).check();
 	await main.getByLabel(/Deployment scale/).fill('Two inspection cells, about 40 units.');
 	await main.getByRole('button', { name: 'Continue' }).click();
@@ -421,6 +444,10 @@ test('step 4A hides the contact block again for a negative answer', async ({ pag
 	await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toHaveCount(0);
 	await expect(main.getByLabel(/Deployment scale/)).toHaveCount(0);
 	await expect(main.getByLabel(/Phone/)).toHaveCount(0);
+	// DAR-112. Withdrawing the question is the client half; the server independently nulls the column
+	// on the same predicate (waitlist.spec.ts), which is what covers the no-JS visitor who sees every
+	// field regardless and could otherwise submit an LOI answer alongside this refusal.
+	await expect(main.getByRole('combobox', { name: /Letter of intent/ })).toHaveCount(0);
 
 	await main.getByRole('button', { name: 'Continue' }).click();
 
@@ -786,8 +813,15 @@ test.describe('without JavaScript', () => {
 		await expect(main.getByLabel(/Deployment scale/)).toBeVisible();
 		await expect(main.getByRole('checkbox', { name: /contact me directly/ })).toBeVisible();
 		await expect(main.getByLabel(/Phone/)).toBeVisible();
+		// DAR-112, and this assertion is the REASON its validator gates the column server-side. The
+		// pilot question is still unanswered at this point and the letter-of-intent question is on
+		// screen anyway — so a no-JS visitor can answer it and then pick "Not currently", and both
+		// values reach the endpoint. Nothing on the client can prevent that; the server deciding the
+		// column from the pilot answer is what stops a contradiction being stored.
+		await expect(main.getByLabel(/Letter of intent/)).toBeVisible();
 
 		await main.getByLabel(/Evaluation interest/).selectOption('possibly-contact-me');
+		await main.getByLabel(/Letter of intent/).selectOption('possibly-after-discussion');
 		await main.getByRole('checkbox', { name: /contact me directly/ }).check();
 		await main.getByLabel(/Preferred contact method/).selectOption('phone-video');
 		await main.getByRole('button', { name: 'Continue' }).click();

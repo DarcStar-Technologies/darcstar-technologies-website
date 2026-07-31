@@ -91,6 +91,10 @@ describe('buildWaitlistAckEmail', () => {
 			...full,
 			deploymentScale: 'SENTINEL-SCALE',
 			pilotInterest: 'SENTINEL-PILOT',
+			// DAR-112. The one qualification answer with a reading that could embarrass us if it ever
+			// came back at the submitter: an ack that echoed "you said you'd sign a letter of intent"
+			// would read as us holding them to it, which is exactly what the answer is not.
+			loiReadiness: 'SENTINEL-LOI',
 			budgetRange: 'SENTINEL-BUDGET',
 			economicImpact: 'SENTINEL-IMPACT'
 		} as CleanedWaitlist;
