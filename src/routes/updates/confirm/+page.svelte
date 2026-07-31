@@ -9,6 +9,7 @@
 	// swallowed — somebody acting on their own consent has to be told when nothing was recorded.
 	import { enhance, applyAction } from '$app/forms';
 	import Seo from '$lib/components/Seo.svelte';
+	import UtilityPanel from '$lib/components/UtilityPanel.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import { inlineLinkClass, submitButtonClass } from '$lib/styles';
@@ -34,65 +35,63 @@
 
 <CosmicBackdrop />
 
-<section class="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:py-16">
-	<div class="glass-card mx-auto w-full max-w-sm p-6 text-left sm:p-8">
-		<p class="eyebrow-panel">{m.updates_eyebrow()}</p>
+<UtilityPanel>
+	<p class="eyebrow-panel">{m.updates_eyebrow()}</p>
 
-		{#if form?.result === 'confirmed'}
-			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
-				{m.updates_confirm_done_heading()}
-			</h1>
-			<p class="mt-3 text-sm text-body">{m.updates_confirm_done_body()}</p>
-		{:else if form?.result === 'unsubscribed'}
-			<!-- A confirmation link found after unsubscribing. The store refuses to re-subscribe (the
-			     form is the surface a stranger controls, so a withdrawal has to outlast anything reachable
-			     from it), and this says so instead of pretending the press did nothing. -->
-			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
-				{m.updates_confirm_optedout_heading()}
-			</h1>
-			<p class="mt-3 text-sm text-body">{m.updates_confirm_optedout_body()}</p>
-			<p class="mt-6 text-sm text-body">
-				<a class={inlineLinkClass} href={localizeHref('/contact')}>{m.updates_contact_link()}</a>
-			</p>
-		{:else if showInvalid}
-			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
-				{m.updates_invalid_heading()}
-			</h1>
-			<p class="mt-3 text-sm text-body">{m.updates_invalid_body()}</p>
-			<p class="mt-6 text-sm text-body">
-				<a class={inlineLinkClass} href={localizeHref('/contact')}>{m.updates_contact_link()}</a>
-			</p>
-		{:else}
-			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
-				{m.updates_confirm_heading()}
-			</h1>
-			<p class="mt-2 text-sm text-body">{m.updates_confirm_lead()}</p>
+	{#if form?.result === 'confirmed'}
+		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+			{m.updates_confirm_done_heading()}
+		</h1>
+		<p class="mt-3 text-sm text-body">{m.updates_confirm_done_body()}</p>
+	{:else if form?.result === 'unsubscribed'}
+		<!-- A confirmation link found after unsubscribing. The store refuses to re-subscribe (the
+		     form is the surface a stranger controls, so a withdrawal has to outlast anything reachable
+		     from it), and this says so instead of pretending the press did nothing. -->
+		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+			{m.updates_confirm_optedout_heading()}
+		</h1>
+		<p class="mt-3 text-sm text-body">{m.updates_confirm_optedout_body()}</p>
+		<p class="mt-6 text-sm text-body">
+			<a class={inlineLinkClass} href={localizeHref('/contact')}>{m.updates_contact_link()}</a>
+		</p>
+	{:else if showInvalid}
+		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+			{m.updates_invalid_heading()}
+		</h1>
+		<p class="mt-3 text-sm text-body">{m.updates_invalid_body()}</p>
+		<p class="mt-6 text-sm text-body">
+			<a class={inlineLinkClass} href={localizeHref('/contact')}>{m.updates_contact_link()}</a>
+		</p>
+	{:else}
+		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+			{m.updates_confirm_heading()}
+		</h1>
+		<p class="mt-2 text-sm text-body">{m.updates_confirm_lead()}</p>
 
-			<!-- A POST, and that is the security property rather than a convention: a link previewer or a
-			     mail scanner fetching the URL must not be able to record somebody's consent. -->
-			<form
-				method="post"
-				class="mt-6 space-y-4"
-				use:enhance={() => {
-					submitting = true;
-					return async ({ result }) => {
-						submitting = false;
-						await applyAction(result);
-					};
-				}}
-			>
-				<!-- `ErrorBanner`, not a styled <p>: it carries role="alert", and an enhanced submit does
-				     not navigate — so without it a screen-reader user presses the button, hears nothing,
-				     and has no way to know the write failed. Same component every other form here uses. -->
-				{#if form?.result === 'error'}
-					<ErrorBanner>{m.updates_error_body()}</ErrorBanner>
-				{/if}
+		<!-- A POST, and that is the security property rather than a convention: a link previewer or a
+		     mail scanner fetching the URL must not be able to record somebody's consent. -->
+		<form
+			method="post"
+			class="mt-6 space-y-4"
+			use:enhance={() => {
+				submitting = true;
+				return async ({ result }) => {
+					submitting = false;
+					await applyAction(result);
+				};
+			}}
+		>
+			<!-- `ErrorBanner`, not a styled <p>: it carries role="alert", and an enhanced submit does
+			     not navigate — so without it a screen-reader user presses the button, hears nothing,
+			     and has no way to know the write failed. Same component every other form here uses. -->
+			{#if form?.result === 'error'}
+				<ErrorBanner>{m.updates_error_body()}</ErrorBanner>
+			{/if}
 
-				<input type="hidden" name="token" value={token} />
-				<button type="submit" disabled={submitting} class={submitButtonClass}>
-					{submitting ? m.updates_confirm_submitting() : m.updates_confirm_submit()}
-				</button>
-			</form>
-		{/if}
-	</div>
-</section>
+			<input type="hidden" name="token" value={token} />
+			<button type="submit" disabled={submitting} class={submitButtonClass}>
+				{submitting ? m.updates_confirm_submitting() : m.updates_confirm_submit()}
+			</button>
+		</form>
+	{/if}
+</UtilityPanel>

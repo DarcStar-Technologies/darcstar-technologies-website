@@ -6,6 +6,7 @@
 	// hidden field so a no-JS re-render doesn't depend on the URL keeping its query string.
 	import { enhance, applyAction } from '$app/forms';
 	import Seo from '$lib/components/Seo.svelte';
+	import UtilityPanel from '$lib/components/UtilityPanel.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import {
@@ -57,90 +58,88 @@
 
 <CosmicBackdrop />
 
-<section class="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:py-16">
-	<div class="glass-card mx-auto w-full max-w-sm p-6 text-left sm:p-8">
-		<p class="eyebrow-panel">{m.reset_password_eyebrow()}</p>
+<UtilityPanel>
+	<p class="eyebrow-panel">{m.reset_password_eyebrow()}</p>
 
-		{#if form?.ok}
-			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
-				{m.reset_password_success_heading()}
-			</h1>
-			<p class="mt-3 text-sm text-body">
-				{invite ? m.reset_password_invite_success_body() : m.reset_password_success_body()}
-			</p>
-			<p class="mt-6 text-sm text-body">
-				<a class={inlineLinkClass} href={localizeHref('/login')}
-					>{m.reset_password_success_signin_link()}</a
-				>
-			</p>
-		{:else if showInvalid}
-			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
-				{m.reset_password_invalid_heading()}
-			</h1>
-			<!-- The recovery link points at /forgot-password for an invitee too, and correctly: their
-			     account already exists, so the ordinary reset flow will mail them a fresh link without
-			     needing staff at all. Only the sentence above it changes. -->
-			<p class="mt-3 text-sm text-body">
-				{invite ? m.reset_password_invite_invalid_body() : m.reset_password_invalid_body()}
-			</p>
-			<p class="mt-6 text-sm text-body">
-				<a class={inlineLinkClass} href={localizeHref('/forgot-password')}
-					>{m.reset_password_invalid_request_link()}</a
-				>
-			</p>
-		{:else}
-			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
-				{invite ? m.reset_password_invite_heading() : m.reset_password_heading()}
-			</h1>
-			<p class="mt-2 text-sm text-body">
-				{invite ? m.reset_password_invite_lead() : m.reset_password_lead()}
-			</p>
-
-			<form
-				method="post"
-				class="mt-6 space-y-4"
-				use:enhance={() => {
-					submitting = true;
-					return async ({ result }) => {
-						submitting = false;
-						await applyAction(result);
-					};
-				}}
+	{#if form?.ok}
+		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+			{m.reset_password_success_heading()}
+		</h1>
+		<p class="mt-3 text-sm text-body">
+			{invite ? m.reset_password_invite_success_body() : m.reset_password_success_body()}
+		</p>
+		<p class="mt-6 text-sm text-body">
+			<a class={inlineLinkClass} href={localizeHref('/login')}
+				>{m.reset_password_success_signin_link()}</a
 			>
-				{#if error}
-					<ErrorBanner>{errorMessage(error)}</ErrorBanner>
+		</p>
+	{:else if showInvalid}
+		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+			{m.reset_password_invalid_heading()}
+		</h1>
+		<!-- The recovery link points at /forgot-password for an invitee too, and correctly: their
+		     account already exists, so the ordinary reset flow will mail them a fresh link without
+		     needing staff at all. Only the sentence above it changes. -->
+		<p class="mt-3 text-sm text-body">
+			{invite ? m.reset_password_invite_invalid_body() : m.reset_password_invalid_body()}
+		</p>
+		<p class="mt-6 text-sm text-body">
+			<a class={inlineLinkClass} href={localizeHref('/forgot-password')}
+				>{m.reset_password_invalid_request_link()}</a
+			>
+		</p>
+	{:else}
+		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+			{invite ? m.reset_password_invite_heading() : m.reset_password_heading()}
+		</h1>
+		<p class="mt-2 text-sm text-body">
+			{invite ? m.reset_password_invite_lead() : m.reset_password_lead()}
+		</p>
+
+		<form
+			method="post"
+			class="mt-6 space-y-4"
+			use:enhance={() => {
+				submitting = true;
+				return async ({ result }) => {
+					submitting = false;
+					await applyAction(result);
+				};
+			}}
+		>
+			{#if error}
+				<ErrorBanner>{errorMessage(error)}</ErrorBanner>
+			{/if}
+
+			<input type="hidden" name="token" value={token} />
+
+			<label class="block">
+				<span class={fieldLabelBlockClass}>
+					{invite
+						? m.reset_password_invite_field_password_label()
+						: m.reset_password_field_password_label()}
+				</span>
+				<input
+					type="password"
+					name="password"
+					required
+					minlength="8"
+					autocomplete="new-password"
+					class={fieldClass}
+					placeholder={invite
+						? m.reset_password_invite_field_password_placeholder()
+						: m.reset_password_field_password_placeholder()}
+				/>
+				<span class="mt-1.5 block text-xs text-faint">{m.reset_password_password_hint()}</span>
+			</label>
+
+			<button type="submit" disabled={submitting} class={submitButtonClass}>
+				{#if invite}
+					{submitting ? m.reset_password_invite_submitting() : m.reset_password_invite_submit()}
+				{:else}
+					{submitting ? m.reset_password_submitting() : m.reset_password_submit()}
 				{/if}
-
-				<input type="hidden" name="token" value={token} />
-
-				<label class="block">
-					<span class={fieldLabelBlockClass}>
-						{invite
-							? m.reset_password_invite_field_password_label()
-							: m.reset_password_field_password_label()}
-					</span>
-					<input
-						type="password"
-						name="password"
-						required
-						minlength="8"
-						autocomplete="new-password"
-						class={fieldClass}
-						placeholder={invite
-							? m.reset_password_invite_field_password_placeholder()
-							: m.reset_password_field_password_placeholder()}
-					/>
-					<span class="mt-1.5 block text-xs text-faint">{m.reset_password_password_hint()}</span>
-				</label>
-
-				<button type="submit" disabled={submitting} class={submitButtonClass}>
-					{#if invite}
-						{submitting ? m.reset_password_invite_submitting() : m.reset_password_invite_submit()}
-					{:else}
-						{submitting ? m.reset_password_submitting() : m.reset_password_submit()}
-					{/if}
-				</button>
-			</form>
-		{/if}
-	</div>
-</section>
+			</button>
+		</form>
+	{/if}
+</UtilityPanel>

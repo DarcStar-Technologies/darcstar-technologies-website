@@ -19,6 +19,7 @@
 	// forward as its authorization. Which branch is a SERVER decision the page just obeys, and so is
 	// the confirmation's CTA (DAR-64). See `stage` and `cta`.
 	import Seo from '$lib/components/Seo.svelte';
+	import UtilityPanel from '$lib/components/UtilityPanel.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import FormPrivacyNotice from '$lib/components/FormPrivacyNotice.svelte';
@@ -177,134 +178,134 @@
 	</label>
 {/snippet}
 
-<section class="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:py-16">
-	<div class="glass-card mx-auto w-full max-w-lg p-6 text-left sm:p-8">
-		{#if stage === 'done'}
-			<!-- Terminal state: the flow routed to the confirmation (a Skip, or the last step submitted).
-			     Value/budget answers are internal-only, so nothing from them is echoed back here. -->
-			<WaitlistConfirmation {cta} {flowId} />
-		{:else if stage === 'step4a'}
-			<!-- Active commercial interest → pilot details (DAR-63 branch A). -->
-			<WaitlistStep4A token={stepToken} {flowClaim} {flowId} />
-		{:else if stage === 'step4b'}
-			<!-- Research or general interest → what they'd like to receive (DAR-63 branch B). -->
-			<WaitlistStep4B token={stepToken} {flowClaim} {flowId} />
-		{:else if stage === 'step3'}
-			<!-- Commercial/operational use case → the optional step-3 questions (DAR-62). -->
-			<WaitlistStep3 token={stepToken} {flowClaim} {flowId} />
-		{:else if stage === 'step2'}
-			<!-- Step-1 signup succeeded → the optional step-2 questions, authorized by the token step 1
-			     returned. -->
-			<WaitlistStep2 token={stepToken} {flowId} />
-		{:else}
-			<WaitlistStepHeading heading={m.waitlist_heading()} lead={m.waitlist_lead()} />
+<UtilityPanel width="lg">
+	{#if stage === 'done'}
+		<!-- Terminal state: the flow routed to the confirmation (a Skip, or the last step submitted).
+		     Value/budget answers are internal-only, so nothing from them is echoed back here. -->
+		<WaitlistConfirmation {cta} {flowId} />
+	{:else if stage === 'step4a'}
+		<!-- Active commercial interest → pilot details (DAR-63 branch A). -->
+		<WaitlistStep4A token={stepToken} {flowClaim} {flowId} />
+	{:else if stage === 'step4b'}
+		<!-- Research or general interest → what they'd like to receive (DAR-63 branch B). -->
+		<WaitlistStep4B token={stepToken} {flowClaim} {flowId} />
+	{:else if stage === 'step3'}
+		<!-- Commercial/operational use case → the optional step-3 questions (DAR-62). -->
+		<WaitlistStep3 token={stepToken} {flowClaim} {flowId} />
+	{:else if stage === 'step2'}
+		<!-- Step-1 signup succeeded → the optional step-2 questions, authorized by the token step 1
+		     returned. -->
+		<WaitlistStep2 token={stepToken} {flowId} />
+	{:else}
+		<WaitlistStepHeading heading={m.waitlist_heading()} lead={m.waitlist_lead()} />
 
-			<!-- Spreading {...joinWaitlist} gives the form its method/action (native POST fallback) plus
-			     the progressive-enhancement attachment when JS is present. -->
-			<form class="mt-6 space-y-4" {...joinWaitlist}>
-				<!-- Honeypot: off-screen, out of the a11y tree, unfocusable. A non-empty value is
-				     silently dropped server-side. -->
-				<div
-					class="pointer-events-none absolute -left-[9999px] h-0 w-0 overflow-hidden"
-					aria-hidden="true"
-				>
-					<input
-						{...joinWaitlist.fields.website.as('text')}
-						tabindex="-1"
-						autocomplete="off"
-						aria-hidden="true"
-					/>
-				</div>
-
-				<!-- The funnel handle (DAR-66) this render's view was recorded under, so the signup can be
-				     attributed to the same flow. Anonymous, and signed (DAR-86) so that only a real page
-				     load can produce one — see $lib/server/waitlist-funnel.ts. -->
-				<input {...joinWaitlist.fields.flowId.as('hidden', flowId)} />
-
-				<!-- Whole-form issues (e.g. rate limit); the name/email field issues render under them. -->
-				{#each joinWaitlist.fields.allIssues() as issue (issue.message)}
-					{#if issue.path.length === 0}
-						<ErrorBanner>{issue.message}</ErrorBanner>
-					{/if}
-				{/each}
-
-				{@render textField(m.waitlist_field_name_label(), joinWaitlist.fields.name, {
-					placeholder: m.waitlist_field_name_placeholder(),
-					autocomplete: 'name',
-					required: true
-				})}
-
-				{@render textField(m.waitlist_field_email_label(), joinWaitlist.fields.email, {
-					type: 'email',
-					placeholder: m.waitlist_field_email_placeholder(),
-					autocomplete: 'email',
-					required: true
-				})}
-
-				{@render textField(m.waitlist_field_company_label(), joinWaitlist.fields.company, {
-					placeholder: m.waitlist_field_company_placeholder(),
-					autocomplete: 'organization',
-					optional: true
-				})}
-
-				<GlassSelect
-					id="waitlist-region"
-					label={m.waitlist_field_region_label()}
-					badge={m.waitlist_optional()}
-					placeholder={m.waitlist_select_placeholder()}
-					options={regionOptions}
-					field={joinWaitlist.fields.countryRegion}
-				/>
-
-				<!-- Optional, UNCHECKED marketing opt-in → consent_updates (DAR-59). A checkbox submits
-				     nothing when unchecked, so absence is stored as false server-side, never consent.
-				     The label is unchanged by DAR-139 and the help line is the whole change: what was
-				     untrue here was never the wording of the request, it was that ticking it had an
-				     undisclosed consequence. It now sends one confirmation email, so the form has to say
-				     so before it happens — and the sentence is also the honest description of the gate,
-				     since nothing is sent unless that email is answered. -->
-				<label class="flex cursor-pointer items-start gap-3 text-sm text-body">
-					<input {...joinWaitlist.fields.consentUpdates.as('checkbox')} class={checkboxClass} />
-					<span>{m.waitlist_consent_label()}</span>
-				</label>
-				<!-- `-mt-2 ps-7` rather than the bare help class: this one sits BELOW its control instead of
-				     above a field, and the padding lines it up with the label text rather than with the
-				     checkbox, so it reads as part of the tick box and not as more form-level fine print
-				     next to the privacy notice underneath. (7 = the checkbox's `size-4` plus the label's
-				     `gap-3`.) -->
-				<p class="{fieldHelpClass} -mt-2 ps-7">{m.waitlist_consent_help()}</p>
-
-				<!-- Data-handling notice (DAR-44) — the shared FormPrivacyNotice, same as the
-				     contact form's (ContactFields). -->
-				<FormPrivacyNotice
-					notice={m.waitlist_privacy_notice()}
-					linkLabel={m.waitlist_privacy_link()}
-				/>
-
-				<button type="submit" disabled={!!joinWaitlist.pending} class={submitButtonClass}>
-					{joinWaitlist.pending ? m.waitlist_submitting() : m.waitlist_submit()}
-				</button>
-			</form>
-		{/if}
-	</div>
-
-	{#if resumed}
-		<!-- The escape hatch for a resumed render (DAR-75). Without it, a visitor who finished the flow
-		     and came back to sign a colleague up would meet the confirmation and no form at all — a
-		     worse dead end than the blank-form bug this feature fixes.
-
-		     Deliberately OUTSIDE the card, and only when the cookie is what put them here.
-
-		     A FORM, NOT A LINK. Clearing the resume cookie is a state mutation, so it belongs behind a
-		     POST — and a destructive GET behind an internal link is a trap in a Kit app: <body> sets
-		     `preload-data="hover"`, so preloading the data ran the load and dropped the cookie on
-		     mouse-over, with no click. A POST is never prefetched, so nothing can fire it by accident.
-		     It also keeps DAR-64's one-CTA confirmation literally true — a submit button isn't a
-		     second link on that screen. Reasoning lives with `restartWaitlist`. -->
-		<form {...restartWaitlist} class="mt-5 text-center">
-			<button type="submit" class="{mutedLinkClass} cursor-pointer"
-				>{m.waitlist_restart_link()}</button
+		<!-- Spreading {...joinWaitlist} gives the form its method/action (native POST fallback) plus
+		     the progressive-enhancement attachment when JS is present. -->
+		<form class="mt-6 space-y-4" {...joinWaitlist}>
+			<!-- Honeypot: off-screen, out of the a11y tree, unfocusable. A non-empty value is
+			     silently dropped server-side. -->
+			<div
+				class="pointer-events-none absolute -left-[9999px] h-0 w-0 overflow-hidden"
+				aria-hidden="true"
 			>
+				<input
+					{...joinWaitlist.fields.website.as('text')}
+					tabindex="-1"
+					autocomplete="off"
+					aria-hidden="true"
+				/>
+			</div>
+
+			<!-- The funnel handle (DAR-66) this render's view was recorded under, so the signup can be
+			     attributed to the same flow. Anonymous, and signed (DAR-86) so that only a real page
+			     load can produce one — see $lib/server/waitlist-funnel.ts. -->
+			<input {...joinWaitlist.fields.flowId.as('hidden', flowId)} />
+
+			<!-- Whole-form issues (e.g. rate limit); the name/email field issues render under them. -->
+			{#each joinWaitlist.fields.allIssues() as issue (issue.message)}
+				{#if issue.path.length === 0}
+					<ErrorBanner>{issue.message}</ErrorBanner>
+				{/if}
+			{/each}
+
+			{@render textField(m.waitlist_field_name_label(), joinWaitlist.fields.name, {
+				placeholder: m.waitlist_field_name_placeholder(),
+				autocomplete: 'name',
+				required: true
+			})}
+
+			{@render textField(m.waitlist_field_email_label(), joinWaitlist.fields.email, {
+				type: 'email',
+				placeholder: m.waitlist_field_email_placeholder(),
+				autocomplete: 'email',
+				required: true
+			})}
+
+			{@render textField(m.waitlist_field_company_label(), joinWaitlist.fields.company, {
+				placeholder: m.waitlist_field_company_placeholder(),
+				autocomplete: 'organization',
+				optional: true
+			})}
+
+			<GlassSelect
+				id="waitlist-region"
+				label={m.waitlist_field_region_label()}
+				badge={m.waitlist_optional()}
+				placeholder={m.waitlist_select_placeholder()}
+				options={regionOptions}
+				field={joinWaitlist.fields.countryRegion}
+			/>
+
+			<!-- Optional, UNCHECKED marketing opt-in → consent_updates (DAR-59). A checkbox submits
+			     nothing when unchecked, so absence is stored as false server-side, never consent.
+			     The label is unchanged by DAR-139 and the help line is the whole change: what was
+			     untrue here was never the wording of the request, it was that ticking it had an
+			     undisclosed consequence. It now sends one confirmation email, so the form has to say
+			     so before it happens — and the sentence is also the honest description of the gate,
+			     since nothing is sent unless that email is answered. -->
+			<label class="flex cursor-pointer items-start gap-3 text-sm text-body">
+				<input {...joinWaitlist.fields.consentUpdates.as('checkbox')} class={checkboxClass} />
+				<span>{m.waitlist_consent_label()}</span>
+			</label>
+			<!-- `-mt-2 ps-7` rather than the bare help class: this one sits BELOW its control instead of
+			     above a field, and the padding lines it up with the label text rather than with the
+			     checkbox, so it reads as part of the tick box and not as more form-level fine print
+			     next to the privacy notice underneath. (7 = the checkbox's `size-4` plus the label's
+			     `gap-3`.) -->
+			<p class="{fieldHelpClass} -mt-2 ps-7">{m.waitlist_consent_help()}</p>
+
+			<!-- Data-handling notice (DAR-44) — the shared FormPrivacyNotice, same as the
+			     contact form's (ContactFields). -->
+			<FormPrivacyNotice
+				notice={m.waitlist_privacy_notice()}
+				linkLabel={m.waitlist_privacy_link()}
+			/>
+
+			<button type="submit" disabled={!!joinWaitlist.pending} class={submitButtonClass}>
+				{joinWaitlist.pending ? m.waitlist_submitting() : m.waitlist_submit()}
+			</button>
 		</form>
 	{/if}
-</section>
+
+	{#snippet below()}
+		{#if resumed}
+			<!-- The escape hatch for a resumed render (DAR-75). Without it, a visitor who finished the flow
+			     and came back to sign a colleague up would meet the confirmation and no form at all — a
+			     worse dead end than the blank-form bug this feature fixes.
+
+			     Deliberately OUTSIDE the card, and only when the cookie is what put them here.
+
+			     A FORM, NOT A LINK. Clearing the resume cookie is a state mutation, so it belongs behind a
+			     POST — and a destructive GET behind an internal link is a trap in a Kit app: <body> sets
+			     `preload-data="hover"`, so preloading the data ran the load and dropped the cookie on
+			     mouse-over, with no click. A POST is never prefetched, so nothing can fire it by accident.
+			     It also keeps DAR-64's one-CTA confirmation literally true — a submit button isn't a
+			     second link on that screen. Reasoning lives with `restartWaitlist`. -->
+			<form {...restartWaitlist} class="mt-5 text-center">
+				<button type="submit" class="{mutedLinkClass} cursor-pointer"
+					>{m.waitlist_restart_link()}</button
+				>
+			</form>
+		{/if}
+	{/snippet}
+</UtilityPanel>

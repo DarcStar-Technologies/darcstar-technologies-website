@@ -9,6 +9,7 @@
 	// form and who wants the asking to stop.
 	import { enhance, applyAction } from '$app/forms';
 	import Seo from '$lib/components/Seo.svelte';
+	import UtilityPanel from '$lib/components/UtilityPanel.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import { inlineLinkClass, submitButtonClass } from '$lib/styles';
@@ -31,54 +32,52 @@
 
 <CosmicBackdrop />
 
-<section class="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:py-16">
-	<div class="glass-card mx-auto w-full max-w-sm p-6 text-left sm:p-8">
-		<p class="eyebrow-panel">{m.updates_eyebrow()}</p>
+<UtilityPanel>
+	<p class="eyebrow-panel">{m.updates_eyebrow()}</p>
 
-		{#if form?.result === 'unsubscribed'}
-			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
-				{m.updates_unsubscribe_done_heading()}
-			</h1>
-			<p class="mt-3 text-sm text-body">{m.updates_unsubscribe_done_body()}</p>
-		{:else if showInvalid}
-			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
-				{m.updates_invalid_heading()}
-			</h1>
-			<p class="mt-3 text-sm text-body">{m.updates_invalid_body()}</p>
-			<p class="mt-6 text-sm text-body">
-				<a class={inlineLinkClass} href={localizeHref('/contact')}>{m.updates_contact_link()}</a>
-			</p>
-		{:else}
-			<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
-				{m.updates_unsubscribe_heading()}
-			</h1>
-			<p class="mt-2 text-sm text-body">{m.updates_unsubscribe_lead()}</p>
+	{#if form?.result === 'unsubscribed'}
+		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+			{m.updates_unsubscribe_done_heading()}
+		</h1>
+		<p class="mt-3 text-sm text-body">{m.updates_unsubscribe_done_body()}</p>
+	{:else if showInvalid}
+		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+			{m.updates_invalid_heading()}
+		</h1>
+		<p class="mt-3 text-sm text-body">{m.updates_invalid_body()}</p>
+		<p class="mt-6 text-sm text-body">
+			<a class={inlineLinkClass} href={localizeHref('/contact')}>{m.updates_contact_link()}</a>
+		</p>
+	{:else}
+		<h1 class="mt-3 text-3xl font-medium tracking-tight text-white">
+			{m.updates_unsubscribe_heading()}
+		</h1>
+		<p class="mt-2 text-sm text-body">{m.updates_unsubscribe_lead()}</p>
 
-			<form
-				method="post"
-				class="mt-6 space-y-4"
-				use:enhance={() => {
-					submitting = true;
-					return async ({ result }) => {
-						submitting = false;
-						await applyAction(result);
-					};
-				}}
-			>
-				<!-- Shown rather than swallowed: telling somebody their withdrawal went through when the
-				     write threw is the single worst answer this page can give.
-				     `ErrorBanner` rather than a styled <p>, and `role="alert"` is the whole reason: an
-				     enhanced submit does not navigate, so without it a screen-reader user presses
-				     Unsubscribe, hears nothing, and leaves believing it worked. -->
-				{#if form?.result === 'error'}
-					<ErrorBanner>{m.updates_error_body()}</ErrorBanner>
-				{/if}
+		<form
+			method="post"
+			class="mt-6 space-y-4"
+			use:enhance={() => {
+				submitting = true;
+				return async ({ result }) => {
+					submitting = false;
+					await applyAction(result);
+				};
+			}}
+		>
+			<!-- Shown rather than swallowed: telling somebody their withdrawal went through when the
+			     write threw is the single worst answer this page can give.
+			     `ErrorBanner` rather than a styled <p>, and `role="alert"` is the whole reason: an
+			     enhanced submit does not navigate, so without it a screen-reader user presses
+			     Unsubscribe, hears nothing, and leaves believing it worked. -->
+			{#if form?.result === 'error'}
+				<ErrorBanner>{m.updates_error_body()}</ErrorBanner>
+			{/if}
 
-				<input type="hidden" name="token" value={token} />
-				<button type="submit" disabled={submitting} class={submitButtonClass}>
-					{submitting ? m.updates_unsubscribe_submitting() : m.updates_unsubscribe_submit()}
-				</button>
-			</form>
-		{/if}
-	</div>
-</section>
+			<input type="hidden" name="token" value={token} />
+			<button type="submit" disabled={submitting} class={submitButtonClass}>
+				{submitting ? m.updates_unsubscribe_submitting() : m.updates_unsubscribe_submit()}
+			</button>
+		</form>
+	{/if}
+</UtilityPanel>
