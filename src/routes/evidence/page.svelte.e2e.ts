@@ -1,5 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
-import { THEOREMS_CHECKED, THEOREMS_COMPLETE } from '$lib/evidence';
+import {
+	CFC_KERNEL_LATENCY,
+	CONTROLLER_LATENCY_P50,
+	CONTROLLER_LATENCY_P99,
+	CONTROLLER_MARGIN_P50,
+	CONTROLLER_MARGIN_P99,
+	THEOREMS_CHECKED,
+	THEOREMS_COMPLETE
+} from '$lib/evidence';
 import { findCatalogTotalLeaksInRenderedText } from '$lib/evidence-boundary';
 
 // The catalog total must not reach a RENDERED page (DAR-152). The unit spec scans the message
@@ -42,6 +50,14 @@ test('evidence page renders the hero, the claim cards, and the IP boundary', asy
 		page.getByRole('heading', { name: 'What we deliberately do not publish' })
 	).toBeVisible();
 
+	// DAR-209: the deployed-controller margin this card cites is the SAME constant
+	// /evidence/benchmarks renders. The two surfaces used to state it two different ways — "roughly
+	// two orders of magnitude" here against "roughly 190×" there — and a reader meeting them in
+	// either order read the other as wrong. Only an e2e can see that this card is handed the p99
+	// margin rather than the p50 one; the connective is left loose because the pairing, not the
+	// phrasing, is the claim.
+	await expect(page.getByText(new RegExp(`${CONTROLLER_MARGIN_P99}[^.]{0,40}p99`))).toBeVisible();
+
 	// Each stat card links to its detail page (the benchmarks link rides on both latency cards).
 	await expect(page.getByRole('link', { name: 'Hardware runs & full methodology' })).toHaveCount(2);
 	await expect(page.getByRole('link', { name: 'What machine-checked means' })).toBeVisible();
@@ -54,12 +70,19 @@ test('benchmarks detail page carries the hardware runs', async ({ page }) => {
 	await page.goto('/evidence/benchmarks');
 
 	await expect(page.getByRole('heading', { level: 1 })).toContainText('Measured on real');
-	await expect(page.getByText('0.767 µs', { exact: true })).toBeVisible();
+	await expect(page.getByText(CFC_KERNEL_LATENCY, { exact: true })).toBeVisible();
 	await expect(page.getByText('Neoverse-N2')).toBeVisible();
 	await expect(page.getByText('0.81 and 0.91 µs')).toBeVisible();
-	// The whole-controller figure — the number this page exists to carry (the copy calls it
-	// "the figure to cite"); its absence must fail, not just the kernel figures'.
-	await expect(page.getByText('52 µs p50')).toBeVisible();
+	// The whole-controller figures — the numbers this page exists to carry (the copy calls them
+	// "the figures to cite"); their absence must fail, not just the kernel figures'.
+	await expect(page.getByText(`${CONTROLLER_LATENCY_P50} p50`)).toBeVisible();
+	await expect(page.getByText(`${CONTROLLER_LATENCY_P99} p99`)).toBeVisible();
+	// DAR-209, and this is the only surface that can see it. The unit spec proves the COPY pairs a
+	// margin with a percentile; it cannot see which constant the page hands to which placeholder,
+	// and the two margins differ by nearly a factor of two — so swapping them, or passing the p50
+	// margin to both, type-checks and leaves every unit test green.
+	await expect(page.getByText(`${CONTROLLER_MARGIN_P50} at p50`)).toBeVisible();
+	await expect(page.getByText(`${CONTROLLER_MARGIN_P99} at p99`)).toBeVisible();
 	await expect(page.getByText('parameter')).toHaveCount(0);
 	await expectNoCatalogTotal(page);
 });

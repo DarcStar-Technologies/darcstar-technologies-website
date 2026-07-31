@@ -16,13 +16,15 @@ array in `src/routes/evidence/+page.svelte`.
 Every figure was transcribed from the GIDE hub's own source-of-record documents (July 2026
 audit — this repo holds only the public prose, never the artifacts):
 
-| Card                         | Source of record (in `../gide`)                                                                                                                                                                                                                                                                                                                                                          |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0.767 µs CfC inference       | `docs/benchmarks/cfc-controller-performance.md` (mean of 10,000 calls / 1,000 warmup, Dec 2025) + `benchmarks/results/README.md` (attribution ledger: that run is UNATTRIBUTED; the ARM Neoverse-N2 log is the attributed cross-check at 0.75 µs)                                                                                                                                        |
-| 13,000× real time            | Derived, never measured: 10 ms (100 Hz budget) ÷ 0.767 µs ≈ 13,000 (`docs/project-overview.md`)                                                                                                                                                                                                                                                                                          |
-| 260 theorems machine-checked | `docs/theoretical-framework/THEOREM-CATALOG-0001.md` + `src/core/services/axiomatic/theorem_conformance.zig` (CI census gate keeps them consistent): 49 complete (dual-prover, zero local axioms) + 211 axiom-backed. **Measured against hub `main` on 2026-07-29**, cross-checked between the catalog's distribution table and the registry's `.met` count — see the vintage rule below |
-| Formal safety guarantees     | The complete zero-axiom cluster: T026 (Nagumo forward invariance), T072 (CBF safe-control existence + minimally-invasive QP), T073 (robust Nagumo under learning), T090–T096 (latency margin, keep-out) in `proofs/Layer1/` — Lean 4 v4.30.0 + Isabelle2025-2/AFP 2026-06-01, SMT portfolio Z3 4.16.0 / CVC5 1.3.4 / Yices2 2.6.5 / dReal 4.21.06.2                                      |
-| 5 domains shipped            | `src/domains/{cart_pole,quadrotor,fx,llm,self_dev}`; Self-Dev is explicitly pre-milestone ("approaching its first fully autonomous cycle") and the card says so                                                                                                                                                                                                                          |
+| Card                                        | Source of record (in `../gide`)                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.767 µs CfC inference                      | `docs/benchmarks/cfc-controller-performance.md` (mean of 10,000 calls / 1,000 warmup, Dec 2025) + `benchmarks/results/README.md` (attribution ledger: that run is UNATTRIBUTED; the ARM Neoverse-N2 log is the attributed cross-check at 0.75 µs)                                                                                                                                        |
+| 13,000× real time                           | Derived, never measured: 10 ms (100 Hz budget) ÷ 0.767 µs ≈ 13,000 (`docs/project-overview.md`). Computed in `$lib/evidence.ts` since DAR-209, not typed                                                                                                                                                                                                                                 |
+| ≈52 µs p50 / ≈99 µs p99 deployed controller | `benchmarks/results/quadrotor-cascade--run1.txt` (#3662, committed 2026-07-07): p50 **51.548**, p99 **98.654**, on a shared 4-vCPU x86 container under variable load. Its own headline COMMENT says "p99 ~= 94 us" and its data table contradicts it — **read the table**. Stated run-to-run swing ~44–52 µs p50 / ~77–95 µs p99, and this capture's p99 sits above even that            |
+| ≈190× p50 / ≈100× p99 margin                | Derived from the row above ÷ the same 10 ms budget, rounded down (DAR-209). Never separately measured, never typed into copy                                                                                                                                                                                                                                                             |
+| 260 theorems machine-checked                | `docs/theoretical-framework/THEOREM-CATALOG-0001.md` + `src/core/services/axiomatic/theorem_conformance.zig` (CI census gate keeps them consistent): 49 complete (dual-prover, zero local axioms) + 211 axiom-backed. **Measured against hub `main` on 2026-07-29**, cross-checked between the catalog's distribution table and the registry's `.met` count — see the vintage rule below |
+| Formal safety guarantees                    | The complete zero-axiom cluster: T026 (Nagumo forward invariance), T072 (CBF safe-control existence + minimally-invasive QP), T073 (robust Nagumo under learning), T090–T096 (latency margin, keep-out) in `proofs/Layer1/` — Lean 4 v4.30.0 + Isabelle2025-2/AFP 2026-06-01, SMT portfolio Z3 4.16.0 / CVC5 1.3.4 / Yices2 2.6.5 / dReal 4.21.06.2                                      |
+| 5 domains shipped                           | `src/domains/{cart_pole,quadrotor,fx,llm,self_dev}`; Self-Dev is explicitly pre-milestone ("approaching its first fully autonomous cycle") and the card says so                                                                                                                                                                                                                          |
 
 ## Rules when editing
 
@@ -141,10 +143,45 @@ audit — this repo holds only the public prose, never the artifacts):
   **"Nothing elsewhere" reaches outside this repo**: the GitHub org profile was written the day
   before this rule landed and kept the retired verb until DAR-128 (at the end of this list).
 - **Scope 0.767 µs to the reference kernel.** The GIDE repo itself forbids citing it as "the
-  controller latency" — the deployed controller is ≈52 µs p50 / ≈94 µs p99. Per-run
+  controller latency" — the deployed controller is ≈52 µs p50 / ≈99 µs p99. Per-run
   provenance detail (ARM 0.75 attributed; committed x86 re-runs 0.81–0.91) lives ONLY in the
   `evidence_bench_*` messages on /evidence/benchmarks — keep the ARM/x86 attribution
   straight, they are different machines.
+- **A margin is a QUOTIENT, so it is derived in code and must name the latency it divided
+  (DAR-209).** `evidence_bench_controller_body` published "≈52 µs p50 / ≈94 µs p99 … clears the
+  10 ms budget by roughly 190×" — two latencies, one margin, no statement of which. It was the
+  p50 one, and under a real-time budget the **tail** is what decides whether the loop holds, so
+  the single figure published was the one that mattered least and is the one a reviewer
+  recomputes first. The review did. Meanwhile `evidence_realtime_not_covered` said "roughly two
+  orders of magnitude" — a ~p99 claim, also unattributed — so the two surfaces read as
+  corrections of each other while both were true. DAR-117's **disclosure** axis, not a new one.
+  Both now render constants from `$lib/evidence.ts`, each named for its percentile, each
+  **computed** by `realtimeMargin()` from the budget and a latency constant. Six things worth
+  keeping: (1) **rounded DOWN, two significant figures**, and both halves earn their place — a
+  margin is the one figure here we benefit from overstating, and one significant figure would
+  publish 192.3 as **200×**, larger than anything measured; the second digit is where the
+  precision stops being real, because the source of record says outright to treat the controller
+  figure as "tens of microseconds on this class of x86 box, not a tight constant". (2) The
+  ticket's own proposed copy, "≈106× at p99", **reproduced the defect one level down** — it is
+  three significant figures over a noisy input, so it moves with the noise; at two, rounded down,
+  94 µs and 99 µs both publish 100× (measured), which is the coarseness doing its job.
+  (3) **The published p99 was wrong, and finding that is what reading the artifact bought**: 94 µs
+  appears only in the capture's headline COMMENT, which its own data table (98.654) contradicts —
+  so the site stated a tail no artifact contains, **understated**, which flatters every margin
+  derived from it. Publish the SLOWEST figure on record; slowest is the conservative direction for
+  a claim about clearing a budget, and `evidence.spec.ts` holds each published percentile against
+  the top of the run-to-run spread the environment copy states, so the two must move together.
+  (4) The controller section gained a **dated line, a methodology field and an environment field**,
+  which is not decoration: the kernel section had all three and the controller had none, and that
+  asymmetry is what let a noisy shared-container figure read as a tight constant. (5) **Only the
+  e2e can see which constant reaches which placeholder** — swapping the two margin arguments at
+  the call site leaves all 27 unit assertions green (measured) and fails one e2e locator; the
+  unit spec proves the COPY pairs a margin with a percentile, nothing more. (6) The reverse of
+  DAR-117's Paraglide finding, measured here: **adding** a placeholder makes every call site a
+  `pnpm check` error, so wiring a figure in cannot be half-done — but taking one back **out**
+  leaves `Inputs = {}`, which accepts any object literal, so the call site keeps compiling while
+  the page silently loses its attribution (`pnpm check` stayed at 0 errors under exactly that
+  mutation). The spec is the only thing that fails.
 - The card headline values are **data, locale-invariant** (en-formatted), same convention as
   the homepage readouts; all prose is Paraglide messages.
 - **Two detail sub-pages carry the depth; the cards stay lean and link to them**

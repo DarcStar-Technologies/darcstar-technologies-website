@@ -23,6 +23,7 @@
 	import { inlineLinkClass } from '$lib/styles';
 	import {
 		CFC_KERNEL_LATENCY,
+		CONTROLLER_MARGIN_P99,
 		DOMAINS,
 		REALTIME_MULTIPLE,
 		THEOREMS_AXIOM_BACKED,
@@ -70,8 +71,18 @@
 				latency: CFC_KERNEL_LATENCY
 			}),
 			fields: [
-				{ label: m.evidence_label_method(), body: m.evidence_realtime_method() },
-				{ label: m.evidence_label_not_covered(), body: m.evidence_realtime_not_covered() }
+				{
+					label: m.evidence_label_method(),
+					body: m.evidence_realtime_method({ latency: CFC_KERNEL_LATENCY })
+				},
+				{
+					// The SAME constant /evidence/benchmarks renders, so the two surfaces cannot state
+					// different margins for the deployed controller — and it names the percentile,
+					// because "roughly two orders of magnitude" beside a p50-derived 190× is what made
+					// each page look like a correction of the other (DAR-209).
+					label: m.evidence_label_not_covered(),
+					body: m.evidence_realtime_not_covered({ margin: CONTROLLER_MARGIN_P99 })
+				}
 			],
 			more: { href: '/evidence/benchmarks', label: m.evidence_cfc_more() }
 		},

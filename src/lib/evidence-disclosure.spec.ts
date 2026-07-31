@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { overwriteGetLocale, baseLocale } from '$lib/paraglide/runtime';
 import { m } from '$lib/paraglide/messages.js';
-import { THEOREMS_CHECKED } from './evidence';
+import {
+	CONTROLLER_LATENCY_P50,
+	CONTROLLER_LATENCY_P99,
+	CONTROLLER_MARGIN_P50,
+	CONTROLLER_MARGIN_P99,
+	THEOREMS_CHECKED
+} from './evidence';
 
 // Paraglide resolves the locale from the request and `getLocale()` throws rather than guessing;
 // there is no request here. Same escape hatch, and the same caveat, as `seo-head.spec.ts`: this
@@ -94,6 +100,115 @@ describe('the published theorem figures stay qualified (DAR-117)', () => {
 		expect(m.evidence_proofs_axioms_local_body()).toMatch(/\bdebt\b/i);
 		expect(m.evidence_proofs_axioms_local_body()).toMatch(/discharge/i);
 		expect(m.evidence_proofs_axioms_carried_body()).toMatch(/not counted/i);
+	});
+});
+
+// A margin is a QUOTIENT, and one published over a p50/p99 pair does not say which latency it
+// divided (DAR-209). Nothing about the old sentence was false — 190× at p50 and ~100× at p99 are
+// both true of the same controller — but under a real-time budget the TAIL is what decides whether
+// the loop holds, so the single figure published was the one that mattered least, and it is the one
+// a reviewer recomputes first. The review did exactly that. Same axis as the block above: a true
+// number published stripped of the qualification that makes it readable.
+//
+// The arithmetic is `evidence.spec.ts`'s. What is pinned here is the qualification, and it needs a
+// test rather than a type because of an asymmetry in what Paraglide generates: ADDING a placeholder
+// makes every call site a `pnpm check` error (the inputs object is required and its keys are), so
+// wiring a new figure in cannot be half-done — but taking one back OUT leaves `Inputs = {}`, which
+// accepts any object literal, so the call site keeps compiling while the page quietly loses the
+// attribution. Measured, and it is DAR-117's finding in the direction that matters here.
+describe('every published real-time margin names the percentile it came from (DAR-209)', () => {
+	// The percentile a margin is attributed to, or null when the sentence it sits in names none.
+	//
+	// "Nearest inside the same sentence" rather than the obvious proximity window, and the reason is
+	// that BOTH margins live in one sentence on the benchmarks page. A window wide enough for the
+	// connective in "at p50 it clears by roughly 190×" (22 characters) also reaches 28 characters
+	// across "…190× at p50 and roughly 100× at p99" to the WRONG percentile — so swapping the two
+	// arguments at the call site would still read as attributed, which is the mutation this assertion
+	// exists to catch. Measured on the real copy before it was written this way. Returning the token
+	// instead of a boolean is what makes one assertion cover both failures: unattributed comes back
+	// null, mis-attributed comes back the other percentile.
+	//
+	// Sentence bounds ignore a decimal point, since latency figures carry one.
+	const attributedPercentile = (text: string, margin: string): string | null => {
+		const at = text.indexOf(margin);
+		if (at < 0) return null;
+		const stops = [...text.matchAll(/(?<!\d)\.(?!\d)/g)].map((stop) => stop.index);
+		const sentence = text.slice(
+			Math.max(0, ...stops.filter((stop) => stop < at).map((stop) => stop + 1)),
+			stops.find((stop) => stop > at) ?? text.length
+		);
+		const marginAt = sentence.indexOf(margin);
+		let nearest: { percentile: string; gap: number } | null = null;
+		for (const found of sentence.matchAll(/\bp\d+\b/g)) {
+			const gap =
+				found.index > marginAt
+					? found.index - (marginAt + margin.length)
+					: marginAt - (found.index + found[0].length);
+			if (!nearest || gap < nearest.gap) nearest = { percentile: found[0], gap };
+		}
+		return nearest?.percentile ?? null;
+	};
+
+	// The page the ticket was filed against. Both margins, each against its own percentile — and
+	// asserting BOTH is what rules out the fix that would have been half a fix: labelling the one
+	// figure already published (p50) and leaving the tail unstated is the same page with a caption,
+	// since the tail was never there to mislabel.
+	it('attributes both controller margins on the benchmarks page', () => {
+		const body = m.evidence_bench_controller_body({
+			p50: CONTROLLER_LATENCY_P50,
+			p99: CONTROLLER_LATENCY_P99,
+			marginP50: CONTROLLER_MARGIN_P50,
+			marginP99: CONTROLLER_MARGIN_P99
+		});
+		expect(attributedPercentile(body, CONTROLLER_MARGIN_P50), body).toBe('p50');
+		expect(attributedPercentile(body, CONTROLLER_MARGIN_P99), body).toBe('p99');
+	});
+
+	// The second surface, which is where the ticket's "a reader who meets them in either order
+	// concludes the other is wrong" came from: this card used to say "roughly two orders of
+	// magnitude" — a p99-shaped claim — while /evidence/benchmarks said "roughly 190×" from p50.
+	// Rendering the same constant is what makes them agree; naming the percentile is what makes the
+	// agreement legible. Both halves are asserted, because handing the constant in and then not
+	// saying p99 would restore exactly the vagueness this replaced.
+	it('attributes the tail margin on the /evidence card', () => {
+		const notCovered = m.evidence_realtime_not_covered({ margin: CONTROLLER_MARGIN_P99 });
+		expect(notCovered, 'the card no longer renders the shared margin').toContain(
+			CONTROLLER_MARGIN_P99
+		);
+		expect(attributedPercentile(notCovered, CONTROLLER_MARGIN_P99), notCovered).toBe('p99');
+	});
+
+	// Those assertions are all "it matched", which passes just as happily against a matcher that
+	// answers for anything (DAR-152, polarity flipped — the sibling block below needs positive cases
+	// for the same reason in reverse). First case: the sentence this ticket replaced, verbatim.
+	// Second: the near-miss a sentence-blind matcher waves through, where the only percentiles on the
+	// page belong to a different claim.
+	it.each([
+		['the sentence this replaced', 'It clears the 10 ms real-time budget by roughly 190×.'],
+		[
+			'a percentile that belongs to another sentence',
+			'It clears the budget by roughly 190×. Tail latency is reported at p50 and p99.'
+		]
+	])('reads %s as unattributed', (_case, text) => {
+		expect(attributedPercentile(text, '190×')).toBeNull();
+	});
+
+	// The word-order half, which neither live message exercises — both write the margin first, so a
+	// matcher that only looked forward would pass every assertion above.
+	it('reads an attribution written the other way round', () => {
+		expect(attributedPercentile('At p50 it clears the budget by roughly 190×.', '190×')).toBe(
+			'p50'
+		);
+	});
+
+	// The swap, as its own case rather than only as a mutation of the copy: two margins in one
+	// sentence is the arrangement that makes mis-attribution possible at all, and it is a plausible
+	// edit — the two placeholder names differ by two characters and the values differ by nearly a
+	// factor of two. This is the case that fails against the proximity window this matcher replaced.
+	it('reads a swapped pair as mis-attributed rather than as attributed', () => {
+		const swapped = 'It clears the budget by roughly 100× at p50 and roughly 190× at p99.';
+		expect(attributedPercentile(swapped, '190×')).toBe('p99');
+		expect(attributedPercentile(swapped, '100×')).toBe('p50');
 	});
 });
 
