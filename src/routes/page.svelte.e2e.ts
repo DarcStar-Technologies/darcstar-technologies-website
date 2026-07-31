@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { CFC_KERNEL_LATENCY, REALTIME_MULTIPLE } from '$lib/evidence';
 
 // Homepage smoke test: the marketing page renders end-to-end (through the real
 // Cloudflare worker build) with its hero, a downstage section, and the CTAs.
@@ -48,10 +49,13 @@ test('the real-time pillar renders its figures from the shared evidence source',
 }) => {
 	await page.goto('/');
 
+	// Read from the constants rather than restated, per docs/evidence.md — and load-bearing since
+	// DAR-209, because the multiple is now COMPUTED (10 ms ÷ the kernel latency, rounded down)
+	// rather than typed. A rounding change would move this string with no other visible signal.
 	await expect(
-		page.getByText('the reference kernel measures 0.767 µs per forward pass')
+		page.getByText(`the reference kernel measures ${CFC_KERNEL_LATENCY} per forward pass`)
 	).toBeVisible();
-	await expect(page.getByText('13,000× inside a 100 Hz control budget')).toBeVisible();
+	await expect(page.getByText(`${REALTIME_MULTIPLE} inside a 100 Hz control budget`)).toBeVisible();
 });
 
 // The header About link now navigates to the real /about page (issue #61); the old

@@ -13,7 +13,13 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { inlineLinkClass } from '$lib/styles';
-	import { CFC_KERNEL_LATENCY } from '$lib/evidence';
+	import {
+		CFC_KERNEL_LATENCY,
+		CONTROLLER_LATENCY_P50,
+		CONTROLLER_LATENCY_P99,
+		CONTROLLER_MARGIN_P50,
+		CONTROLLER_MARGIN_P99
+	} from '$lib/evidence';
 	import { breadcrumbJsonLd } from '$lib/jsonld';
 	import { page } from '$app/state';
 
@@ -80,11 +86,24 @@
 			</div>
 		</section>
 
+		<!-- No headline `value`: the claim is a p50/p99 PAIR, and picking one of them for the large
+		     type is how DAR-209's unattributed margin happened in the first place. The header's
+		     `value` is optional for exactly this case. -->
 		<section class="glass-card p-8 sm:p-10">
-			<h2 class="heading-subsection">
-				{m.evidence_bench_controller_heading()}
-			</h2>
-			<p class="mt-4 text-sm leading-relaxed text-body">{m.evidence_bench_controller_body()}</p>
+			<EvidenceClaimHeader
+				title={m.evidence_bench_controller_heading()}
+				dated={m.evidence_bench_controller_dated()}
+				claim={m.evidence_bench_controller_body({
+					p50: CONTROLLER_LATENCY_P50,
+					p99: CONTROLLER_LATENCY_P99,
+					marginP50: CONTROLLER_MARGIN_P50,
+					marginP99: CONTROLLER_MARGIN_P99
+				})}
+			/>
+			<div class="mt-6 space-y-5">
+				{@render field(m.evidence_label_method(), m.evidence_bench_controller_method())}
+				{@render field(m.evidence_label_environment(), m.evidence_bench_controller_environment())}
+			</div>
 		</section>
 
 		<section class="glass-card p-8 sm:p-10">
