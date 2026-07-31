@@ -301,27 +301,32 @@ test('a GlassSelect is operable by real keyboard input', async ({ page }) => {
 	// committing option 1 satisfies everything below. Arrow navigation is pinned in the unit spec
 	// instead, where it is deterministic and free.
 	await page.keyboard.press('ArrowDown');
-	const activeId = await listbox.getAttribute('aria-activedescendant');
-	expect(activeId, 'the open list must mark a highlighted option').toBeTruthy();
-	// Zag's ids contain colons, so match on the attribute rather than an #id selector.
-	const highlighted = (await main.locator(`[id="${activeId}"]`).textContent())?.trim();
-	expect(highlighted).toBeTruthy();
 
-	// Re-press until it commits, rather than pressing once and hoping. The machine drops a key
-	// while it is re-rendering (measured: 3 failures in 12 runs pressing once), and what this
-	// spec exists to prove is that a real keypress operates the control at all — not how many
-	// milliseconds Zag needs between them. A genuine break still fails: if Enter never commits,
-	// the list never closes and this times out.
+	// Re-press until it commits, and read the highlight INSIDE the loop, immediately before the
+	// press that commits it. Two measured reasons, not one: the machine drops a key while it is
+	// re-rendering (3 failures in 12 runs pressing once), and reading the highlight any earlier
+	// races the arrow key's own effect — holding option 1's label while Enter commits option 2
+	// would be a false failure, the one error direction worth engineering out.
+	//
+	// This still fails on a genuine break: if Enter never commits, the list never closes.
+	let committed: string | undefined;
 	await expect
 		.poll(
 			async () => {
-				if (await listbox.count()) await page.keyboard.press('Enter');
+				if (await listbox.count()) {
+					const id = await listbox.getAttribute('aria-activedescendant');
+					// Zag's ids contain colons, so match on the attribute rather than an #id selector.
+					committed = id ? (await main.locator(`[id="${id}"]`).textContent())?.trim() : undefined;
+					await page.keyboard.press('Enter');
+				}
 				return listbox.count();
 			},
 			{ message: 'a real Enter must commit the highlighted option' }
 		)
 		.toBe(0);
-	await expect(trigger).toContainText(highlighted!);
+
+	expect(committed, 'the open list must mark a highlighted option').toBeTruthy();
+	await expect(trigger).toContainText(committed!);
 });
 
 // DAR-62's commercial path: an answered, non-excluded role routes step 2's Continue into step 3.
