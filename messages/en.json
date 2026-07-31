@@ -81,7 +81,7 @@
 	"about_lead": "DarcStar Technologies builds GIDE — the Guaranteed Intelligent Dynamics Engine: one real-time control system whose safety properties are formally verified against stated system and environment assumptions, specialized at compile time across robotics, financial markets, and software that improves itself.",
 	"about_mission_heading": "Our mission",
 	"about_mission_body_1": "Autonomous systems are moving into places where failure is not an option — aircraft, industrial robots, live markets. Conventional testing can show that a controller usually behaves; it can never show that it will never violate a safety constraint.",
-	"about_mission_body_2": "We close that gap by treating safety as something to prove rather than something to measure. GIDE's safety properties are stated as theorems and machine-checked in Lean 4 and Isabelle — over the mathematical model, under assumptions we name rather than leave implicit.",
+	"about_mission_body_2": "We narrow that gap by treating safety as something to prove rather than something to measure. GIDE's safety properties are stated as theorems and machine-checked in Lean 4 and Isabelle — over the mathematical model, under assumptions we name rather than leave implicit. What sits between that model and a deployed system is a boundary we track and publish, not one we claim to have closed.",
 	"about_principles_heading": "How we work",
 	"about_principle_proof_title": "Proofs over coverage",
 	"about_principle_proof_body": "Safety properties are stated as theorems and machine-checked in Lean 4 and Isabelle — Control Barrier Functions verified against declared assumptions, not inferred from passing test runs.",

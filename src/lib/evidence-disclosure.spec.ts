@@ -11,8 +11,9 @@ overwriteGetLocale(() => baseLocale);
 
 // The third copy guard on the evidence surface, and a third axis (DAR-117). `evidence-boundary`
 // is an IP boundary — what we must not disclose. `safety-language` is a truth boundary — what we
-// must not overstate. This one is a DISCLOSURE boundary: a figure we do publish must not be shown
-// stripped of the qualification that makes it honest.
+// must not overstate. This one is a DISCLOSURE boundary: something we do publish must not be shown
+// stripped of the qualification that makes it honest. That was a figure in DAR-117 and a claim in
+// DAR-212 (second describe below) — the axis is the same either way.
 //
 // It exists because the homepage led with the raw machine-checked total in the largest type on
 // the site while the complete/axiom-backed breakdown lived two clicks away on /evidence. Nothing
@@ -93,5 +94,106 @@ describe('the published theorem figures stay qualified (DAR-117)', () => {
 		expect(m.evidence_proofs_axioms_local_body()).toMatch(/\bdebt\b/i);
 		expect(m.evidence_proofs_axioms_local_body()).toMatch(/discharge/i);
 		expect(m.evidence_proofs_axioms_carried_body()).toMatch(/not counted/i);
+	});
+});
+
+// /about's mission section is the one place on the site that states the gap in its absolute form —
+// `about_mission_body_1` ends "it can never show that it will never violate a safety constraint" —
+// and then answers it. The answer used to open "We CLOSE that gap", which no other surface supports:
+// the proofs run over the mathematical model, the floating-point bridge is numerically checked
+// rather than proved, the framework assumptions are hypotheses at every proof status, and most
+// machine-checked theorems still carry local axioms awaiting discharge.
+//
+// Nothing failed, and that is the point of filing it here rather than in safety-language.spec.ts:
+// DAR-46's rule is that a body claiming provability must name the assumptions and the boundary, and
+// this body does — in its SECOND sentence, while the first asserts the gap is gone. Overstating in
+// one clause and qualifying in the next is the disclosure axis, not the truth one.
+describe('the /about mission paragraph answers the gap without closing it (DAR-212)', () => {
+	// Proximity in both word orders, rather than the one retired phrase: an adjective between the
+	// article and the noun ("close that verification gap") walks straight past a phrase match, and
+	// the claim reads just as well backwards ("that gap is closed"). `gaps?` because the plural is
+	// the same claim and `\bgap\b` silently misses it — found by checking this comment's own
+	// citation below against the catalog rather than by eye. What bounds it is the SENTENCE
+	// (`[^.]`) — 24 is slack inside that, not a tuned detection parameter, and nothing here depends
+	// on the number: no sentence in the message pairs the verb with the noun at any distance.
+	// (evidence-boundary's window IS tuned, because it reads rendered text, where a line and its
+	// neighbour are a concatenation rather than an authored sentence.)
+	const CLAIMS_THE_GAP_IS_GONE = /\bclos\w*[^.]{0,24}\bgaps?\b|\bgaps?\b[^.]{0,24}\bclos\w*/i;
+
+	// Deliberately NOT a SAFETY_LANGUAGE_RULES entry, which is the obvious home for a retired
+	// phrasing: those rules are shared with `pnpm check:cms`, and "gap" is ordinary vocabulary
+	// elsewhere for a hole in the RECORD rather than in the proofs — `evidence_cfc_environment`
+	// logs "a gap we log rather than hide" about missing CPU attribution, `evidence_bench_lead`
+	// "the gaps we log rather than hide". Measured over both catalogs, this pattern matches
+	// neither, and nothing else either; the case that WOULD fire is one word from live copy and
+	// has the last test to itself. Key-scoped instead — and a key-scoped assertion fails LOUD here
+	// for once: the accessor is generated, so renaming the message is a `pnpm check` error rather
+	// than a scan quietly pointed at nothing (DAR-102's polarity, inverted by Paraglide).
+	//
+	// Base locale only, like every assertion in this file (`overwriteGetLocale` at the top), and
+	// the honest version of that is narrower than "safety-language scans both and this doesn't":
+	// ITS patterns are English too, so scanning `es.json` buys English text sitting in the Spanish
+	// file, never a Spanish violation — and the verbatim-copy route into that file is already a
+	// failure in message-catalogs.spec.ts (DAR-53), which is why the file holds no messages at all
+	// today. What is genuinely unguarded is a real Spanish rendering of this paragraph, which no
+	// English pattern can reach: when `es` ships copy, this rule needs a Spanish twin.
+	//
+	// Nor does any of it see the PAGE. These read the catalog, so deleting
+	// `{m.about_mission_body_2()}` from `+page.svelte` leaves the answer gone and every assertion
+	// here green — measured, 1344/1344 unit tests pass with the paragraph removed, and /about's
+	// e2e asserts headings and facts, not this body. DAR-117's "only the e2e can see which
+	// constant renders", same blind spot.
+	// Deliberately left as a residual: that ticket's defect was a one-token swap that still
+	// rendered a plausible page, whereas this one is a deleted paragraph, visible in the diff and
+	// on the page, and closing it means pinning a fragment of this copy in a second file that
+	// cannot import the accessor (DAR-99's rot) to catch an edit nobody makes by accident.
+	//
+	// The two assertions on the COPY cover different drifts, and the negative one alone would be
+	// near-tautological:
+	//   · positive — the answer says a boundary REMAINS, so a rewrite asserting the gap is gone has
+	//     to delete that clause first, on pain of contradicting itself inside one paragraph;
+	//   · negative — the retired claim itself, the way "proven safe" is retired in safety-language,
+	//     and the claim this page actually shipped with.
+	// Honest residual: "We eliminate that gap" with the boundary sentence left in place passes both.
+	// A synonym that also contradicts its own paragraph is review's job; what this stops is the
+	// drift that happened, and the quiet deletion of the clause that makes the answer true.
+	it('says a boundary remains between the model and a deployed system', () => {
+		const answer = m.about_mission_body_2();
+		expect(answer, 'the answer no longer scopes the proofs to a model').toMatch(/\bmodel\b/i);
+		expect(answer, 'the answer no longer says anything is left outside the proofs').toMatch(
+			/\bboundary\b/i
+		);
+	});
+
+	it('never claims to have closed it', () => {
+		expect(m.about_mission_body_2()).not.toMatch(CLAIMS_THE_GAP_IS_GONE);
+	});
+
+	// That assertion is "nothing matched", which passes just as happily against a pattern that
+	// answers nothing at all (DAR-152) — a typo in the regex would retire the rule silently and
+	// stay green forever. These are the cases that prove it answers.
+	it.each([
+		['the sentence this replaced', 'We close that gap by treating safety as something to prove.'],
+		['a reworded return', 'GIDE closes the gap between testing and proof.'],
+		['an adjective in the way', 'We close that verification gap for good.'],
+		['the claim in reverse', 'That gap is finally closed.'],
+		['the plural', 'We have closed the remaining gaps.']
+	])('recognises %s', (_label, text) => {
+		expect(text).toMatch(CLAIMS_THE_GAP_IS_GONE);
+	});
+
+	// The sibling detector in safety-language.ts pairs its positive cases with a "leaves %s alone"
+	// table. There is deliberately no such table here, because this pattern is ALLOWED to over-match
+	// — and this is what that costs. `evidence_theorems_not_covered` already says of the same
+	// boundary that "closing it formally is open, tracked work", which is honest, correct, and one
+	// word away from tripping this. Key-scoping is what makes the bluntness free; had it gone into
+	// SAFETY_LANGUAGE_RULES it would reach every message and `pnpm check:cms` besides, and the
+	// pressure would be to loosen it until it caught nothing (DAR-152). Asserted rather than
+	// claimed in prose above, since that reasoning is the whole justification for where this lives.
+	it('over-matches honest copy about closing the boundary, hence the key scope', () => {
+		expect(
+			'Closing that gap formally is open, tracked work.',
+			'the pattern became precise — then reconsider whether this belongs in SAFETY_LANGUAGE_RULES, where it would cover every message and CMS prose'
+		).toMatch(CLAIMS_THE_GAP_IS_GONE);
 	});
 });
