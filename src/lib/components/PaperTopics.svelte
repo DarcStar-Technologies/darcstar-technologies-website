@@ -9,7 +9,6 @@
 	// With `topicHref`, tags render as LINKS into the filtered /research
 	// view (?topic=slug), so a tag is never a dead end. Renders nothing without topics, so
 	// callers pass spacing via `class` with no guard (the SanityImage convention).
-	import { pillClass } from '$lib/components/PaperStatus.svelte';
 
 	type Topic = { _id: string; title: string; slug?: string | null; description?: string | null };
 	let {
@@ -23,7 +22,7 @@
 		topicHref?: (slug: string) => string;
 	} = $props();
 
-	const tagClass = `${pillClass} border-tertiary-500/40 text-tertiary-400`;
+	const tagClass = `$badge-outline border-tertiary-500/40 text-tertiary-400`;
 </script>
 
 {#if topics && topics.length > 0}

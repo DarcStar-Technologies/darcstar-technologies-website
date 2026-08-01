@@ -123,7 +123,7 @@
 				     degrades rather than crashes, and this one now does too. -->
 				<ul class="mt-4 flex flex-wrap gap-2">
 					{#each person.focusAreas as area, i (i)}
-						<li class="rounded-full border border-hairline px-3 py-1 text-xs text-body">{area}</li>
+						<li class="badge-tag border-hairline text-body">{area}</li>
 					{/each}
 				</ul>
 			</section>

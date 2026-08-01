@@ -7,7 +7,6 @@
 	// the /research list + detail; PaperExternalDisclaimer carries the block-level not-ours
 	// statement that can't live in this flex-row chip rail.
 	import { m } from '$lib/paraglide/messages.js';
-	import { pillClass } from '$lib/components/PaperStatus.svelte';
 
 	let {
 		darcstarAuthored,
@@ -16,11 +15,11 @@
 </script>
 
 {#if !darcstarAuthored}
-	<span class="{pillClass} border-hairline text-muted">
+	<span class="badge-outline border-hairline text-muted">
 		{m.research_external_badge()}
 	</span>
 	{#if hasCommentary}
-		<span class="{pillClass} border-secondary-500/40 text-secondary-400">
+		<span class="badge-outline border-secondary-500/40 text-secondary-400">
 			{m.research_commentary_badge()}
 		</span>
 	{/if}

@@ -82,15 +82,12 @@
 									<!-- Two-step confirm, no JS: the <summary> reveals the actual delete button; clicking
 									     the summary again cancels. Avoids a one-click misclick without needing confirm(). -->
 									<details class="inline-block text-right">
-										<summary
-											class="inline-flex cursor-pointer list-none items-center rounded px-2 py-1 text-xs font-medium text-error-400 transition-colors [&::-webkit-details-marker]:hidden hover:bg-error-500/10 focus-visible:ring-1 focus-visible:ring-error-500 focus-visible:outline-none"
-											>{m.admin_delete()}</summary
-										>
+										<summary class="action-danger">{m.admin_delete()}</summary>
 										<form method="post" action="?/delete" class="mt-1.5">
 											<input type="hidden" name="id" value={sub.id} />
 											<button
 												type="submit"
-												class="btn-danger"
+												class="confirm-danger"
 												aria-label={m.admin_delete_sr({ name: sub.name })}
 												>{m.admin_delete_confirm()}</button
 											>

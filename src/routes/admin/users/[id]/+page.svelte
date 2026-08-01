@@ -76,17 +76,12 @@
 		<div class="mt-2 flex flex-wrap items-center gap-2">
 			<h1 class="break-all heading-panel">{target.email}</h1>
 			{#if data.isSelf}
-				<span class="rounded-full bg-white/10 px-2 py-0.5 text-[10px] tracking-wide text-faint"
-					>{m.admin_users_badge_you()}</span
-				>
+				<span class="badge-micro bg-white/10 text-faint">{m.admin_users_badge_you()}</span>
 			{:else if data.isOwner}
-				<span class="rounded-full bg-white/10 px-2 py-0.5 text-[10px] tracking-wide text-faint"
-					>{m.admin_users_badge_owner()}</span
-				>
+				<span class="badge-micro bg-white/10 text-faint">{m.admin_users_badge_owner()}</span>
 			{/if}
 			{#if target.banned}
-				<span
-					class="rounded-full bg-error-500/15 px-2 py-0.5 text-[10px] tracking-wide text-error-400"
+				<span class="badge-micro bg-error-500/15 text-error-400"
 					>{m.admin_users_status_disabled()}</span
 				>
 			{/if}

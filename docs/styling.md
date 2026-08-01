@@ -86,9 +86,9 @@ Translucent-white text over the dark void used to be hand-typed as `text-white/N
 
 `body` and `muted` are the documented AA floors (body copy ≥ 0.7, labels ≥ 0.6) — staying on the token keeps text from silently dropping below them. The values equal the opacities they replaced, so it's a look-neutral rename.
 
-### Named tiers — eyebrow, heading, pill, datagrid
+### Named tiers — eyebrow, heading, pill, datagrid, action/confirm, badge
 
-Four `@utility` families in `layout.css` (built with `@apply`) capture what were copy-pasted class runs. Three of them share a shape: a **composition root** holding the invariant, plus discrete tiers that add only the size. The root is never a call-site class, and `styles.spec.ts` asserts that for each.
+Six `@utility` families in `layout.css` (built with `@apply`) capture what were copy-pasted class runs. Most share a shape: a **composition root** holding the invariant, plus discrete tiers that add only what varies. The root is never a call-site class, and `styles.spec.ts` asserts that for each.
 
 | Family                                                                  | Root (never used bare)                                   | Tiers                                                                                        |
 | ----------------------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
@@ -96,22 +96,34 @@ Four `@utility` families in `layout.css` (built with `@apply`) capture what were
 | **heading** — every `<h1>`–`<h6>`                                       | `heading-base` = `font-medium tracking-tight text-white` | `heading-page` · `heading-section` · `heading-subsection` · `heading-panel` · `heading-card` |
 | **pill** — the CTA button, paired with a surface (`glass-btn btn-pill`) | `btn-pill-base` = `rounded-full font-medium text-white`  | `btn-pill` · `btn-pill-sm` · `btn-pill-xs`                                                   |
 | **datagrid** — the /admin + /account record tables                      | _(none — `datagrid` is itself a call-site class)_        | `datagrid` · `datagrid-head` · `datagrid-th` · `datagrid-td` · `datagrid-empty`              |
+| **action / confirm** — /admin's two-part controls                       | `confirm-base`, `action-base` (ghost adds the chrome)    | `action-*` · `confirm-*`, each in `affirm` · `caution` · `danger` · `quiet`                  |
+| **badge** — small rounded labels                                        | `badge-base` (only two of the four compose off it)       | `badge-solid` · `badge-outline` · `badge-tag` · `badge-micro`                                |
 
-Plus **`btn-danger`**, the destructive row action (delete a submission, delete a lead).
+**The /admin control is two parts that share a tone.** Almost every consequential action there is a `<details>` whose `<summary>` is a ghost trigger, plus a filled confirm button inside it. The tone is the action's severity — `affirm` invites, `caution` records a consent request, `danger` deletes, `quiet` expands or reverses — and the pair always matches, which is what makes the trigger's colour a promise about the button underneath. A spec enforces the pairing.
+
+The ghost tier is `action-*` rather than `disclose-*` because one site ("Mark reviewed") is a bare `<button>` with nothing to disclose; the `<summary>` marker rules are inert there, but a name promising disclosure would have been false.
+
+**Badges deliberately do _not_ all share a root.** The only token all four spellings have in common is `rounded-full`, and two of them are not `inline-flex` — making them so would change layout on the `<li>` chips. `badge-solid` and `badge-outline` compose off `badge-base`; `badge-tag` and `badge-micro` stand alone. A root that thin would be a configurable abstraction rather than a shared one.
 
 **Why tiers rather than free composition.** Each family's comment used to say consumers add their own size and that the sizes legitimately varied. Measured, they did not:
 
-| Family  | Ticket  | Call sites | Distinct combinations found |
-| ------- | ------- | ---------- | --------------------------- |
-| eyebrow | DAR-218 | 22         | 3                           |
-| heading | DAR-222 | 57         | 21 → 5 tiers + 5 one-offs   |
-| pill    | DAR-222 | 14         | 3                           |
+| Family           | Ticket  | Call sites | Distinct combinations found |
+| ---------------- | ------- | ---------- | --------------------------- |
+| eyebrow          | DAR-218 | 22         | 3                           |
+| heading          | DAR-222 | 57         | 21 → 5 tiers + 5 one-offs   |
+| pill             | DAR-222 | 14         | 3                           |
+| action / confirm | DAR-223 | 15         | 1 geometry × 4 tones        |
+| badge            | DAR-223 | 15         | 5 → 4 named + 3 one-offs    |
 
 Free variation that is never used as freedom is drift waiting to happen, and it happened: the `text-lg` heading tier had split into two spellings, one with `tracking-tight` and one without. That split was **not random** — every copy missing it was under `/admin/users` or `/account`, every copy keeping it under `/people`, `/research` or `/news` — which is the `/admin` opt-out (below) leaking past the surfaces it is scoped to. Unified; it moved eight headings by -0.025em.
 
 A surface that genuinely needs a new size should **add a tier here**, not re-open a bracket at the call site.
 
-**Deliberate one-offs stay one-offs.** Five headings are exempt with reasons pinned in `styles.spec.ts` (the three hero sizes, the topic-guide legend, the news card title), as are `/admin/users/[id]`'s two danger-zone buttons — an outline pill and a filled outline pill, one use each, whose difference encodes a disable-then-delete escalation that a shared token would flatten.
+**Deliberate one-offs stay one-offs.** Five headings are exempt with reasons pinned in `styles.spec.ts` (the three hero sizes, the topic-guide legend, the news card title), as are `/admin/users/[id]`'s two danger-zone buttons — an outline pill and a filled outline pill, one use each, whose difference encodes a disable-then-delete escalation that a shared token would flatten — and `PaperLinks`' external-source pill, which is a **link** with hover/focus states that the static badge family must never acquire.
+
+**Naming a utility is a namespace decision (DAR-223).** Skeleton is a design system, not just a component library: it declares ~230 `@utility` names, and this site imports all of them. A same-named utility of ours does **not** shadow Skeleton's and does **not** error — both rules are emitted and the cascade decides per property, so the result is a silent merge. A `@utility badge` picked up Skeleton's `border-radius` and `padding-inline`, which is how the chips would have shipped with the wrong geometry; it is `badge-solid` now. The names Skeleton owns are exactly the ones you would reach for first: `badge` · `chip` · `card` · `table` · `btn` · `input` · `label` · `select` · `textarea` · `checkbox` · `radio` · `h1`–`h6`. `styles.spec.ts` reads Skeleton's vocabulary out of `node_modules` and asserts ours is disjoint from it.
+
+**Shared class strings never live in a component (DAR-223).** `$lib/styles.ts` or a `@utility` — never an exported `<script module>` const, so no file has to import a component to get a string. Beyond the convention, `styles.spec.ts` reads `$lib/styles` **by importing it**, so a second module of shared strings is invisible to every rule in that file; a spec now fails on any class string exported from a component.
 
 ### Keyboard focus — one ring, plus `hover-focus:` (DAR-57)
 

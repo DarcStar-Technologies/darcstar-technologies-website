@@ -85,9 +85,7 @@
 			{#if post.categories && post.categories.length > 0}
 				<div class="flex flex-wrap gap-2">
 					{#each post.categories as cat (cat._id)}
-						<span class="rounded-full border border-hairline px-3 py-1 text-xs text-body"
-							>{cat.title}</span
-						>
+						<span class="badge-tag border-hairline text-body">{cat.title}</span>
 					{/each}
 				</div>
 			{/if}

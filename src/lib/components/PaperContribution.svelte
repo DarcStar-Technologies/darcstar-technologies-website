@@ -2,9 +2,13 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import type { ContributionKind } from '$lib/research-filters';
 
-	// Kind → label, exported for the same reason PaperStatus exports `pillClass`: /research's
-	// Contribution select needs these strings too, and a second copy of the mapping there would be
-	// free to drift from the pill's (the ContactFields `fieldClass` convention).
+	// Kind → label, exported because /research's Contribution select needs these strings too and a
+	// second copy of the mapping there would be free to drift from the chip's.
+	//
+	// A FUNCTION-shaped export, which is why this one is legitimate where `pillClass` was not: a
+	// class string exported from a component is something any file can want without wanting the
+	// component, so it belongs in `$lib/styles.ts` or as a `@utility` (DAR-223, and `styles.spec.ts`
+	// now enforces it). A label map is behaviour that lives with the thing it labels.
 	//
 	// It stores `m.x`, NOT `m.x()`. This object is built once per module — which on the server means
 	// once per worker, shared by every request — so resolving the strings here would freeze whatever
@@ -40,15 +44,14 @@
 	// theorem-only disclosure — presented exactly like the rigorous formal-methods material.
 	//
 	// NEUTRAL tone, per the paper-rail charge mapping in docs/sanity.md: R/G/B are spoken for by
-	// topic / commentary / actionable, and a kind is a descriptor rather than a badge. It shares
-	// PaperStatus's `pillClass` so pill geometry can't drift from the rest of the rail.
+	// topic / commentary / actionable, and a kind is a descriptor rather than a badge. It wears the
+	// shared `badge-outline` so chip geometry can't drift from the rest of the rail.
 	//
 	// Renders nothing for an unset OR unrecognised value, matching PaperStatus. That is load-bearing
 	// in one direction and merely tidy in the other: the field is optional with no initialValue, so
 	// 17 of 18 papers legitimately have no kind and must show no pill; and an unknown value can only
 	// mean the Studio's enum grew without CONTRIBUTION_KINDS following, where a blank beats a raw
 	// `conceptual`-style token on a public page.
-	import { pillClass } from '$lib/components/PaperStatus.svelte';
 
 	let { contribution }: { contribution: ContributionKind | null } = $props();
 
@@ -61,7 +64,7 @@
 </script>
 
 {#if label}
-	<span class="{pillClass} border-hairline text-muted">
+	<span class="badge-outline border-hairline text-muted">
 		{label}
 	</span>
 {/if}
