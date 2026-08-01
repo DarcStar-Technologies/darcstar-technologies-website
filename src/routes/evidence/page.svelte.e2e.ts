@@ -77,9 +77,9 @@ test('benchmarks detail page carries the hardware runs', async ({ page }) => {
 	// the JITTER, so the page published a spread figure as the top of a range of means and a test
 	// held it there (DAR-210).
 	await expect(page.getByText('0.81 µs mean')).toBeVisible();
-	// Both runs are ours, so the section may not call itself independent — and only a rendered page
-	// can see the heading the section actually ships. The unit rule scans the catalog by key prefix,
-	// which a renamed key would slip out of.
+	// Both runs are ours, so the section may not call itself independent. The unit rule scans the
+	// message catalogs; this is the backstop for the word arriving some other way — hardcoded into a
+	// .svelte, or served from the CMS — exactly why `expectNoCatalogTotal` exists beside it.
 	await expect(page.getByRole('heading', { name: 'Cross-platform re-runs' })).toBeVisible();
 	await expect(page.getByText(/\bindependent\b/i)).toHaveCount(0);
 	// The whole-controller figures — the numbers this page exists to carry (the copy calls them

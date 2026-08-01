@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { overwriteGetLocale, baseLocale } from '$lib/paraglide/runtime';
 import { m } from '$lib/paraglide/messages.js';
 import en from '../../messages/en.json';
+import es from '../../messages/es.json';
 import {
 	CONTROLLER_LATENCY_P50,
 	CONTROLLER_LATENCY_P99,
@@ -243,8 +244,16 @@ describe('no evidence claim calls our own runs independent (DAR-210)', () => {
 	// for zero real defects: DAR-152's failure mode exactly, where a guard that flags correct content
 	// gets loosened until it catches nothing.
 	//
-	// So: the evidence surface only, where a claim about how our evidence was produced actually
-	// lives, and where the word is a provenance claim rather than a description of prose.
+	// So: the message catalogs, which are hand-authored claim copy, and NOT the CMS.
+	//
+	// Scoping it to the `evidence_*` keys was the first cut and is wrong, which measuring the catalog
+	// is what showed: a claim about how our evidence was produced is not confined to that prefix —
+	// `section_proven_body` states the machine-checking claim on the HOMEPAGE, and `about_*` carries
+	// 25 more. "Independently benchmarked across two architectures" is exactly the sentence that would
+	// be written there, and a prefix scan would have waved it through. Catalog-wide with a declared
+	// allowlist instead: the polarity is right (deleting an entry makes the rule STRICTER, DAR-102),
+	// nothing new can slip in under a prefix nobody thought of, and the cost is measured rather than
+	// feared — across 968 keys the adjective matches exactly ONE, the entry below.
 	//
 	// Two residuals, both stated rather than papered over:
 	//   · The adverb route stays open — "independently verified by NCC Group" passes. That is fine
@@ -263,24 +272,30 @@ describe('no evidence claim calls our own runs independent (DAR-210)', () => {
 	// field. Widening buys nothing and taxes the copy we most want written.
 	const CLAIMS_A_SEPARATE_PARTY = /\bindependent\b/i;
 
-	const evidenceCopy = Object.entries(en as Record<string, unknown>).filter(
-		([key, value]) => key.startsWith('evidence_') && typeof value === 'string'
-	);
+	// Keys allowed to say it, each carrying the reason it is not a claim about our own evidence.
+	// Adding one is the deliberate act this rule exists to force; the reason is the point of the
+	// entry, and a future third-party run belongs here naming who performed it.
+	const ALLOWED: Record<string, string> = {
+		waitlist_evidence_benchmarks:
+			'a BUYER naming what they would need before adopting, listed beside "Third-party technical or security review" — the opposite end of the conversation from a claim about our own runs, and narrowing it would turn a stranger\'s requirement into something we already have'
+	};
 
-	// "Nothing matched" and "the scan reached nothing" print identically (DAR-102), and this scan is
-	// prefix-derived, so a renamed key would silently leave the surface. The floor is far below
-	// today's count — it is a liveness check, not a pin on how much evidence copy exists.
-	it('reaches the evidence surface at all', () => {
-		expect(evidenceCopy.length).toBeGreaterThan(30);
+	const catalogs = Object.entries({ en, es } as Record<string, Record<string, unknown>>);
+
+	// "Nothing matched" and "the scan reached nothing" print identically (DAR-102). The floor is far
+	// below today's 968 — a liveness check, not a pin on how much copy the site has.
+	it('reaches the catalog at all', () => {
+		expect(Object.keys(en).length).toBeGreaterThan(100);
 	});
 
-	it('never claims independence for a run we performed', () => {
-		const hits = evidenceCopy
+	it.each(catalogs)('never claims independence for our own work in %s', (_locale, catalog) => {
+		const hits = Object.entries(catalog)
+			.filter(([key, value]) => typeof value === 'string' && !(key in ALLOWED))
 			.filter(([, value]) => CLAIMS_A_SEPARATE_PARTY.test(value as string))
 			.map(([key]) => key);
 		expect(
 			hits,
-			'"independent" asserts a separate party ran or witnessed it, and none has. Say what the evidence shows instead (cross-platform, cross-prover, attributed). If the sentence DISAVOWS independence, or a third-party run really was commissioned, that is a deliberate exemption: allow the key by name here and say who ran it — never loosen the pattern'
+			'"independent" asserts a separate party ran or witnessed it, and none has. Say what the evidence shows instead (cross-platform, cross-prover, attributed). If the sentence DISAVOWS independence, or a third-party run really was commissioned, that is a deliberate exemption: add the key to ALLOWED with its reason and say who ran it — never loosen the pattern'
 		).toEqual([]);
 	});
 
@@ -307,19 +322,17 @@ describe('no evidence claim calls our own runs independent (DAR-210)', () => {
 		expect(text).not.toMatch(CLAIMS_A_SEPARATE_PARTY);
 	});
 
-	// What the key scope costs, asserted rather than claimed — DAR-212's move, and here the
-	// over-matched copy is live. `waitlist_evidence_benchmarks` offers "Independent performance
-	// benchmarks" as an answer to "What evidence would matter most before your organization could
-	// adopt GIDE?", beside "Third-party technical or security review". That is a BUYER naming what
-	// they would need from someone else — the opposite end of the conversation from a claim about
-	// our own runs — and rewriting it would narrow a stranger's stated requirement into something we
-	// already have. It is the reason this rule stops at the evidence surface instead of scanning the
-	// catalog, and the reason it must never be moved into SAFETY_LANGUAGE_RULES.
-	it('over-matches a buyer requirement outside the evidence surface, hence the key scope', () => {
-		expect(
-			m.waitlist_evidence_benchmarks(),
-			'this copy is correct and must keep firing the pattern — if it stopped, the key scope would look unnecessary'
-		).toMatch(CLAIMS_A_SEPARATE_PARTY);
+	// An allowlist that stops matching is a silent hole: the copy it excused could be reworded, the
+	// entry left behind, and the next real violation of that key would sail straight through. Same
+	// paired assertion safety-language makes for `evidence_safety_not_covered`, and here it doubles
+	// as the record of what the catalog-wide scope costs — one live, correct, deliberately-excused
+	// key rather than a claim in prose that the cost is small.
+	it('keeps every allowlisted key load-bearing', () => {
+		const stale = Object.keys(ALLOWED).filter((key) => {
+			const value = (en as Record<string, unknown>)[key];
+			return typeof value !== 'string' || !CLAIMS_A_SEPARATE_PARTY.test(value);
+		});
+		expect(stale, 'allowlisted keys that no longer say "independent" — drop them').toEqual([]);
 	});
 });
 
