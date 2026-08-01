@@ -32,8 +32,14 @@
 	// per list now, and `hover-focus:` gives the keyboard the same state change the pointer gets
 	// (the ring itself is site-wide, in layout.css). Component-local, so NOT $lib/styles.ts:
 	// nothing outside this file renders a nav item.
+	//
+	// `whitespace-nowrap` is on the DESKTOP treatment only, and the asymmetry is the rule rather than
+	// an omission (DAR-213). A desktop item sits in a horizontal row that the flex algorithm will
+	// squeeze, so "Sign in" breaking after "Sign" is a mid-phrase break of a label, which is never
+	// what a nav means. A mobile item is a full-width block in a vertical stack, where a long label
+	// wrapping is the correct rendering and nowrap would push it out of the panel instead.
 	const desktopLinkClass =
-		'rounded px-3 py-2 text-sm font-medium text-primary-500 transition-colors hover-focus:text-primary-400';
+		'rounded px-3 py-2 text-sm font-medium whitespace-nowrap text-primary-500 transition-colors hover-focus:text-primary-400';
 	const mobileLinkClass =
 		'block rounded px-3 py-2 text-base font-medium text-primary-500 transition-colors hover-focus:preset-tonal-primary';
 
@@ -151,9 +157,25 @@
 				<Wordmark markClass="size-20" />
 			</a>
 
-			<div class="flex items-center gap-2 sm:gap-4">
-				<!-- Desktop links -->
-				<ul class="hidden items-center gap-1 sm:flex">
+			<div class="flex items-center gap-2 lg:gap-4">
+				<!-- Desktop links. The tier is `lg:` and it is MEASURED, not a taste call (DAR-213): the
+				     bar is capped at `max-w-5xl`, so the row's usable width is `min(viewport − 64, 992)`,
+				     the lockup wants 498 of that on one line and the six anonymous items 528 once they
+				     may not break mid-phrase. 1050 against a ceiling of 992 — the row has never fitted,
+				     which is why the previous tier asserted a fit at 640px that was false at EVERY width
+				     rather than in a band: below ~780px it spilled outside the glass panel, and above it
+				     the last two items broke mid-phrase out past 1600px.
+				     Everything clears at 951px. `md:` (768) is nowhere near it, and the ~880 that looks
+				     like it fits does not: nothing wraps and nothing overflows there, but the bar has
+				     squeezed the lockup so far past its own minimum that its text lies across the nav by
+				     46.5px. 960 clears by 9px and leaves 2px per label to grow; `lg:` leaves 13px per
+				     label — the first standard tier with margin in both directions.
+				     Re-measure rather than re-derive if the labels or the lockup change; the numbers
+				     above are rendered measurements, not arithmetic.
+				     The other three `lg:` sites — this list's gap on the wrapper above, and the toggle
+				     and the collapsed menu below — move in lockstep with this one: reveal the row where
+				     it fits, and keep the menu everywhere else. -->
+				<ul class="hidden items-center gap-1 lg:flex">
 					{#each links as link (link.id)}
 						<li>
 							{@render navLink(link, desktopLinkClass)}
@@ -179,7 +201,7 @@
 				<!-- Mobile menu toggle -->
 				<button
 					type="button"
-					class="btn-icon hover-focus:preset-tonal sm:hidden"
+					class="btn-icon hover-focus:preset-tonal lg:hidden"
 					aria-label={open ? m.nav_menu_close() : m.nav_menu_open()}
 					aria-expanded={open}
 					aria-controls="mobile-nav"
@@ -200,7 +222,7 @@
 		{#if open}
 			<ul
 				id="mobile-nav"
-				class="flex flex-col gap-1 pb-3 sm:hidden"
+				class="flex flex-col gap-1 pb-3 lg:hidden"
 				transition:slide={{ duration: 150 }}
 			>
 				{#each links as link (link.id)}
