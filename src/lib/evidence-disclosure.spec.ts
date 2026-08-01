@@ -246,6 +246,17 @@ describe('no evidence claim calls our own runs independent (DAR-210)', () => {
 	//
 	// So: the message catalogs, which are hand-authored claim copy, and NOT the CMS.
 	//
+	// TWO shapes, because the claim has two grammars and catching only one is the trap this rule
+	// walked into first. The adjective ("an independent benchmark") is the obvious form. The adverb
+	// is the one a marketer actually writes — "independently verified" is the standard phrase in this
+	// domain — and a bare `\bindependently\b` is unusable, since the three live uses of it are all
+	// correct. What separates them is the VERB it governs: our three describe how something was done
+	// (attributed by the machine; mechanized in both provers, i.e. independently OF EACH OTHER),
+	// while the claim always attaches the adverb to an act of validation performed ON our work.
+	// Measured across 968 keys: the validation half hits exactly one key, allowed below. Found by
+	// mutation rather than by reading — a planted "Independently benchmarked across two
+	// architectures" passed 28/28 against the adjective-only first cut.
+	//
 	// Scoping it to the `evidence_*` keys was the first cut and is wrong, which measuring the catalog
 	// is what showed: a claim about how our evidence was produced is not confined to that prefix —
 	// `section_proven_body` states the machine-checking claim on the HOMEPAGE, and `about_*` carries
@@ -268,14 +279,6 @@ describe('no evidence claim calls our own runs independent (DAR-210)', () => {
 	// would guard a defect that has not happened, while its likeliest arrival is one of those
 	// disavowals or `/research`'s origin split, which legitimately says "Third-party" on every
 	// external paper. Widening buys nothing and taxes the copy we most want written.
-	// TWO shapes, because the claim has two grammars and catching only one is the trap this rule
-	// walked into first. The adjective ("an independent benchmark") is the obvious form. The adverb
-	// is the one a marketer actually writes — "independently verified" is the standard phrase in this
-	// domain — and a bare `\bindependently\b` is unusable, since the three live uses of it are all
-	// correct. What separates them is the VERB it governs: our three describe how something was done
-	// (attributed by the machine; mechanized in both provers, i.e. independently OF EACH OTHER),
-	// while the claim always attaches the adverb to an act of validation performed ON our work.
-	// Measured across 968 keys: the validation half hits exactly one key, allowed below.
 	const CLAIMS_A_SEPARATE_PARTY =
 		/\bindependent\b|\bindependently\s+(?:verif|audit|benchmark|review|test|confirm|validat|assess|certif|replicat|reproduc)/i;
 
