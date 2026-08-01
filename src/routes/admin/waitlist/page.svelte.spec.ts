@@ -774,7 +774,7 @@ describe('/admin/waitlist collated submissions', () => {
 	});
 });
 
-// --- Chrome (DAR-223) ---------------------------------------------------------------------------
+// --- Chrome (DAR-225) ---------------------------------------------------------------------------
 //
 // Everything above renders UNSTYLED — this file never imported the stylesheet, so it could assert
 // what the page says and not what it looks like. That gap is exactly where DAR-223's worst defect
