@@ -1,5 +1,5 @@
 import { page } from 'vitest/browser';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { ActionData, PageData } from './$types';
 
@@ -771,5 +771,85 @@ describe('/admin/waitlist collated submissions', () => {
 		mount();
 		await expect.element(page.getByText(/flagged, never merged/)).toBeVisible();
 		await expect.element(page.getByText(/append-only/)).toBeVisible();
+	});
+});
+
+// --- Chrome (DAR-225) ---------------------------------------------------------------------------
+//
+// Everything above renders UNSTYLED — this file never imported the stylesheet, so it could assert
+// what the page says and not what it looks like. That gap is exactly where DAR-223's worst defect
+// lived: a `@utility badge` collided with Skeleton's own `.badge`, both rules were emitted, and the
+// cascade merged them per property. The class name was right, the markup was right, every
+// behavioural test passed, and the chips would have shipped with the wrong geometry.
+//
+// So these assert COMPUTED style, not class names. `/admin` is the surface with the most DAR-223
+// change and the least other coverage: it is behind auth and behind a database, so the hermetic e2e
+// can only ever watch it redirect.
+describe('/admin/waitlist chrome', () => {
+	// Imported inside the describe so the 46 behavioural tests above keep rendering unstyled — a
+	// global stylesheet could change what `toBeVisible()` means for them, and this block should not
+	// be able to perturb assertions it has nothing to do with.
+	beforeAll(async () => {
+		await import('../../layout.css');
+	});
+
+	it('draws the record table with the shared datagrid chrome', () => {
+		const { container } = mount();
+		const table = container.querySelector('table')!;
+		expect(table.classList.contains('datagrid')).toBe(true);
+		// Applied, not merely named: the cell padding is the cheapest proof the stylesheet reached it.
+		const cell = container.querySelector<HTMLElement>('.datagrid-td')!;
+		expect(getComputedStyle(cell).paddingLeft).toBe('12px');
+		expect(
+			getComputedStyle(container.querySelector<HTMLElement>('.datagrid-head')!).borderBottomWidth
+		).toBe('1px');
+	});
+
+	// The family's whole point: a trigger's colour is a promise about the button underneath it.
+	it('pairs every disclosure trigger with a confirm of its own tone', () => {
+		const { container } = mount({ isAdmin: true });
+		const pairs = [...container.querySelectorAll('details')]
+			.map((d) => ({
+				trigger: [...(d.querySelector('summary')?.classList ?? [])].find((c) =>
+					c.startsWith('action-')
+				),
+				confirm: [...d.querySelectorAll('button')]
+					.flatMap((b) => [...b.classList])
+					.find((c) => c.startsWith('confirm-'))
+			}))
+			.filter((p) => p.trigger && p.confirm);
+		expect(pairs.length).toBeGreaterThan(2);
+		expect(
+			pairs.filter(
+				(p) => p.trigger!.slice('action-'.length) !== p.confirm!.slice('confirm-'.length)
+			)
+		).toStrictEqual([]);
+	});
+
+	// Distinct colours per tone, read from the browser. A severity ladder whose rungs render the same
+	// is not a ladder, and this is the assertion a class-name check cannot make.
+	it('paints each tone differently', () => {
+		const { container } = mount({ isAdmin: true });
+		const tones = new Map<string, string>();
+		for (const el of container.querySelectorAll<HTMLElement>('summary[class*="action-"]')) {
+			const tone = [...el.classList].find((c) => c.startsWith('action-'));
+			if (tone) tones.set(tone, getComputedStyle(el).color);
+		}
+		expect(tones.size).toBeGreaterThanOrEqual(3);
+		expect([...tones.values()].filter((c) => !c || c === 'rgba(0, 0, 0, 0)')).toStrictEqual([]);
+		expect(new Set(tones.values()).size).toBe(tones.size);
+	});
+
+	// The Skeleton collision, pinned where it would actually show. Skeleton's `.badge` is in the
+	// bundle whether we use it or not (Tailwind extracts candidates from raw text, so a `<label>` tag
+	// is enough), and its geometry is `--radius-base` with a wider inline padding — so a lead chip
+	// that had picked it up would be visibly squarer and wider than the one we define.
+	it('gives the lead-class badge OUR geometry, not Skeleton’s', () => {
+		const { container } = mount();
+		const badge = container.querySelector<HTMLElement>('.badge-solid')!;
+		const style = getComputedStyle(badge);
+		expect(style.paddingLeft).toBe('8px');
+		// `rounded-full` resolves to an enormous radius; Skeleton's `--radius-base` is a few px.
+		expect(Number.parseFloat(style.borderRadius)).toBeGreaterThan(100);
 	});
 });
