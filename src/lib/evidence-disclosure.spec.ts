@@ -249,35 +249,44 @@ describe('no evidence claim calls our own runs independent (DAR-210)', () => {
 	// Scoping it to the `evidence_*` keys was the first cut and is wrong, which measuring the catalog
 	// is what showed: a claim about how our evidence was produced is not confined to that prefix —
 	// `section_proven_body` states the machine-checking claim on the HOMEPAGE, and `about_*` carries
-	// 25 more. "Independently benchmarked across two architectures" is exactly the sentence that would
-	// be written there, and a prefix scan would have waved it through. Catalog-wide with a declared
-	// allowlist instead: the polarity is right (deleting an entry makes the rule STRICTER, DAR-102),
-	// nothing new can slip in under a prefix nobody thought of, and the cost is measured rather than
-	// feared — across 968 keys the adjective matches exactly ONE, the entry below.
+	// 25 more, so "an independent benchmark of the kernel" written there would have been waved
+	// through. Catalog-wide with a declared allowlist instead: the polarity is right (deleting an
+	// entry makes the rule STRICTER, DAR-102), nothing slips in under a prefix nobody thought of,
+	// and the cost is measured rather than feared — two keys across 968, both declared below.
 	//
-	// Two residuals, both stated rather than papered over:
-	//   · The adverb route stays open — "independently verified by NCC Group" passes. That is fine
-	//     while it is TRUE and is review's job when it is not; narrowing it would cost the three
-	//     live keys below, which is a worse trade than the hole.
+	// Residuals, stated rather than papered over:
+	//   · The adverb is caught only before a VALIDATION verb, so an unusual phrasing that claims
+	//     outside provenance some other way ("this run was independently produced") still passes.
+	//     Narrowing further would start costing the three correct uses, which is the worse trade;
+	//     that much is review's job.
 	//   · An honest DISAVOWAL fires. "No independent party has re-run this" is exactly the copy the
-	//     `*_not_covered` fields exist for, and it is the likeliest legitimate use of the word here
-	//     — so failing is correct only if the answer is deliberate: exempt that key by name, the way
-	//     safety-language allows `evidence_safety_not_covered` to quote the phrase it disavows.
-	//     There is no allowlist yet because no key needs one, and an empty one cannot be tested for
-	//     staleness (DAR-102's polarity — the entry that stops being load-bearing is the hazard).
+	//     `*_not_covered` fields exist for — so failing is correct only if the answer is deliberate:
+	//     add the key to ALLOWED with its reason, the way safety-language allows
+	//     `evidence_safety_not_covered` to quote the phrase it disavows.
 	//
-	// "third-party" is deliberately NOT in the pattern, and that is the same residual read forward:
-	// no `evidence_` key uses the phrase today, so it would guard a defect that has not happened,
-	// while the phrase's most likely arrival on this surface is a disavowal in a "not covered"
-	// field. Widening buys nothing and taxes the copy we most want written.
-	const CLAIMS_A_SEPARATE_PARTY = /\bindependent\b/i;
+	// "third-party" is deliberately NOT in the pattern: no claim key uses the phrase today, so it
+	// would guard a defect that has not happened, while its likeliest arrival is one of those
+	// disavowals or `/research`'s origin split, which legitimately says "Third-party" on every
+	// external paper. Widening buys nothing and taxes the copy we most want written.
+	// TWO shapes, because the claim has two grammars and catching only one is the trap this rule
+	// walked into first. The adjective ("an independent benchmark") is the obvious form. The adverb
+	// is the one a marketer actually writes — "independently verified" is the standard phrase in this
+	// domain — and a bare `\bindependently\b` is unusable, since the three live uses of it are all
+	// correct. What separates them is the VERB it governs: our three describe how something was done
+	// (attributed by the machine; mechanized in both provers, i.e. independently OF EACH OTHER),
+	// while the claim always attaches the adverb to an act of validation performed ON our work.
+	// Measured across 968 keys: the validation half hits exactly one key, allowed below.
+	const CLAIMS_A_SEPARATE_PARTY =
+		/\bindependent\b|\bindependently\s+(?:verif|audit|benchmark|review|test|confirm|validat|assess|certif|replicat|reproduc)/i;
 
 	// Keys allowed to say it, each carrying the reason it is not a claim about our own evidence.
 	// Adding one is the deliberate act this rule exists to force; the reason is the point of the
 	// entry, and a future third-party run belongs here naming who performed it.
 	const ALLOWED: Record<string, string> = {
 		waitlist_evidence_benchmarks:
-			'a BUYER naming what they would need before adopting, listed beside "Third-party technical or security review" — the opposite end of the conversation from a claim about our own runs, and narrowing it would turn a stranger\'s requirement into something we already have'
+			'a BUYER naming what they would need before adopting, listed beside "Third-party technical or security review" — the opposite end of the conversation from a claim about our own runs, and narrowing it would turn a stranger\'s requirement into something we already have',
+		waitlist_field_budget_help:
+			'explicitly counterfactual — "ASSUMING the results were independently validated, what budget…". The hypothetical is the whole point of the question: it brackets out whether such validation exists so the respondent can answer about budget, so it asserts nothing'
 	};
 
 	const catalogs = Object.entries({ en, es } as Record<string, Record<string, unknown>>);
@@ -305,7 +314,12 @@ describe('no evidence claim calls our own runs independent (DAR-210)', () => {
 	it.each([
 		['the heading this replaced', 'Independent re-runs'],
 		['a reworded claim', 'An independent benchmark of the reference kernel.'],
-		['the noun form', 'Independent verification on a second architecture.']
+		['the noun form', 'Independent verification on a second architecture.'],
+		// The adverb half. The first of these was a planted mutation that the adjective-only rule
+		// waved straight through — 28/28 green — which is how the second grammar got found at all.
+		['the adverb a marketer writes', 'Independently benchmarked across two architectures.'],
+		['the domain-standard phrase', 'The kernel figure has been independently verified.'],
+		['a claim of outside audit', 'Our proofs are independently audited each release.']
 	])('recognises %s', (_label, text) => {
 		expect(text).toMatch(CLAIMS_A_SEPARATE_PARTY);
 	});
