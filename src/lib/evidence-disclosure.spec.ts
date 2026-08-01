@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { overwriteGetLocale, baseLocale } from '$lib/paraglide/runtime';
 import { m } from '$lib/paraglide/messages.js';
+import en from '../../messages/en.json';
+import es from '../../messages/es.json';
 import {
 	CONTROLLER_LATENCY_P50,
 	CONTROLLER_LATENCY_P99,
@@ -209,6 +211,145 @@ describe('every published real-time margin names the percentile it came from (DA
 		const swapped = 'It clears the budget by roughly 100× at p50 and roughly 190× at p99.';
 		expect(attributedPercentile(swapped, '190×')).toBe('p99');
 		expect(attributedPercentile(swapped, '100×')).toBe('p50');
+	});
+});
+
+// "Independent" is a term of art in benchmarking: it means a SEPARATE PARTY ran or witnessed the
+// run, which is the whole reason a reader gives the word weight. /evidence/benchmarks headed its
+// cross-checking section "Independent re-runs" over two runs that are both ours — the aarch64 one
+// executes our own `bench-arm.yml` on a hosted runner, so the metal is rented and the run is not
+// (DAR-210). What those re-runs actually establish is that the figure survives a change of ISA,
+// compiler and machine, which is a real claim and a different one; the heading says "Cross-platform"
+// now. DAR-46's axis rather than DAR-117's: the word overstated what the evidence supports, the way
+// "ships" did on the org profile (DAR-128) and "guarantees" did before it.
+//
+// The rule is about the ADJECTIVE, and the adverb is deliberately left alone. Three live keys say
+// "independently" and all three are precise: two provers checking a theorem independently OF EACH
+// OTHER, and hardware "independently attributed" — the harness reads the CPU's own implementer and
+// part IDs instead of us asserting what we ran on, so it is the ATTRIBUTION that is independent. The
+// heading borrowed the adjective and dropped the noun that made it true.
+describe('no evidence claim calls our own runs independent (DAR-210)', () => {
+	// Blunt on purpose, like DAR-212's pattern below, and key-scoped for the same reason — except
+	// that here the scope was MEASURED rather than argued, and the measurement is decisive.
+	//
+	// SAFETY_LANGUAGE_RULES is the obvious home and is the wrong one: those rules are shared with
+	// `pnpm check:cms`, which reads CMS prose. Queried against the live dataset, "independent" is
+	// pervasive there and every use is correct — "near-independent" coordinates after a random
+	// rotation, "independently-normalized" softmax outputs (the whole subject of three posts), "six
+	// independent opportunities to get it wrong", the founder bio's "independent work on hard systems
+	// problems". Best of all, one post argues at length that its own reviewers are NOT independent
+	// ("The verifiers aren't independent witnesses… Their agreement lowers the noise; it isn't
+	// statistical independence") — copy this rule would flag while it says the very thing the rule
+	// exists to enforce. Every flagship engineering post, a paper commentary and the bio would fire,
+	// for zero real defects: DAR-152's failure mode exactly, where a guard that flags correct content
+	// gets loosened until it catches nothing.
+	//
+	// So: the message catalogs, which are hand-authored claim copy, and NOT the CMS.
+	//
+	// TWO shapes, because the claim has two grammars and catching only one is the trap this rule
+	// walked into first. The adjective ("an independent benchmark") is the obvious form. The adverb
+	// is the one a marketer actually writes — "independently verified" is the standard phrase in this
+	// domain — and a bare `\bindependently\b` is unusable, since the three live uses of it are all
+	// correct. What separates them is the VERB it governs: our three describe how something was done
+	// (attributed by the machine; mechanized in both provers, i.e. independently OF EACH OTHER),
+	// while the claim always attaches the adverb to an act of validation performed ON our work.
+	// Measured across 968 keys: the validation half hits exactly one key, allowed below. Found by
+	// mutation rather than by reading — a planted "Independently benchmarked across two
+	// architectures" passed 28/28 against the adjective-only first cut.
+	//
+	// Scoping it to the `evidence_*` keys was the first cut and is wrong, which measuring the catalog
+	// is what showed: a claim about how our evidence was produced is not confined to that prefix —
+	// `section_proven_body` states the machine-checking claim on the HOMEPAGE, and `about_*` carries
+	// 25 more, so "an independent benchmark of the kernel" written there would have been waved
+	// through. Catalog-wide with a declared allowlist instead: the polarity is right (deleting an
+	// entry makes the rule STRICTER, DAR-102), nothing slips in under a prefix nobody thought of,
+	// and the cost is measured rather than feared — two keys across 968, both declared below.
+	//
+	// Residuals, stated rather than papered over:
+	//   · The adverb is caught only before a VALIDATION verb, so an unusual phrasing that claims
+	//     outside provenance some other way ("this run was independently produced") still passes.
+	//     Narrowing further would start costing the three correct uses, which is the worse trade;
+	//     that much is review's job.
+	//   · An honest DISAVOWAL fires. "No independent party has re-run this" is exactly the copy the
+	//     `*_not_covered` fields exist for — so failing is correct only if the answer is deliberate:
+	//     add the key to ALLOWED with its reason, the way safety-language allows
+	//     `evidence_safety_not_covered` to quote the phrase it disavows.
+	//
+	// "third-party" is deliberately NOT in the pattern: no claim key uses the phrase today, so it
+	// would guard a defect that has not happened, while its likeliest arrival is one of those
+	// disavowals or `/research`'s origin split, which legitimately says "Third-party" on every
+	// external paper. Widening buys nothing and taxes the copy we most want written.
+	const CLAIMS_A_SEPARATE_PARTY =
+		/\bindependent\b|\bindependently\s+(?:verif|audit|benchmark|review|test|confirm|validat|assess|certif|replicat|reproduc)/i;
+
+	// Keys allowed to say it, each carrying the reason it is not a claim about our own evidence.
+	// Adding one is the deliberate act this rule exists to force; the reason is the point of the
+	// entry, and a future third-party run belongs here naming who performed it.
+	const ALLOWED: Record<string, string> = {
+		waitlist_evidence_benchmarks:
+			'a BUYER naming what they would need before adopting, listed beside "Third-party technical or security review" — the opposite end of the conversation from a claim about our own runs, and narrowing it would turn a stranger\'s requirement into something we already have',
+		waitlist_field_budget_help:
+			'explicitly counterfactual — "ASSUMING the results were independently validated, what budget…". The hypothetical is the whole point of the question: it brackets out whether such validation exists so the respondent can answer about budget, so it asserts nothing'
+	};
+
+	const catalogs = Object.entries({ en, es } as Record<string, Record<string, unknown>>);
+
+	// "Nothing matched" and "the scan reached nothing" print identically (DAR-102). The floor is far
+	// below today's 968 — a liveness check, not a pin on how much copy the site has.
+	it('reaches the catalog at all', () => {
+		expect(Object.keys(en).length).toBeGreaterThan(100);
+	});
+
+	it.each(catalogs)('never claims independence for our own work in %s', (_locale, catalog) => {
+		const hits = Object.entries(catalog)
+			.filter(([key, value]) => typeof value === 'string' && !(key in ALLOWED))
+			.filter(([, value]) => CLAIMS_A_SEPARATE_PARTY.test(value as string))
+			.map(([key]) => key);
+		expect(
+			hits,
+			'"independent" asserts a separate party ran or witnessed it, and none has. Say what the evidence shows instead (cross-platform, cross-prover, attributed). If the sentence DISAVOWS independence, or a third-party run really was commissioned, that is a deliberate exemption: add the key to ALLOWED with its reason and say who ran it — never loosen the pattern'
+		).toEqual([]);
+	});
+
+	// That assertion is "nothing matched", which passes just as happily against a pattern that
+	// answers nothing at all (DAR-152). These prove it answers — the retired heading verbatim, plus
+	// the two rewordings that would reintroduce the claim without reusing its words.
+	it.each([
+		['the heading this replaced', 'Independent re-runs'],
+		['a reworded claim', 'An independent benchmark of the reference kernel.'],
+		['the noun form', 'Independent verification on a second architecture.'],
+		// The adverb half. The first of these was a planted mutation that the adjective-only rule
+		// waved straight through — 28/28 green — which is how the second grammar got found at all.
+		['the adverb a marketer writes', 'Independently benchmarked across two architectures.'],
+		['the domain-standard phrase', 'The kernel figure has been independently verified.'],
+		['a claim of outside audit', 'Our proofs are independently audited each release.']
+	])('recognises %s', (_label, text) => {
+		expect(text).toMatch(CLAIMS_A_SEPARATE_PARTY);
+	});
+
+	// The adverb, which is the half that must NOT fire — and it is live copy, not a hypothetical, so
+	// a pattern widened to `independent\w*` fails here rather than silently retiring three true
+	// statements. Both senses, because they are different claims that happen to share a word.
+	it.each([
+		['machine-read attribution', m.evidence_cfc_method()],
+		['two provers agreeing', m.evidence_theorems_method()],
+		['the same claim on the proofs page', m.evidence_proofs_definition_body()]
+	])('leaves %s alone', (_label, text) => {
+		expect(text).toMatch(/\bindependently\b/i);
+		expect(text).not.toMatch(CLAIMS_A_SEPARATE_PARTY);
+	});
+
+	// An allowlist that stops matching is a silent hole: the copy it excused could be reworded, the
+	// entry left behind, and the next real violation of that key would sail straight through. Same
+	// paired assertion safety-language makes for `evidence_safety_not_covered`, and here it doubles
+	// as the record of what the catalog-wide scope costs — one live, correct, deliberately-excused
+	// key rather than a claim in prose that the cost is small.
+	it('keeps every allowlisted key load-bearing', () => {
+		const stale = Object.keys(ALLOWED).filter((key) => {
+			const value = (en as Record<string, unknown>)[key];
+			return typeof value !== 'string' || !CLAIMS_A_SEPARATE_PARTY.test(value);
+		});
+		expect(stale, 'allowlisted keys that no longer say "independent" — drop them').toEqual([]);
 	});
 });
 

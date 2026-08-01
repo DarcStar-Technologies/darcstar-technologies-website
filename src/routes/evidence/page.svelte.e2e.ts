@@ -72,7 +72,16 @@ test('benchmarks detail page carries the hardware runs', async ({ page }) => {
 	await expect(page.getByRole('heading', { level: 1 })).toContainText('Measured on real');
 	await expect(page.getByText(CFC_KERNEL_LATENCY, { exact: true })).toBeVisible();
 	await expect(page.getByText('Neoverse-N2')).toBeVisible();
-	await expect(page.getByText('0.81 and 0.91 µs')).toBeVisible();
+	// The x86 cross-check. This assertion used to read '0.81 and 0.91 µs' and so PINNED a defect:
+	// the committed sweep's row is `avg | P50 | P99 | max | jitter`, 0.81 is the average and 0.91 is
+	// the JITTER, so the page published a spread figure as the top of a range of means and a test
+	// held it there (DAR-210).
+	await expect(page.getByText('0.81 µs mean')).toBeVisible();
+	// Both runs are ours, so the section may not call itself independent. The unit rule scans the
+	// message catalogs; this is the backstop for the word arriving some other way — hardcoded into a
+	// .svelte, or served from the CMS — exactly why `expectNoCatalogTotal` exists beside it.
+	await expect(page.getByRole('heading', { name: 'Cross-platform re-runs' })).toBeVisible();
+	await expect(page.getByText(/\bindependent\b/i)).toHaveCount(0);
 	// The whole-controller figures — the numbers this page exists to carry (the copy calls them
 	// "the figures to cite"); their absence must fail, not just the kernel figures'.
 	await expect(page.getByText(`${CONTROLLER_LATENCY_P50} p50`)).toBeVisible();
