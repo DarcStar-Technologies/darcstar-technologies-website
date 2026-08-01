@@ -116,6 +116,34 @@ describe('the published real-time margins (DAR-209)', () => {
 	);
 });
 
+// The cross-platform re-runs state how far each lands from the reference figure, and "about 6%" is
+// a DERIVED number typed into prose — the one thing DAR-209 exists to stop. It cannot become a
+// constant like the margins did: docs/evidence.md keeps per-run provenance in the
+// `evidence_bench_*` messages ONLY, so 0.81 has nowhere else to live. What is available instead is
+// to recompute it, which costs nothing and closes the same hole — its two inputs sit in different
+// files (0.81 in the message, 0.767 in `$lib/evidence`), so a re-measure of the kernel latency
+// would otherwise leave a stale comparison on the page with every other assertion green.
+//
+// Tolerant to a whole point, deliberately: the copy says "about", the inputs are two-decimal
+// published figures, and a rule tighter than the precision of its own inputs fails on correct copy.
+describe('the cross-platform re-run comparison (DAR-210)', () => {
+	it('states the x86 sweep distance from the reference figure it is compared against', () => {
+		const body = en.evidence_bench_rerun_x86_body;
+		const sweep = Number(/([\d.]+) µs mean/.exec(body)?.[1]);
+		const stated = Number(/about (\d+)% above/.exec(body)?.[1]);
+
+		// Both regexes failing gives NaN, which every comparison below would pass silently.
+		expect(sweep, `no "N µs mean" figure in: ${body}`).toBeGreaterThan(0);
+		expect(stated, `no "about N% above" comparison in: ${body}`).toBeGreaterThan(0);
+
+		const actual = (sweep / figure(CFC_KERNEL_LATENCY) - 1) * 100;
+		expect(
+			Math.abs(actual - stated),
+			`copy says ${stated}% above ${CFC_KERNEL_LATENCY}, but ${sweep} µs is ${actual.toFixed(1)}%`
+		).toBeLessThan(1);
+	});
+});
+
 // docs/evidence.md's "never re-inline a figure", scoped to the figure class this ticket found
 // duplicated. Every multiplier on the site is DERIVED — a quotient of two other published figures —
 // so each one belongs to the module that owns the division, and a hand-typed `190×` is a copy the

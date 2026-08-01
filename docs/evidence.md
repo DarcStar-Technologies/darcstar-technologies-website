@@ -191,37 +191,51 @@ audit — this repo holds only the public prose, never the artifacts):
   reader gives it weight — so "independent of whom?" answered with "us, on a different CPU"
   costs more trust than the word ever bought. What the re-runs establish is that the figure
   survives a change of ISA, compiler and machine: a real claim, and a different one. DAR-46's
-  axis (the wording must match what the evidence supports), not DAR-117's. Five things worth
-  keeping: (1) **the adjective is banned on the evidence surface and the adverb is deliberately
-  not** — three live keys say "independently" and all three are precise: two provers checking a
-  theorem independently OF EACH OTHER, and hardware "independently attributed", where the
-  harness reads the CPU's own implementer and part IDs rather than us asserting what we ran on.
-  The heading borrowed the adjective and dropped the noun that made it true. (2) **The guard is
-  key-scoped to `evidence_*` and must never move into `SAFETY_LANGUAGE_RULES`, because that set
-  is shared with `pnpm check:cms`** — queried against the live dataset, "independent" is
-  pervasive in CMS prose and every use is correct ("near-independent" coordinates,
+  axis (the wording must match what the evidence supports), not DAR-117's. Six things worth
+  keeping: (1) **the claim has TWO grammars and catching one is the trap** — the adjective ("an
+  independent benchmark") is obvious, but the adverb is what a marketer actually writes, and
+  "independently verified" is the standard phrase in this domain. A bare `\bindependently\b` is
+  unusable: three live keys use it and all three are precise (two provers checking a theorem
+  independently OF EACH OTHER; hardware "independently attributed", where the harness reads the
+  CPU's own implementer and part IDs rather than us asserting what we ran on). What separates
+  them is the VERB the adverb governs — ours describe how something was DONE, the claim always
+  attaches to an act of validation performed ON our work — so the rule keys on that verb.
+  Self-review found this by mutation, not by reading: a planted "Independently benchmarked
+  across two architectures" passed **28/28** against the adjective-only first cut. (2) **Scope
+  is the whole catalog with a declared allowlist, NOT the `evidence_*` keys** — a claim about
+  how our evidence was produced is not confined to that prefix (`section_proven_body` states the
+  machine-checking claim on the HOMEPAGE, `about_*` carries 25 more), and the first cut's own
+  justification comment cited a sentence its own scope would have missed. Allowlist polarity is
+  the DAR-102 one: deleting an entry makes the rule stricter. Measured cost of going wide: **two
+  keys out of 968**. (3) **It must never move into `SAFETY_LANGUAGE_RULES`, because that set is
+  shared with `pnpm check:cms`** — queried against the live dataset, "independent" is pervasive
+  in CMS prose and every use is correct ("near-independent" coordinates,
   "independently-normalized" softmax outputs, "six independent opportunities to get it wrong",
   the founder bio's "independent work on hard systems problems"), including a post arguing at
   length that its own reviewers are NOT independent. Every flagship engineering post, a paper
   commentary and the bio would fire for zero real defects — DAR-152's failure mode, measured
-  rather than predicted. (3) The cost of the key scope is **asserted on live copy, not claimed
-  in prose**: `waitlist_evidence_benchmarks` offers "Independent performance benchmarks" as an
-  answer to what a buyer would need before adopting, beside "Third-party technical or security
-  review" — the opposite end of the conversation, and rewriting it would narrow a stranger's
-  stated requirement into something we already have. (4) **The x86 figure beneath the heading
+  rather than predicted. (4) The two allowlist entries carry their reasons and are **paired with
+  a staleness assertion** (safety-language's move for `evidence_safety_not_covered`): a reworded
+  key whose entry stays behind is a silent hole, since the next real violation of that key would
+  sail through. They are `waitlist_evidence_benchmarks` (a BUYER naming what they would need,
+  beside "Third-party technical or security review" — rewriting it would narrow a stranger's
+  requirement into something we already have) and `waitlist_field_budget_help` (explicitly
+  counterfactual: "ASSUMING the results were independently validated…" brackets out whether such
+  validation exists). (5) **The x86 figure beneath the heading
   was wrong too, and only reading the artifact found it**: the copy said re-runs "land between
   0.81 and 0.91 µs mean", but that row is `avg | P50 | P99 | max | jitter` — 0.91 is the
   **jitter**, no committed x86 run has a 0.91 mean, and "re-runs" plural overstated a single
   sweep. Same class as DAR-209's p99, and the e2e **pinned** the wrong string, which is how it
   survived: a test asserting what the copy SAYS is silent on whether the copy is TRUE, the
-  general trap in pinning a transcribed figure. (5) Two residuals are stated in the spec rather
-  than papered over — the **adverb route stays open** ("independently verified by NCC Group"
-  passes, which is fine while it is true and review's job when it is not), and an honest
-  **disavowal fires** ("no independent party has re-run this" is exactly what a `*_not_covered`
-  field is for). Both resolve the same way: exempt the key by name, deliberately, the way
-  safety-language allows `evidence_safety_not_covered` to quote the phrase it disavows — never
-  loosen the pattern. If a third-party run is ever commissioned, that is where the word is
-  earned back, and the exemption should say who ran it.
+  general trap in pinning a transcribed figure. (6) Two residuals are stated in the spec rather
+  than papered over — the adverb is caught only **before a validation verb**, so a phrasing that
+  claims outside provenance some other way ("this run was independently produced") still passes,
+  and narrowing further would start costing the three correct uses; and an honest **disavowal
+  fires** ("no independent party has re-run this" is exactly what a `*_not_covered` field is
+  for). Both resolve the same way: add the key to `ALLOWED` with its reason, deliberately, the
+  way safety-language allows `evidence_safety_not_covered` to quote the phrase it disavows —
+  never loosen the pattern. If a third-party run is ever commissioned, that is where the word is
+  earned back, and the entry should say who ran it.
 - The card headline values are **data, locale-invariant** (en-formatted), same convention as
   the homepage readouts; all prose is Paraglide messages.
 - **Two detail sub-pages carry the depth; the cards stay lean and link to them**
