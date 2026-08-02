@@ -174,7 +174,8 @@ export const actions: Actions = {
 	},
 
 	// Lift a disable. Safe to run on anyone (only restores access), so it skips the self/owner guard
-	// — but still admin-only.
+	// — but still admin-only. NOTE that the page does not currently offer this for an owner: the
+	// button is inside the `manageable` block, which excludes them (DAR-234).
 	enable: async ({ params, request, locals }) => {
 		const userId = params.id!;
 		if (!rosterAdmin(locals)) return fail(403, { scope: 'status', error: 'forbidden' });

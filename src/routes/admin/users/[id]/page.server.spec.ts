@@ -354,6 +354,11 @@ describe.each(ALLOWS_SELF)('$name on the acting admin’s own account', ({ name,
 // `enable` is the one action that reaches an owner, and it is designed: it only RESTORES access, so
 // it is the sole way back for an owner disabled through the raw better-auth admin API, where the
 // owner concept does not exist. Guarding it would strand them.
+//
+// True of the ACTION and, today, false of the PAGE — the button sits inside the `manageable` block,
+// which excludes an owner, so the recovery needs a hand-made POST (DAR-234). That is the mirror of
+// what DAR-230 fixed one table down: there a form was offered where the POST refuses, here a POST is
+// accepted where no form is offered.
 describe.each(ALLOWS_OWNER)('$name on an ADMIN_USER_IDS owner', ({ name, write, fields }) => {
 	it('is allowed, which is the recovery path', async () => {
 		ownerCsv = TARGET;
