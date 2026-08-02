@@ -55,9 +55,14 @@ export function guardTarget(targetId: string, currentUserId: string): 'self' | '
  *
  * The `self` case stays open deliberately — correcting your own sign-in email is a real capability,
  * and it is why the guard was skipped here in the first place. `guardTarget` answers `self` BEFORE
- * `owner`, so an owner editing their own account still passes; since the bootstrap admits an
- * allowlisted owner whatever their role, that is always available to them and nothing here can strand
- * an owner behind an address they no longer hold.
+ * `owner`, so an owner editing their own account still passes, and the bootstrap admits an
+ * allowlisted owner whatever their role, so that is always available to a signed-in one.
+ *
+ * What this DOES remove: one admin re-addressing another owner, so an owner who has lost their
+ * password AND access to their address can no longer be rescued from this page. That is the point
+ * rather than a regression — a benign rescue and the takeover above are the same edit, and nothing at
+ * this layer can tell them apart — and the recovery route is the ADMIN_USER_IDS allowlist, which
+ * needs infrastructure access rather than an admin session.
  *
  * One rule, two callers: `updateDetails` gates on it and the detail page's `load` derives the flag it
  * renders the form from, so the page can never offer a form whose POST is refused. Reads env (through

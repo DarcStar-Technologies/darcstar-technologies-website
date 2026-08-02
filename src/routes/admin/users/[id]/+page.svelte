@@ -93,7 +93,13 @@
 	<!-- Details. Hidden for an owner account (DAR-230) — `detailsEditable` is the same predicate the
 	     action gates on, so this is never a form that would 403. It is NOT `manageable`: that also
 	     excludes your own account, where editing your sign-in email is exactly the point. The email
-	     stays visible as the heading above, and the roster list carries the name. -->
+	     stays visible as the heading above, and the roster list carries the name.
+
+	     The banner below therefore cannot render the action's own `owner` refusal, since the flag that
+	     hides the card is what produces it. That is the same shape the five `manageable`-gated
+	     sections already have — a hand-made POST at a target the page never offers a control for gets
+	     a 403 and a page with no control on it — rather than something this introduced, and the note
+	     in `manageable`'s else-branch is what the operator reads instead. -->
 	{#if data.detailsEditable}
 		<div class="glass-card space-y-4 p-4 sm:p-6">
 			<h2 class="heading-card">{m.admin_users_detail_section_details()}</h2>

@@ -747,13 +747,13 @@ re-render, so a refused action and an ungated one produce the same response — 
 gets the same shape, `303 → /account`. Nothing about the wire can tell them apart, which is why this
 is a test's job rather than a review's. It covered `/admin/waitlist`; DAR-226 covers the other four.
 
-| Route              | Actions | Gate                          | Spec                                 |
-| ------------------ | ------- | ----------------------------- | ------------------------------------ |
-| `admin`            | 1       | `isStaff`                     | `admin/page.server.spec.ts`          |
-| `admin/users`      | 1       | `rosterAdmin`                 | `admin/users/page.server.spec.ts`    |
-| `admin/users/[id]` | 7       | `rosterAdmin` + `guardTarget` | `.../[id]/page.server.spec.ts`       |
-| `admin/waitlist`   | 7       | `isStaff` / `isRosterAdmin`   | `admin/waitlist/page.server.spec.ts` |
-| `account`          | 2       | `locals.user`                 | `account/page.server.spec.ts`        |
+| Route              | Actions | Gate                                             | Spec                                 |
+| ------------------ | ------- | ------------------------------------------------ | ------------------------------------ |
+| `admin`            | 1       | `isStaff`                                        | `admin/page.server.spec.ts`          |
+| `admin/users`      | 1       | `rosterAdmin`                                    | `admin/users/page.server.spec.ts`    |
+| `admin/users/[id]` | 7       | `rosterAdmin` + `guardTarget` / `mayEditDetails` | `.../[id]/page.server.spec.ts`       |
+| `admin/waitlist`   | 7       | `isStaff` / `isRosterAdmin`                      | `admin/waitlist/page.server.spec.ts` |
+| `account`          | 2       | `locals.user`                                    | `account/page.server.spec.ts`        |
 
 **Assert the pair, never the refusal alone.** A one-sided test passes against a build that locked
 everyone out, and an admission-only test passes against one with no gate at all. Each route's pair is
@@ -820,15 +820,19 @@ fix, and it was the only one of the seven with no guard at all.
 
 **The fix is the `owner` half only.** `mayEditDetails` (`admin-users.ts`) is `guardTarget(…) !==
 'owner'`, so an admin correcting **their own** sign-in email — the capability the guard was skipped
-for in the first place — is untouched. Three things make that narrowing cost nothing rather than
-trade one lockout for another:
+for in the first place — is untouched. Two things keep that from trading one lockout for another:
 
 - `guardTarget` answers `self` **before** `owner`, so an owner is never blocked from their own
-  account. Reversing those two lines is a plausible tidy-up and fails one named test.
+  account. Reversing those two lines is a plausible tidy-up and fails two named tests.
 - the bootstrap admits an allowlisted owner **whatever their role**, so reaching that page is always
   available to them.
-- so the only capability actually removed is _one admin editing another owner's address_, and the
-  owner can still do it themselves.
+
+**What it does remove**, stated rather than waved at: one admin re-addressing _another_ owner. An
+owner who has lost their password **and** access to their address can no longer be helped from this
+page — and that is the point rather than a regression, because a benign rescue and the takeover above
+are the same three keystrokes and nothing here can tell them apart. The recovery route is the
+`ADMIN_USER_IDS` env allowlist, which needs Cloudflare access: a strictly stronger credential than an
+admin session, which is what makes it the right place for that decision.
 
 **The page reads the same predicate.** `load` derives `detailsEditable` from `mayEditDetails` and the
 detail page renders the card behind it, because a refusal alone would leave an operator pressing Save

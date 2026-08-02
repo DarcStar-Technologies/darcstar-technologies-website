@@ -22,6 +22,9 @@ export const load: PageServerLoad = async ({ params, request, locals }) => {
 	// getAuth() + ownerIds() read platform.env via getRequestEvent(), so resolve them (and the acting
 	// user's id) before the first await — env can read back empty once the async context is left.
 	// mayEditDetails reads env too, hence up here rather than beside the other flags in the return.
+	// It re-reads the allowlist `owners` already holds, and that duplication is the price of the flag
+	// and the action's gate being ONE expression — deriving it from `owners` here would be a second
+	// encoding of the rule, which is the thing the helper exists to prevent.
 	const auth = getAuth();
 	const owners = ownerIds();
 	const meId = locals.user!.id;

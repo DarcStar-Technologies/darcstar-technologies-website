@@ -187,6 +187,10 @@ beforeEach(() => {
 //
 // It pins the action SET as well, in both directions — an eighth action with no row here fails, and
 // so does a row naming an action that no longer exists.
+//
+// `mayEditDetails` is tested FIRST because it wraps `guardTarget`: an action naming both would be
+// classified by the narrower one. Nothing does today, and if one did the behavioural tables below
+// would disagree with whichever answer this gave — so the precedence decides a message, not a verdict.
 it('classifies each action by the target guard it names in source', () => {
 	const named = Object.entries(formActions('src/routes/admin/users/[id]/+page.server.ts')).map(
 		([name, body]) => [
