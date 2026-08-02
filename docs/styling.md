@@ -174,7 +174,7 @@ The bar is `max-w-5xl` inside a padded header, so the row's usable width is `min
 
 Squeezing is how the bar absorbs that deficit, and **three distinct things break as it does, in this order** — which is the part worth carrying to any other flex row:
 
-1. the lockup is squeezed past its own min-content and its text **escapes its box** (Chromium does not stop at the minimum here);
+1. the lockup is squeezed under its own contents and its text **escapes its box** (DAR-213 read this as Chromium refusing to stop at the minimum; DAR-229 measured it and the minimum itself was wrong — see below);
 2. that escaped text **reaches the row** and renders on top of the links;
 3. the bar's content finally **exceeds the bar** and spills outside the glass panel.
 
@@ -189,6 +189,16 @@ Three rules follow, and each was a defect before it was a rule:
 `header-nav.e2e.ts` holds all three, plus the one they create: from 640 to 1023 the menu is now the _only_ nav, so it is asserted to carry every item. It asserts all three failure modes, and its headroom test is what rejects a tier that merely fits — "the row fits" and "the row fits with room to spare" are different claims, and only the second is a reason to have picked this tier.
 
 Nothing here is visible in a class attribute: every input is a rendered measurement — the metrics of a self-hosted variable font, how flex distributes the shrink, which media query is live. **Re-measure after touching the labels, the lockup or the bar's cap; do not re-derive from the numbers above.**
+
+#### Two of those three modes are unreachable now, and the mark is why (DAR-229)
+
+The candidate fix was `min-width: min-content` on the lockup link, and it is a **no-op** — byte-identical at 13 widths, with all three thresholds unmoved. A flex item's `min-width` already computes to `auto`, which resolves to that same content-based minimum, so the clamp sets the property to the value it already had. The mechanism is one level down: **the mark is a replaced element and contributes nothing to that minimum**, so the link's minimum measured **252.5px** against contents needing **332.5** (mark 80 + gap 10 + "Technologies" 242.5) — the box really did stop at its minimum, and the minimum was smaller than the box's own contents.
+
+`shrink-0` on the mark puts it back into that minimum. It lives in `Wordmark.svelte` rather than in the header's `markClass` because it is the mark's property and not one lockup's — and it is byte-identical in the footer at 280–1280px, so stating it once costs that call site nothing. Measured at `lg:`: escape and collision never fire through +90px per label, and the bar overflows at **+13**, exactly where the escape used to begin. **The fix does not move the point at which the row runs out of room — it changes which failure that point produces.** That is the shape worth carrying: a squeezed flex row finds something to give way silently, so make the silent thing rigid and the loud failure is all that is left.
+
+It also surfaced what the silence had been hiding. Below **347px** the wordmark rendered outside its link box, and below ~327px on top of the menu toggle — live, and uncovered, because the spec's narrowest width was 390. The lockup was responsive on one axis only: the type steps at `sm:` and the mark did not, so a phone got an 80px mark beside 20px type — 4:1 against desktop's 2.2:1, a quarter of a 320px viewport. The mark now steps with the type (`size-14 sm:size-20`) and the bar's gap with it (`gap-3 sm:gap-6`), taking the header's floor from 347px to **311** — clear of 320, which is both WCAG 1.4.10's reflow width and where a 390px phone lands at 125% browser zoom. Floors measured with the mark held: 80px survives to 347, 64px to 331, 56px to 323, and 56px with the tightened gap to 311. DAR-213's tier is untouched either way (950 against 951), which is why this was separable from it.
+
+Two things about the test. The `320px` row is the fit's only guard. And the over-squeeze test (**+20px** per label — inside the band where the old code failed silently, between escape at +13 and overflow at +26, so it is the one squeeze that tells the two designs apart) is the only place in the repo that asserts a **broken** bar on purpose: its overflow assertion is a positive control, because every other assertion in it is "nothing moved" — which is exactly what a broken instrument reports too. That control covers the headroom test as well, since both drive the same padding injection and the injection breaking leaves the headroom test green.
 
 ### Page hero — glass panel over the helix (the standard for every page)
 
