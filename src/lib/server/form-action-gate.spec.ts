@@ -21,6 +21,23 @@ import { appSourcePaths, formActions, sourceText, splitTopLevel } from './source
 // list is a SCAN list, whose polarity is backwards — deleting an entry makes the scan blind, and
 // DAR-99 measured exactly that at 7/7 green. A guarded subtree announces itself by having a
 // `+layout.server.ts` that redirects, so adding a third one widens this rule automatically.
+//
+// WHAT IT CANNOT SEE, measured rather than reasoned — this rule reads whether a gate is NAMED, never
+// whether it BINDS. Three mutations to one action, each run against both layers:
+//
+//   the gate deleted outright               scan 1 red   ·  behavioural spec 6 red
+//   the gate replaced by `locals.user!`      scan 0 red  ·  behavioural spec 4 red
+//   `rosterAdmin` swapped for `isStaff`      scan 0 red  ·  behavioural spec 2 red
+//
+// The middle row is the honest residual: an action that mentions a gate token and refuses somewhere
+// satisfies this file whether or not the refusal depends on the token. The bottom row is not a
+// residual but a division of labour — which of four predicates is CORRECT for a given route is a
+// judgement no scan can hold, so the sibling specs assert it by admitting the actor who discriminates
+// (an operator, for the three routes where the two predicates disagree).
+//
+// So the two layers catch different defects and neither subsumes the other: this one catches an
+// action added without a gate, they catch an action given the wrong one. Tightening this to check
+// that the gate binds would mean parsing the condition, which is a type-checker's job, not a regex's.
 
 /** A route directory is protected when its layout `load` bounces someone. */
 const PROTECTED_ROOTS = appSourcePaths()
