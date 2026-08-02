@@ -168,6 +168,28 @@ A shared **`@utility glass`** base in `layout.css` holds the frosted-glass invar
 
 `glass-nav`'s drop shadow is **shadow-on-scroll**: it's flat at the top of the page (the bar sits over the hero, nothing to lift off) and fades in a tight, neutral shadow once the header detaches from the top. `Header.svelte` toggles `data-stuck` on the `<nav>` via an `IntersectionObserver` watching a 0-height sentinel pinned at document top — so there is **no per-scroll handler**, only a fire as the header crosses the top edge (`.glass-nav[data-stuck='true']` carries the lifted shadow; the transition respects `prefers-reduced-motion`).
 
+#### The nav row's breakpoint is measured (DAR-213)
+
+The bar is `max-w-5xl` inside a padded header, so the row's usable width is `min(viewport − 64, 992)` — **capped**, however wide the screen. Against that: the brand lockup wants 498px on one line, the six anonymous nav items want 528px once they may not break mid-phrase, and 24px separates them. 1050 against a ceiling of 992, so the row has never fitted on the terms it was written for; what it does instead is shrink both flex children, which is why the lockup renders **stacked** at desktop widths and why the last two items used to break after their first word.
+
+Squeezing is how the bar absorbs that deficit, and **three distinct things break as it does, in this order** — which is the part worth carrying to any other flex row:
+
+1. the lockup is squeezed past its own min-content and its text **escapes its box** (Chromium does not stop at the minimum here);
+2. that escaped text **reaches the row** and renders on top of the links;
+3. the bar's content finally **exceeds the bar** and spills outside the glass panel.
+
+A check that watches only (3) — the obvious one — reports a layout as sound for another 80px of squeeze. That is not hypothetical: it is what made the ticket's arithmetic, and the first cut of the test, agree that the row "fits" at 870px, where the lockup is 80px outside its box and lying across the nav by 56px.
+
+Three rules follow, and each was a defect before it was a rule:
+
+1. **A desktop nav item is `whitespace-nowrap`; a menu item is not.** The row is horizontal and the flex algorithm will squeeze it, so a break there lands mid-phrase — never what a nav label means. The collapsed menu is a vertical stack of full-width blocks, where wrapping is the correct rendering and nowrap would push a long label out of the panel instead.
+2. **The tier that reveals the row is derived from a measurement, not chosen.** Everything clears at **951px**. `md:` is nowhere near it; the ~880 that looks like it fits does not — nothing wraps and nothing overflows there, and the lockup lies across the nav by 46.5px. 960 clears by 9px and leaves **2px per label** to grow. It is `lg:`, which leaves **13px per label** (~15% of the label set; the ceiling the `max-w-5xl` cap allows at any width is ~21%) — the first standard tier with margin in both directions.
+3. **The tier is four class sites and they move together** — the row, its gap, the toggle, and the menu. Leaving one behind gives a band with no nav control at all.
+
+`header-nav.e2e.ts` holds all three, plus the one they create: from 640 to 1023 the menu is now the _only_ nav, so it is asserted to carry every item. It asserts all three failure modes, and its headroom test is what rejects a tier that merely fits — "the row fits" and "the row fits with room to spare" are different claims, and only the second is a reason to have picked this tier.
+
+Nothing here is visible in a class attribute: every input is a rendered measurement — the metrics of a self-hosted variable font, how flex distributes the shrink, which media query is live. **Re-measure after touching the labels, the lockup or the bar's cap; do not re-derive from the numbers above.**
+
 ### Page hero — glass panel over the helix (the standard for every page)
 
 Every page's hero uses **one** pattern: an `eyebrow-hero` kicker, then an empty **`#helix-slot`** gap where `CosmicBackdrop` centres **and sizes** the twisting RGB helix (it measures that element — absent, the helix falls back to a default mid-canvas spot, and its height caps the amplitude, so shrinking the slot shrinks the helix), then the heading + lede inside a **`glass-card`**. The `-mt-10` on the section cancels `<main>`'s `py-10` so the helix rises under the header.
