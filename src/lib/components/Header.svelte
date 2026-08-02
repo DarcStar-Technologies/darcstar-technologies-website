@@ -148,13 +148,26 @@
 		data-stuck={stuck}
 		aria-label={m.nav_primary_label()}
 	>
-		<div class="flex h-[var(--header-bar-h)] items-center justify-between gap-6">
+		<!-- The bar's own gap steps with the lockup below (DAR-229). It is a minimum, so it is inert
+		     wherever the row has room and binds at exactly the two widths that are tight: the phone
+		     tier, where it is 12px of the 27 the narrow header had to find, and `lg:`, where the 24px
+		     is part of DAR-213's measured clearance and must not move. -->
+		<div class="flex h-[var(--header-bar-h)] items-center justify-between gap-3 sm:gap-6">
 			<a
 				href={localizeHref('/')}
 				onclick={() => (open = false)}
 				class="flex items-center gap-2.5 text-xl font-bold tracking-tight text-white sm:text-4xl"
 			>
-				<Wordmark markClass="size-20" />
+				<!-- The mark steps down with the type it sits beside, at the same `sm:` tier the anchor
+				     above already steps the wordmark at (DAR-229). The lockup was responsive on one
+				     axis only, so on a phone an 80px mark stood next to 20px type — 4:1, against 2.2:1
+				     on desktop — and took a quarter of a 320px viewport. That is where the narrow
+				     header's missing width was: below 347px the wordmark rendered outside its own link
+				     box, and below ~327px on top of the menu toggle. Measured floors, mark held at its
+				     size: 80px survives to 347, 64px to 331, 56px to 323, and 56px with the bar's
+				     tightened gap to 311 — the only one of them clear of 320, which is both the WCAG
+				     1.4.10 reflow width and where a 390px phone lands at 125% browser zoom. -->
+				<Wordmark markClass="size-14 sm:size-20" />
 			</a>
 
 			<div class="flex items-center gap-2 lg:gap-4">

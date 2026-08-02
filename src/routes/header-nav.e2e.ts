@@ -14,7 +14,7 @@ import { expect, test, type Page } from '@playwright/test';
 // The bar absorbs that deficit by shrinking both flex children, and THREE distinct things break as
 // it does, in this order:
 //
-//   1. the lockup is squeezed past its own min-content and its text escapes its box;
+//   1. the lockup is squeezed under its own contents and its text escapes its link box;
 //   2. that escaped text reaches the row and renders on top of the links;
 //   3. the bar's content finally exceeds the bar and spills outside the glass panel.
 //
@@ -22,6 +22,15 @@ import { expect, test, type Page } from '@playwright/test';
 // wrapping alone, which made it agree that the row "fits" at 870px — where the lockup is in fact
 // 80px outside its box and lying across the nav by 56px. A single failure signal here measures the
 // LAST thing to break, and reports a layout as sound for another 80px of squeeze.
+//
+// (1) and (2) are now structurally unreachable (DAR-229), so those two assertions changed job: they
+// were tripwires over a live fragility and they are the proof that the fix holds. The fragility was
+// that the mark contributes NOTHING to the link's automatic minimum — a flex item's `min-width`
+// computes to `auto`, and this one is a replaced element — so the link's minimum came out at 252.5px
+// against contents needing 332.5, and the text was what gave way. Holding the mark at its size
+// (`shrink-0`, in Wordmark.svelte) puts it back into that minimum. Measured: the squeeze that used to
+// produce (1) at +13px per label and (3) only at +26 now produces (3) at +13 — the same point, the
+// loud failure instead of the silent one, which is what `the bar fails loudly` below pins.
 //
 // Why a browser is the only instrument. Every input is a rendered measurement — the metrics of a
 // self-hosted variable font, the flex algorithm's shrink distribution, and which media query is
@@ -50,12 +59,16 @@ const DESKTOP_MIN = 1024;
  * Extra width per item the row must still absorb at `DESKTOP_MIN` — 8px each, 48px across the six,
  * roughly one more character in every label.
  *
- * A floor with room under it, not the measurement written down again: at that width the lockup
- * starts escaping its box at +13px per item, so this passes with 5px per item to give. It is here
- * because "the row fits" and "the row fits with room to spare" are different claims, and only the
- * second is a reason to have picked this tier over the ~880 one. Without it the margin could be
- * eroded to nothing — a longer label, a seventh item, a translated catalog — with every other
- * assertion in this file still green until the day it broke.
+ * A floor with room under it, not the measurement written down again: at that width the bar starts
+ * overflowing at +13px per item, so this passes with 5px per item to give. It is here because "the
+ * row fits" and "the row fits with room to spare" are different claims, and only the second is a
+ * reason to have picked this tier over the ~880 one. Without it the margin could be eroded to
+ * nothing — a longer label, a seventh item, a translated catalog — with every other assertion in
+ * this file still green until the day it broke.
+ *
+ * +13 was where the lockup used to start escaping and is now where the bar starts overflowing:
+ * DAR-229 moved which failure that point produces, not the point itself, so the margin here is the
+ * one it always was.
  *
  * It is deliberately small. The honest headroom here is ~15% of the label set, not the ~30% a
  * check that watched only for overflow would have reported.
@@ -65,7 +78,23 @@ const EXTRA_LABEL_PX = 8;
 /** Which control the header is showing: the horizontal row, or the collapsed menu. */
 type NavControl = 'row' | 'menu';
 
+/**
+ * How much wider every label is made for the over-squeeze test — well past the +13 at which the bar
+ * now overflows, and inside the band where the old code failed SILENTLY (its text left the lockup at
+ * +13 and the bar did not notice until +26).
+ *
+ * That band is the whole point: it is the one squeeze that tells the two designs apart. Anywhere
+ * below it both are intact, anywhere above it both are visibly broken, and only in here does the
+ * question "which failure does an overrun produce" have two different answers.
+ */
+const OVER_SQUEEZE_PX = 20;
+
 const WIDTHS: Array<{ width: number; shows: NavControl; why: string }> = [
+	{
+		width: 320,
+		shows: 'menu',
+		why: "WCAG 1.4.10's reflow width, and where a 390px phone lands at 125% browser zoom"
+	},
 	{ width: 390, shows: 'menu', why: 'phone' },
 	{ width: 768, shows: 'menu', why: 'the tier the ticket proposed — everything clears at 951' },
 	{ width: DESKTOP_MIN - 1, shows: 'menu', why: 'one pixel under the tier' },
@@ -167,10 +196,10 @@ function expectRowIsIntact(nav: NavGeometry, where: string): void {
 		[...new Set(nav.items.map((item) => item.height))],
 		`${where}: the nav items are not all the same height, so one of them wrapped`
 	).toHaveLength(1);
-	// The one a wrap/overflow check cannot see, and the first thing to break. Chromium squeezes the
-	// lockup past its own min-content rather than stopping at it, so its box does not protect its
-	// text: the text keeps its width, leaves the link and lands on the nav. Silent — nothing
-	// overflows the bar, nothing wraps, and it is 80px deep before the bar notices.
+	// The one a wrap/overflow check cannot see. It used to be the first thing to break — the link box
+	// did not protect its own text, so the text kept its width, left the link and landed on the nav,
+	// silently, 80px before the bar noticed. Holding the mark closed that off (DAR-229), which makes
+	// this the assertion that says so rather than a tripwire over something live.
 	expect(
 		nav.lockupClearance,
 		`${where}: called with the row hidden, so there is nothing to measure the lockup against`
@@ -246,4 +275,48 @@ test(`the row still fits at ${DESKTOP_MIN}px with every label ${EXTRA_LABEL_PX}p
 			'than deleting this test.'
 	).toBeLessThanOrEqual(0);
 	expect(nav.overflow, 'the bar is overflowing before the lockup gave way').toBeLessThanOrEqual(0);
+});
+
+// What DAR-229 actually bought, and the only test here that asserts a BROKEN bar on purpose. Every
+// other test says the header fits; this one says that when it stops fitting it says so.
+//
+// The overflow assertion is the positive control, not the finding. Everything else about this test
+// is "nothing moved", which is exactly what a broken instrument reports too — if the padding
+// injection silently stopped working, the lockup would be intact because nothing had been asked of
+// it, and the test would pass having measured a header at rest. Requiring the bar to have actually
+// given way is what makes the other two assertions mean something — and it is the only place that
+// check exists, since the headroom test above drives the SAME injection and asserts only that
+// nothing moved, so a dead injection leaves it green.
+test(`the bar fails loudly: at ${DESKTOP_MIN}px with every label ${OVER_SQUEEZE_PX}px wider`, async ({
+	page
+}) => {
+	const nav = await navAt(page, DESKTOP_MIN, OVER_SQUEEZE_PX);
+
+	expect(nav.rowShown, 'the row must be rendering for this to measure anything').toBe(true);
+	expect(
+		nav.overflow,
+		`+${OVER_SQUEEZE_PX}px per label no longer overruns the bar, so this proves nothing about how ` +
+			'an overrun fails. Something got wider — re-measure the thresholds and move this constant ' +
+			'back inside the band where the two designs differ.'
+	).toBeGreaterThan(0);
+
+	// The two silent modes, held under a squeeze deep enough to have produced both before the mark
+	// was pinned. This is the whole claim: an overrun now leaves the panel, rather than leaving the
+	// wordmark sitting on the nav where a screenshot at rest would never show it.
+	expect(
+		nav.lockupEscape,
+		`the brand lockup's text is ${nav.lockupEscape}px outside its own link box again, so the link ` +
+			'is being squeezed under its contents. Something is letting the mark shrink — it is held ' +
+			'by `shrink-0` in Wordmark.svelte, and it is the only reason this failure is loud.'
+	).toBeLessThanOrEqual(0);
+	expect(
+		nav.lockupClearance,
+		'called with the row hidden, so there is nothing to measure the lockup against'
+	).not.toBeNull();
+	expect(
+		nav.lockupClearance!,
+		`the brand lockup is lying across the nav row by ${-nav.lockupClearance!}px under a squeeze ` +
+			'the bar is already reporting. The bar overflowing is the failure this is supposed to have; ' +
+			'text on text is the one it is supposed to have stopped having.'
+	).toBeGreaterThanOrEqual(0);
 });
