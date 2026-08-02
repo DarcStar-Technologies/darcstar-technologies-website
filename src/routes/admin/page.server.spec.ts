@@ -65,8 +65,13 @@ describe('delete', () => {
 		expect(deleteWhere).not.toHaveBeenCalled();
 	});
 
+	// The MOST privileged actor, deliberately, though an operator would reach this line too: a
+	// validation test that picks the marginal actor fails whenever the GATE moves, and then a gate
+	// mutation reports two red tests where only one of them is about the gate. Measured — this test
+	// used to name the operator, and tightening `/admin` to the roster predicate took it down with the
+	// row that was actually asserting the boundary.
 	it('refuses a submit with no submission id', async () => {
-		const result = await call(OPERATOR);
+		const result = await call(ADMIN);
 
 		expect(result).toMatchObject({ status: 400 });
 		expect(deleteWhere).not.toHaveBeenCalled();

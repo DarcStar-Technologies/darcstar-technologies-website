@@ -279,10 +279,13 @@ describe('enable reaches an ADMIN_USER_IDS owner, which is the recovery path', (
 // guard is for.
 //
 // Left as-is here because DAR-226 is about testing the gates, not changing them, and because
-// narrowing it is a decision about the owner tier rather than a bug fix. When DAR-230 lands this
-// test goes red BY DESIGN, and that is the point of writing it down.
+// narrowing it is a decision about the owner tier rather than a bug fix — DAR-230 may equally well
+// conclude that an admin re-addressing an owner is accepted, in which case what changes is the code
+// comment that currently calls it "non-destructive". Either way this row is where that decision
+// becomes visible: tightening the action turns it red, and leaving it turns it into the record of a
+// choice that was made rather than one nobody noticed.
 describe('updateDetails reaches an ADMIN_USER_IDS owner (DAR-230)', () => {
-	it('re-addresses an owner today, and should not once DAR-230 is decided', async () => {
+	it('re-addresses an owner, which is what DAR-230 is deciding about', async () => {
 		ownerCsv = TARGET;
 
 		await settle(call('updateDetails', ADMIN, TARGET, { name: 'Ada', email: 'new@example.com' }));
