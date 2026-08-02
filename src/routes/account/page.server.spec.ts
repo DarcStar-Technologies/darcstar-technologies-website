@@ -38,12 +38,17 @@ const END_USER: Actor = { id: 'someone', role: 'user' };
 const ROLELESS: Actor = { id: 'nobody', role: null };
 const OPERATOR: Actor = { id: 'staff-1', role: 'operator' };
 
+/**
+ * `body` is the EXACT key set each action may send better-auth — see the isolation test below for why
+ * it is a whole set rather than an absence.
+ */
 const ACTIONS = [
-	{ name: 'updateName', write: updateUser, fields: { name: 'Ada' } },
+	{ name: 'updateName', write: updateUser, fields: { name: 'Ada' }, body: ['name'] },
 	{
 		name: 'changePassword',
 		write: changePassword,
-		fields: { currentPassword: 'the-old-one', newPassword: 'a-long-enough-one' }
+		fields: { currentPassword: 'the-old-one', newPassword: 'a-long-enough-one' },
+		body: ['currentPassword', 'newPassword', 'revokeOtherSessions']
 	}
 ] as const;
 
@@ -51,7 +56,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 });
 
-describe.each(ACTIONS)('$name', ({ name, write, fields }) => {
+describe.each(ACTIONS)('$name', ({ name, write, fields, body: allowed }) => {
 	// THE PAIR. An END-USER is the actor that discriminates, and the direction is inverted from every
 	// other gated page here: `user` is the role /admin exists to turn away, and this portal is where
 	// it turns them away TO. A role check copied in from a sibling route would refuse all three actors
@@ -78,11 +83,16 @@ describe.each(ACTIONS)('$name', ({ name, write, fields }) => {
 	// in the body for a caller to supply. A future edit that threaded one through from the form —
 	// which is how /admin/users/[id] legitimately works, so it is the shape someone would copy —
 	// turns "signed in" into "signed in, and may act on anyone" while leaving every gate test green.
-	it('sends better-auth no account id to act on', async () => {
+	//
+	// THE WHOLE KEY SET, never `not.toContain('userId')`. DAR-136 already paid for that lesson one
+	// egress over: an absence test names the one spelling you thought of and passes against every
+	// other, so `targetId`, `id` or a nested `data.userId` would all sail through it. What makes this
+	// property true is that the body has no room for an account id at all, so that is what is asserted.
+	it('sends better-auth nothing but its own fields', async () => {
 		await call(name, END_USER, fields);
 
 		const [{ body }] = write.mock.calls.at(-1)!;
-		expect(Object.keys(body as object)).not.toContain('userId');
+		expect(Object.keys(body as object).sort()).toEqual([...allowed].sort());
 	});
 });
 

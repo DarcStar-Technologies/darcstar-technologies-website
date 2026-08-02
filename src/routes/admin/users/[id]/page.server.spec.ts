@@ -243,32 +243,53 @@ describe('guardTarget runs before the action validates its own fields', () => {
 	});
 });
 
-// The other direction, and the one a well-meaning "harden everything" pass would break silently.
-// Both omissions are deliberate and both are capabilities:
+// The SELF case for the two actions that carry no `guardTarget`, and the direction a well-meaning
+// "harden everything" pass would break silently. Both are capabilities an admin genuinely needs:
+// correcting your own sign-in email, and lifting a disable you may have applied to yourself through
+// the raw API. Adding the guard here reads like tightening a gate and removes a way back.
+describe.each(UNGUARDED)('$name on the acting admin’s own account', ({ name, write, fields }) => {
+	it('is allowed', async () => {
+		await settle(call(name, ADMIN, ADMIN.id, fields));
+
+		expect(write).toHaveBeenCalled();
+	});
+});
+
+// The OWNER case is NOT one claim but two, which is why it is not folded into the table above — and
+// separating them is what showed that only one of them is designed.
 //
-//   updateDetails — email is the sign-in identity, so an admin has to be able to correct their own.
-//   enable        — it only RESTORES access, and it is the sole way back for an owner who was
-//                   disabled through the raw better-auth API (where the owner concept doesn't exist).
+// `enable` is: it only RESTORES access, so it is the sole way back for an owner disabled through the
+// raw better-auth admin API, where the owner concept does not exist. Guarding it would strand them.
+describe('enable reaches an ADMIN_USER_IDS owner, which is the recovery path', () => {
+	it('lifts a disable on an owner', async () => {
+		ownerCsv = TARGET;
+
+		await settle(call('enable', ADMIN, TARGET, {}));
+
+		expect(unbanUser).toHaveBeenCalled();
+	});
+});
+
+// `updateDetails` is not, and this row records CURRENT BEHAVIOUR rather than endorsing it (DAR-230).
+// Its code comment calls the action "non-destructive", and that word is carrying the whole argument:
+// email is the sign-in identity, so re-addressing an owner and then using self-service password reset
+// takes over an account whose id stays in ADMIN_USER_IDS — defeating the one guarantee the owner tier
+// exists to give, that an admin cannot lock an owner out. The other five destructive actions all
+// carry the guard; this is the one whose risk does not announce itself, which is what a foot-gun
+// guard is for.
 //
-// Adding `guardTarget` to either reads like tightening a gate and actually removes a recovery path.
-describe.each(UNGUARDED)(
-	'$name deliberately skips the self/owner guard',
-	({ name, write, fields }) => {
-		it('acts on the admin’s own account', async () => {
-			await settle(call(name, ADMIN, ADMIN.id, fields));
+// Left as-is here because DAR-226 is about testing the gates, not changing them, and because
+// narrowing it is a decision about the owner tier rather than a bug fix. When DAR-230 lands this
+// test goes red BY DESIGN, and that is the point of writing it down.
+describe('updateDetails reaches an ADMIN_USER_IDS owner (DAR-230)', () => {
+	it('re-addresses an owner today, and should not once DAR-230 is decided', async () => {
+		ownerCsv = TARGET;
 
-			expect(write).toHaveBeenCalled();
-		});
+		await settle(call('updateDetails', ADMIN, TARGET, { name: 'Ada', email: 'new@example.com' }));
 
-		it('acts on an ADMIN_USER_IDS owner', async () => {
-			ownerCsv = TARGET;
-
-			await settle(call(name, ADMIN, TARGET, fields));
-
-			expect(write).toHaveBeenCalled();
-		});
-	}
-);
+		expect(adminUpdateUser).toHaveBeenCalled();
+	});
+});
 
 // The one action whose success is a redirect rather than a returned result. Asserted separately so
 // the table above can stay uniform, and worth asserting because the destination is where an operator

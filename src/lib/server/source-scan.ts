@@ -283,11 +283,14 @@ export function splitTopLevel(source: string): string[] {
  */
 export function formActions(path: string): Record<string, string> {
 	const text = sourceText(path);
-	const opening = text.search(/\bexport\s+const\s+actions\b[^=]*=\s*\{/);
-	if (opening === -1) return {};
+	// The match ENDS on the opening brace, so its end index locates that brace exactly. Searching
+	// forward for the next `{` instead would find the wrong one the moment the type annotation
+	// contained a brace of its own (`Record<string, { … }>`) — which fails loudly rather than silently,
+	// but only because nothing inside it parses as an action.
+	const opening = /\bexport\s+const\s+actions\b[^=]*=\s*\{/.exec(text);
+	if (!opening) return {};
 
-	const from = text.indexOf('{', opening);
-	const entries = splitTopLevel(text.slice(from + 1)).map((segment) => {
+	const entries = splitTopLevel(text.slice(opening.index + opening[0].length)).map((segment) => {
 		const named = /^\s*(\w+)\s*:/.exec(segment);
 		if (!named) {
 			throw new Error(

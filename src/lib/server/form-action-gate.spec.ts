@@ -194,7 +194,7 @@ describe('every form action behind a route guard authorizes itself', () => {
 
 	// Without this, the row above passes just as happily against a `gateOf` that answers `true` for
 	// anything — the whole file's assertions are otherwise "nothing was wrong".
-	it('covers all eighteen of them', () => {
+	it('found actions to check, and no fewer than the eighteen that existed', () => {
 		expect(everyAction.length).toBeGreaterThanOrEqual(18);
 	});
 });
