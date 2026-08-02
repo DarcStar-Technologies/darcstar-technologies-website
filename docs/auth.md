@@ -733,6 +733,71 @@ cannot choose" rests on the measured edge facts above plus the local behavioural
 confirmed by re-running the Step 0 probe against prod after the deploy (the rotating-header block
 must then trip the cap at its fourth request).
 
+## Every form action is its own authorization boundary (DAR-226)
+
+**SvelteKit does not run a layout `load` guard before a form action** — only on the re-render
+afterwards. So `admin/+layout.server.ts`, `admin/users/+layout.server.ts` and
+`account/+layout.server.ts` protect page **loads** and nothing else, and the gate written into each
+action's first few lines is the entire boundary for every POST.
+
+DAR-140 established that and **measured** what a missing one looks like from outside: an anonymous
+POST at a real lead answered `303 → /login` **and wrote the row**. The redirect is emitted by the
+re-render, so a refused action and an ungated one produce the same response — a signed-in end-user
+gets the same shape, `303 → /account`. Nothing about the wire can tell them apart, which is why this
+is a test's job rather than a review's. It covered `/admin/waitlist`; DAR-226 covers the other four.
+
+| Route              | Actions | Gate                          | Spec                                 |
+| ------------------ | ------- | ----------------------------- | ------------------------------------ |
+| `admin`            | 1       | `isStaff`                     | `admin/page.server.spec.ts`          |
+| `admin/users`      | 1       | `rosterAdmin`                 | `admin/users/page.server.spec.ts`    |
+| `admin/users/[id]` | 7       | `rosterAdmin` + `guardTarget` | `.../[id]/page.server.spec.ts`       |
+| `admin/waitlist`   | 7       | `isStaff` / `isRosterAdmin`   | `admin/waitlist/page.server.spec.ts` |
+| `account`          | 2       | `locals.user`                 | `account/page.server.spec.ts`        |
+
+**Assert the pair, never the refusal alone.** A one-sided test passes against a build that locked
+everyone out, and an admission-only test passes against one with no gate at all. Each route's pair is
+chosen so the actor that discriminates is the one asserted:
+
+- `/admin` — an **operator must be admitted**. Message triage is the operator role; tightening this
+  to `isRosterAdmin` (the predicate its sibling correctly uses, one identifier away) leaves operators
+  looking at every message behind a delete button that silently 403s.
+- `/admin/users` and `/admin/users/[id]` — an **operator must be refused**. An operator who could
+  mint accounts could mint an `admin` one.
+- `/account` — an **end-user must be admitted**, which runs the opposite way from everything else
+  here: `user` is exactly the role `/admin` bounces, and this is where it bounces them to.
+
+An end-user and an anonymous caller fail every one of these predicates, so they cannot tell them
+apart; only the operator (or, for `/account`, the end-user) row can. Swapping a gate for its
+neighbour leaves **exactly one** test red, and that is a property worth keeping: a test which is not
+about the gate must name the **most privileged** actor that reaches it, or it fails whenever the
+boundary moves and a gate mutation then reports two failures with no way to tell which one mattered.
+
+**`guardTarget` is asserted by position**, not just by outcome: the refusal must land before the
+better-auth call, and — for the two actions with a later validation of their own — before that too.
+The two actions that deliberately **skip** it are asserted in the other direction, because adding the
+guard there reads like hardening and removes a capability: `updateDetails` is how an admin corrects
+their own sign-in email, and `enable` is the only way back for an owner disabled through the raw
+admin API, where the owner concept does not exist.
+
+**A scan covers the nineteenth action**, since the specs above can only speak for the eighteen that
+exist and nothing makes a new one inherit a gate. `form-action-gate.spec.ts` derives the protected
+subtrees from the layout guards themselves — a `['admin', 'account']` list would be a scan list,
+whose polarity is backwards (DAR-99 measured a drifted file passing 7/7 after one entry was deleted)
+— then requires every action, **per action and not per file**, to name a gate and refuse with
+401/403 before its first `await`.
+
+The two layers catch different defects, measured on one action rather than argued:
+
+| mutation                                                  | scan | behavioural spec |
+| --------------------------------------------------------- | ---- | ---------------- |
+| gate deleted outright                                     | 🔴 1 | 🔴 6             |
+| gate replaced by `locals.user!` (names it, binds nothing) | 🟢 0 | 🔴 4             |
+| `rosterAdmin` swapped for `isStaff`                       | 🟢 0 | 🔴 2             |
+
+The middle row is the honest residual — this rule reads whether a gate is **named**, never whether it
+**binds**. The bottom row is a division of labour rather than a hole: which of four predicates is
+correct for a given route is a judgement no scan can hold.
+
 ## Still deferred
 
 Pagination for the submissions **and roster** lists (both capped at 200, newest-first); GitHub OAuth

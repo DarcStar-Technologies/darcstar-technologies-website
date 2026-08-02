@@ -220,6 +220,89 @@ export const classLiterals = (path: string): string[][] =>
 	);
 
 /**
+ * Split `source` at its TOP-LEVEL commas — the ones not inside a bracket pair or a string.
+ *
+ * Exported for its own tests. A comma is the only boundary an object literal's properties reliably
+ * have, and every comma inside a SvelteKit form action is nested by construction: the destructured
+ * `({ request, locals })` sits inside a paren AND a brace, and everything else sits inside the arrow
+ * function's own body braces. So depth alone separates one action from the next.
+ *
+ * Strings are skipped whole, template literals included, because a comma inside one is otherwise a
+ * split in the middle of an action — which does not produce a false pass (the fragment stops parsing
+ * as `name: value` and its caller fails loudly) but does produce a confusing one.
+ *
+ * A REGEX LITERAL is not skipped, and the failure direction is the same loud one: `/\(/` would open a
+ * bracket that never closes, mis-splitting from there on. Telling a regex from a division needs the
+ * preceding token, which is a tokenizer, and none of the files this reads contains one — so the cost
+ * of getting it wrong is a red test naming the file rather than a rule that quietly stops applying.
+ *
+ * The scan STOPS at the first unmatched closer, so a caller may hand it everything after an opening
+ * brace and get back only what that brace contained. Reading to the end instead would work today
+ * purely because `actions` happens to be the last export in all five files it is pointed at, which is
+ * not a property anything holds in place.
+ */
+export function splitTopLevel(source: string): string[] {
+	const segments: string[] = [];
+	let depth = 0;
+	let start = 0;
+	let i = 0;
+	for (; i < source.length; i++) {
+		const char = source[i];
+		if (char === "'" || char === '"' || char === '`') {
+			// Skip to the closing quote. An unterminated one runs to the end, which loses the tail —
+			// caught by the caller's "every segment parses" assertion rather than passing silently.
+			for (i++; i < source.length && source[i] !== char; i++) if (source[i] === '\\') i++;
+			continue;
+		}
+		if (char === '{' || char === '(' || char === '[') depth++;
+		else if (char === '}' || char === ')' || char === ']') {
+			if (depth === 0) break;
+			depth--;
+		} else if (char === ',' && depth === 0) {
+			segments.push(source.slice(start, i));
+			start = i + 1;
+		}
+	}
+	segments.push(source.slice(start, i));
+	return segments.filter((segment) => segment.trim());
+}
+
+/**
+ * The form actions a `+page.server.ts` exports, as `name → source` (the whole `name: async (…) => {…}`
+ * property, comments already stripped).
+ *
+ * Returns `{}` for a file exporting no `actions`. THROWS when it finds the export and cannot parse it
+ * — the caller's rule is "every action carries a gate", and an action the parser silently dropped is
+ * an action reported as gated, which is the one answer a guard here must never give.
+ *
+ * KNOWN CONSTRAINT, stated rather than papered over: an action written as a bare reference to a
+ * function declared elsewhere (`delete: guardedDelete`) yields a segment with no gate in it and fails.
+ * That is a false failure in the letter and the right answer in the spirit — the rule is that an
+ * action authorizes itself where a reader can see it — but it means this scan constrains where these
+ * particular functions may be factored to (DAR-181's lesson, one file over). All 18 today are inline.
+ */
+export function formActions(path: string): Record<string, string> {
+	const text = sourceText(path);
+	// The match ENDS on the opening brace, so its end index locates that brace exactly. Searching
+	// forward for the next `{` instead would find the wrong one the moment the type annotation
+	// contained a brace of its own (`Record<string, { … }>`) — which fails loudly rather than silently,
+	// but only because nothing inside it parses as an action.
+	const opening = /\bexport\s+const\s+actions\b[^=]*=\s*\{/.exec(text);
+	if (!opening) return {};
+
+	const entries = splitTopLevel(text.slice(opening.index + opening[0].length)).map((segment) => {
+		const named = /^\s*(\w+)\s*:/.exec(segment);
+		if (!named) {
+			throw new Error(
+				`${path}: could not read a form action from ${JSON.stringify(segment.trim().slice(0, 80))}`
+			);
+		}
+		return [named[1], segment] as const;
+	});
+	return Object.fromEntries(entries);
+}
+
+/**
  * Does the specifier `spec`, written inside the file `from`, refer to `module`?
  *
  * RESOLVED, not string-matched, and the reason is a basename collision that is easy to miss: there
