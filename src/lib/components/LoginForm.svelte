@@ -1,10 +1,14 @@
 <script lang="ts">
-	// The sign-in form (#69) — shared by the standalone /login page and the navbar login
-	// dialog (LoginDialog) so the two can't drift. It's a real SvelteKit form action
+	// The sign-in form (#69). It's a real SvelteKit form action
 	// (action="/login"), so it works WITHOUT JS (native POST → sign-in → 303 to /admin) and
 	// progressively enhances with use:enhance. The action routes through Better Auth's handler →
 	// the router's DB-backed rate limiter (see login/+page.server.ts). The host owns the
-	// surrounding chrome (heading/lead + panel or dialog); this owns the fields + submission.
+	// surrounding chrome (heading/lead + panel); this owns the fields + submission.
+	//
+	// That split was there to keep the /login page and the navbar's login dialog from drifting, and
+	// the dialog went with the navbar's "Sign in" link (DAR-214), so /login is the one consumer now.
+	// Kept as a component rather than inlined: form-versus-chrome is still a real boundary, and it is
+	// what keeps this file free of anything a second sign-in surface could not use.
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
@@ -19,13 +23,12 @@
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 
 	// `form` is the /login action result — present when the page re-renders after a no-JS submit,
-	// to repopulate the email + show the error. `onSuccess` lets the dialog close on success.
+	// to repopulate the email + show the error. There was an `onSuccess` beside it, which existed
+	// solely so the navbar dialog could close itself before the redirect (DAR-214 retired both).
 	let {
-		form,
-		onSuccess
+		form
 	}: {
 		form?: { email?: string; error?: string; resent?: 'sent' | 'ratelimited' } | null;
-		onSuccess?: () => void;
 	} = $props();
 
 	let submitting = $state(false);
@@ -46,7 +49,9 @@
 	let clientResend = $state<'sent' | 'ratelimited' | null>(null);
 	const resendFeedback = $derived(clientResend ?? form?.resent ?? null);
 	// Both forms target NAMED /login actions (the page has no `default` — see login/+page.server.ts).
-	// Absolute `/login?/…` so the navbar dialog, rendered over any route, still hits /login's actions.
+	// Absolute `/login?/…` rather than relative. It HAD to be while the navbar dialog rendered this
+	// form over arbitrary routes (DAR-214); on /login itself the two spellings resolve identically, so
+	// it stays as the one that does not depend on where the form is rendered.
 	const signinAction = $derived(`${localizeHref('/login')}?/signin`);
 	const resendAction = $derived(`${localizeHref('/login')}?/resend`);
 </script>
@@ -61,7 +66,6 @@
 		return async ({ result }) => {
 			submitting = false;
 			if (result.type === 'redirect') {
-				onSuccess?.();
 				await goto(result.location, { invalidateAll: true });
 			} else if (result.type === 'failure') {
 				clientError = (result.data as { error?: string } | undefined)?.error ?? 'invalid';
@@ -121,10 +125,10 @@
 <!-- #115 resend-verification affordance — shown only when a sign-in was rejected because the email is
      unverified. A SEPARATE form (it can't nest inside the sign-in form) posting to the /login `resend`
      action, which forwards to the anti-enumerating /send-verification-email. No captcha, so it works
-     no-JS on the /login page; in the JS dialog the enhance callback keeps the result LOCAL (no
-     applyAction) so the dialog stays open and the sign-in state is untouched. The confirmation sits
-     outside the button's block so it still shows on the no-JS page (where the action result clears the
-     'unverified' error, hiding the button). -->
+     no-JS. The enhance callback keeps the result LOCAL (no applyAction), so a resend cannot clear the
+     sign-in error it was offered from. The confirmation sits outside the button's block so it still
+     shows on the no-JS page (where the action result clears the 'unverified' error, hiding the
+     button). -->
 {#if error === 'unverified'}
 	<form
 		method="post"

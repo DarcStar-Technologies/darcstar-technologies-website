@@ -473,11 +473,17 @@ visitor is fetched once and counted once.
 
 **A new link to /waitlist needs the same attribute.** DAR-67 added three, and the reason the rule is
 worth restating is that they arrived from a completely unrelated change (closing public sign-up), which
-is exactly how this kind of regression gets in: the navbar "Request access" link and the `LoginDialog`
-prompt are BOTH rendered on every page, and the `/signup` notice and `/login` page carry one each.
-Current set: homepage CTA · footer · navbar · `LoginDialog` · `/login` · `/signup`.
+is exactly how this kind of regression gets in: the navbar "Request access" link is rendered on every
+page, and the `/signup` notice and `/login` page carry one each.
+Current set: homepage CTA · footer · navbar · `/login` · `/signup`.
 `page.svelte.e2e.ts` asserts at the network layer that a hover triggers no `/waitlist/__data.json`, and
 that a click still triggers exactly one.
+
+The set shrank by one in DAR-214: the navbar's `LoginDialog` carried this prompt too, and being in the
+layout it could put a `/waitlist` link over **any** route — so the spec had to open it to see the link
+at all, driving the navbar's "Sign in". Both are gone. **If a dialog carrying a `/waitlist` link is
+ever rendered in the layout again it needs its own arm in that spec**, because a link that exists only
+while a modal is open is invisible to a walk over routes.
 
 ### The honeypot writes no funnel events either (DAR-83)
 

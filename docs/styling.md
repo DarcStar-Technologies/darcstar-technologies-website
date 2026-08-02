@@ -170,7 +170,9 @@ A shared **`@utility glass`** base in `layout.css` holds the frosted-glass invar
 
 #### The nav row's breakpoint is measured (DAR-213)
 
-The bar is `max-w-5xl` inside a padded header, so the row's usable width is `min(viewport − 64, 992)` — **capped**, however wide the screen. Against that: the brand lockup wants 498px on one line, the six anonymous nav items want 528px once they may not break mid-phrase, and 24px separates them. 1050 against a ceiling of 992, so the row has never fitted on the terms it was written for; what it does instead is shrink both flex children, which is why the lockup renders **stacked** at desktop widths and why the last two items used to break after their first word.
+The bar is `max-w-5xl` inside a padded header, so the row's usable width is `min(viewport − 64, 992)` — **capped**, however wide the screen. Against that: the brand lockup wants 498px on one line, the five anonymous nav items want 451px once they may not break mid-phrase, and 24px separates them — 973 against a ceiling of 992.
+
+That margin is recent, and it is DAR-214's (below). It was **1050** against the same 992 while the row carried a sixth item, so the row did not fit on the terms it was written for at any width whatsoever; what it did instead was shrink both flex children, which is why the lockup rendered **stacked** at every desktop width and why the last two items used to break after their first word.
 
 Squeezing is how the bar absorbs that deficit, and **three distinct things break as it does, in this order** — which is the part worth carrying to any other flex row:
 
@@ -183,7 +185,7 @@ A check that watches only (3) — the obvious one — reports a layout as sound 
 Three rules follow, and each was a defect before it was a rule:
 
 1. **A desktop nav item is `whitespace-nowrap`; a menu item is not.** The row is horizontal and the flex algorithm will squeeze it, so a break there lands mid-phrase — never what a nav label means. The collapsed menu is a vertical stack of full-width blocks, where wrapping is the correct rendering and nowrap would push a long label out of the panel instead.
-2. **The tier that reveals the row is derived from a measurement, not chosen.** Everything clears at **951px**. `md:` is nowhere near it; the ~880 that looks like it fits does not — nothing wraps and nothing overflows there, and the lockup lies across the nav by 46.5px. 960 clears by 9px and leaves **2px per label** to grow. It is `lg:`, which leaves **13px per label** (~15% of the label set; the ceiling the `max-w-5xl` cap allows at any width is ~21%) — the first standard tier with margin in both directions.
+2. **The tier that reveals the row is derived from a measurement, not chosen.** Everything clears at **873px** today and cleared at **951px** when the tier was picked. `md:` (768) is under both, so `lg:` stands either way — but the derivation is worth keeping, because it is what a re-measure has to redo rather than re-read: at 951, the ~880 that looked like it fitted did not (nothing wrapped and nothing overflowed there, and the lockup lay across the nav by 46.5px), 960 cleared by 9px and left **2px per label** to grow, and `lg:` left **13px per label** — the first standard tier with margin in both directions. With five items it leaves 31.
 3. **The tier is four class sites and they move together** — the row, its gap, the toggle, and the menu. Leaving one behind gives a band with no nav control at all.
 
 `header-nav.e2e.ts` holds all three, plus the one they create: from 640 to 1023 the menu is now the _only_ nav, so it is asserted to carry every item. It asserts all three failure modes, and its headroom test is what rejects a tier that merely fits — "the row fits" and "the row fits with room to spare" are different claims, and only the second is a reason to have picked this tier.
@@ -198,7 +200,25 @@ The candidate fix was `min-width: min-content` on the lockup link, and it is a *
 
 It also surfaced what the silence had been hiding. Below **347px** the wordmark rendered outside its link box, and below ~327px on top of the menu toggle — live, and uncovered, because the spec's narrowest width was 390. The lockup was responsive on one axis only: the type steps at `sm:` and the mark did not, so a phone got an 80px mark beside 20px type — 4:1 against desktop's 2.2:1, a quarter of a 320px viewport. The mark now steps with the type (`size-14 sm:size-20`) and the bar's gap with it (`gap-3 sm:gap-6`), taking the header's floor from 347px to **311** — clear of 320, which is both WCAG 1.4.10's reflow width and where a 390px phone lands at 125% browser zoom. Floors measured with the mark held: 80px survives to 347, 64px to 331, 56px to 323, and 56px with the tightened gap to 311. DAR-213's tier is untouched either way (950 against 951), which is why this was separable from it.
 
-Two things about the test. The `320px` row is the fit's only guard. And the over-squeeze test (**+20px** per label — inside the band where the old code failed silently, between escape at +13 and overflow at +26, so it is the one squeeze that tells the two designs apart) is the only place in the repo that asserts a **broken** bar on purpose: its overflow assertion is a positive control, because every other assertion in it is "nothing moved" — which is exactly what a broken instrument reports too. That control covers the headroom test as well, since both drive the same padding injection and the injection breaking leaves the headroom test green.
+Two things about the test. The `320px` row is the fit's only guard. And the over-squeeze test (**+38px** per label — inside the band where the old code failed silently, between escape at +31 and overflow at +47, so it is the one squeeze that tells the two designs apart) is the only place in the repo that asserts a **broken** bar on purpose: its overflow assertion is a positive control, because every other assertion in it is "nothing moved" — which is exactly what a broken instrument reports too. That control covers the headroom test as well, since both drive the same padding injection and the injection breaking leaves the headroom test green.
+
+**The control runs last, and the order is load-bearing.** Inside that band an unpinned mark absorbs the squeeze, so the bar does _not_ overflow — the lockup gives way instead, which is the whole reason the band exists. Assert the control first and undoing `shrink-0` fails on it, reporting "something got wider" about a header where nothing did: the right test, red for the wrong reason, pointing at the wrong file. Ordered the other way each defect reaches the assertion written for it — an unpinned mark hits the escape check, a dead injection hits the control.
+
+Those three numbers were **+20 / +13 / +26** when the row carried six items. Every threshold in that file is per LABEL, so dropping one spreads the same deficit across fewer of them and all of them rise together — **re-measure them, never rescale them**.
+
+#### The row got its margin back, and the lockup with it (DAR-214)
+
+Dropping "Sign in" from the nav was a product decision (see [auth](auth.md)) with a layout consequence, measured rather than predicted:
+
+| measured                             | six items        | five            |
+| ------------------------------------ | ---------------- | --------------- |
+| the anonymous row clears from        | 951px            | **873px**       |
+| the bar overflows at `lg:`           | +13px per label  | **+31px**       |
+| the brand lockup renders on one line | never, any width | **from 1039px** |
+
+The last row is the visible one, and it retires a claim DAR-213 made here: the stacked lockup was load-bearing rather than decorative, because 498 + 24 + 528 exceeded the 992 cap and one line beside **that** nav was impossible at any width whatsoever. 498 + 24 + 451 does not exceed it, so the wordmark reads on one line from 1039px up and still stacks between the tier and there. Nothing asserts it: whether the nav carries five items or six is a product question, and a test pinning the one-line lockup would quietly answer it from the layout side.
+
+**The binding case moved out of e2e's reach.** The anonymous row was the widest at 951 against the signed-in row's 893; it is now the narrowest — anonymous **873**, signed-in staff **892**, signed-in end-user **907**, "Account" being a wider label than "Admin". e2e has no session, so the row it measures is no longer the one that binds. All three clear `lg:` by more than 100px, which is what makes that a note rather than a problem — but a later item narrows the gap for a row no test here can see.
 
 ### Page hero — glass panel over the helix (the standard for every page)
 

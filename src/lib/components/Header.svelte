@@ -3,7 +3,6 @@
 	import { page } from '$app/state';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { m } from '$lib/paraglide/messages.js';
-	import { loginDialog } from '$lib/login-dialog.svelte';
 	import Wordmark from './Wordmark.svelte';
 	import Icon from './Icon.svelte';
 	import IconClose from './IconClose.svelte';
@@ -71,31 +70,22 @@
 	</a>
 {/snippet}
 
-<!-- Login link: a real /login anchor (the no-JS fallback), upgraded when JS is present to open
-     the frosted login dialog instead of navigating (issue #69). Same markup for both nav lists. -->
-{#snippet loginLink(className: string)}
-	<a
-		href={localizeHref('/login')}
-		data-sveltekit-preload-data="off"
-		onclick={(e) => {
-			// Honour modified clicks (⌘/Ctrl/Shift/Alt) — let the browser follow the href (e.g.
-			// open /login in a new tab) rather than the dialog. A plain left-click with JS opens
-			// the frosted dialog; with no JS the click falls through to the href.
-			if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-			e.preventDefault();
-			open = false;
-			loginDialog.show();
-		}}
-		class={className}
-	>
-		{m.nav_login()}
-	</a>
-{/snippet}
-
-<!-- Request-access link: a plain anchor for anonymous visitors (issue #96). Unlike the login link it
-     never opens a dialog, so a normal navigation is correct with or without JS. Sits beside "Sign in"
-     so the path to an account is reachable from the nav, not only via the login dialog's prompt.
-     DAR-67 pointed it at /waitlist rather than /signup: registration is closed, /signup is now only a
+<!-- Request-access link: a plain anchor for anonymous visitors (issue #96), and the anonymous nav's
+     ONLY item beyond the four content links.
+     There is no "Sign in" beside it (DAR-214). A sign-in link in the primary nav of a deep-tech site
+     reads as "there is a product behind this", and what is behind it is an account that tracks your
+     contact messages and lets you edit your profile (/account, #96) — the one nav item making a claim
+     about product maturity, and the claim is not true yet. Registration has been invite-only since
+     DAR-67, so it served staff on their way to /admin and the few activated leads; neither needs a nav
+     item, and staff get an Admin link the moment they are signed in. /login is untouched and stays
+     reachable — the /admin and /account guards redirect to it, invitation and password-reset mail lands
+     on it, and /signup, /forgot-password and /reset-password all link to it, though none of those three
+     is itself linked from a browsable page: you arrive by bookmark, by mail, or by being bounced. Do
+     not add it back as a rename ("Partner portal") until /account actually carries evaluation
+     artifacts; that would be the same overstatement in the other direction.
+     The link that used to sit beside this one was also the login DIALOG's only trigger, so removing it
+     left the modal with no door and the modal went with it: sign-in is one surface now, the /login page.
+     DAR-67 pointed this at /waitlist rather than /signup: registration is closed, /signup is now only a
      notice saying so, and the waitlist is where a would-be account holder actually needs to arrive.
      `preload-data="tap"` overrides the body-wide `hover` — this link is on EVERY page, and /waitlist's
      load records the funnel's `waitlist_viewed` event (DAR-66), so hover-prefetching it would count a
@@ -203,9 +193,6 @@
 						</li>
 					{:else}
 						<li>
-							{@render loginLink(desktopLinkClass)}
-						</li>
-						<li>
 							{@render requestAccessLink(desktopLinkClass)}
 						</li>
 					{/if}
@@ -251,9 +238,6 @@
 						{@render signoutForm(`${mobileLinkClass} w-full text-left`)}
 					</li>
 				{:else}
-					<li>
-						{@render loginLink(mobileLinkClass)}
-					</li>
 					<li>
 						{@render requestAccessLink(mobileLinkClass)}
 					</li>

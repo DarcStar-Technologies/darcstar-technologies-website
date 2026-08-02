@@ -5,9 +5,7 @@
 	import Footer from '$lib/components/Footer.svelte';
 	import BackToTop from '$lib/components/BackToTop.svelte';
 	import ContactDialog from '$lib/components/ContactDialog.svelte';
-	import LoginDialog from '$lib/components/LoginDialog.svelte';
 	import { contactDialog } from '$lib/contact-dialog.svelte';
-	import { loginDialog } from '$lib/login-dialog.svelte';
 	import { createSheenSync } from '$lib/glass-sheen';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
@@ -24,22 +22,20 @@
 	const socialLinks = $derived(page.data.socialLinks ?? FALLBACK_SOCIAL_LINKS);
 
 	// One coherent light source across all frosted glass (see `.sheen-plane`). The sync keeps each
-	// plane's clip-path tracking the glass windows; re-clip when a modal (contact or login)
-	// opens/closes so its panel joins the beam (and the page panels drop out behind the scrim while
-	// it's up).
+	// plane's clip-path tracking the glass windows; re-clip when the contact modal opens/closes so
+	// its panel joins the beam (and the page panels drop out behind the scrim while it's up).
+	// It used to track two dialogs, reading both up front rather than through a short-circuiting `||`
+	// so the effect subscribed to each of them. The login modal went with the navbar's "Sign in"
+	// (DAR-214), which was its only trigger — restore that pattern if a second dialog ever returns.
 	let sheen: ReturnType<typeof createSheenSync> | undefined;
 	$effect(() => {
-		// Read both up front (not a short-circuiting `||`) so the effect tracks BOTH dialogs and
-		// re-clips whenever either one toggles.
-		const contactOpen = contactDialog.open;
-		const loginOpen = loginDialog.open;
-		sheen?.refresh(contactOpen || loginOpen);
+		sheen?.refresh(contactDialog.open);
 	});
 
 	// The sheen plane persists across client-side navigation (it's in this layout), but each
 	// route has its own glass panels — so re-clip after every navigation, else the beam stays
 	// pinned to the previous page's panels (a ghost that only realigns on scroll/refresh).
-	afterNavigate(() => sheen?.refresh(contactDialog.open || loginDialog.open));
+	afterNavigate(() => sheen?.refresh(contactDialog.open));
 </script>
 
 <svelte:head>
@@ -100,9 +96,6 @@
 <BackToTop />
 
 <!-- Global contact modal (issue #11) — rendered once; opened from the hero/CTA
-     buttons and the footer link via the shared `contactDialog` rune. -->
+     buttons and the footer link via the shared `contactDialog` rune. The login modal that used to sit
+     beside it is gone with the navbar link that opened it (DAR-214); /login is the sign-in surface. -->
 <ContactDialog />
-
-<!-- Global login modal (issue #69) — rendered once; opened from the navbar "Sign in"
-     link via the shared `loginDialog` rune (the link's href is the no-JS fallback). -->
-<LoginDialog />

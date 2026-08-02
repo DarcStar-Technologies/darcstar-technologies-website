@@ -20,9 +20,12 @@ test('anonymous /signup renders the invite-only notice, not a sign-up form', asy
 	await expect(cta).toHaveAttribute('href', /\/waitlist$/);
 	await expect(cta).toHaveAttribute('data-sveltekit-preload-data', 'tap');
 
-	// Someone with an account still has somewhere to go. Scoped to its prompt paragraph — the navbar
-	// also has a "Sign in" link, so a bare getByRole would be a strict-mode conflict.
+	// Someone with an account still has somewhere to go — and since DAR-214 took "Sign in" out of the
+	// navbar, this page is one of the three places left that link to /login at all, so the prompt is
+	// carrying more weight than it was written for. Assert the link, not just the prose: the words
+	// staying while the anchor goes is the failure that would matter.
 	await expect(page.getByText('Already have an account?')).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', /\/login$/);
 
 	// The form is GONE, not hidden: no credential fields, nothing to submit, no Turnstile widget.
 	// (The widget's departure is why security-headers.e2e.ts no longer waits on one here.)

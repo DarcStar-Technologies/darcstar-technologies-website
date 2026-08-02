@@ -206,9 +206,11 @@ if (guard.status !== 303 || guard.headers.get('location') !== '/login') {
 ok('/admin redirects to /login when unauthenticated');
 
 // 5. The flip side of 2b: an anonymous home request skips the session lookup entirely (no cookie)
-// and the navbar shows the anonymous affordances ("Sign in" + "Request access", #96) — no signed-in
-// controls. DAR-67 repointed the second one from /signup to /waitlist: registration is invite-only,
-// so the waitlist is the only route to an account.
+// and the navbar shows the anonymous affordance — "Request access", and nothing else (#96). DAR-67
+// repointed it from /signup to /waitlist: registration is invite-only, so the waitlist is the only
+// route to an account. There is no "Sign in" beside it since DAR-214; that is asserted properly in
+// header-nav.e2e.ts (both nav lists, in CI), so what this covers is the half e2e cannot reach — that
+// the SIGNED-IN controls above and this anonymous one are the same navbar under two sessions.
 const homeAnon = await fetch(`${BASE}/`, { redirect: 'manual' });
 const homeAnonHtml = await homeAnon.text();
 if (homeAnon.status !== 200) die(`/ (anon): expected 200, got ${homeAnon.status}`);
@@ -220,6 +222,6 @@ if (!homeAnonHtml.includes('href="/waitlist"')) {
 		'/ (anon): the navbar did not render the "Request access" link for an unauthenticated visitor'
 	);
 }
-ok('/ navbar shows the anonymous "Sign in" + "Request access" affordances when unauthenticated');
+ok('/ navbar shows the anonymous "Request access" affordance when unauthenticated');
 
 console.log('\n✓ sign-in smoke test passed');

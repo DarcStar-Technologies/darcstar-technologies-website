@@ -1,8 +1,10 @@
 <script lang="ts">
-	// Standalone login page (#69) — the no-JS fallback the navbar "Sign in" link points at,
-	// and a shareable URL. Utility-page layout (the shared `UtilityPanel`), matching /contact. The form
-	// is the shared LoginForm (the same one the navbar's LoginDialog renders) — a real form action,
-	// so it works without JS; `form` carries the action result back for the no-JS re-render.
+	// Standalone login page (#69) — the site's ONE sign-in surface since DAR-214 took the navbar's
+	// "Sign in" out (and, with it, the login dialog this page used to be the no-JS fallback for).
+	// Reached by the /admin and /account guards' redirect, by invitation and password-reset mail, and
+	// by bookmark. Utility-page layout (the shared `UtilityPanel`), matching /contact. The form is
+	// `LoginForm` — a real form action, so it works without JS; `form` carries the action result back
+	// for the no-JS re-render.
 	import Seo from '$lib/components/Seo.svelte';
 	import UtilityPanel from '$lib/components/UtilityPanel.svelte';
 	import CosmicBackdrop from '$lib/components/CosmicBackdrop.svelte';
