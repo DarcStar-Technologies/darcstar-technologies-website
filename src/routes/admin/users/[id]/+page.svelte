@@ -2,8 +2,10 @@
 	// Single-operator management (admin-only). Native server-action forms (work without JS): edit
 	// details, change role, reset password, force logout, disable/enable, delete. Destructive/role/
 	// password/session controls are hidden for your own account and owner accounts (data.manageable),
-	// with an explanatory note instead. Delete is gated by a required "I understand" checkbox rather
-	// than a JS confirm() (worker globals aren't typed for svelte-check).
+	// with an explanatory note instead; the details form is hidden for an owner alone
+	// (data.detailsEditable, DAR-230) and the same note covers it. Delete is gated by a required
+	// "I understand" checkbox rather than a JS confirm() (worker globals aren't typed for
+	// svelte-check).
 	import Seo from '$lib/components/Seo.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import { localizeHref } from '$lib/paraglide/runtime';
@@ -88,38 +90,43 @@
 		</div>
 	</div>
 
-	<!-- Details -->
-	<div class="glass-card space-y-4 p-4 sm:p-6">
-		<h2 class="heading-card">{m.admin_users_detail_section_details()}</h2>
-		{#if errScope === 'details'}<ErrorBanner>{errorMessage(form?.error)}</ErrorBanner>{/if}
-		{#if okScope === 'details'}{@render okBanner(m.admin_users_detail_saved())}{/if}
-		<form method="post" action="?/updateDetails" class="space-y-4">
-			<label class="block">
-				<span class={fieldLabelBlockClass}>{m.admin_users_field_name_label()}</span>
-				<input
-					type="text"
-					name="name"
-					value={nameValue}
-					required
-					autocomplete="off"
-					class={fieldClass}
-				/>
-			</label>
-			<label class="block">
-				<span class={fieldLabelBlockClass}>{m.admin_users_field_email_label()}</span>
-				<input
-					type="email"
-					name="email"
-					value={emailValue}
-					required
-					autocomplete="off"
-					class={fieldClass}
-				/>
-				<span class="mt-1 block text-xs text-faint">{m.admin_users_field_email_hint()}</span>
-			</label>
-			<button type="submit" class={submitButtonClass}>{m.admin_users_detail_save()}</button>
-		</form>
-	</div>
+	<!-- Details. Hidden for an owner account (DAR-230) — `detailsEditable` is the same predicate the
+	     action gates on, so this is never a form that would 403. It is NOT `manageable`: that also
+	     excludes your own account, where editing your sign-in email is exactly the point. The email
+	     stays visible as the heading above, and the roster list carries the name. -->
+	{#if data.detailsEditable}
+		<div class="glass-card space-y-4 p-4 sm:p-6">
+			<h2 class="heading-card">{m.admin_users_detail_section_details()}</h2>
+			{#if errScope === 'details'}<ErrorBanner>{errorMessage(form?.error)}</ErrorBanner>{/if}
+			{#if okScope === 'details'}{@render okBanner(m.admin_users_detail_saved())}{/if}
+			<form method="post" action="?/updateDetails" class="space-y-4">
+				<label class="block">
+					<span class={fieldLabelBlockClass}>{m.admin_users_field_name_label()}</span>
+					<input
+						type="text"
+						name="name"
+						value={nameValue}
+						required
+						autocomplete="off"
+						class={fieldClass}
+					/>
+				</label>
+				<label class="block">
+					<span class={fieldLabelBlockClass}>{m.admin_users_field_email_label()}</span>
+					<input
+						type="email"
+						name="email"
+						value={emailValue}
+						required
+						autocomplete="off"
+						class={fieldClass}
+					/>
+					<span class="mt-1 block text-xs text-faint">{m.admin_users_field_email_hint()}</span>
+				</label>
+				<button type="submit" class={submitButtonClass}>{m.admin_users_detail_save()}</button>
+			</form>
+		</div>
+	{/if}
 
 	{#if data.manageable}
 		<!-- Role -->

@@ -2,20 +2,30 @@ import { error, fail, redirect, type Actions } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
 import { getAuth } from '$lib/server/auth';
 import { apiRole, coerceRole } from '$lib/server/admin-access';
-import { ownerIds, guardTarget, rosterAdmin, adminErrorCode } from '$lib/server/admin-users';
+import {
+	ownerIds,
+	guardTarget,
+	mayEditDetails,
+	rosterAdmin,
+	adminErrorCode
+} from '$lib/server/admin-users';
 import type { PageServerLoad } from './$types';
 
 // Single-operator management (admin-only). Everything the roster can do to one account:
 // edit name/email, change role, reset password, force logout everywhere, disable/enable, delete.
 // Destructive/role/session/password actions are blocked against your own account and owner
-// (ADMIN_USER_IDS) accounts — see guardTarget in admin-users.ts.
+// (ADMIN_USER_IDS) accounts — see guardTarget in admin-users.ts. Editing name/email is blocked
+// against an owner alone (mayEditDetails, DAR-230): email is the sign-in identity, so it is a
+// takeover primitive, while correcting your OWN address stays available.
 
 export const load: PageServerLoad = async ({ params, request, locals }) => {
 	// getAuth() + ownerIds() read platform.env via getRequestEvent(), so resolve them (and the acting
 	// user's id) before the first await — env can read back empty once the async context is left.
+	// mayEditDetails reads env too, hence up here rather than beside the other flags in the return.
 	const auth = getAuth();
 	const owners = ownerIds();
 	const meId = locals.user!.id;
+	const detailsEditable = mayEditDetails(params.id, meId);
 
 	let target;
 	try {
@@ -46,7 +56,12 @@ export const load: PageServerLoad = async ({ params, request, locals }) => {
 		isOwner: owners.includes(params.id),
 		// The account can be role-changed / disabled / reset / force-logged-out / deleted only when
 		// it's neither yours nor an owner's. Drives which controls the detail page renders.
-		manageable: params.id !== meId && !owners.includes(params.id)
+		manageable: params.id !== meId && !owners.includes(params.id),
+		// Whether to render the name/email form at all. Narrower than `manageable` — it excludes an
+		// owner but not yourself — and it comes from the same helper the action gates on, so the page
+		// cannot offer a form the POST would refuse. `!detailsEditable` implies `!manageable`, so the
+		// owner note below the hidden card always explains its absence.
+		detailsEditable
 	};
 };
 
@@ -54,12 +69,17 @@ export const load: PageServerLoad = async ({ params, request, locals }) => {
 // guard before a form action (only on the re-render), so the route guard alone wouldn't protect
 // these. `[id]` guarantees params.id at runtime, but contextual typing through the `Actions` Record
 // doesn't narrow it (unlike `load`), so it types as `string | undefined` — assert it per action.
-// (Both `rosterAdmin` and `guardTarget` read env, so they run before the first await.)
+// (`rosterAdmin`, `guardTarget` and `mayEditDetails` all read env, so they run before the first
+// await — which is also what puts every target guard ahead of the action's own field validation.)
 export const actions: Actions = {
-	// Edit name + email. Allowed on any account (non-destructive) — email is the sign-in identity.
+	// Edit name + email. Blocked on an OWNER account, allowed on your own (DAR-230): email IS the
+	// sign-in identity, so re-addressing an owner and then running self-service password reset takes
+	// over an account whose id — the thing ADMIN_USER_IDS is keyed on — never changed.
 	updateDetails: async ({ params, request, locals }) => {
 		const userId = params.id!;
-		if (!rosterAdmin(locals)) return fail(403, { scope: 'details', error: 'forbidden' });
+		const me = rosterAdmin(locals);
+		if (!me) return fail(403, { scope: 'details', error: 'forbidden' });
+		if (!mayEditDetails(userId, me.id)) return fail(403, { scope: 'details', error: 'owner' });
 		const auth = getAuth();
 		const data = await request.formData();
 		const name = String(data.get('name') ?? '').trim();
