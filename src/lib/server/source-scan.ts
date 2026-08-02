@@ -231,6 +231,11 @@ export const classLiterals = (path: string): string[][] =>
  * split in the middle of an action — which does not produce a false pass (the fragment stops parsing
  * as `name: value` and its caller fails loudly) but does produce a confusing one.
  *
+ * A REGEX LITERAL is not skipped, and the failure direction is the same loud one: `/\(/` would open a
+ * bracket that never closes, mis-splitting from there on. Telling a regex from a division needs the
+ * preceding token, which is a tokenizer, and none of the files this reads contains one — so the cost
+ * of getting it wrong is a red test naming the file rather than a rule that quietly stops applying.
+ *
  * The scan STOPS at the first unmatched closer, so a caller may hand it everything after an opening
  * brace and get back only what that brace contained. Reading to the end instead would work today
  * purely because `actions` happens to be the last export in all five files it is pointed at, which is

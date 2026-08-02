@@ -134,6 +134,35 @@ describe('the surface this rule covers', () => {
 		]);
 	});
 
+	// THE HOLE ONE DIRECTORY SIDEWAYS (DAR-121's shape). A `+server.ts` under a protected root is a
+	// POST surface too, and a WORSE one: an endpoint never runs a layout `load` at all, so it does not
+	// even get the re-render guard that makes a missing gate merely invisible here. There are none
+	// today, and the parser above reads an `actions` object it would not have — so rather than build a
+	// second parser for a case that does not exist, this fails the moment one appears and hands the
+	// decision to whoever added it: gate it and widen this rule, or say here why it needs no gate.
+	it('has no endpoint hiding under a route guard', () => {
+		const endpoints = appSourcePaths().filter(
+			(path) =>
+				path.endsWith('/+server.ts') && PROTECTED_ROOTS.some((root) => path.startsWith(`${root}/`))
+		);
+
+		expect(endpoints).toEqual([]);
+	});
+
+	// ...which is only meaningful if the site has endpoints at all for it to have found. Three, all
+	// public: `/logout` (authorizes nothing — it ends the caller's own session), and two read-only
+	// feeds. Without this the assertion above passes just as happily against a filter that matches
+	// nothing anywhere.
+	it('finds the public ones it is not talking about', () => {
+		const endpoints = appSourcePaths().filter((path) => path.endsWith('/+server.ts'));
+
+		expect(endpoints.sort()).toEqual([
+			'src/routes/logout/+server.ts',
+			'src/routes/research/authors.json/+server.ts',
+			'src/routes/sitemap.xml/+server.ts'
+		]);
+	});
+
 	// REACH CONTROL, and the one that matters. "No violations" and "the parser found nothing to check"
 	// print identically (DAR-152), and the specific way `formActions` can under-report is by having a
 	// comma swallowed inside a string or bracket — which merges two actions into one segment that
