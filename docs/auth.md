@@ -767,7 +767,10 @@ chosen so the actor that discriminates is the one asserted:
   here: `user` is exactly the role `/admin` bounces, and this is where it bounces them to.
 
 An end-user and an anonymous caller fail every one of these predicates, so they cannot tell them
-apart; only the operator (or, for `/account`, the end-user) row can.
+apart; only the operator (or, for `/account`, the end-user) row can. Swapping a gate for its
+neighbour leaves **exactly one** test red, and that is a property worth keeping: a test which is not
+about the gate must name the **most privileged** actor that reaches it, or it fails whenever the
+boundary moves and a gate mutation then reports two failures with no way to tell which one mattered.
 
 **`guardTarget` is asserted by position**, not just by outcome: the refusal must land before the
 better-auth call, and — for the two actions with a later validation of their own — before that too.
