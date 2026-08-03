@@ -811,12 +811,13 @@ identity, so:
 3. the owner's account row is now theirs — and `ADMIN_USER_IDS` is keyed on the user **id**, which an
    email edit never touches, so the taken-over account is still an owner.
 
-That defeats the one guarantee the owner tier exists to give. `docs`' standing position — owner-vs-
-admin protection is a foot-gun guard, not a boundary, because the raw admin API has no owner concept
-— is a fair reading of the other five actions and a weaker one here, for a reason worth keeping: **a
-foot-gun guard earns its place on the action whose risk does not announce itself.** Role change,
-password reset, force-logout, disable and delete all read as dangerous. An email edit reads as a typo
-fix, and it was the only one of the seven with no guard at all.
+That defeats the one guarantee the owner tier exists to give. This file's standing position — owner-
+vs-admin protection is a foot-gun guard, not a boundary, because the raw admin API has no owner
+concept — is a fair reading of the other five actions and a weaker one here, for a reason worth
+keeping: **a foot-gun guard earns its place on the action whose risk does not announce itself.** Role
+change, password reset, force-logout, disable and delete all read as dangerous and all carried the
+guard. Two actions did not: `enable`, which only restores access, and this one — which reads like a
+typo fix and is the takeover primitive.
 
 **The fix is the `owner` half only.** `mayEditDetails` (`admin-users.ts`) is `guardTarget(…) !==
 'owner'`, so an admin correcting **their own** sign-in email — the capability the guard was skipped
@@ -830,7 +831,7 @@ for in the first place — is untouched. Two things keep that from trading one l
 **What it does remove**, stated rather than waved at: one admin re-addressing _another_ owner. An
 owner who has lost their password **and** access to their address can no longer be helped from this
 page — and that is the point rather than a regression, because a benign rescue and the takeover above
-are the same three keystrokes and nothing here can tell them apart. The recovery route is the
+are the same edit and nothing at this layer can tell them apart. The recovery route is the
 `ADMIN_USER_IDS` env allowlist, which needs Cloudflare access: a strictly stronger credential than an
 admin session, which is what makes it the right place for that decision.
 
@@ -843,7 +844,8 @@ the owner note in `manageable`'s else-branch always explains the missing card; t
 arithmetic on two separately-written expressions, so it is pinned rather than reasoned about.
 
 **Both halves of the render path need their own test, measured rather than argued.** The flag
-carrying the right value and the markup reading it are separate one-line facts:
+carrying the right value and the markup reading it are separate one-line facts, and the last two rows
+are where that shows — every mutation, and which layer saw it:
 
 | mutation                                | `page.server.spec.ts` | `page.svelte.spec.ts` |
 | --------------------------------------- | --------------------- | --------------------- |
