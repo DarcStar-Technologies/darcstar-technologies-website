@@ -208,9 +208,15 @@ it('classifies each action by the target guard it names in source', () => {
 	);
 });
 
-// Every tier has members, asserted by name. `describe.each([])` is an error in vitest rather than a
-// silent pass, but "this tier lost the one action that discriminates" is not — dropping
-// `updateDetails` to 'none' would empty nothing and take the owner-refusal table with it.
+// The same membership, by NAME, and its value is narrower than it looks — worth stating, because the
+// obvious justification ("a row re-labelled 'none' would silently shrink a table") belongs to the test
+// above, which catches exactly that. Measured: the one defect this catches alone is an action RENAMED
+// consistently in both the code and the table, where the source check compares two sets that moved
+// together and passes 62/63.
+//
+// That is a legitimate refactor it will flag, deliberately: this list is the roster's destructive
+// vocabulary, so a rename inside it is a thing a reviewer should be made to look at. It also keeps the
+// tiers readable, which the derived `filter` expressions above are not.
 it('leaves every guard tier populated', () => {
 	expect(REFUSES_SELF.map((a) => a.name)).toEqual([
 		'setRole',
@@ -284,7 +290,8 @@ describe('the ADMIN_USER_IDS owner bootstrap', () => {
 // `guardTarget` stops an admin acting on their OWN account or on an ADMIN_USER_IDS owner. It is a
 // foot-gun guard rather than a hard boundary — the better-auth admin endpoints have no owner concept,
 // so a promoted admin could still target an owner through the raw API — but within this page it is
-// what keeps the roster from locking itself out, and it is hand-repeated across six actions.
+// what keeps the roster from locking itself out. It is hand-repeated across FIVE actions; a sixth
+// (`updateDetails`) reaches it through `mayEditDetails`, which takes the owner half alone.
 describe.each(REFUSES_SELF)('$name against the acting admin', ({ name, fields }) => {
 	it('refuses their own account', async () => {
 		const result = await settle(call(name, ADMIN, ADMIN.id, fields));
@@ -434,6 +441,12 @@ describe('the details form is offered exactly where the POST is accepted', () =>
 	// `manageable` excludes self as well, so it is strictly the narrower flag and this holds — but it
 	// holds by arithmetic on two separately-written expressions, which is the kind of thing that stops
 	// being true one edit later.
+	//
+	// It runs over every case and only ONE of them can fail: where the card renders, the implication is
+	// vacuously satisfied. That is what an invariant test is, but it means this reads as four checks
+	// and is one — mutation-measured, dropping the owner exclusion from `manageable` fails the owner
+	// row and nothing else. Whether the note actually RENDERS is `page.svelte.spec.ts`'s job; this
+	// pins only that the two flags cannot disagree.
 	it.each(RENDER_CASES)(
 		'$label → never hides the card without the note',
 		async ({ actor, targetId, owners }) => {

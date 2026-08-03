@@ -27,7 +27,15 @@ const at = new Date('2026-08-02T12:00:00Z');
  * from the root), so the fixture carries them rather than being cast past: getting one wrong is a
  * `pnpm check` error at this literal instead of a silent pass.
  */
-const pageData = (over: { manageable: boolean; detailsEditable: boolean; isSelf?: boolean }) => ({
+const pageData = (over: {
+	manageable: boolean;
+	detailsEditable: boolean;
+	isSelf?: boolean;
+	// Independent of `detailsEditable` on purpose. Deriving one from the other would make the state
+	// this narrowing exists to preserve — an owner on their OWN page, owner AND editable — unspellable,
+	// and it is the state a "harden everything" pass takes away.
+	isOwner?: boolean;
+}) => ({
 	user: {
 		id: 'boss-1',
 		name: 'Boss',
@@ -55,7 +63,7 @@ const pageData = (over: { manageable: boolean; detailsEditable: boolean; isSelf?
 	},
 	sessions: [],
 	isSelf: over.isSelf ?? false,
-	isOwner: !over.detailsEditable,
+	isOwner: over.isOwner ?? !over.detailsEditable,
 	manageable: over.manageable,
 	detailsEditable: over.detailsEditable
 });
@@ -66,11 +74,19 @@ const draw = (over: Parameters<typeof pageData>[0]) =>
 const detailsForm = (root: HTMLElement) => root.querySelector('form[action="?/updateDetails"]');
 
 describe('the details form follows the gate on the action that receives it', () => {
-	// Two admitted cases and one refused, because an absence assertion on its own passes against a
+	// Three admitted cases and one refused, because an absence assertion on its own passes against a
 	// page that renders no form under any circumstances.
+	//
+	// The third is the one worth having: an OWNER on their own page. `guardTarget` answers self before
+	// owner, so the flag is true there, and it is exactly the state that disappears if someone decides
+	// the owner rule should apply regardless of who is asking.
 	it.each([
 		['an unrelated account', { manageable: true, detailsEditable: true }],
-		['the acting admin’s own account', { manageable: false, detailsEditable: true, isSelf: true }]
+		['the acting admin’s own account', { manageable: false, detailsEditable: true, isSelf: true }],
+		[
+			'an owner’s own account',
+			{ manageable: false, detailsEditable: true, isSelf: true, isOwner: true }
+		]
 	] as const)('offers it for %s', (_label, over) => {
 		const { container } = draw(over);
 
