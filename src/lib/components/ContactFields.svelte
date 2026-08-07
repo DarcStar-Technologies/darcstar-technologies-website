@@ -113,8 +113,9 @@
 
 <!-- Data-handling notice (DAR-44) — lives here so the modal AND the /contact page both carry
      it. Closing the global contact dialog on link click keeps the layout-mounted modal from
-     lingering over /privacy after the client-side navigation (the LoginDialog convention); on
-     the standalone /contact page the dialog is already closed, so it's a no-op. -->
+     lingering over /privacy after the client-side navigation; on the standalone /contact page the
+     dialog is already closed, so it's a no-op. (The login dialog followed the same convention until
+     DAR-214 removed it, so this is the only live example — see FormPrivacyNotice's `onLinkClick`.) -->
 <FormPrivacyNotice
 	notice={m.contact_privacy_notice()}
 	linkLabel={m.contact_privacy_link()}

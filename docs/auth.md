@@ -114,12 +114,18 @@ a control with the flag flipped off.
 **`/signup` survives as a notice.** Deleting the route would 404 every bookmark, emailed link and
 stale search result — exactly the audience that needs to be told the door moved rather than that it
 vanished. It has **no actions at all** (asserted by `auth-named-actions.spec.ts`, so a future re-open
-has to make the default-vs-named decision deliberately) and links to `/waitlist`. The three
-"need an account?" links — the `/login` page, the navbar `LoginDialog`, and the navbar itself
-("Request access") — now point **straight at `/waitlist`** rather than at the notice, since a notice
-in the middle is one click of nothing. All of them carry `data-sveltekit-preload-data="tap"`: they are
+has to make the default-vs-named decision deliberately) and links to `/waitlist`. The
+"need an account?" links — the `/login` page and the navbar itself ("Request access") — point
+**straight at `/waitlist`** rather than at the notice, since a notice in the middle is one click of
+nothing. Both carry `data-sveltekit-preload-data="tap"`: they are
 links to `/waitlist`, whose load records the DAR-66 funnel's `waitlist_viewed`, and the navbar one is
-on every page (see docs/waitlist.md).
+on every page (see docs/waitlist.md). There was a third, in the navbar's login dialog, until DAR-214
+removed the dialog along with the "Sign in" link that opened it.
+
+**/signup is now load-bearing in the other direction too.** With "Sign in" out of the navbar it is one
+of only three pages that link to `/login` at all (the others being `/forgot-password` and
+`/reset-password`), so its "Already have an account?" prompt is doing more than it was written for —
+`signup/page.svelte.e2e.ts` asserts the anchor, not just the prose.
 
 **Turnstile is gone.** The `captcha` plugin was scoped to `['/sign-up/email']` and that endpoint now
 rejects everything, so it guarded nothing — and keeping it would have been worse than dead weight,
@@ -323,8 +329,9 @@ redirectTo: '/reset-password' }`. That endpoint is **anti-enumerating** (better-
    auto-sign-in); an invalid/expired token → an "invalid link" panel pointing back to `/forgot-password`.
    Rate-limited at 10/hour/IP.
 
-Entry point: a **"Forgot your password?"** link in the login chrome — duplicated in `login/+page.svelte`
-and `LoginDialog.svelte` (the dialog closes on click), the same pattern as the sign-up prompt. The whole
+Entry point: a **"Forgot your password?"** link in the login chrome — in `login/+page.svelte`, and only
+there since DAR-214 (it was duplicated into the navbar's `LoginDialog`, which went with the navbar link
+that opened it). The whole
 flow is **no-JS friendly** and works for staff and end-users alike. Since DAR-67 it carries more weight
 than its name suggests: invitations are password-reset tokens, so this is also how every NEW account
 gets its first password. Disabling reset would disable onboarding.
@@ -349,8 +356,8 @@ The gated surface #48 fenced off:
   (no `ORIGIN` match needed). It then forwards Better Auth's session `Set-Cookie` onto the response
   (the router path skips the `sveltekitCookies` plugin). A generic "incorrect email or password"
   covers wrong-password / unknown-account / empty alike (no user enumeration); a 429 surfaces the
-  rate-limit. `load` bounces an already-signed-in operator to `/admin`. The same `LoginForm` backs
-  the navbar's `LoginDialog` (issue #69 follow-up).
+  rate-limit. `load` bounces an already-signed-in operator to `/admin`. It is the **only** sign-in
+  surface since DAR-214 — `LoginForm` backed the navbar's `LoginDialog` too until that removed it.
 - **`/admin`** (`src/routes/admin/`) — `+layout.server.ts` is the **guard** (`!locals.user` →
   `/login`) and also exposes `isAdmin` (roster admins). A shared **`+layout.svelte`** renders the
   backdrop, the **Submissions | Users** sub-nav (Users only for admins), and the sign-out control —
@@ -435,7 +442,9 @@ lifecycle (create → non-admin guard → reset → force-logout → disable →
 
 ## Auth-aware UI
 
-The navbar reflects sign-in state so it never shows "Sign in" to a signed-in operator:
+The navbar reflects sign-in state. Since DAR-214 that is not about hiding a "Sign in" link from a
+signed-in operator — there is no sign-in link for anyone (see below) — it is about showing the
+signed-in one where to go, and giving them a way out:
 
 - **`src/routes/+layout.server.ts`** — a root layout `load` that exposes a **minimal** snapshot,
   `{ user: locals.user ? { email } : null, isStaff }`, to every page (typed in `app.d.ts` as
@@ -444,7 +453,7 @@ The navbar reflects sign-in state so it never shows "Sign in" to a signed-in ope
   override `user` with their own page data can't shadow it. This is what makes the cookie-gated
   session lookup in `hooks.server.ts` visible to the client.
 - **`Header.svelte`** — reads `page.data.user` + `page.data.isStaff` (`$app/state`). Signed out →
-  the "Sign in" link/dialog (unchanged). Signed in → a **dashboard** link + a **Sign out** control,
+  **"Request access"** and nothing else. Signed in → a **dashboard** link + a **Sign out** control,
   in both the desktop and mobile lists; `isStaff` picks the dashboard link — **Admin** (→ `/admin`)
   for staff, **Account** (→ `/account`, #96) for an end-user. The state flips reactively:
   `LoginForm`'s `invalidateAll` on sign-in and the native `/logout` redirect both re-run the load.
@@ -453,8 +462,30 @@ The navbar reflects sign-in state so it never shows "Sign in" to a signed-in ope
   `POST` clears the session (`auth.api.signOut`, same as `/admin`'s action) → 303 `/`; a stray
   `GET` → 303 `/`. SvelteKit's CSRF origin-check protects the POST.
 
-Covered by the `pnpm smoke:signin` happy-path (below), which now also asserts the home navbar shows
-the signed-in controls with a session cookie and only "Sign in" without one.
+Covered by the `pnpm smoke:signin` happy-path (below), which asserts the home navbar shows the
+signed-in controls with a session cookie and only "Request access" without one — the half CI cannot
+reach, e2e having no session. The anonymous half is a real e2e (`header-nav.e2e.ts`), and it is
+two-sided on purpose: **no link to `/login` in either nav list**, plus its surviving sibling being
+visible, since "there is no sign-in link" is satisfied by a nav that rendered nothing.
+
+**Why there is no sign-in link (DAR-214).** A sign-in item in the primary navigation of a deep-tech
+site reads as "there is a product behind this"; what is behind it is an account that tracks your
+contact messages and lets you edit your profile. Registration has been invite-only since DAR-67, so
+the item served staff on their way to `/admin` and the handful of activated leads — and staff get an
+**Admin** link the moment they are signed in. `/login` is untouched and stays reachable by URL, by the
+`/admin` and `/account` guards' redirect, by invitation and password-reset mail, and from `/signup`,
+`/forgot-password` and `/reset-password` — though **none of those three is linked from a page you can
+reach by browsing**, so in practice you arrive at `/login` by bookmark, by mail, or by being bounced
+there. That is what the ticket chose, deliberately, for that audience; it is worth knowing rather
+than discovering. Renaming it ("Partner portal") is the
+ticket's option 2 and belongs to whenever `/account` carries evaluation artifacts — naming it that
+today would be the same overstatement in the other direction.
+
+**It took the login dialog with it.** `LoginDialog.svelte` and its `loginDialog` rune are gone,
+because that nav item was the modal's only trigger — measured, not assumed: `loginDialog.show()` had
+exactly one call site. The ticket said the dialog "is still opened from anywhere it is genuinely
+needed" and there was nowhere. Sign-in is one surface now, and the layout's sheen effect tracks one
+dialog instead of two.
 
 Guarded by an e2e (`src/routes/admin/page.svelte.e2e.ts`): unauthenticated `/admin` → `/login`
 (DB-free — a no-cookie `getSession` returns null without a query). The happy path (sign-in →

@@ -113,17 +113,16 @@ test('every link to /waitlist opts out of hover prefetch', async ({ page }) => {
 	};
 
 	// The homepage covers the hero CTA + navbar + footer; /login and /signup add their own prompts.
+	//
+	// Three routes is the whole surface, which it was not before: the login dialog was rendered in the
+	// layout and carried this same prompt, so it could put a /waitlist link over ANY route, and this
+	// test drove the navbar's JS-upgraded "Sign in" to mount it. Both went with DAR-214. If a dialog
+	// carrying a /waitlist link is ever rendered in the layout again, it needs its own arm here —
+	// a link that only exists while a modal is open is invisible to a walk over routes.
 	for (const path of ['/', '/login', '/signup']) {
 		await page.goto(path);
 		await assertAllTap(path);
 	}
-
-	// The login dialog is rendered in the layout and its prompt links to /waitlist, so it can appear
-	// over any route. It only mounts while open — hence driving the navbar's JS-upgraded "Sign in".
-	await page.goto('/');
-	await page.getByRole('navigation').getByRole('link', { name: 'Sign in' }).click();
-	await expect(page.getByRole('dialog')).toBeVisible();
-	await assertAllTap('login dialog');
 });
 
 // Drive a signup via the honeypot (accepted, not persisted → decoy token, no DB) and assert the page

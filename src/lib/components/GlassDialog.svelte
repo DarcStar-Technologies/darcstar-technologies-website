@@ -1,6 +1,8 @@
 <script lang="ts">
 	// Shared frosted-glass modal chrome (issue #69 follow-up) — Portal + backdrop + positioner +
-	// glass panel + the top-right close button — so ContactDialog and LoginDialog can't drift. The
+	// glass panel + the top-right close button. It was extracted so ContactDialog and LoginDialog
+	// could not drift; DAR-214 removed the login dialog, so ContactDialog is the only host today and
+	// this stays the shape a second modal would take rather than something to inline back. The
 	// caller supplies the body (title/description + form/success) as `children`; those may still use
 	// Skeleton's `Dialog.Title`/`Dialog.Description`/`Dialog.CloseTrigger` because the snippet renders
 	// inside this component's `<Dialog>`, so the Dialog context reaches them.
