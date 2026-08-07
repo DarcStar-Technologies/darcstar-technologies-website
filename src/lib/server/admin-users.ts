@@ -34,11 +34,42 @@ export function rosterAdmin(locals: App.Locals): NonNullable<App.Locals['user']>
  * target an owner by calling the API directly. The load-bearing guarantee — that an owner can't be
  * locked out by role misconfiguration — comes from ADMIN_USER_IDS overriding role checks. The
  * plugin also blocks self-ban/self-remove at the endpoint (YOU_CANNOT_BAN/REMOVE_YOURSELF).
+ *
+ * `updateDetails` takes only the `owner` half of this, through `mayEditDetails` below.
  */
 export function guardTarget(targetId: string, currentUserId: string): 'self' | 'owner' | null {
 	if (targetId === currentUserId) return 'self';
 	if (ownerIds().includes(targetId)) return 'owner';
 	return null;
+}
+
+/**
+ * May a roster admin edit this target's name and email? Blocks the `owner` case ONLY (DAR-230).
+ *
+ * Email is the sign-in identity, so re-addressing an account and then running self-service password
+ * reset takes it over — and `ADMIN_USER_IDS` is keyed on the user **id**, which an email edit leaves
+ * untouched, so the taken-over account is still an owner. That defeats the one guarantee the owner
+ * tier gives, which is why the action carries a guard despite writing no destructive field: a
+ * foot-gun guard earns its place on the action whose risk does NOT announce itself, and an email edit
+ * reads like a typo fix where a role change or a delete does not.
+ *
+ * The `self` case stays open deliberately — correcting your own sign-in email is a real capability,
+ * and it is why the guard was skipped here in the first place. `guardTarget` answers `self` BEFORE
+ * `owner`, so an owner editing their own account still passes, and the bootstrap admits an
+ * allowlisted owner whatever their role, so that is always available to a signed-in one.
+ *
+ * What this DOES remove: one admin re-addressing another owner, so an owner who has lost their
+ * password AND access to their address can no longer be rescued from this page. That is the point
+ * rather than a regression — a benign rescue and the takeover above are the same edit, and nothing at
+ * this layer can tell them apart — and the recovery route is the ADMIN_USER_IDS allowlist, which
+ * needs infrastructure access rather than an admin session.
+ *
+ * One rule, two callers: `updateDetails` gates on it and the detail page's `load` derives the flag it
+ * renders the form from, so the page can never offer a form whose POST is refused. Reads env (through
+ * `guardTarget`), so call it before the first `await`.
+ */
+export function mayEditDetails(targetId: string, currentUserId: string): boolean {
+	return guardTarget(targetId, currentUserId) !== 'owner';
 }
 
 /** Map a thrown Better Auth error to a stable code the roster forms render as a localized message. */

@@ -421,7 +421,8 @@ logout across all sessions, reversibly disable/enable, and hard-delete.
   rather than lingering behind the `session_data` cookie-cache.
 - **Guardrails + a known limit.** `guardTarget` blocks role/password/session/disable/delete against
   **your own** account or an **owner** (`ADMIN_USER_IDS`) account; the plugin also blocks
-  self-ban/self-remove. This is a UI foot-gun guard, **not** a hard boundary — the admin API has no
+  self-ban/self-remove. Editing name/email takes the **owner half alone** (`mayEditDetails`, DAR-230
+  — see below). This is a UI foot-gun guard, **not** a hard boundary — the admin API has no
   owner concept, so a promoted admin could still target an owner via `/api/auth/admin/*` directly.
   Admins are trusted operators; the load-bearing guarantee is only that an owner can't be locked out
   by a role mistake.
@@ -746,13 +747,13 @@ re-render, so a refused action and an ungated one produce the same response — 
 gets the same shape, `303 → /account`. Nothing about the wire can tell them apart, which is why this
 is a test's job rather than a review's. It covered `/admin/waitlist`; DAR-226 covers the other four.
 
-| Route              | Actions | Gate                          | Spec                                 |
-| ------------------ | ------- | ----------------------------- | ------------------------------------ |
-| `admin`            | 1       | `isStaff`                     | `admin/page.server.spec.ts`          |
-| `admin/users`      | 1       | `rosterAdmin`                 | `admin/users/page.server.spec.ts`    |
-| `admin/users/[id]` | 7       | `rosterAdmin` + `guardTarget` | `.../[id]/page.server.spec.ts`       |
-| `admin/waitlist`   | 7       | `isStaff` / `isRosterAdmin`   | `admin/waitlist/page.server.spec.ts` |
-| `account`          | 2       | `locals.user`                 | `account/page.server.spec.ts`        |
+| Route              | Actions | Gate                                             | Spec                                 |
+| ------------------ | ------- | ------------------------------------------------ | ------------------------------------ |
+| `admin`            | 1       | `isStaff`                                        | `admin/page.server.spec.ts`          |
+| `admin/users`      | 1       | `rosterAdmin`                                    | `admin/users/page.server.spec.ts`    |
+| `admin/users/[id]` | 7       | `rosterAdmin` + `guardTarget` / `mayEditDetails` | `.../[id]/page.server.spec.ts`       |
+| `admin/waitlist`   | 7       | `isStaff` / `isRosterAdmin`                      | `admin/waitlist/page.server.spec.ts` |
+| `account`          | 2       | `locals.user`                                    | `account/page.server.spec.ts`        |
 
 **Assert the pair, never the refusal alone.** A one-sided test passes against a build that locked
 everyone out, and an admission-only test passes against one with no gate at all. Each route's pair is
@@ -773,11 +774,12 @@ about the gate must name the **most privileged** actor that reaches it, or it fa
 boundary moves and a gate mutation then reports two failures with no way to tell which one mattered.
 
 **`guardTarget` is asserted by position**, not just by outcome: the refusal must land before the
-better-auth call, and — for the two actions with a later validation of their own — before that too.
-The two actions that deliberately **skip** it are asserted in the other direction, because adding the
+better-auth call, and — for the three actions with a later validation of their own — before that too.
+Where an action deliberately **stays open** it is asserted in that direction too, because adding a
 guard there reads like hardening and removes a capability: `updateDetails` is how an admin corrects
 their own sign-in email, and `enable` is the only way back for an owner disabled through the raw
-admin API, where the owner concept does not exist.
+admin API, where the owner concept does not exist — true of the action, though the **page** does not
+offer that button for an owner today (DAR-234).
 
 **A scan covers the nineteenth action**, since the specs above can only speak for the eighteen that
 exist and nothing makes a new one inherit a gate. `form-action-gate.spec.ts` derives the protected
@@ -798,11 +800,76 @@ The middle row is the honest residual — this rule reads whether a gate is **na
 **binds**. The bottom row is a division of labour rather than a hole: which of four predicates is
 correct for a given route is a judgement no scan can hold.
 
+## An owner's email is a takeover primitive (DAR-230)
+
+`updateDetails` carried the role gate and nothing else, justified in its own comment as "allowed on
+any account (**non-destructive**)". That word was carrying the argument. Email is the sign-in
+identity, so:
+
+1. an admin edits an **owner's** email to an address they control,
+2. `/forgot-password` sends the reset link to that address,
+3. the owner's account row is now theirs — and `ADMIN_USER_IDS` is keyed on the user **id**, which an
+   email edit never touches, so the taken-over account is still an owner.
+
+That defeats the one guarantee the owner tier exists to give. This file's standing position — owner-
+vs-admin protection is a foot-gun guard, not a boundary, because the raw admin API has no owner
+concept — is a fair reading of the other five actions and a weaker one here, for a reason worth
+keeping: **a foot-gun guard earns its place on the action whose risk does not announce itself.** Role
+change, password reset, force-logout, disable and delete all read as dangerous and all carried the
+guard. Two actions did not: `enable`, which only restores access, and this one — which reads like a
+typo fix and is the takeover primitive.
+
+**The fix is the `owner` half only.** `mayEditDetails` (`admin-users.ts`) is `guardTarget(…) !==
+'owner'`, so an admin correcting **their own** sign-in email — the capability the guard was skipped
+for in the first place — is untouched. Two things keep that from trading one lockout for another:
+
+- `guardTarget` answers `self` **before** `owner`, so an owner is never blocked from their own
+  account. Reversing those two lines is a plausible tidy-up and fails two named tests.
+- the bootstrap admits an allowlisted owner **whatever their role**, so reaching that page is always
+  available to them.
+
+**What it does remove**, stated rather than waved at: one admin re-addressing _another_ owner. An
+owner who has lost their password **and** access to their address can no longer be helped from this
+page — and that is the point rather than a regression, because a benign rescue and the takeover above
+are the same edit and nothing at this layer can tell them apart. The recovery route is the
+`ADMIN_USER_IDS` env allowlist, which needs Cloudflare access: a strictly stronger credential than an
+admin session, which is what makes it the right place for that decision.
+
+**The page reads the same predicate.** `load` derives `detailsEditable` from `mayEditDetails` and the
+detail page renders the card behind it, because a refusal alone would leave an operator pressing Save
+on an owner and getting a 403 from a form the site itself offered — DAR-226's own lesson arriving as
+the consequence of a fix. It is deliberately **not** `manageable`, which also excludes your own
+account, where editing the address is exactly the point. `!detailsEditable` implies `!manageable`, so
+the owner note in `manageable`'s else-branch always explains the missing card; that holds by
+arithmetic on two separately-written expressions, so it is pinned rather than reasoned about.
+
+**Both halves of the render path need their own test, measured rather than argued.** The flag
+carrying the right value and the markup reading it are separate one-line facts, and the last two rows
+are where that shows — every mutation, and which layer saw it:
+
+| mutation                                | `page.server.spec.ts` | `page.svelte.spec.ts` |
+| --------------------------------------- | --------------------- | --------------------- |
+| the action's gate deleted               | 🔴 4                  | 🟢                    |
+| the wrong half guarded (`!== 'self'`)   | 🔴 7                  | 🟢                    |
+| both halves guarded (`=== null`)        | 🔴 4                  | 🟢                    |
+| `guardTarget` answers owner before self | 🔴 2                  | 🟢                    |
+| `load` ignores the helper               | 🔴 1                  | 🟢                    |
+| the markup ignores the flag             | 🟢                    | 🔴 1                  |
+
+The last two rows are complementary: each is invisible to the other layer. `form-action-gate.spec.ts`
+stays green through **all** of them, which is its documented residual above — every mutation here
+leaves `rosterAdmin` named.
+
+The spec's own action table (`guard: 'self+owner' | 'owner' | 'none'`) is a claim about the code that
+every table below it derives from, so a row edited to match a failing test would narrow a table
+instead of going red. It is held against the source with `formActions` from `source-scan.ts`.
+
 ## Still deferred
 
 Pagination for the submissions **and roster** lists (both capped at 200, newest-first); GitHub OAuth
 is configured in the CLI but not enabled in `auth.ts`; owner-vs-admin protection at the endpoint level
 (a promoted admin can still target an owner via the raw admin API) is out of scope — admins are
-trusted; see "User management". Sign-up UI copy is untranslated, like every other `es` string —
+trusted; see "User management". That is a reason not to build an endpoint boundary, **not** a reason
+to leave a page action ungated — see DAR-230 above for where the two come apart. Sign-up UI copy is untranslated, like every other `es` string —
 `es.json` holds translated keys only, so it falls back to `en` (#18, DAR-53); email-change
 self-service in `/account` stays deferred (email is the sign-in + backfill key).
